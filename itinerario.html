@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MultiAire – Itinerario</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+:root{
+  --bg:#f0f4fa;--surface:#fff;--surface2:#f5f8ff;--surface3:#e8eef8;
+  --border:#d0daf0;--border2:#b8cce8;
+  --accent:#1a2540;--muted:#8a9ab8;--muted2:#6a7a9a;
+  --blue:#1B3F8B;--blue-light:#2a52b0;--blue-pale:#e8eef8;
+  --orange:#F47920;--orange-dark:#d4621a;--orange-pale:#fff3eb;
+  --green:#1a9e5a;--green-bg:#f0faf5;--green-border:#b0e0c8;
+  --red:#d63344;--red-bg:#fdf0f2;--red-border:#f0c0c8;
+  --yellow:#d48a00;--yellow-bg:#fff8ee;--yellow-border:#f5d080;
+  --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow:0 2px 12px rgba(27,63,139,.10);--shadow-lg:0 8px 32px rgba(27,63,139,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height:100vh;display:flex;flex-direction:column;font-size:14px}
+
+/* HEADER */
+header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;color:#fff}
+.logo span{color:rgba(255,255,255,.5);font-weight:300}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0}
+.back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:20px;white-space:nowrap}
+.back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
+.conn-pill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
+.conn-pill.ok{color:#4ddd88;border-color:rgba(77,221,136,.4)}
+.user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative;transition:all .15s}
+.user-pill:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.1)}
+.user-avatar{width:26px;height:26px;border-radius:50%;object-fit:cover}
+.user-avatar-init{width:26px;height:26px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+.user-name{font-size:11px;color:rgba(255,255,255,.85);font-weight:500;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1.5px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);min-width:180px;overflow:hidden;z-index:999}
+.user-menu.open{display:block}
+.user-menu-item{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;color:var(--accent);cursor:pointer;background:none;border:none;width:100%;text-align:left;font-family:var(--font);transition:background .15s}
+.user-menu-item:hover{background:var(--bg)}
+.user-menu-item.danger{color:var(--red)}
+.user-menu-item.danger:hover{background:var(--red-bg)}
+.user-menu-divider{height:1px;background:var(--border);margin:4px 0}
+.user-menu-header{padding:10px 14px 6px;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+
+/* LAYOUT */
+.app{display:flex;height:calc(100vh - 52px)}
+.sidebar{width:280px;min-width:280px;background:var(--surface);border-right:1.5px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.main{flex:1;overflow-y:auto;padding:24px}
+
+/* SIDEBAR */
+.sb-section{padding:14px 16px 8px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--blue);text-transform:uppercase;border-bottom:1px solid var(--border)}
+.sb-body{padding:16px}
+.sb-label{font-size:10px;color:var(--blue);margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.sb-input{width:100%;background:var(--surface2);border:1.5px solid var(--border);color:var(--accent);font-family:var(--font);font-size:13px;padding:8px 10px;border-radius:6px;outline:none;margin-bottom:12px}
+.sb-input:focus{border-color:var(--blue)}
+
+/* ITINERARIOS RECIENTES */
+.iti-list{display:flex;flex-direction:column;gap:6px;padding:12px 16px}
+.iti-item{padding:10px 12px;background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;cursor:pointer;transition:all .15s}
+.iti-item:hover{border-color:var(--blue);background:var(--blue-pale)}
+.iti-item.active{border-color:var(--blue);background:var(--blue-pale)}
+.iti-item-date{font-size:12px;font-weight:700;color:var(--accent)}
+.iti-item-meta{font-size:10px;color:var(--muted2);font-family:var(--mono);margin-top:2px}
+.iti-item-estado{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-top:4px}
+.estado-actualizado{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.estado-registrado{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
+
+/* MAIN CONTENT */
+.iti-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+.iti-title{flex:1}
+.iti-title h2{font-size:18px;font-weight:700;color:var(--blue)}
+.iti-title-meta{font-size:12px;color:var(--muted2);margin-top:2px;font-family:var(--mono)}
+.iti-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* BLOQUES GRID */
+.bloques-grid{display:flex;flex-direction:column;gap:12px}
+
+/* BLOQUE CARD */
+.bloque-card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);transition:box-shadow .2s}
+.bloque-card:hover{box-shadow:var(--shadow-lg)}
+.bloque-header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.bloque-num{width:28px;height:28px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:var(--mono)}
+.bloque-tienda{font-size:14px;font-weight:700;color:var(--accent);flex:1}
+.bloque-grupo{font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px}
+.grupo-preventivo{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.grupo-correctivo{background:var(--orange-pale);color:var(--orange-dark);border:1px solid #f0c09a}
+.grupo-emergencia{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
+.bloque-body{padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.bloque-field{display:flex;flex-direction:column;gap:3px}
+.bloque-field.full{grid-column:1/-1}
+.bloque-field-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:600;font-family:var(--mono)}
+.bloque-field-val{font-size:13px;color:var(--accent)}
+.bloque-personal{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+.personal-tag{display:flex;align-items:center;gap:5px;padding:3px 10px;background:var(--blue-pale);border:1px solid var(--border);border-radius:20px;font-size:11px;font-weight:600;color:var(--blue)}
+.personal-tag.cargo-tecnico{background:var(--blue-pale);color:var(--blue)}
+.personal-tag.cargo-ayudante{background:var(--orange-pale);color:var(--orange-dark)}
+.personal-tag.cargo-pdr{background:var(--green-bg);color:var(--green)}
+.bloque-detalle{font-size:12px;color:var(--accent);line-height:1.5;padding:10px 14px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--blue)}
+.bloque-actions{padding:10px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+
+/* HORARIO */
+.horario-badge{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600}
+.horario-badge span{color:var(--muted)}
+
+/* EMPTY */
+.empty-iti{text-align:center;padding:60px 20px;color:var(--muted2)}
+.empty-iti h3{font-size:16px;font-weight:700;margin-bottom:8px;color:var(--accent)}
+.empty-iti p{font-size:13px;line-height:1.6}
+
+/* MODAL */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}
+.overlay.open{display:flex}
+.modal{background:var(--surface);border:1.5px solid var(--border);border-radius:14px;width:640px;max-width:100%;overflow:hidden;box-shadow:var(--shadow-lg)}
+.modal-head{padding:18px 22px;border-bottom:1.5px solid var(--border);background:var(--blue-pale);display:flex;align-items:center;gap:10px}
+.modal-head h2{font-size:14px;font-weight:700;color:var(--blue);flex:1}
+.modal-body{padding:20px 22px;max-height:65vh;overflow-y:auto}
+.modal-foot{padding:14px 22px;border-top:1.5px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.form-group{display:flex;flex-direction:column;gap:5px}
+.form-group.full{grid-column:1/-1}
+.form-label{font-size:10px;color:var(--blue);font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.form-input,.form-select,.form-textarea{width:100%;background:var(--surface2);border:1.5px solid var(--border);color:var(--accent);font-family:var(--font);font-size:13px;padding:8px 10px;border-radius:6px;outline:none}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--blue)}
+.form-textarea{resize:vertical;min-height:70px;line-height:1.5}
+.form-select option{background:#fff}
+.personal-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bloque-sep{font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.08em;padding:14px 0 8px;border-top:1px solid var(--border);margin-top:6px;display:flex;align-items:center;gap:10px}
+.bloque-sep::after{content:'';flex:1;height:1px;background:var(--border)}
+.bloque-form-item{background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+.bloque-form-num{font-family:var(--mono);font-size:11px;color:var(--blue);font-weight:700;margin-bottom:12px}
+.remove-bloque{float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:0;transition:color .15s}
+.remove-bloque:hover{color:var(--red)}
+
+/* OBS */
+.obs-box{background:var(--yellow-bg);border:1px solid var(--yellow-border);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--accent);line-height:1.6;margin-bottom:16px}
+.obs-label{font-size:10px;font-weight:700;color:var(--yellow);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--accent);font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--blue-pale);border-color:var(--blue)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn-primary:hover{background:var(--blue-light)}
+.btn-orange{background:var(--orange);border-color:var(--orange);color:#fff}
+.btn-orange:hover{background:var(--orange-dark)}
+.btn-sm{padding:5px 12px;font-size:11px}
+.btn-danger{color:var(--red);border-color:var(--red-border)}
+.btn-danger:hover{background:var(--red-bg)}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:10px 18px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;box-shadow:var(--shadow-lg)}
+.toast.show{opacity:1}
+.toast.ok{border-color:var(--green-border);color:var(--green);background:var(--green-bg)}
+.toast.err{border-color:var(--red-border);color:var(--red);background:var(--red-bg)}
+
+/* SAVING */
+.saving-ind{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.6);display:none;align-items:center;gap:6px}
+.saving-ind.show{display:flex}
+.spin{display:inline-block;width:10px;height:10px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* AUTH */
+#auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:36px 32px;max-width:380px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
+.auth-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px}
+.auth-logo-dot{width:10px;height:10px;border-radius:50%;background:var(--orange)}
+.auth-logo-text{font-weight:700;font-size:20px;color:var(--blue)}
+.auth-title{font-size:15px;font-weight:700;color:var(--accent);margin-bottom:6px}
+.auth-sub{font-size:12px;color:var(--muted2);margin-bottom:24px;line-height:1.5}
+.auth-err{margin-top:14px;padding:10px 14px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:8px;font-size:12px;color:var(--red);display:none;line-height:1.5;text-align:left}
+.auth-err.show{display:block}
+.auth-loading{font-size:12px;color:var(--muted2);margin-top:10px;display:none}
+.auth-loading.show{display:block}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .app{flex-direction:column;height:auto}
+  .sidebar{width:100%;min-width:unset;border-right:none;border-bottom:1.5px solid var(--border);max-height:300px}
+  .main{padding:16px}
+  .bloque-body{grid-template-columns:1fr}
+  .form-grid{grid-template-columns:1fr}
+  .personal-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><div class="logo-dot"></div>MultiAire <span>/ Itinerario</span></div>
+  <div class="conn-pill" id="connPill">⟳ Conectando...</div>
+  <div class="saving-ind" id="savingInd"><div class="spin"></div>Guardando...</div>
+  <div id="user-pill" class="user-pill" style="display:none" onclick="maOpenMenu()"></div>
+  <a href="index.html" class="back-link">← Inicio</a>
+</header>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sb-section">Seleccionar fecha</div>
+    <div class="sb-body">
+      <div class="sb-label">Fecha</div>
+      <input type="date" class="sb-input" id="fecha-input" onchange="loadFecha(this.value)">
+      <button class="btn btn-primary" style="width:100%;margin-bottom:8px" onclick="nuevoItinerario()">+ Nuevo itinerario</button>
+      <button class="btn" style="width:100%" onclick="loadFecha(document.getElementById('fecha-input').value)">🔄 Recargar</button>
+    </div>
+    <div class="sb-section">Recientes</div>
+    <div class="iti-list" id="iti-list">
+      <div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">Cargando...</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main" id="main-content">
+    <div class="empty-iti">
+      <div style="font-size:48px;margin-bottom:16px">📋</div>
+      <h3>Selecciona una fecha</h3>
+      <p>Elige una fecha en el panel izquierdo para ver o crear el itinerario del día.</p>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ITINERARIO -->
+<div class="overlay" id="modal-iti" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modal-title">Nuevo itinerario</h2>
+      <button class="btn btn-sm" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveItinerario()">💾 Guardar itinerario</button>
+    </div>
+  </div>
+</div>
+
+<!-- AUTH -->
+<div id="auth-overlay" style="display:none">
+  <div class="auth-card">
+    <div class="auth-logo"><div class="auth-logo-dot"></div><div class="auth-logo-text">MultiAire</div></div>
+    <div class="auth-title">Itinerario</div>
+    <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada.</div>
+    <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="auth-loading" id="auth-loading"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const GAS = 'https://script.google.com/macros/s/AKfycbwk8ZI3w_g1AL71LCWcEvQBUcyjyZ2MVFRh6pvrxPe0RibUXoZT-uPtCrOpV4FC6VfM/exec';
+const MA_CID = '859362309270-23def0uf0j6j70upft0u5gg4csoe97k2.apps.googleusercontent.com';
+const MA_ADM = 'marchenaangulojoseluis@gmail.com';
+const MA_GAS = GAS;
+const DIAS = ['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBADO'];
+
+let maUser = null, maEmails = null;
+let maestros = { personal: [], tiendas: [], grupos: [] };
+let currentIti = null;
+let editBloques = [];
+
+// ── COLOR HELPERS ────────────────────────────────────────────────────────────
+function cargoColor(cargo) {
+  const colors = [
+    {bg:'#e8eef8',color:'#1B3F8B',border:'#c0d0ef'},
+    {bg:'#fff3eb',color:'#d4621a',border:'#f0c09a'},
+    {bg:'#f0faf5',color:'#1a9e5a',border:'#b0e0c8'},
+    {bg:'#f5f0ff',color:'#6b3fa0',border:'#d0b8ef'},
+    {bg:'#fff8ee',color:'#d48a00',border:'#f5d080'},
+    {bg:'#fdf0f2',color:'#d63344',border:'#f0c0c8'},
+  ];
+  let hash = 0;
+  for (let c of (cargo||'')) hash = (hash * 31 + c.charCodeAt(0)) & 0xffff;
+  return colors[hash % colors.length];
+}
+
+function grupoColor(grupo) {
+  const g = (grupo||'').toUpperCase();
+  if (g.includes('PREVENT')) return {bg:'#f0faf5',color:'#1a9e5a',border:'#b0e0c8',cls:'grupo-preventivo'};
+  if (g.includes('CORRECT')) return {bg:'#fff3eb',color:'#d4621a',border:'#f0c09a',cls:'grupo-correctivo'};
+  if (g.includes('EMERG')) return {bg:'#fdf0f2',color:'#d63344',border:'#f0c0c8',cls:'grupo-emergencia'};
+  return cargoColor(grupo);
+}
+
+function estadoColor(estado) {
+  if (estado === 'COMPLETADO') return {bg:'#f0faf5',color:'#1a9e5a',border:'#b0e0c8'};
+  if (estado === 'EN CURSO') return {bg:'#fff3eb',color:'#d4621a',border:'#f0c09a'};
+  if (estado === 'CANCELADO') return {bg:'#fdf0f2',color:'#d63344',border:'#f0c0c8'};
+  return {bg:'#e8eef8',color:'#1B3F8B',border:'#c0d0ef'}; // PROGRAMADO
+}
+
+// ── AUTH ─────────────────────────────────────────────────────────────────────
+(function(){
+  var s = document.createElement('script');
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.async = true; s.defer = true; s.onload = maInit;
+  document.head.appendChild(s);
+})();
+
+function maInit() {
+  var saved = sessionStorage.getItem('ma_user');
+  if (saved) { try { maVerify(JSON.parse(saved), false); return; } catch(e) {} }
+  maShowLogin();
+}
+
+function maShowLogin() {
+  var ov = document.getElementById('auth-overlay');
+  if (ov) { ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+  if (window.google && google.accounts) {
+    google.accounts.id.initialize({ client_id: MA_CID, callback: maHandleToken });
+    google.accounts.id.renderButton(document.getElementById('g-btn'), { theme: 'outline', size: 'large', text: 'signin_with', locale: 'es', width: 300 });
+  }
+}
+
+function maHandleToken(resp) { maVerify(maParseJwt(resp.credential), true); }
+
+function maVerify(payload, save) {
+  var email = (payload.email || '').toLowerCase();
+  var errEl = document.getElementById('auth-err');
+  var ldEl = document.getElementById('auth-loading');
+  if (ldEl) { ldEl.textContent = 'Verificando...'; ldEl.classList.add('show'); }
+  if (errEl) errEl.classList.remove('show');
+  maGetEmails().then(function(data) {
+    var emails = data.emails || [];
+    var roles = data.roles || {};
+    if (emails.indexOf(email) === -1) {
+      if (ldEl) ldEl.classList.remove('show');
+      if (errEl) { errEl.textContent = 'Acceso denegado para ' + email; errEl.classList.add('show'); }
+      sessionStorage.removeItem('ma_user'); return;
+    }
+    maUser = { email, name: payload.name || email, picture: payload.picture || '', rol: roles[email] || 'USUARIO' };
+    if (save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
+    if (ldEl) ldEl.classList.remove('show');
+    document.getElementById('auth-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    maRenderPill();
+    init();
+  }).catch(function() {
+    if (ldEl) ldEl.classList.remove('show');
+    if (errEl) { errEl.textContent = 'Error verificando. Intenta de nuevo.'; errEl.classList.add('show'); }
+  });
+}
+
+function maGetEmails() {
+  if (maEmails) return Promise.resolve(maEmails);
+  return fetch(MA_GAS + '?action=getEmails').then(r => r.json()).then(d => {
+    maEmails = { emails: (d.emails || [MA_ADM]).map(e => e.toLowerCase()), roles: d.roles || {} };
+    return maEmails;
+  }).catch(() => { maEmails = { emails: [MA_ADM.toLowerCase()], roles: {} }; return maEmails; });
+}
+
+function maRenderPill() {
+  const pill = document.getElementById('user-pill');
+  if (!pill || !maUser) return;
+  let n = maUser.name || maUser.email;
+  try { n = decodeURIComponent(escape(n)); } catch(e) {}
+  const init = n.split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase();
+  const isAdmin = maUser.rol === 'ADMIN';
+  pill.innerHTML = (maUser.picture ? `<img class="user-avatar" src="${maUser.picture}">` : `<div class="user-avatar-init">${init}</div>`)
+    + `<span class="user-name">${n}</span>`
+    + `<div class="user-menu" id="user-menu">`
+    + `<div class="user-menu-header">${maUser.email}</div>`
+    + `<div class="user-menu-divider"></div>`
+    + `<button class="user-menu-item danger" onclick="maSignOut()">→ Cerrar sesión</button>`
+    + `</div>`;
+  pill.style.display = 'flex';
+}
+
+function maOpenMenu() {
+  const menu = document.getElementById('user-menu');
+  if (menu) menu.classList.toggle('open');
+}
+
+function maSignOut() { sessionStorage.removeItem('ma_user'); maUser = null; location.reload(); }
+function maParseJwt(t) { return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); }
+
+document.addEventListener('click', e => {
+  const pill = document.getElementById('user-pill');
+  const menu = document.getElementById('user-menu');
+  if (menu && pill && !pill.contains(e.target)) menu.classList.remove('open');
+});
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    // Load maestros and recientes in parallel
+    const [mRes, rRes] = await Promise.all([
+      fetch(GAS + '?action=getMaestros').then(r => r.json()),
+      fetch(GAS + '?action=getItinerariosRecientes').then(r => r.json())
+    ]);
+    maestros = mRes;
+    document.getElementById('connPill').textContent = '✓ Conectado';
+    document.getElementById('connPill').classList.add('ok');
+    renderRecientes(rRes.itinerarios || []);
+    // Set today's date
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById('fecha-input').value = today;
+    loadFecha(today);
+  } catch(e) {
+    document.getElementById('connPill').textContent = '✗ Error';
+    toast('Error conectando al sistema', 'err');
+  }
+}
+
+// ── RECIENTES ─────────────────────────────────────────────────────────────────
+function renderRecientes(itinerarios) {
+  const list = document.getElementById('iti-list');
+  if (!itinerarios.length) { list.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:16px">Sin itinerarios recientes</div>'; return; }
+  list.innerHTML = itinerarios.map(iti => {
+    const fecha = excelDateToDate(iti.fecha);
+    const fechaStr = fecha.toLocaleDateString('es-PE', { weekday:'short', day:'2-digit', month:'short' });
+    const estadoClass = iti.estado === 'ACTUALIZADO' ? 'estado-actualizado' : 'estado-registrado';
+    return `<div class="iti-item" onclick="loadItiById('${iti.id}','${fecha.toISOString().slice(0,10)}')">
+      <div class="iti-item-date">${fechaStr}</div>
+      <div class="iti-item-meta">${iti.totalBloques} bloques · v${iti.version}</div>
+      <div class="iti-item-estado ${estadoClass}">${iti.estado}</div>
+    </div>`;
+  }).join('');
+}
+
+function excelDateToDate(excelDate) {
+  if (excelDate instanceof Date || !isNaN(new Date(excelDate).getTime()) && String(excelDate).includes('-')) {
+    return new Date(excelDate);
+  }
+  // Excel serial number
+  const d = new Date((Number(excelDate) - 25569) * 86400 * 1000);
+  return d;
+}
+
+function fmtHora(decimal) {
+  if (!decimal) return '--:--';
+  const totalMin = Math.round(decimal * 24 * 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+}
+
+function horaToDecimal(str) {
+  const [h, m] = str.split(':').map(Number);
+  return (h * 60 + m) / 1440;
+}
+
+// ── LOAD FECHA ────────────────────────────────────────────────────────────────
+async function loadFecha(fecha) {
+  if (!fecha) return;
+  document.getElementById('fecha-input').value = fecha;
+  const main = document.getElementById('main-content');
+  main.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted)">Cargando...</div>';
+  try {
+    const d = await fetch(`${GAS}?action=getItinerario&fecha=${fecha}`).then(r => r.json());
+    currentIti = d.itinerario;
+    renderItinerario(d.itinerario, d.bloques || [], fecha);
+  } catch(e) {
+    toast('Error cargando itinerario', 'err');
+  }
+}
+
+async function loadItiById(id, fecha) {
+  document.getElementById('fecha-input').value = fecha;
+  await loadFecha(fecha);
+}
+
+// ── RENDER ITINERARIO ─────────────────────────────────────────────────────────
+function renderItinerario(iti, bloques, fecha) {
+  const main = document.getElementById('main-content');
+  if (!iti) {
+    const d = new Date(fecha + 'T12:00:00');
+    const diaStr = DIAS[d.getDay()];
+    main.innerHTML = `
+      <div class="iti-header">
+        <div class="iti-title">
+          <h2>${d.toLocaleDateString('es-PE',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})}</h2>
+          <div class="iti-title-meta">Sin itinerario registrado</div>
+        </div>
+        <div class="iti-actions">
+          <button class="btn btn-primary" onclick="nuevoItinerario()">+ Crear itinerario</button>
+        </div>
+      </div>
+      <div class="empty-iti">
+        <div style="font-size:48px;margin-bottom:16px">📋</div>
+        <h3>Sin itinerario para este día</h3>
+        <p>Crea un nuevo itinerario para organizar las actividades del equipo.</p>
+      </div>`;
+    return;
+  }
+
+  const fecha2 = excelDateToDate(iti.fecha);
+  const fechaStr = fecha2.toLocaleDateString('es-PE', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+  const estadoClass = iti.estado === 'ACTUALIZADO' ? 'estado-actualizado' : 'estado-registrado';
+
+  const bloquesHtml = bloques.map((b, i) => renderBloqueCard(b, i)).join('');
+
+  main.innerHTML = `
+    <div class="iti-header">
+      <div class="iti-title">
+        <h2>${fechaStr}</h2>
+        <div class="iti-title-meta">${iti.id} · v${iti.version} · ${bloques.length} bloques
+          <span class="iti-item-estado ${estadoClass}" style="margin-left:8px">${iti.estado}</span>
+        </div>
+      </div>
+      <div class="iti-actions">
+        <button class="btn btn-primary" onclick="editarItinerario()">✏️ Editar / Nueva versión</button>
+      </div>
+    </div>
+    ${iti.obsGenerales ? `<div class="obs-box"><div class="obs-label">Anotaciones generales</div>${iti.obsGenerales}</div>` : ''}
+    <div class="bloques-grid">${bloquesHtml}</div>`;
+}
+
+function renderBloqueCard(b, i) {
+  const gc = grupoColor(b.grupo || '');
+  const grupoClass = gc.cls || '';
+  const ec = estadoColor(b.estado || 'PROGRAMADO');
+  const personal = (b.personal || [b.personal1, b.personal2, b.personal3, b.personal4])
+    .filter(p => p && p.nombre)
+    .map(p => {
+      const per = maestros.personal.find(x => x.id === p.id);
+      const cargo = per?.cargo || '';
+      const c = cargoColor(cargo);
+      return `<div class="personal-tag" style="background:${c.bg};color:${c.color};border:1px solid ${c.border}">${p.nombre}${cargo?`<span style="font-size:9px;opacity:.7;margin-left:3px">(${cargo})</span>`:''}</div>`;
+    }).join('');
+
+  return `
+    <div class="bloque-card">
+      <div class="bloque-header">
+        <div class="bloque-num">${b.nBloque}</div>
+        <div class="bloque-tienda">${b.tienda}</div>
+        <div class="bloque-grupo" style="background:${gc.bg};color:${gc.color};border:1px solid ${gc.border}">${b.grupo}</div>
+        <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${ec.bg};color:${ec.color};border:1px solid ${ec.border}">${b.estado||'PROGRAMADO'}</span>
+      </div>
+      <div class="bloque-body">
+        <div class="bloque-field">
+          <div class="bloque-field-label">Horario</div>
+          <div class="horario-badge">${fmtHora(b.horaInicio)} <span>→</span> ${fmtHora(b.horaFin)}</div>
+        </div>
+        <div class="bloque-field">
+          <div class="bloque-field-label">Personal</div>
+          <div class="bloque-personal">${personal || '<span style="color:var(--muted);font-size:12px">Sin asignar</span>'}</div>
+        </div>
+        <div class="bloque-field full">
+          <div class="bloque-field-label">Detalle de trabajo</div>
+          <div class="bloque-detalle">${b.detalle || '—'}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── NUEVO / EDITAR ITINERARIO ─────────────────────────────────────────────────
+function nuevoItinerario() {
+  const fecha = document.getElementById('fecha-input').value || new Date().toISOString().slice(0,10);
+  const d = new Date(fecha + 'T12:00:00');
+  editBloques = [newBloque()];
+  window.bloquesPersonal = { 0: [''] };
+  renderModal(fecha, d, null);
+}
+
+function editarItinerario() {
+  if (!currentIti) return;
+  const fecha = document.getElementById('fecha-input').value;
+  const d = new Date(fecha + 'T12:00:00');
+  // Rebuild editBloques from current view
+  editBloques = [newBloque()]; // Will be loaded fresh
+  loadFechaForEdit(fecha, d);
+}
+
+async function loadFechaForEdit(fecha, d) {
+  const res = await fetch(`${GAS}?action=getItinerario&fecha=${fecha}`).then(r => r.json());
+  const bloques = res.bloques || [];
+  editBloques = bloques.length ? bloques.map(b => ({
+    idTienda: b.idTienda, tienda: b.tienda, cliente: b.cliente,
+    idGrupo: b.idGrupo, grupo: b.grupo,
+    horaInicio: fmtHora(b.horaInicio), horaFin: fmtHora(b.horaFin),
+    detalle: b.detalle,
+    estado: b.estado || 'PROGRAMADO'
+  })) : [newBloque()];
+  // Init personal slots from existing data
+  window.bloquesPersonal = {};
+  bloques.forEach((b, i) => {
+    const slots = [b.personal1, b.personal2, b.personal3, b.personal4]
+      .filter(p => p && p.id).map(p => p.id);
+    window.bloquesPersonal[i] = slots.length ? slots : [''];
+  });
+  if (!bloques.length) window.bloquesPersonal[0] = [''];
+  renderModal(fecha, d, res.itinerario);
+}
+
+function newBloque() {
+  return { idTienda:'', tienda:'', cliente:'', idGrupo:'', grupo:'', horaInicio:'08:00', horaFin:'17:30', detalle:'', p1:'', p2:'', p3:'', p4:'', estado:'PROGRAMADO' };
+}
+
+function renderModal(fecha, d, iti) {
+  if (!window.bloquesPersonal) window.bloquesPersonal = {};
+  const version = iti ? iti.version + 1 : 1;
+  const diaStr = DIAS[d.getDay()];
+  const idIti = iti ? iti.id : `ITI-${fecha.replace(/-/g,'')}-001`;
+  document.getElementById('modal-title').textContent = iti ? `Nueva versión (v${version}) — ${diaStr}` : `Nuevo itinerario — ${diaStr}`;
+
+  const tiendaOpts = maestros.tiendas.map(t => `<option value="${t.id}" data-tienda="${t.tienda}" data-cliente="${t.cliente}">${t.tienda}</option>`).join('');
+  const grupoOpts = maestros.grupos.map(g => `<option value="${g.id}" data-grupo="${g.grupo}">${g.grupo}</option>`).join('');
+  const perOpts = '<option value="">— Sin asignar —</option>' + maestros.personal.map(p => `<option value="${p.id}">${p.nombre} (${p.cargo})</option>`).join('');
+
+  // Track personal slots per bloque
+  if (!window.bloquesPersonal) window.bloquesPersonal = {};
+
+  function bloqueFormHtml(b, i) {
+    if (!window.bloquesPersonal[i]) {
+      // Init slots from existing data
+      const slots = [];
+      const existing = [b.p1||b.personal1?.id, b.p2||b.personal2?.id, b.p3||b.personal3?.id, b.p4||b.personal4?.id].filter(Boolean);
+      existing.forEach(id => slots.push(id));
+      if (!slots.length) slots.push('');
+      window.bloquesPersonal[i] = slots;
+    }
+    const slots = window.bloquesPersonal[i];
+
+    // Get all assigned IDs in other bloques for warning
+    const otherAssigned = {};
+    editBloques.forEach((_, j) => {
+      if (j === i) return;
+      (window.bloquesPersonal[j] || []).forEach(id => { if(id) otherAssigned[id] = j+1; });
+    });
+
+    const personalSlotsHtml = slots.map((pid, si) => {
+      // Filter out IDs already in this bloque (except current slot)
+      const usedInThis = slots.filter((x,xi) => x && xi !== si);
+      const opts = '<option value="">— Sin asignar —</option>' + maestros.personal
+        .filter(p => p.activo !== 'NO')
+        .map(p => {
+          const inThis = usedInThis.includes(p.id);
+          const inOther = otherAssigned[p.id];
+          const warn = inOther ? ` ⚠ (Bloque ${inOther})` : '';
+          return `<option value="${p.id}" ${inThis?'disabled':''} ${pid===p.id?'selected':''}>${p.nombre} (${p.cargo})${warn}</option>`;
+        }).join('');
+      return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <select class="form-select" style="flex:1" onchange="onPersonalChange(${i},${si},this.value)">${opts}</select>
+        ${si > 0 ? `<button onclick="removePersonalSlot(${i},${si})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;padding:4px">✕</button>` : ''}
+      </div>`;
+    }).join('');
+
+    return `<div class="bloque-form-item" id="bloque-form-${i}">
+      <div class="bloque-form-num">BLOQUE ${i+1} <button class="remove-bloque" onclick="removeBloque(${i})" title="Eliminar bloque">✕</button></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <div class="form-label">Tienda</div>
+          <select class="form-select" id="bf-tienda-${i}">
+            <option value="">Seleccionar...</option>${tiendaOpts}
+          </select>
+        </div>
+        <div class="form-group">
+          <div class="form-label">Grupo / Tipo</div>
+          <select class="form-select" id="bf-grupo-${i}">
+            <option value="">Seleccionar...</option>${grupoOpts}
+          </select>
+        </div>
+        <div class="form-group">
+          <div class="form-label">Hora inicio</div>
+          <input type="time" class="form-input" id="bf-hi-${i}" value="${b.horaInicio||'08:00'}">
+        </div>
+        <div class="form-group">
+          <div class="form-label">Hora fin</div>
+          <input type="time" class="form-input" id="bf-hf-${i}" value="${b.horaFin||'17:30'}">
+        </div>
+        <div class="form-group">
+          <div class="form-label">Estado</div>
+          <select class="form-select" id="bf-estado-${i}">
+            <option value="PROGRAMADO" ${(b.estado||'PROGRAMADO')==='PROGRAMADO'?'selected':''}>PROGRAMADO</option>
+            <option value="EN CURSO" ${b.estado==='EN CURSO'?'selected':''}>EN CURSO</option>
+            <option value="COMPLETADO" ${b.estado==='COMPLETADO'?'selected':''}>COMPLETADO</option>
+            <option value="CANCELADO" ${b.estado==='CANCELADO'?'selected':''}>CANCELADO</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <div class="form-label">Detalle de trabajo</div>
+          <textarea class="form-textarea" id="bf-detalle-${i}" placeholder="Describe las actividades a realizar...">${b.detalle||''}</textarea>
+        </div>
+      </div>
+      <div class="bloque-sep">Personal asignado</div>
+      <div id="personal-slots-${i}">${personalSlotsHtml}</div>
+      <button onclick="addPersonalSlot(${i})" class="btn btn-sm" style="margin-top:4px">+ Agregar persona</button>
+    </div>`;
+  }
+
+  function onPersonalChange(bloqueIdx, slotIdx, value) {
+    window.bloquesPersonal[bloqueIdx][slotIdx] = value;
+    // Re-render just the form to update warnings
+    const fecha = document.getElementById('modal-fecha').value;
+    const d = new Date(fecha + 'T12:00:00');
+    renderModal(fecha, d, currentIti);
+  }
+
+  function addPersonalSlot(bloqueIdx) {
+    if (!window.bloquesPersonal[bloqueIdx]) window.bloquesPersonal[bloqueIdx] = [];
+    const totalAssigned = maestros.personal.filter(p => p.activo !== 'NO').length;
+    if (window.bloquesPersonal[bloqueIdx].length >= totalAssigned) { toast('No hay más personal disponible', 'err'); return; }
+    window.bloquesPersonal[bloqueIdx].push('');
+    const fecha = document.getElementById('modal-fecha').value;
+    renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
+  }
+
+  function removePersonalSlot(bloqueIdx, slotIdx) {
+    window.bloquesPersonal[bloqueIdx].splice(slotIdx, 1);
+    const fecha = document.getElementById('modal-fecha').value;
+    renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
+  }
+
+  document.getElementById('modal-body').innerHTML = `
+    <div style="margin-bottom:16px">
+      <div class="form-label" style="margin-bottom:5px">Anotaciones generales (opcional)</div>
+      <textarea class="form-textarea" id="obs-generales" placeholder="Indicaciones generales para el día...">${iti?.obsGenerales||''}</textarea>
+    </div>
+    <div class="bloque-sep">Bloques de trabajo</div>
+    <div id="bloques-forms">${editBloques.map((b,i) => bloqueFormHtml(b,i)).join('')}</div>
+    <button class="btn btn-orange" onclick="addBloque()" style="width:100%;margin-top:4px">+ Agregar bloque</button>
+    <input type="hidden" id="modal-fecha" value="${fecha}">
+    <input type="hidden" id="modal-version" value="${version}">
+    <input type="hidden" id="modal-id-iti" value="${idIti}">
+    <input type="hidden" id="modal-dia" value="${diaStr}">`;
+
+  // Set existing values
+  setTimeout(() => {
+    editBloques.forEach((b, i) => {
+      if (b.idTienda) { const sel = document.getElementById(`bf-tienda-${i}`); if(sel) sel.value = b.idTienda; }
+      if (b.idGrupo) { const sel = document.getElementById(`bf-grupo-${i}`); if(sel) sel.value = b.idGrupo; }
+    });
+  }, 50);
+
+  document.getElementById('modal-iti').classList.add('open');
+}
+
+function onTiendaChange(i) {
+  const sel = document.getElementById(`bf-tienda-${i}`);
+  // No extra action needed, tienda data read on save
+}
+
+function addBloque() {
+  const i = editBloques.length;
+  editBloques.push(newBloque());
+  if (!window.bloquesPersonal) window.bloquesPersonal = {};
+  window.bloquesPersonal[i] = [''];
+  const fecha = document.getElementById('modal-fecha').value;
+  const d = new Date(fecha + 'T12:00:00');
+  renderModal(fecha, d, currentIti);
+}
+
+function removeBloque(i) {
+  if (editBloques.length <= 1) { toast('Debe haber al menos un bloque', 'err'); return; }
+  editBloques.splice(i, 1);
+  // Re-index personal slots
+  if (window.bloquesPersonal) {
+    const newSlots = {};
+    Object.keys(window.bloquesPersonal).forEach(k => {
+      const ki = parseInt(k);
+      if (ki < i) newSlots[ki] = window.bloquesPersonal[ki];
+      else if (ki > i) newSlots[ki-1] = window.bloquesPersonal[ki];
+    });
+    window.bloquesPersonal = newSlots;
+  }
+  const fecha = document.getElementById('modal-fecha').value;
+  renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
+}
+
+async function saveItinerario() {
+  const fecha = document.getElementById('modal-fecha').value;
+  const version = parseInt(document.getElementById('modal-version').value);
+  const idIti = document.getElementById('modal-id-iti').value;
+  const dia = document.getElementById('modal-dia').value;
+  const obsGenerales = document.getElementById('obs-generales').value;
+
+  // Collect bloques
+  const bloques = editBloques.map((_, i) => {
+    const tiendaSel = document.getElementById(`bf-tienda-${i}`);
+    const tiendaOpt = tiendaSel?.options[tiendaSel.selectedIndex];
+    const tienda = tiendaOpt?.text || '';
+    const cliente = maestros.tiendas.find(t => t.id === tiendaSel?.value)?.cliente || '';
+    const grupoSel = document.getElementById(`bf-grupo-${i}`);
+    const grupoOpt = grupoSel?.options[grupoSel.selectedIndex];
+    const grupo = grupoOpt?.text || '';
+
+    const getPer = id => maestros.personal.find(p => p.id === id) || { id:'', nombre:'' };
+    const slots = (window.bloquesPersonal?.[i] || []).filter(Boolean);
+    const personalArr = slots.map(id => ({ id, nombre: getPer(id).nombre }));
+    // Pad to 4 for backwards compat
+    while (personalArr.length < 4) personalArr.push({ id:'', nombre:'' });
+
+    return {
+      idTienda: tiendaSel?.value || '',
+      tienda, cliente,
+      idGrupo: grupoSel?.value || '',
+      grupo,
+      horaInicio: horaToDecimal(document.getElementById(`bf-hi-${i}`)?.value || '08:00'),
+      horaFin: horaToDecimal(document.getElementById(`bf-hf-${i}`)?.value || '17:30'),
+      detalle: document.getElementById(`bf-detalle-${i}`)?.value || '',
+      personal: personalArr,
+      personal1: personalArr[0], personal2: personalArr[1],
+      personal3: personalArr[2], personal4: personalArr[3],
+      estado: document.getElementById(`bf-estado-${i}`)?.value || 'PROGRAMADO'
+    };
+  });
+
+  document.getElementById('savingInd').classList.add('show');
+  try {
+    const res = await fetch(GAS, { method: 'POST', body: JSON.stringify({
+      action: 'saveItinerario',
+      id: idIti, version, fecha, dia, obsGenerales, bloques,
+      estado: 'ACTUALIZADO',
+      usuario: maUser?.email || 'sistema'
+    })});
+    const d = await res.json();
+    if (d.ok) {
+      toast('Itinerario guardado ✓', 'ok');
+      closeModal();
+      await loadFecha(fecha);
+      // Refresh recientes
+      const rRes = await fetch(GAS + '?action=getItinerariosRecientes').then(r => r.json());
+      renderRecientes(rRes.itinerarios || []);
+    } else {
+      toast('Error guardando: ' + (d.error || ''), 'err');
+    }
+  } catch(e) {
+    toast('Error de conexión', 'err');
+  }
+  document.getElementById('savingInd').classList.remove('show');
+}
+
+function closeModal() {
+  document.getElementById('modal-iti').classList.remove('open');
+  editBloques = [];
+  window.bloquesPersonal = {};
+}
+
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + (type || '');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
