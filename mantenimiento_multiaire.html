@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MultiAire – Mantenimiento</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+:root{
+  --bg:#080c10;--surface:#0d1117;--surface2:#111820;--surface3:#182030;
+  --border:#1e3050;--border2:#2a4060;
+  --accent:#e0eeff;--muted:#4a6a8a;--muted2:#6a8aaa;
+  --green:#00cc66;--green-bg:#0a2a18;--green-border:#0a4a28;
+  --yellow:#ffaa00;--yellow-bg:#2a1f00;--yellow-border:#4a3a00;
+  --red:#ff4455;--red-bg:#2a0a10;--red-border:#4a1020;
+  --blue:#3399ff;--blue-bg:#0a1f3a;
+  --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height:100vh;font-size:14px}
+
+/* HEADER */
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;height:56px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
+.logo{font-weight:700;font-size:16px;letter-spacing:.03em}
+.logo span{color:var(--muted2);font-weight:300}
+.hpill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid var(--border2);color:var(--muted2)}
+.hpill.ok{color:var(--green);border-color:var(--green-border)}
+.hactions{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+/* LAYOUT */
+.app{display:flex;height:calc(100vh - 56px)}
+
+/* SIDEBAR */
+.sidebar{width:260px;min-width:260px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.sb-section{padding:16px 14px 8px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border)}
+.sb-group{padding:12px 14px;border-bottom:1px solid var(--border)}
+.sb-label{font-size:10px;color:var(--muted2);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+select,input[type=text]{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:13px;padding:8px 10px;border-radius:6px;outline:none;appearance:none}
+select:focus,input:focus{border-color:var(--blue)}
+option{background:#111820}
+.periodo-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+
+/* STATUS SUMMARY */
+.status-bar{padding:12px 14px;border-bottom:1px solid var(--border)}
+.status-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px}
+.status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.status-dot.green{background:var(--green)}
+.status-dot.yellow{background:var(--yellow)}
+.status-dot.red{background:var(--red)}
+.status-count{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted2)}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--accent);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--surface3);border-color:var(--border2)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.btn-primary:hover{opacity:.9;background:var(--blue)}
+.btn-green{color:var(--green);border-color:var(--green-border)}
+.btn-green:hover{background:var(--green-bg)}
+.btn-sm{padding:5px 10px;font-size:11px}
+.btn-block{width:100%;justify-content:center}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+.sb-actions{padding:12px 14px;display:flex;flex-direction:column;gap:6px;margin-top:auto;border-top:1px solid var(--border)}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.toolbar{padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);background:var(--surface);flex-wrap:wrap}
+.toolbar-title{font-weight:600;font-size:14px}
+.toolbar-sub{font-size:11px;color:var(--muted2);font-family:var(--mono)}
+.content{flex:1;overflow-y:auto;padding:16px}
+/* TABS */
+.tab-nav{display:flex;gap:2px;padding:0 16px;background:var(--surface);border-bottom:1px solid var(--border)}
+.tab-btn{padding:12px 16px;font-size:12px;font-weight:600;color:var(--muted2);background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;font-family:var(--font);transition:all .15s;white-space:nowrap}
+.tab-btn:hover{color:var(--accent)}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-view{display:none;flex:1;overflow-y:auto;padding:16px}
+.tab-view.active{display:block}
+
+/* DASHBOARD */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+@media(max-width:700px){.dash-grid{grid-template-columns:1fr}}
+.dash-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px}
+.dash-card-full{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:16px}
+.dash-card h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted2);margin-bottom:14px}
+.big-pct{font-size:52px;font-weight:700;font-family:var(--mono);line-height:1}
+.big-pct.green{color:var(--green)}
+.big-pct.yellow{color:var(--yellow)}
+.big-pct.red{color:var(--red)}
+.big-sub{font-size:11px;color:var(--muted2);margin-top:4px;font-family:var(--mono)}
+.thermo{height:16px;background:var(--surface2);border-radius:8px;overflow:hidden;margin-top:12px;border:1px solid var(--border)}
+.thermo-fill{height:100%;border-radius:8px;transition:width .6s ease;position:relative}
+.thermo-fill.green{background:linear-gradient(90deg,#00aa44,var(--green))}
+.thermo-fill.yellow{background:linear-gradient(90deg,#cc8800,var(--yellow))}
+.thermo-fill.red{background:linear-gradient(90deg,#cc1122,var(--red))}
+
+/* Bar charts */
+.bar-list{display:flex;flex-direction:column;gap:10px}
+.bar-item{display:flex;flex-direction:column;gap:4px}
+.bar-item-header{display:flex;align-items:center;gap:8px;font-size:12px}
+.bar-item-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-item-pct{font-family:var(--mono);font-size:11px;color:var(--muted2);min-width:36px;text-align:right;font-weight:600}
+.bar-track{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.bar-fill{height:8px;border-radius:4px;transition:width .5s ease}
+.bar-fill.green{background:var(--green)}
+.bar-fill.yellow{background:var(--yellow)}
+.bar-fill.red{background:var(--red)}
+
+/* Equipment grid dashboard */
+.eq-dash-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.eq-dash-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px}
+.eq-dash-id{font-family:var(--mono);font-size:9px;color:var(--green);margin-bottom:4px}
+.eq-dash-name{font-size:12px;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eq-dash-tipo{font-size:10px;color:var(--muted2);margin-bottom:8px}
+.eq-dash-pct{font-family:var(--mono);font-size:18px;font-weight:700;margin-bottom:4px}
+.eq-dash-pct.green{color:var(--green)}
+.eq-dash-pct.yellow{color:var(--yellow)}
+.eq-dash-pct.red{color:var(--red)}
+
+/* Semaforo legend */
+.legend{display:flex;gap:16px;font-size:11px;color:var(--muted2);margin-bottom:12px}
+.legend-item{display:flex;align-items:center;gap:5px}
+.legend-dot{width:8px;height:8px;border-radius:50%}
+
+
+/* EMPTY STATE */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;color:var(--muted)}
+.empty-icon{font-size:48px;opacity:.5}
+.empty h3{font-size:16px;color:var(--muted2)}
+.empty p{font-size:13px;text-align:center;max-width:320px;line-height:1.6}
+
+/* TIPO SECTION */
+.tipo-section{margin-bottom:20px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.tipo-header{padding:12px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--border);background:var(--surface2)}
+.tipo-icon{font-size:18px}
+.tipo-name{font-weight:700;font-size:13px;letter-spacing:.05em;text-transform:uppercase}
+.tipo-count{font-family:var(--mono);font-size:11px;color:var(--muted2);margin-left:auto}
+.semaforo{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.semaforo.green{background:var(--green-bg);border:2px solid var(--green)}
+.semaforo.yellow{background:var(--yellow-bg);border:2px solid var(--yellow)}
+.semaforo.red{background:var(--red-bg);border:2px solid var(--red)}
+
+/* EQUIPO CARD */
+.equipo-card{padding:12px 16px;border-bottom:1px solid #0d1820;transition:background .1s}
+.equipo-card:last-child{border-bottom:none}
+.equipo-card:hover{background:var(--surface2)}
+.equipo-row{display:flex;align-items:center;gap:10px}
+.eq-id{font-family:var(--mono);font-size:10px;color:var(--green);background:var(--green-bg);border:1px solid var(--green-border);padding:2px 7px;border-radius:4px;flex-shrink:0}
+.eq-name{font-weight:600;font-size:13px;flex:1}
+.eq-area{font-size:11px;color:var(--muted2)}
+.eq-semaforo{flex-shrink:0}
+
+/* TAREAS */
+.tareas{margin-top:10px;margin-left:36px;display:flex;flex-direction:column;gap:6px}
+.tarea-row{display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;transition:all .12s}
+.tarea-row:hover{border-color:var(--border2);background:var(--surface2)}
+.tarea-row.done{background:var(--green-bg);border-color:var(--green-border)}
+.tarea-cb{width:16px;height:16px;accent-color:var(--green);cursor:pointer;flex-shrink:0}
+.tarea-label{font-size:12px;flex:1}
+.tarea-row.done .tarea-label{color:var(--green);text-decoration:line-through;opacity:.8}
+
+/* Solo marcar (sin subtareas) */
+.solo-marcar{margin-top:8px;margin-left:36px}
+.marcar-btn{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;transition:all .12s;width:100%}
+.marcar-btn:hover{border-color:var(--border2)}
+.marcar-btn.done{background:var(--green-bg);border-color:var(--green-border);color:var(--green)}
+.marcar-btn input{width:16px;height:16px;accent-color:var(--green);cursor:pointer}
+.save-btn{display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--muted2);font-family:var(--mono);font-size:10px;font-weight:700;cursor:pointer;transition:all .15s;letter-spacing:.05em;white-space:nowrap;flex-shrink:0}
+.save-btn:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
+.save-btn.saved{border-color:var(--green-border);color:var(--green);background:var(--green-bg)}
+.save-btn.saving{border-color:var(--yellow-border);color:var(--yellow);background:var(--yellow-bg)}
+.tareas-footer{display:flex;justify-content:flex-end;margin-top:6px;margin-left:36px}
+
+/* MODAL selección equipos */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto}
+.overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;width:640px;max-width:95vw;padding:0;overflow:hidden}
+.modal-head{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+.modal-head h2{font-size:16px;font-weight:700;flex:1}
+.modal-body{padding:20px 24px;max-height:60vh;overflow-y:auto}
+.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.tipo-group-sel{margin-bottom:16px}
+.tipo-group-sel-header{font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.eq-sel-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+@media(max-width:500px){.eq-sel-grid{grid-template-columns:1fr}}
+.eq-sel-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;transition:all .12s;font-size:12px}
+.eq-sel-item:hover{border-color:var(--border2)}
+.eq-sel-item.selected{background:var(--blue-bg);border-color:var(--blue)}
+.eq-sel-item input{width:14px;height:14px;accent-color:var(--blue);cursor:pointer}
+.eq-sel-name{font-weight:500;flex:1}
+.eq-sel-id{font-family:var(--mono);font-size:9px;color:var(--muted)}
+
+/* TOAST */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 18px;font-size:13px;z-index:999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:300px}
+.toast.show{opacity:1}
+.toast.ok{border-color:var(--green);color:var(--green)}
+.toast.err{border-color:var(--red);color:var(--red)}
+.toast.warn{border-color:var(--yellow);color:var(--yellow)}
+
+/* MOBILE */
+@media(max-width:768px){
+  .sidebar{position:fixed;left:-260px;top:56px;height:calc(100vh - 56px);z-index:50;transition:left .25s}
+  .sidebar.open{left:0;box-shadow:4px 0 20px rgba(0,0,0,.5)}
+  .main{width:100%}
+  .mob-menu{display:flex!important}
+}
+.mob-menu{display:none;background:none;border:none;color:var(--accent);font-size:22px;cursor:pointer;padding:4px}
+
+/* SAVING indicator */
+.saving{font-family:var(--mono);font-size:10px;color:var(--yellow);display:none;align-items:center;gap:6px}
+.saving.show{display:flex}
+.spin{display:inline-block;width:10px;height:10px;border:2px solid var(--border2);border-top-color:var(--yellow);border-radius:50%;animation:sp .6s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.progress-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:4px}
+.progress-fill{height:4px;border-radius:2px;transition:width .3s}
+.progress-fill.green{background:var(--green)}
+.progress-fill.yellow{background:var(--yellow)}
+.progress-fill.red{background:var(--red)}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="mob-menu" onclick="toggleSidebar()">☰</button>
+  <div class="logo">MultiAire <span>/ Mantenimiento</span></div>
+  <div class="hpill" id="connPill">⟳ Conectando...</div>
+  <div class="hactions">
+    <div class="saving" id="savingInd"><div class="spin"></div> Guardando...</div>
+    <button class="btn btn-sm btn-green" onclick="exportWhatsApp()" id="btnExport" style="display:none">📤 WhatsApp</button>
+    <button class="btn btn-sm" onclick="exportPDF()" id="btnPNG" style="display:none;border-color:#7c5cfc;color:#7c5cfc">📄 PDF</button>
+  </div>
+</header>
+
+<div class="app">
+  <div class="sidebar" id="sidebar">
+    <div class="sb-section">Configuración</div>
+
+    <div class="sb-group">
+      <div class="sb-label">Sede</div>
+      <select id="selSede" onchange="onSedeChange()">
+        <option value="">— Seleccionar sede —</option>
+      </select>
+    </div>
+
+    <div class="sb-group">
+      <div class="sb-label">Período</div>
+      <div class="periodo-grid">
+        <select id="selPeriodo" onchange="onPeriodoChange()">
+          <option value="ENE-FEB">Ene – Feb</option>
+          <option value="MAR-ABR">Mar – Abr</option>
+          <option value="MAY-JUN">May – Jun</option>
+          <option value="JUL-AGO">Jul – Ago</option>
+          <option value="SEP-OCT">Sep – Oct</option>
+          <option value="NOV-DIC">Nov – Dic</option>
+        </select>
+        <select id="selAnio" onchange="onPeriodoChange()"></select>
+      </div>
+    </div>
+
+    <div class="status-bar" id="statusBar" style="display:none">
+      <div class="sb-label" style="margin-bottom:8px">Progreso del período</div>
+      <div class="status-row"><div class="status-dot green"></div> Completados <span class="status-count" id="cntGreen">0</span></div>
+      <div class="status-row"><div class="status-dot yellow"></div> Incompletos <span class="status-count" id="cntYellow">0</span></div>
+      <div class="status-row"><div class="status-dot red"></div> No realizados <span class="status-count" id="cntRed">0</span></div>
+    </div>
+
+    <div class="sb-actions">
+      <button class="btn btn-primary btn-block" onclick="openSelEquipos()" id="btnSelEq" disabled>
+        ＋ Seleccionar equipos
+      </button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="toolbar" id="toolbar" style="display:none">
+      <div>
+        <div class="toolbar-title" id="toolbarTitle">—</div>
+        <div class="toolbar-sub" id="toolbarSub">—</div>
+      </div>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="openSelEquipos()">✎ Editar equipos</button>
+    </div>
+
+    <div class="tab-nav" id="tabNav" style="display:none">
+      <button class="tab-btn active" onclick="switchTab('checklist')">📋 Checklist</button>
+      <button class="tab-btn" onclick="switchTab('dashboard')">📊 Dashboard</button>
+    </div>
+
+    <div class="tab-view active" id="tab-checklist">
+      <div id="content">
+        <div class="empty">
+          <div class="empty-icon">🔧</div>
+          <h3>App de Mantenimiento</h3>
+          <p>Selecciona una sede y un período para comenzar a registrar el mantenimiento de equipos.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-view" id="tab-dashboard">
+      <div id="dashContent">
+        <div class="empty">
+          <div class="empty-icon">📊</div>
+          <h3>Dashboard</h3>
+          <p>Selecciona una sede y período para ver el avance.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SELECCIÓN DE EQUIPOS -->
+<div class="overlay" id="overlayEq" onclick="if(event.target===this)closeSelEquipos()">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h2>Seleccionar equipos a trabajar</h2>
+        <div style="font-size:11px;color:var(--muted2);margin-top:2px" id="modalSubtitle">—</div>
+      </div>
+      <button class="btn btn-sm" onclick="closeSelEquipos()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <div style="text-align:center;color:var(--muted);padding:40px">Cargando equipos...</div>
+    </div>
+    <div class="modal-footer">
+      <div style="font-size:11px;color:var(--muted2);align-self:center;margin-right:auto"><span id="selCount">0</span> equipos seleccionados</div>
+      <button class="btn" onclick="closeSelEquipos()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveEquipoSelection()">Guardar selección</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const GAS = 'https://script.google.com/macros/s/AKfycbwk8ZI3w_g1AL71LCWcEvQBUcyjyZ2MVFRh6pvrxPe0RibUXoZT-uPtCrOpV4FC6VfM/exec';
+
+// Tareas por tipo de equipo
+const TAREAS = {
+  // Equipos interiores — toma de parámetros al final (10 min)
+  'FAN COIL':      ['Lavado de condensador','Limpieza de Split Fan Coil (evaporador)','Limpieza de drenaje','Limpieza eléctrica de condensador','Toma de parámetros'],
+  'SPLIT CONSOLA': ['Lavado de condensador','Limpieza de Split Fan Coil (evaporador)','Limpieza de drenaje','Limpieza eléctrica de condensador','Toma de parámetros'],
+  'UMA':           ['Lavado de condensador','Limpieza de Split Fan Coil (evaporador)','Limpieza de drenaje','Limpieza eléctrica de condensador','Toma de parámetros'],
+  'CHILLER':       ['Lavado de condensador','Limpieza de Split Fan Coil (evaporador)','Limpieza de drenaje','Limpieza eléctrica de condensador','Toma de parámetros'],
+  'SPLIT DUCTO':   ['Lavado de condensador','Limpieza de Split Fan Coil (evaporador)','Limpieza de drenaje','Limpieza eléctrica de condensador','Toma de parámetros'],
+  // Roof Top — toma de parámetros al final (20 min)
+  'PAQUETE':       ['Lavado de filtros','Lavado de serpentín de evaporador','Lavado de serpentín de condensador','Revisión de correa de transmisión','Limpieza de siroco','Engrase de chumacera','Revisión de motor inyector','Limpieza de tablero eléctrico','Toma de parámetros'],
+  // Equipos pequeños — Realizado + Toma de parámetros al final (8 min)
+  'CORTINA DE AIRE':    ['Realizado','Toma de parámetros'],
+  'EXTRACTOR':          ['Realizado','Toma de parámetros'],
+  'INYECTOR':           ['Realizado','Toma de parámetros'],
+  'ESCALERA':           ['Realizado','Toma de parámetros'],
+  'TVR MINI PLUS':      ['Realizado','Toma de parámetros'],
+  'UNIDAD CONDENSADOR': ['Realizado','Toma de parámetros'],
+  'UNIDAD EVAPORADORA': ['Realizado','Toma de parámetros'],
+  'SPLIT DECORATIVO':   ['Realizado','Toma de parámetros'],
+};
+
+const TIPO_ICON = {
+  'CHILLER':'❄️','CORTINA DE AIRE':'💨','ESCALERA':'🏗️','EXTRACTOR':'🌀',
+  'FAN COIL':'🌬️','INYECTOR':'⬇️','PAQUETE':'📦','SPLIT CONSOLA':'🔲',
+  'SPLIT DUCTO':'🔧','SPLIT DECORATIVO':'🎨','TVR MINI PLUS':'⚙️',
+  'UMA':'🏭','UNIDAD CONDENSADOR':'🔩','UNIDAD EVAPORADORA':'💧',
+};
+
+// Estado global
+let allEquipos = [];     // todos los equipos del sheet
+let sedeEquipos = [];    // equipos de la sede actual
+let seleccionados = {};  // eq_id → true (equipos seleccionados para este periodo)
+let tareaStatus = {};    // eq_id → {tarea: bool} o eq_id → bool (para solo-marcar)
+let currentSede = '', currentPeriodo = '', currentAnio = '';
+let saveTimeout = null;
+
+// ── INIT ────────────────────────────────────────────────────────────────────
+window.onload = async () => {
+  // Año selector
+  const anioSel = document.getElementById('selAnio');
+  const y = new Date().getFullYear();
+  for(let i = y-1; i <= y+1; i++){
+    const o = document.createElement('option');
+    o.value = i; o.textContent = i;
+    if(i === y) o.selected = true;
+    anioSel.appendChild(o);
+  }
+  // Periodo default al actual
+  const m = new Date().getMonth();
+  const periodos = ['ENE-FEB','ENE-FEB','MAR-ABR','MAR-ABR','MAY-JUN','MAY-JUN','JUL-AGO','JUL-AGO','SEP-OCT','SEP-OCT','NOV-DIC','NOV-DIC'];
+  document.getElementById('selPeriodo').value = periodos[m];
+
+  await loadInventario();
+};
+
+async function loadInventario() {
+  try {
+    const r = await fetch(GAS);
+    const d = await r.json();
+    const rows = d.rows || [];
+    allEquipos = rows
+      .filter(r => r[0] && r[0].startsWith('MA-'))
+      .map(r => ({
+        eq_id: r[0], sede: r[1], tipo: r[2], nombre: r[3],
+        area: r[4], marca: r[5], modelo: r[6], serie: r[7]
+      }));
+
+    // Populate sedes
+    const sedes = [...new Set(allEquipos.map(e => e.sede))].sort();
+    const sel = document.getElementById('selSede');
+    sedes.forEach(s => {
+      const o = document.createElement('option'); o.value = s; o.textContent = s;
+      sel.appendChild(o);
+    });
+
+    setPill('ok', '✓ Conectado · ' + allEquipos.length + ' equipos');
+  } catch(e) {
+    setPill('err', '✗ Sin conexión');
+    toast('No se pudo conectar con Google Sheets', 'err');
+  }
+}
+
+// ── EVENTOS SIDEBAR ─────────────────────────────────────────────────────────
+function onSedeChange() {
+  currentSede = document.getElementById('selSede').value;
+  if(!currentSede){ showEmpty(); return; }
+  sedeEquipos = allEquipos.filter(e => e.sede === currentSede);
+  document.getElementById('btnSelEq').disabled = false;
+  loadPeriodo();
+}
+
+function onPeriodoChange() { if(currentSede) loadPeriodo(); }
+
+async function loadPeriodo() {
+  currentPeriodo = document.getElementById('selPeriodo').value;
+  currentAnio = document.getElementById('selAnio').value;
+  const key = currentSede + '|' + currentPeriodo + '|' + currentAnio;
+
+  // Load from sheet
+  try {
+    const r = await fetch(GAS + '?action=getMaint&key=' + encodeURIComponent(key));
+    const d = await r.json();
+    seleccionados = d.seleccionados || {};
+    tareaStatus  = d.tareaStatus  || {};
+  } catch(e) {
+    seleccionados = {}; tareaStatus = {};
+  }
+
+  renderMain();
+}
+
+// ── RENDER ───────────────────────────────────────────────────────────────────
+function renderMain() {
+  const sel = Object.keys(seleccionados).filter(k => seleccionados[k]);
+  if(!currentSede){ showEmpty(); return; }
+
+  document.getElementById('toolbar').style.display = 'flex';
+  document.getElementById('tabNav').style.display = 'flex';
+  document.getElementById('toolbarTitle').textContent = currentSede;
+  document.getElementById('toolbarSub').textContent = currentPeriodo + ' ' + currentAnio + ' · ' + sel.length + ' equipos seleccionados';
+  document.getElementById('btnExport').style.display = sel.length ? 'flex' : 'none';
+  document.getElementById('btnPNG').style.display = sel.length ? 'flex' : 'none';
+
+  if(!sel.length) {
+    document.getElementById('content').innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">📋</div>
+        <h3>Sin equipos seleccionados</h3>
+        <p>Presiona "+ Seleccionar equipos" para elegir qué equipos se trabajarán en este período.</p>
+        <button class="btn btn-primary" onclick="openSelEquipos()">＋ Seleccionar equipos</button>
+      </div>`;
+    updateStatusBar([]);
+    return;
+  }
+
+  // Agrupar por tipo
+  const equiposSel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
+  const byTipo = {};
+  equiposSel.forEach(e => {
+    if(!byTipo[e.tipo]) byTipo[e.tipo] = [];
+    byTipo[e.tipo].push(e);
+  });
+
+  let html = '';
+  const stats = {green:0, yellow:0, red:0};
+
+  Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([tipo, equipos]) => {
+    const tareas = TAREAS[tipo];
+    let tipoGreen=0, tipoYellow=0, tipoRed=0;
+
+    let equiposHtml = '';
+    equipos.forEach(eq => {
+      const sem = getSemaforo(eq, tareas);
+      if(sem==='green') tipoGreen++;
+      else if(sem==='yellow') tipoYellow++;
+      else tipoRed++;
+
+      equiposHtml += renderEquipo(eq, tareas);
+    });
+
+    // Tipo semaforo
+    let tipoSem = 'red';
+    if(tipoRed===0 && tipoYellow===0) tipoSem='green';
+    else if(tipoGreen>0 || tipoYellow>0) tipoSem='yellow';
+
+    stats.green += tipoGreen; stats.yellow += tipoYellow; stats.red += tipoRed;
+
+    const semEmoji = tipoSem==='green'?'🟢':tipoSem==='yellow'?'🟡':'🔴';
+    html += `
+      <div class="tipo-section">
+        <div class="tipo-header">
+          <span class="tipo-icon">${TIPO_ICON[tipo]||'🔧'}</span>
+          <span class="tipo-name">${tipo}</span>
+          <span class="tipo-count">${equipos.length} equipo${equipos.length!==1?'s':''}</span>
+          <div class="semaforo ${tipoSem}" title="${tipoSem}">${semEmoji}</div>
+        </div>
+        ${equiposHtml}
+      </div>`;
+  });
+
+  document.getElementById('content').innerHTML = html;
+  // refresh dashboard if visible
+  if(document.getElementById('tab-dashboard').classList.contains('active')) renderDashboard();
+  updateStatusBar([stats.green, stats.yellow, stats.red]);
+}
+
+function renderEquipo(eq, tareas) {
+  const sem = getSemaforo(eq, tareas);
+  const semEmoji = sem==='green'?'🟢':sem==='yellow'?'🟡':'🔴';
+
+  let tareasHtml = '';
+  if(tareas) {
+    const statusMap = tareaStatus[eq.eq_id] || {};
+    const pesos = PESO_TAREA[eq.tipo] || [];
+    tareasHtml = '<div class="tareas">' + tareas.map((t,i) => {
+      const done = statusMap[i] === true;
+      const peso = pesos[i] != null ? `<span style="font-size:10px;color:var(--muted);margin-left:auto;font-family:var(--mono)">${pesos[i]}%</span>` : '';
+      const isParams = t === 'Toma de parámetros';
+      const style = isParams ? 'border-top:1px dashed var(--border2);margin-top:4px;padding-top:8px;' : '';
+      return `<label class="tarea-row ${done?'done':''}" style="${style}">
+        <input type="checkbox" class="tarea-cb" ${done?'checked':''} onchange="toggleTarea('${eq.eq_id}',${i},this.checked)">
+        <span class="tarea-label">${t}</span>
+        ${peso}
+      </label>`;
+    }).join('') + `</div><div class="tareas-footer"><button class="save-btn" id="savebtn-${eq.eq_id}" onclick="saveNow('${eq.eq_id}')">💾 GUARDAR</button></div>`;
+  }
+
+  return `
+    <div class="equipo-card">
+      <div class="equipo-row">
+        <div class="semaforo ${sem} eq-semaforo">${semEmoji}</div>
+        <span class="eq-id">${eq.eq_id}</span>
+        <div style="flex:1">
+          <div class="eq-name">${eq.nombre}</div>
+          <div class="eq-area">${eq.area||''} ${eq.marca?'· '+eq.marca:''}</div>
+        </div>
+      </div>
+      ${tareasHtml}
+    </div>`;
+}
+
+function getSemaforo(eq, tareas) {
+  if(!tareas) return 'red';
+  const statusMap = tareaStatus[eq.eq_id] || {};
+  const done = tareas.filter((_,i) => statusMap[i]===true).length;
+  if(done === 0) return 'red';
+  if(done === tareas.length) return 'green';
+  return 'yellow';
+}
+
+function updateStatusBar(stats) {
+  const [g,y,r] = Array.isArray(stats) ? stats : [stats.green||0, stats.yellow||0, stats.red||0];
+  document.getElementById('statusBar').style.display = 'block';
+  document.getElementById('cntGreen').textContent = g;
+  document.getElementById('cntYellow').textContent = y;
+  document.getElementById('cntRed').textContent = r;
+}
+
+// ── CHECKBOX HANDLERS ────────────────────────────────────────────────────────
+function toggleSoloMarcar(eqId, checked) {
+  tareaStatus[eqId] = checked;
+  markDirty(eqId);
+  renderMain();
+  updateStats();
+}
+
+function toggleTarea(eqId, idx, checked) {
+  if(!tareaStatus[eqId]) tareaStatus[eqId] = {};
+  tareaStatus[eqId][idx] = checked;
+  markDirty(eqId);
+  renderMain();
+  updateStats();
+}
+
+function markDirty(eqId) {
+  // visual feedback handled by renderMain re-render
+}
+
+async function saveNow(eqId) {
+  const btn = document.getElementById('savebtn-' + eqId);
+  if(btn){ btn.classList.add('saving'); btn.textContent = '⟳ Guardando...'; btn.disabled = true; }
+  const key = currentSede + '|' + currentPeriodo + '|' + currentAnio;
+  try {
+    await fetch(GAS, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveMaint', key, seleccionados, tareaStatus })
+    });
+    if(btn){ btn.classList.remove('saving'); btn.classList.add('saved'); btn.textContent = '✓ Guardado'; btn.disabled = false; }
+    toast('Guardado ✓', 'ok');
+    setTimeout(() => {
+      if(btn){ btn.classList.remove('saved'); btn.textContent = '💾 GUARDAR'; }
+    }, 2000);
+  } catch(e) {
+    if(btn){ btn.classList.remove('saving'); btn.textContent = '💾 GUARDAR'; btn.disabled = false; }
+    toast('Error al guardar', 'err');
+  }
+}
+
+function refreshEquipoCard(eqId) {
+  const eq = sedeEquipos.find(e => e.eq_id === eqId);
+  if(!eq) return;
+  const tareas = TAREAS[eq.tipo];
+  const sem = getSemaforo(eq, tareas);
+  // Update semaforo dots
+  document.querySelectorAll(`[data-eqid="${eqId}"]`).forEach(el => {
+    el.className = `semaforo ${sem} eq-semaforo`;
+  });
+  // Re-render just updates happen via checkbox native state, semaforo updated
+  renderMain();
+}
+
+function updateStats() {
+  const sel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
+  let g=0,y=0,r=0;
+  sel.forEach(eq => {
+    const s = getSemaforo(eq, TAREAS[eq.tipo]);
+    if(s==='green') g++; else if(s==='yellow') y++; else r++;
+  });
+  document.getElementById('cntGreen').textContent = g;
+  document.getElementById('cntYellow').textContent = y;
+  document.getElementById('cntRed').textContent = r;
+}
+
+// ── SAVE ─────────────────────────────────────────────────────────────────────
+function scheduleSave() {
+  clearTimeout(saveTimeout);
+  document.getElementById('savingInd').classList.add('show');
+  saveTimeout = setTimeout(doSave, 800);
+}
+
+async function doSave() {
+  const key = currentSede + '|' + currentPeriodo + '|' + currentAnio;
+  try {
+    await fetch(GAS, {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'saveMaint',
+        key, seleccionados, tareaStatus
+      })
+    });
+    toast('Guardado ✓', 'ok');
+  } catch(e) {
+    toast('Error al guardar', 'err');
+  }
+  document.getElementById('savingInd').classList.remove('show');
+}
+
+// ── SELECCIÓN DE EQUIPOS ──────────────────────────────────────────────────────
+let tempSel = {};
+
+function openSelEquipos() {
+  if(!currentSede) { toast('Selecciona una sede primero','warn'); return; }
+  tempSel = {...seleccionados};
+  document.getElementById('modalSubtitle').textContent = currentSede + ' · ' + currentPeriodo + ' ' + currentAnio;
+
+  // Group by tipo
+  const byTipo = {};
+  sedeEquipos.forEach(e => {
+    if(!byTipo[e.tipo]) byTipo[e.tipo] = [];
+    byTipo[e.tipo].push(e);
+  });
+
+  let html = '';
+  Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([tipo, eqs]) => {
+    const allSel = eqs.every(e => tempSel[e.eq_id]);
+    html += `<div class="tipo-group-sel">
+      <div class="tipo-group-sel-header">
+        ${TIPO_ICON[tipo]||'🔧'} ${tipo}
+        <span style="margin-left:auto;font-size:10px;color:var(--muted)">${eqs.length} equipos</span>
+        <button class="btn btn-sm" onclick="toggleTipo('${tipo}',${!allSel})" style="padding:2px 8px;font-size:10px">${allSel?'Quitar todos':'Sel. todos'}</button>
+      </div>
+      <div class="eq-sel-grid">
+        ${eqs.map(e => `
+          <label class="eq-sel-item ${tempSel[e.eq_id]?'selected':''}" id="sel-${e.eq_id}">
+            <input type="checkbox" ${tempSel[e.eq_id]?'checked':''} onchange="toggleEqSel('${e.eq_id}',this.checked)">
+            <div style="flex:1;min-width:0">
+              <div class="eq-sel-name">${e.nombre}</div>
+              <div class="eq-sel-id">${e.eq_id} · ${e.area||'—'}</div>
+            </div>
+          </label>`).join('')}
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('modalBody').innerHTML = html;
+  updateSelCount();
+  document.getElementById('overlayEq').classList.add('open');
+}
+
+function toggleEqSel(eqId, checked) {
+  tempSel[eqId] = checked;
+  const label = document.getElementById('sel-'+eqId);
+  if(label) label.classList.toggle('selected', checked);
+  updateSelCount();
+}
+
+function toggleTipo(tipo, sel) {
+  sedeEquipos.filter(e=>e.tipo===tipo).forEach(e => {
+    tempSel[e.eq_id] = sel;
+    const label = document.getElementById('sel-'+e.eq_id);
+    if(label){
+      label.classList.toggle('selected', sel);
+      label.querySelector('input').checked = sel;
+    }
+  });
+  updateSelCount();
+  // Update button text
+  document.querySelectorAll('.tipo-group-sel-header button').forEach(btn => {
+    const t = btn.closest('.tipo-group-sel').querySelector('.tipo-group-sel-header').textContent.trim().split('\n')[0].trim();
+  });
+}
+
+function updateSelCount() {
+  const n = Object.values(tempSel).filter(Boolean).length;
+  document.getElementById('selCount').textContent = n;
+}
+
+function closeSelEquipos() {
+  document.getElementById('overlayEq').classList.remove('open');
+}
+
+async function saveEquipoSelection() {
+  seleccionados = {...tempSel};
+  closeSelEquipos();
+  renderMain();
+  scheduleSave();
+}
+
+// ── EXPORT WHATSAPP ───────────────────────────────────────────────────────────
+function exportWhatsApp() {
+  const equiposSel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
+  const byTipo = {};
+  equiposSel.forEach(e => {
+    if(!byTipo[e.tipo]) byTipo[e.tipo] = [];
+    byTipo[e.tipo].push(e);
+  });
+
+  // Build one message per tipo block (WhatsApp-friendly, short messages)
+  const messages = [];
+
+  Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([tipo, equipos]) => {
+    let msg = '';
+    msg += `*STATUS DE MANTENIMIENTO – ${currentSede}*\n`;
+    msg += `*${currentPeriodo} ${currentAnio}*\n\n`;
+    msg += `🟢 COMPLETADO\n🟡 INCOMPLETO\n🔴 NO REALIZADO\n\n`;
+    msg += `*${tipo}*\n`;
+
+    const tareas = TAREAS[tipo];
+    equipos.forEach(eq => {
+      const sem = getSemaforo(eq, tareas);
+      const emoji = sem==='green'?'🟢':sem==='yellow'?'🟡':'🔴';
+      msg += `\n${emoji} *${eq.nombre}*\n`;
+      if(tareas) {
+        const statusMap = tareaStatus[eq.eq_id] || {};
+        tareas.forEach((t,i) => {
+          const done = statusMap[i]===true;
+          msg += `   ${done?'✅':'❌'} ${t}\n`;
+        });
+      }
+    });
+    messages.push(msg);
+  });
+
+  const fullTxt = messages.join('\n─────────────────\n\n');
+
+  navigator.clipboard.writeText(fullTxt).then(() => {
+    toast('¡Copiado! Pega en WhatsApp 📱', 'ok');
+  }).catch(() => {
+    // Fallback: open in new window for easy copy
+    const w = window.open('', '_blank', 'width=600,height=700');
+    w.document.write('<html><body style="font-family:monospace;white-space:pre-wrap;padding:20px;background:#111;color:#eee;font-size:13px">' + fullTxt.replace(/</g,'&lt;') + '</body></html>');
+    w.document.close();
+  });
+}
+
+
+// ── PESOS ────────────────────────────────────────────────────────────────────
+const PESO_TIPO = {
+  'CHILLER':10,'PAQUETE':9,'UMA':8,'FAN COIL':7,
+  'SPLIT CONSOLA':6,'SPLIT DUCTO':6,'CORTINA DE AIRE':4,
+  'EXTRACTOR':3,'INYECTOR':3,'ESCALERA':3,
+  'TVR MINI PLUS':2,'UNIDAD CONDENSADOR':2,'UNIDAD EVAPORADORA':2,'SPLIT DECORATIVO':2
+};
+
+const PESO_TAREA = {
+  // condensador(38), evap/fancoil(27), drenaje(15), electrica(10), params(10)
+  'FAN COIL':     [38,27,15,10,10],
+  'SPLIT CONSOLA':[38,27,15,10,10],
+  'UMA':          [38,27,15,10,10],
+  'CHILLER':      [38,27,15,10,10],
+  'SPLIT DUCTO':  [38,27,15,10,10],
+  // filtros(10),evap(19),cond(38),correa(3),siroco(10),chumacera(2),motor(2),tablero(6),params(10)
+  'PAQUETE':      [10,19,38,3,10,2,2,6,10],
+  // Pequeños: realizado(90), params(10)
+  'CORTINA DE AIRE':    [90,10],
+  'EXTRACTOR':          [90,10],
+  'INYECTOR':           [90,10],
+  'ESCALERA':           [90,10],
+  'TVR MINI PLUS':      [90,10],
+  'UNIDAD CONDENSADOR': [90,10],
+  'UNIDAD EVAPORADORA': [90,10],
+  'SPLIT DECORATIVO':   [90,10],
+};
+
+function getPct(eq) {
+  const tareas = TAREAS[eq.tipo];
+  if(!tareas) return 0;
+  const pesos = PESO_TAREA[eq.tipo];
+  if(!pesos) return 0;
+  const statusMap = tareaStatus[eq.eq_id] || {};
+  let total = 0;
+  tareas.forEach((_,i) => { if(statusMap[i]===true) total += (pesos[i]||0); });
+  return Math.round(total);
+}
+
+function pctColor(p) { return p===100?'green':p>0?'yellow':'red'; }
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const sel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
+  if(!sel.length) {
+    document.getElementById('dashContent').innerHTML = `<div class="empty"><div class="empty-icon">📊</div><h3>Sin datos</h3><p>Selecciona equipos primero desde el Checklist.</p></div>`;
+    return;
+  }
+
+  // ── 1. Avance global ponderado
+  let totalPeso=0, totalAvance=0;
+  sel.forEach(eq => {
+    const p = PESO_TIPO[eq.tipo]||2;
+    totalPeso += p;
+    totalAvance += getPct(eq) * p;
+  });
+  const globalPct = totalPeso ? Math.round(totalAvance/totalPeso) : 0;
+  const gc = pctColor(globalPct);
+
+  // ── 2. Por tipo
+  const byTipo = {};
+  sel.forEach(eq => {
+    if(!byTipo[eq.tipo]) byTipo[eq.tipo]={peso:0,avance:0,eqs:[]};
+    const p=PESO_TIPO[eq.tipo]||2, pct=getPct(eq);
+    byTipo[eq.tipo].peso+=p; byTipo[eq.tipo].avance+=pct*p; byTipo[eq.tipo].eqs.push(eq);
+  });
+  const tiposSorted = Object.entries(byTipo).sort((a,b)=>{
+    const pa=Math.round(a[1].avance/a[1].peso), pb=Math.round(b[1].avance/b[1].peso);
+    return pa-pb;
+  });
+
+  // ── 3. Por equipo individual (sorted by pct asc)
+  const eqSorted = [...sel].sort((a,b)=>getPct(a)-getPct(b));
+
+  // counts
+  const g=sel.filter(e=>getPct(e)===100).length;
+  const y=sel.filter(e=>{const p=getPct(e);return p>0&&p<100}).length;
+  const r=sel.filter(e=>getPct(e)===0).length;
+
+  let html = `
+  <!-- Global -->
+  <div class="dash-card-full">
+    <h3>Avance Global — ${currentSede} · ${currentPeriodo} ${currentAnio}</h3>
+    <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap">
+      <div>
+        <div class="big-pct ${gc}">${globalPct}%</div>
+        <div class="big-sub">${sel.length} equipos · peso ponderado</div>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Completados: <b style="color:var(--green)">${g}</b></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> Parciales: <b style="color:var(--yellow)">${y}</b></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Sin realizar: <b style="color:var(--red)">${r}</b></div>
+      </div>
+    </div>
+    <div class="thermo">
+      <div class="thermo-fill ${gc}" style="width:${globalPct}%"></div>
+    </div>
+  </div>
+
+  <div class="dash-grid">
+    <!-- Por tipo -->
+    <div class="dash-card">
+      <h3>Avance por Tipo de Equipo</h3>
+      <div class="bar-list">
+        ${tiposSorted.map(([tipo,d])=>{
+          const pct=Math.round(d.avance/d.peso);
+          const col=pctColor(pct);
+          return `<div class="bar-item">
+            <div class="bar-item-header">
+              <span>${TIPO_ICON[tipo]||'🔧'}</span>
+              <span class="bar-item-name">${tipo}</span>
+              <span class="bar-item-pct" style="color:var(--${col})">${pct}%</span>
+            </div>
+            <div class="bar-track"><div class="bar-fill ${col}" style="width:${pct}%"></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- Stats cards -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="dash-card">
+        <h3>Equipos por Estado</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+          <div style="padding:12px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:8px">
+            <div style="font-size:28px;font-weight:700;color:var(--green);font-family:var(--mono)">${g}</div>
+            <div style="font-size:10px;color:var(--muted2);margin-top:2px">COMPLETOS</div>
+          </div>
+          <div style="padding:12px;background:var(--yellow-bg);border:1px solid var(--yellow-border);border-radius:8px">
+            <div style="font-size:28px;font-weight:700;color:var(--yellow);font-family:var(--mono)">${y}</div>
+            <div style="font-size:10px;color:var(--muted2);margin-top:2px">PARCIALES</div>
+          </div>
+          <div style="padding:12px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:8px">
+            <div style="font-size:28px;font-weight:700;color:var(--red);font-family:var(--mono)">${r}</div>
+            <div style="font-size:10px;color:var(--muted2);margin-top:2px">PENDIENTES</div>
+          </div>
+        </div>
+      </div>
+      <div class="dash-card">
+        <h3>Top Pendientes (mayor peso)</h3>
+        <div class="bar-list">
+          ${eqSorted.slice(0,5).filter(e=>getPct(e)<100).map(eq=>{
+            const pct=getPct(eq);
+            const col=pctColor(pct);
+            return `<div class="bar-item">
+              <div class="bar-item-header">
+                <span class="bar-item-name" style="font-size:11px">${eq.nombre}</span>
+                <span class="bar-item-pct" style="color:var(--${col})">${pct}%</span>
+              </div>
+              <div class="bar-track"><div class="bar-fill ${col}" style="width:${pct}%"></div></div>
+            </div>`;
+          }).join('') || '<div style="color:var(--muted);font-size:12px">¡Todo completado! 🎉</div>'}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Por equipo individual -->
+  <div class="dash-card-full">
+    <h3>Avance por Equipo Individual</h3>
+    <div class="eq-dash-grid">
+      ${eqSorted.map(eq=>{
+        const pct=getPct(eq);
+        const col=pctColor(pct);
+        return `<div class="eq-dash-card" style="border-color:${pct===100?'var(--green-border)':pct>0?'var(--yellow-border)':'var(--border)'}">
+          <div class="eq-dash-id">${eq.eq_id}</div>
+          <div class="eq-dash-name">${eq.nombre}</div>
+          <div class="eq-dash-tipo">${eq.tipo} · ${eq.area||'—'}</div>
+          <div class="eq-dash-pct ${col}">${pct}%</div>
+          <div class="bar-track"><div class="bar-fill ${col}" style="width:${pct}%"></div></div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+
+  document.getElementById('dashContent').innerHTML = html;
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-view').forEach(v=>v.classList.remove('active'));
+  document.querySelector(`.tab-btn[onclick*="${tab}"]`).classList.add('active');
+  document.getElementById('tab-'+tab).classList.add('active');
+  if(tab==='dashboard') renderDashboard();
+}
+
+
+// ── EXPORT PNG ────────────────────────────────────────────────────────────────
+function exportPDF() {
+  const sel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
+  if(!sel.length){ toast('Sin equipos seleccionados','warn'); return; }
+  toast('Generando PDF...','warn');
+
+  const byTipo = {};
+  sel.forEach(e => { if(!byTipo[e.tipo]) byTipo[e.tipo]=[]; byTipo[e.tipo].push(e); });
+
+  let totalPeso=0, totalAvance=0;
+  sel.forEach(eq => { const p=PESO_TIPO[eq.tipo]||2; totalPeso+=p; totalAvance+=getPct(eq)*p; });
+  const globalPct = totalPeso ? Math.round(totalAvance/totalPeso) : 0;
+  const gC=sel.filter(e=>getPct(e)===100).length;
+  const yC=sel.filter(e=>{const p=getPct(e);return p>0&&p<100}).length;
+  const rC=sel.filter(e=>getPct(e)===0).length;
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+
+  const gcol = globalPct===100?'#00cc66':globalPct>0?'#e08800':'#dd3344';
+
+  // Build tipo rows
+  const tipoRows = Object.entries(byTipo).sort((a,b)=>{
+    const av=d=>Math.round(d.reduce((s,e)=>s+getPct(e)*(PESO_TIPO[e.tipo]||2),0)/d.reduce((s,e)=>s+(PESO_TIPO[e.tipo]||2),0));
+    return av(a[1])-av(b[1]);
+  }).map(([tipo,eqs])=>{
+    const tp=eqs.reduce((s,e)=>s+(PESO_TIPO[e.tipo]||2),0);
+    const ta=eqs.reduce((s,e)=>s+getPct(e)*(PESO_TIPO[e.tipo]||2),0);
+    const pct=Math.round(ta/tp);
+    const col=pct===100?'#00aa44':pct>0?'#cc8800':'#cc2233';
+    return `<tr>
+      <td style="padding:6px 10px;font-size:12px">${TIPO_ICON[tipo]||''} ${tipo}</td>
+      <td style="padding:6px 10px">
+        <div style="background:#e8e8e8;border-radius:4px;height:10px;width:100%">
+          <div style="background:${col};height:10px;border-radius:4px;width:${pct}%"></div>
+        </div>
+      </td>
+      <td style="padding:6px 10px;font-weight:700;color:${col};font-size:13px;white-space:nowrap">${pct}%</td>
+      <td style="padding:6px 10px;font-size:11px;color:#666">${eqs.length} eq.</td>
+    </tr>`;
+  }).join('');
+
+  // Build equipo detail cards
+  const tipoList = Object.entries(byTipo);
+  let detailHtml = '';
+  tipoList.forEach(([tipo, eqs]) => {
+    const tareas = TAREAS[tipo];
+    const pesos = PESO_TAREA[tipo] || [];
+    detailHtml += `<div style="margin-bottom:8px;break-inside:avoid">
+      <div style="background:#1e3a5f;color:#fff;padding:7px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.05em">
+        ${TIPO_ICON[tipo]||''} ${tipo}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;background:#f8f9fc;border:1px solid #dde;border-top:none;border-radius:0 0 6px 6px">`;
+
+    eqs.forEach(eq => {
+      const pct = getPct(eq);
+      const col = pct===100?'#00aa44':pct>0?'#cc8800':'#cc2233';
+      const statusMap = tareaStatus[eq.eq_id] || {};
+
+      let tareasHtml = '';
+      if(tareas) {
+        tareasHtml = tareas.map((t,i) => {
+          const done = statusMap[i]===true;
+          const pw = pesos[i] != null ? `<span style="color:#999;font-size:9px;margin-left:auto">${pesos[i]}%</span>` : '';
+          const isP = t==='Toma de parámetros';
+          return `<div style="display:flex;align-items:center;gap:5px;padding:3px 0;${isP?'border-top:1px dashed #ccc;margin-top:3px;padding-top:5px':''}">
+            <span style="color:${done?'#00aa44':'#cc2233'};font-size:13px;flex-shrink:0">${done?'✓':'✗'}</span>
+            <span style="font-size:10px;color:${isP?'#888':'#333'};${isP?'font-style:italic':''};flex:1">${t}</span>
+            ${pw}
+          </div>`;
+        }).join('');
+      }
+
+      detailHtml += `<div style="background:#fff;border:1px solid #dde;border-radius:6px;padding:10px;break-inside:avoid">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span style="background:#e8f4e8;color:#00aa44;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;font-family:monospace">${eq.eq_id}</span>
+          <span style="font-size:11px;font-weight:700;color:${col};margin-left:auto">${pct}%</span>
+        </div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:2px">${eq.nombre}</div>
+        <div style="font-size:10px;color:#888;margin-bottom:8px">${eq.area||''}</div>
+        <div style="background:#f0f0f0;border-radius:3px;height:6px;margin-bottom:8px">
+          <div style="background:${col};height:6px;border-radius:3px;width:${pct}%"></div>
+        </div>
+        ${tareasHtml}
+      </div>`;
+    });
+
+    detailHtml += `</div></div>`;
+  });
+
+  const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Mantenimiento ${currentSede} ${currentPeriodo} ${currentAnio}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #fff; color: #111; font-size: 13px; }
+  @media print {
+    .no-print { display: none !important; }
+    body { margin: 0; }
+    @page { margin: 15mm; size: A4; }
+  }
+</style>
+</head><body>
+
+<!-- PRINT BUTTON -->
+<div class="no-print" style="background:#1e3a5f;color:#fff;padding:12px 20px;display:flex;align-items:center;gap:12px">
+  <span style="font-weight:700">📄 Reporte MultiAire — listo para imprimir/guardar como PDF</span>
+  <button onclick="window.print()" style="background:#fff;color:#1e3a5f;border:none;padding:8px 18px;border-radius:5px;font-weight:700;cursor:pointer;font-size:13px">🖨️ Guardar PDF</button>
+  <button onclick="window.close()" style="background:transparent;color:#aaa;border:1px solid #aaa;padding:8px 14px;border-radius:5px;cursor:pointer;margin-left:auto">✕ Cerrar</button>
+</div>
+
+<div style="padding:20px 24px;max-width:900px;margin:0 auto">
+
+  <!-- HEADER -->
+  <div style="border-bottom:3px solid #1e3a5f;padding-bottom:14px;margin-bottom:18px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between">
+      <div>
+        <div style="font-size:20px;font-weight:900;color:#1e3a5f;letter-spacing:.03em">MultiAire</div>
+        <div style="font-size:13px;color:#666;margin-top:2px">Reporte de Mantenimiento de Equipos</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:15px;font-weight:700">${currentSede}</div>
+        <div style="font-size:12px;color:#666">${currentPeriodo} ${currentAnio}</div>
+        <div style="font-size:10px;color:#999;margin-top:2px">${dateStr}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GLOBAL -->
+  <div style="background:#f0f4ff;border:1px solid #c0d0ef;border-radius:8px;padding:16px;margin-bottom:18px;display:flex;align-items:center;gap:24px">
+    <div>
+      <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Avance Global Ponderado</div>
+      <div style="font-size:42px;font-weight:900;color:${gcol};font-family:monospace;line-height:1">${globalPct}%</div>
+    </div>
+    <div style="flex:1">
+      <div style="background:#dde;border-radius:6px;height:14px;margin-bottom:12px">
+        <div style="background:${gcol};height:14px;border-radius:6px;width:${globalPct}%"></div>
+      </div>
+      <div style="display:flex;gap:20px">
+        <div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#00aa44">${gC}</div><div style="font-size:10px;color:#666">COMPLETOS</div></div>
+        <div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#cc8800">${yC}</div><div style="font-size:10px;color:#666">PARCIALES</div></div>
+        <div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#cc2233">${rC}</div><div style="font-size:10px;color:#666">PENDIENTES</div></div>
+        <div style="text-align:center"><div style="font-size:22px;font-weight:900;color:#1e3a5f">${sel.length}</div><div style="font-size:10px;color:#666">TOTAL EQ.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BY TIPO -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#666;margin-bottom:10px">Avance por Tipo de Equipo</div>
+    <table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid #dde;border-radius:8px;overflow:hidden">
+      ${tipoRows}
+    </table>
+  </div>
+
+  <!-- DETAIL -->
+  <div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#666;margin-bottom:10px">Detalle por Equipo</div>
+    ${detailHtml}
+  </div>
+
+  <!-- FOOTER -->
+  <div style="border-top:1px solid #dde;margin-top:20px;padding-top:12px;display:flex;justify-content:space-between;font-size:10px;color:#999">
+    <span>MultiAire · Sistema de Gestión de Mantenimiento</span>
+    <span>${dateStr}</span>
+  </div>
+</div>
+
+<scr'+'ipt>window.onload=()=>{ setTimeout(()=>window.print(),400); }</scr'+'ipt>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function showEmpty() {
+  document.getElementById('toolbar').style.display = 'none';
+  document.getElementById('tabNav').style.display = 'none';
+  document.getElementById('statusBar').style.display = 'none';
+  document.getElementById('btnSelEq').disabled = true;
+  document.getElementById('content').innerHTML = `
+    <div class="empty">
+      <div class="empty-icon">🔧</div>
+      <h3>App de Mantenimiento</h3>
+      <p>Selecciona una sede y un período para comenzar a registrar el mantenimiento de equipos.</p>
+    </div>`;
+}
+
+function setPill(type, text) {
+  const p = document.getElementById('connPill');
+  p.textContent = text;
+  p.className = 'hpill ' + (type==='ok'?'ok':type==='err'?'err':'');
+}
+
+let toastT;
+function toast(msg, type='ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'toast show ' + type;
+  clearTimeout(toastT);
+  toastT = setTimeout(()=>el.classList.remove('show'), 3000);
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+</script>
+</body>
+</html>

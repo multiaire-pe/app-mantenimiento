@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Inventario MultiAire – Ripley</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+:root{--bg:#0d0d0d;--surface:#161616;--surface2:#1f1f1f;--surface3:#2a2a2a;--border:#333;--accent:#e8e8e8;--muted:#666;--muted2:#888;--red:#ff4444;--green:#44cc88;--blue:#4488ff;--yellow:#ffcc44;--font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height:100vh;font-size:13px}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100}
+.logo{font-weight:700;font-size:15px;letter-spacing:.05em;color:#fff}
+.logo span{color:var(--muted2);font-weight:300}
+.pill{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border)}
+.pill.ok{color:var(--green);border-color:#224433}
+.pill.loading{color:var(--yellow);border-color:#443322}
+.pill.err{color:var(--red);border-color:#442222}
+.stats{margin-left:auto;display:flex;gap:20px}
+.stat{font-family:var(--mono);font-size:11px;color:var(--muted2)}
+.stat strong{color:var(--accent)}
+.app{display:flex;height:calc(100vh - 52px)}
+.sidebar{width:240px;min-width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.sec{padding:12px 14px 6px;font-size:10px;font-weight:600;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.fg{padding:0 8px 8px}
+.fl{font-size:10px;color:var(--muted);padding:4px 6px 2px}
+select,input[type=text]{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:12px;padding:6px 8px;border-radius:4px;outline:none;appearance:none}
+select:focus,input:focus{border-color:var(--muted2)}
+option{background:#1a1a1a}
+.sa{padding:10px 8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;margin-top:auto}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.toolbar{padding:10px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);background:var(--surface)}
+.toolbar input{flex:1;max-width:300px}
+.cnt{font-family:var(--mono);font-size:11px;color:var(--muted2);margin-left:auto}
+.tw{flex:1;overflow:auto}
+table{width:100%;border-collapse:collapse}
+thead th{position:sticky;top:0;background:var(--surface2);border-bottom:1px solid var(--border);padding:8px 10px;text-align:left;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);white-space:nowrap;cursor:pointer;user-select:none}
+thead th:hover{color:var(--accent)}
+tbody tr{border-bottom:1px solid #1e1e1e;cursor:pointer;transition:background .1s}
+tbody tr:hover{background:var(--surface2)}
+tbody tr.sel{background:#1a2030}
+td{padding:7px 10px;font-size:12px;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis}
+td.mono{font-family:var(--mono);font-size:11px;color:var(--muted2)}
+.badge{display:inline-block;padding:2px 6px;border-radius:3px;font-size:10px;font-weight:600;font-family:var(--mono);background:var(--surface3);color:var(--muted2)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--accent);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--surface3);border-color:var(--muted2)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-p{background:#fff;color:#000;border-color:#fff}.btn-p:hover{background:#ddd}
+.btn-d{color:var(--red);border-color:#442222}.btn-d:hover{background:#2a1111;border-color:var(--red)}
+.btn-g{color:var(--green);border-color:#224433}.btn-g:hover{background:#112a1f;border-color:var(--green)}
+.btn-e{color:var(--yellow);border-color:#443322}.btn-e:hover{background:#2a1f11;border-color:var(--yellow)}
+.btn-sm{padding:4px 8px;font-size:11px}
+.btn-bl{width:100%;justify-content:center}
+.selbar{display:none;padding:8px 16px;background:#1a2030;border-bottom:1px solid #2a3555;align-items:center;gap:10px;font-size:12px}
+.selbar.on{display:flex}
+.selcnt{font-family:var(--mono);color:var(--blue)}
+input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center}
+.ov.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:8px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:24px}
+.modal h2{font-size:15px;font-weight:600;margin-bottom:18px}
+.fg2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fgg{display:flex;flex-direction:column;gap:4px}
+.fgg.full{grid-column:1/-1}
+.fgg label{font-size:10px;color:var(--muted2);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.ma{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.ep{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;align-items:center;justify-content:center}
+.ep.open{display:flex}
+.eb{background:var(--surface);border:1px solid var(--border);border-radius:8px;width:460px;max-width:95vw;padding:24px}
+.eb h2{font-size:15px;margin-bottom:4px}
+.eb p{color:var(--muted2);font-size:12px;margin-bottom:18px}
+.eopt{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;cursor:pointer;transition:all .15s;margin-bottom:8px}
+.eopt:hover{border-color:var(--muted2);background:var(--surface2)}
+.eopt.act{border-color:var(--yellow);background:#1f1a0d}
+.eopt input[type=radio]{accent-color:var(--yellow)}
+.eopl{font-weight:600;font-size:12px}
+.eopd{font-size:11px;color:var(--muted2)}
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:10px 16px;font-size:12px;z-index:999;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.ok{border-color:var(--green);color:var(--green)}
+.toast.err{border-color:var(--red);color:var(--red)}
+.toast.warn{border-color:var(--yellow);color:var(--yellow)}
+.empty{padding:60px;text-align:center;color:var(--muted)}
+.empty-icon{font-size:40px;margin-bottom:12px}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--yellow);border-radius:50%;animation:sp .6s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+#lc{display:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">MultiAire <span>/ Inventario Ripley</span></div>
+  <div class="pill loading" id="pill">⟳ Conectando...</div>
+  <div class="stats">
+    <div class="stat">Equipos: <strong id="sTotal">—</strong></div>
+    <div class="stat">Sedes: <strong id="sSedes">—</strong></div>
+    <div class="stat">Tipos: <strong id="sTipos">—</strong></div>
+  </div>
+</header>
+<div class="app">
+  <div class="sidebar">
+    <div class="sec">Filtros</div>
+    <div class="fg"><div class="fl">Sede</div><select id="fSede" onchange="af()"><option value="">Todas las sedes</option></select></div>
+    <div class="fg"><div class="fl">Tipo de equipo</div><select id="fEquipo" onchange="af()"><option value="">Todos los tipos</option></select></div>
+    <div class="fg"><div class="fl">Área</div><select id="fArea" onchange="af()"><option value="">Todas las áreas</option></select></div>
+    <div class="fg"><div class="fl">Marca</div><select id="fMarca" onchange="af()"><option value="">Todas las marcas</option></select></div>
+    <div style="padding:8px;border-top:1px solid var(--border)"><button class="btn btn-sm btn-bl" onclick="rf()">✕ Limpiar filtros</button></div>
+    <div class="sa">
+      <div class="sec" style="padding:0 0 6px">Acciones</div>
+      <button class="btn btn-p btn-bl" onclick="openNew()">+ Nuevo equipo</button>
+      <button class="btn btn-bl" style="color:#7c5cfc;border-color:#3a2a6a;background:#1a1228" onclick="exportPDF()">📄 Exportar PDF</button>
+      <button class="btn btn-e btn-bl" onclick="openExport()">⬇ Exportar etiquetas</button>
+      <button class="btn btn-g btn-bl" onclick="sync()">↻ Sincronizar Sheets</button>
+    </div>
+  </div>
+  <div class="main">
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="Buscar descripción, modelo, serie..." oninput="af()">
+      <button class="btn btn-sm" onclick="selAll()">☑ Todo</button>
+      <button class="btn btn-sm" onclick="desel()">☐ Ninguno</button>
+      <span class="cnt" id="cnt">— equipos</span>
+    </div>
+    <div class="selbar" id="selbar">
+      <input type="checkbox" onchange="toggleAll(this.checked)">
+      <span class="selcnt" id="selcnt">0 seleccionados</span>
+      <button class="btn btn-sm btn-e" onclick="expSel()">⬇ Exportar etiquetas</button>
+      <button class="btn btn-sm btn-d" onclick="delSel()">🗑 Eliminar</button>
+    </div>
+    <div class="tw" id="tw"><div class="empty"><div class="empty-icon">⟳</div>Cargando desde Google Sheets...</div></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="ov" id="mov" onclick="if(event.target===this)cm()">
+  <div class="modal">
+    <h2 id="mtitle">Nuevo equipo</h2>
+    <div class="fg2">
+      <div class="fgg"><label>Sede *</label><input type="text" id="f_sede" list="dl_sede" placeholder="Ej: ATOCONGO"><datalist id="dl_sede"></datalist></div>
+      <div class="fgg"><label>Tipo *</label><input type="text" id="f_equipo" list="dl_equipo" placeholder="Ej: FAN COIL"><datalist id="dl_equipo"></datalist></div>
+      <div class="fgg full"><label>Descripción *</label><input type="text" id="f_desc" placeholder="Ej: AA Fan Coil 16"></div>
+      <div class="fgg full"><label>Área / Ubicación</label><input type="text" id="f_area" placeholder="Ej: Almacén, Azotea..."></div>
+      <div class="fgg"><label>Marca</label><input type="text" id="f_marca" list="dl_marca" placeholder="Ej: Midea"><datalist id="dl_marca"></datalist></div>
+      <div class="fgg"><label>Modelo</label><input type="text" id="f_modelo" placeholder="Ej: MKT3H-400"></div>
+      <div class="fgg full"><label>Serie</label><input type="text" id="f_serie" placeholder="Número de serie"></div>
+    </div>
+    <div class="ma">
+      <button class="btn" onclick="cm()">Cancelar</button>
+      <button class="btn btn-p" id="sbtn" onclick="saveItem()">Guardar en Sheets</button>
+    </div>
+  </div>
+</div>
+
+<!-- EXPORT -->
+<div class="ep" id="epanel" onclick="if(event.target===this)ce()">
+  <div class="eb">
+    <h2>Exportar etiquetas</h2>
+    <p>Selecciona el alcance de exportación:</p>
+    <label class="eopt act"><input type="radio" name="esc" value="filtered" checked><div><div class="eopl">Vista actual filtrada</div><div class="eopd"><span id="ec1">0</span> equipos visibles</div></div></label>
+    <label class="eopt"><input type="radio" name="esc" value="selected"><div><div class="eopl">Seleccionados</div><div class="eopd"><span id="ec2">0</span> equipos marcados</div></div></label>
+    <label class="eopt"><input type="radio" name="esc" value="all"><div><div class="eopl">Todo el inventario</div><div class="eopd"><span id="ec3">0</span> equipos totales</div></div></label>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+      <div class="fl" style="margin-bottom:6px">O exportar por categoría específica:</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <select id="ebSede" style="flex:1"><option value="">Por sede...</option></select>
+        <select id="ebTipo" style="flex:1"><option value="">Por tipo...</option></select>
+      </div>
+      <button class="btn btn-bl" onclick="expCat()">⬇ Exportar categoría</button>
+    </div>
+    <div class="ma">
+      <button class="btn" onclick="ce()">Cancelar</button>
+      <button class="btn btn-e" onclick="doExp()">⬇ Generar ZIP</button>
+    </div>
+  </div>
+</div>
+
+<canvas id="lc"></canvas>
+<div class="toast" id="toast"></div>
+
+<script>
+const GAS = 'https://script.google.com/macros/s/AKfycbwk8ZI3w_g1AL71LCWcEvQBUcyjyZ2MVFRh6pvrxPe0RibUXoZT-uPtCrOpV4FC6VfM/exec';
+
+let data=[], filtered=[], selected=new Set(), sortCol='sede', sortAsc=true, editRow=null;
+
+// ── API ───────────────────────────────────────────────────────────────────────
+async function gasGet() {
+  const r = await fetch(GAS);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d.rows || [];
+}
+
+async function gasPost(body) {
+  const r = await fetch(GAS, {method:'POST', body: JSON.stringify(body)});
+  const d = await r.json();
+  if (!d.ok) throw new Error(d.error || 'Error en servidor');
+  return d;
+}
+
+// ── SYNC ──────────────────────────────────────────────────────────────────────
+async function sync() {
+  setPill('loading','⟳ Sincronizando...');
+  try {
+    const rows = await gasGet();
+    data = rows
+      .filter(r => r[1] || r[3])
+      .map((r,i) => ({
+        row:i+2, eq_id:r[0]||'', sede:r[1]||'', equipo:r[2]||'', descripcion:r[3]||'',
+        area:r[4]||'', marca:r[5]||'', modelo:r[6]||'', serie:r[7]||''
+      }));
+    setPill('ok', '✓ ' + data.length + ' equipos');
+    pf(); af(); us();
+    toast(data.length + ' equipos cargados','ok');
+  } catch(e) {
+    setPill('err','✗ Sin conexión');
+    toast('Error: ' + e.message,'err');
+    document.getElementById('tw').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>No se pudo conectar con Google Sheets.<br><small style="color:var(--muted)">'+e.message+'</small></div>';
+  }
+}
+
+function setPill(t,m){const el=document.getElementById('pill');el.className='pill '+t;el.textContent=m;}
+
+// ── FILTERS ───────────────────────────────────────────────────────────────────
+function pf() {
+  const u = f => [...new Set(data.map(r=>r[f]).filter(Boolean))].sort();
+  fs('fSede',u('sede'),'Todas las sedes'); fs('fEquipo',u('equipo'),'Todos los tipos');
+  fs('fArea',u('area'),'Todas las áreas'); fs('fMarca',u('marca'),'Todas las marcas');
+  fs('ebSede',u('sede'),'Por sede...'); fs('ebTipo',u('equipo'),'Por tipo...');
+  dl('dl_sede',u('sede')); dl('dl_equipo',u('equipo')); dl('dl_marca',u('marca'));
+}
+function fs(id,arr,ph){const el=document.getElementById(id),cur=el.value;el.innerHTML='<option value="">'+ph+'</option>'+arr.map(v=>'<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+'</option>').join('');}
+function dl(id,arr){document.getElementById(id).innerHTML=arr.map(v=>'<option value="'+esc(v)+'">').join('');}
+
+function af() {
+  const sede=document.getElementById('fSede').value, equipo=document.getElementById('fEquipo').value,
+        area=document.getElementById('fArea').value, marca=document.getElementById('fMarca').value,
+        q=document.getElementById('search').value.toLowerCase().trim();
+  filtered=data.filter(r=>{
+    if(sede&&r.sede!==sede)return false; if(equipo&&r.equipo!==equipo)return false;
+    if(area&&r.area!==area)return false; if(marca&&r.marca!==marca)return false;
+    if(q){const h=[r.eq_id,r.descripcion,r.modelo,r.serie,r.sede,r.equipo,r.area,r.marca].join(' ').toLowerCase();if(!h.includes(q))return false;}
+    return true;
+  });
+  filtered.sort((a,b)=>{const av=(a[sortCol]||'').toLowerCase(),bv=(b[sortCol]||'').toLowerCase();return sortAsc?av.localeCompare(bv):bv.localeCompare(av);});
+  rt(); document.getElementById('cnt').textContent=filtered.length+' equipos';
+  document.getElementById('ec1').textContent=filtered.length;
+  document.getElementById('ec3').textContent=data.length;
+}
+
+function sb(col){if(sortCol===col)sortAsc=!sortAsc;else{sortCol=col;sortAsc=true;}af();}
+function rf(){['fSede','fEquipo','fArea','fMarca'].forEach(id=>document.getElementById(id).value='');document.getElementById('search').value='';af();}
+
+// ── TABLE ─────────────────────────────────────────────────────────────────────
+function rt() {
+  const tw=document.getElementById('tw');
+  if(!filtered.length){tw.innerHTML='<div class="empty"><div class="empty-icon">🔍</div>Sin resultados con los filtros actuales</div>';return;}
+  tw.innerHTML='<table><thead><tr><th style="width:32px"><input type="checkbox" onchange="toggleAll(this.checked)"></th><th onclick="sb(\'eq_id\')" style="color:#00cc66">EQ_ID</th><th onclick="sb(\'sede\')">SEDE</th><th onclick="sb(\'equipo\')">TIPO</th><th onclick="sb(\'descripcion\')">DESCRIPCIÓN</th><th onclick="sb(\'area\')">ÁREA</th><th onclick="sb(\'marca\')">MARCA</th><th onclick="sb(\'modelo\')">MODELO</th><th>SERIE</th><th style="width:90px">ACCIONES</th></tr></thead><tbody id="tbody"></tbody></table>';
+  const tb=document.getElementById('tbody');
+  filtered.forEach(r=>{
+    const is=selected.has(r.row),tr=document.createElement('tr');
+    if(is)tr.classList.add('sel');
+    tr.innerHTML='<td><input type="checkbox"'+(is?' checked':'')+' onchange="togRow('+r.row+',this.checked)" onclick="event.stopPropagation()"></td><td class="mono" style="color:#00cc66;font-size:10px">'+esc(r.eq_id)+'</td><td><span class="badge">'+esc(r.sede)+'</span></td><td style="color:#aaa">'+esc(r.equipo)+'</td><td style="font-weight:500">'+esc(r.descripcion)+'</td><td style="color:var(--muted2)">'+esc(r.area)+'</td><td>'+esc(r.marca)+'</td><td class="mono">'+esc(r.modelo)+'</td><td class="mono" style="color:var(--muted)">'+esc(r.serie)+'</td><td><button class="btn btn-sm" onclick="editItem('+r.row+');event.stopPropagation()">✎</button> <button class="btn btn-sm btn-d" onclick="delItem('+r.row+');event.stopPropagation()">✕</button></td>';
+    tr.onclick=()=>togRow(r.row,!selected.has(r.row));
+    tb.appendChild(tr);
+  });
+}
+
+// ── SELECTION ─────────────────────────────────────────────────────────────────
+function togRow(row,val){val?selected.add(row):selected.delete(row);rt();usb();}
+function toggleAll(c){filtered.forEach(r=>c?selected.add(r.row):selected.delete(r.row));rt();usb();}
+function selAll(){toggleAll(true);}function desel(){selected.clear();rt();usb();}
+function usb(){const b=document.getElementById('selbar');b.classList.toggle('on',selected.size>0);document.getElementById('selcnt').textContent=selected.size+' seleccionados';document.getElementById('ec2').textContent=selected.size;}
+function us(){document.getElementById('sTotal').textContent=data.length;document.getElementById('sSedes').textContent=new Set(data.map(r=>r.sede)).size;document.getElementById('sTipos').textContent=new Set(data.map(r=>r.equipo)).size;}
+
+// ── CRUD ──────────────────────────────────────────────────────────────────────
+function openNew(){editRow=null;document.getElementById('mtitle').textContent='Nuevo equipo';document.getElementById('sbtn').textContent='Guardar en Sheets';['sede','equipo','desc','area','marca','modelo','serie'].forEach(f=>document.getElementById('f_'+f).value='');document.getElementById('mov').classList.add('open');}
+function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;document.getElementById('f_equipo').value=r.equipo;document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('mov').classList.add('open');}
+function cm(){document.getElementById('mov').classList.remove('open');}
+
+async function saveItem(){
+  const sede=document.getElementById('f_sede').value.trim(), desc=document.getElementById('f_desc').value.trim();
+  if(!sede||!desc){toast('Sede y descripción son obligatorios','err');return;}
+  const btn=document.getElementById('sbtn');
+  btn.disabled=true;btn.innerHTML='<span class="spin"></span> Guardando...';
+  // Auto-generate EQ_ID for new items
+  const SEDE_MAP={'ATOCONGO':'ATO','CHORRILLOS':'CHO','COMAS':'COM','JOCKEY PLAZA':'JOC','LOS OLIVOS':'LOL','MAC PLAZA NORTE':'MAC','MIRAFLORES':'MIR','PLAZA NORTE':'PLN','PRIMAVERA':'PRI','SAN JUAN DE LURIGANCHO':'SJL','SAN MIGUEL':'SMI','SANTA ANITA':'SAN'};
+  const TIPO_MAP={'CHILLER':'CHI','CORTINA DE AIRE':'CAI','ESCALERA':'ESC','EXTRACTOR':'EXT','FAN COIL':'FAN','INYECTOR':'INY','PAQUETE':'RFT','SPLIT CONSOLA':'SPL','SPLIT DUCTO':'SDU','SPLIT DECORATIVO':'SDC','TVR MINI PLUS':'TVR','UMA':'UMA','UNIDAD CONDENSADOR':'UCO','UNIDAD EVAPORADORA':'UEV'};
+  let eq_id = '';
+  if(!editRow){
+    const equipo_val=document.getElementById('f_equipo').value.trim().toUpperCase();
+    const s=SEDE_MAP[sede.toUpperCase()]||sede.toUpperCase().substring(0,3);
+    const t=TIPO_MAP[equipo_val]||equipo_val.substring(0,3);
+    const existing=data.filter(x=>(SEDE_MAP[x.sede.toUpperCase()]||x.sede.toUpperCase().substring(0,3))===s&&(TIPO_MAP[x.equipo.toUpperCase()]||x.equipo.toUpperCase().substring(0,3))===t);
+    eq_id='MA-'+s+'-'+t+'-'+String(existing.length+1).padStart(3,'0');
+  } else {
+    eq_id=data.find(x=>x.row===editRow)?.eq_id||'';
+  }
+  const row=[eq_id,sede,document.getElementById('f_equipo').value.trim(),desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim()];
+  try{
+    if(editRow!==null){await gasPost({action:'update',rowNum:editRow,row:row});toast('Equipo actualizado ✓','ok');}
+    else{await gasPost({action:'save',row:row});toast('Equipo agregado ✓','ok');}
+    cm();await sync();
+  }catch(e){toast('Error: '+e.message,'err');}
+  finally{btn.disabled=false;btn.textContent=editRow?'Guardar cambios':'Guardar en Sheets';}
+}
+
+async function delItem(row){
+  const r=data.find(x=>x.row===row);
+  if(!confirm('¿Eliminar "'+r?.descripcion+'" de '+r?.sede+'?'))return;
+  try{await gasPost({action:'delete',rowNum:row});toast('Eliminado ✓','ok');await sync();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+
+async function delSel(){
+  if(!selected.size)return;
+  if(!confirm('¿Eliminar '+selected.size+' equipos de Google Sheets?'))return;
+  try{
+    for(const row of [...selected].sort((a,b)=>b-a)){await gasPost({action:'delete',rowNum:row});await new Promise(r=>setTimeout(r,200));}
+    selected.clear();toast('Eliminados ✓','ok');await sync();
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── EXPORT ────────────────────────────────────────────────────────────────────
+function openExport(){document.getElementById('ec1').textContent=filtered.length;document.getElementById('ec2').textContent=selected.size;document.getElementById('ec3').textContent=data.length;document.getElementById('epanel').classList.add('open');}
+function ce(){document.getElementById('epanel').classList.remove('open');}
+function gr(){const s=document.querySelector('input[name=esc]:checked').value;if(s==='selected')return data.filter(r=>selected.has(r.row));if(s==='all')return[...data];return[...filtered];}
+function expCat(){const sede=document.getElementById('ebSede').value,tipo=document.getElementById('ebTipo').value;let rows=[...data];if(sede)rows=rows.filter(r=>r.sede===sede);if(tipo)rows=rows.filter(r=>r.equipo===tipo);if(!rows.length){toast('Sin resultados','err');return;}runExp(rows,'etiquetas_'+[sede,tipo].filter(Boolean).join('_')+'.zip');}
+function doExp(){const rows=gr();if(!rows.length){toast('Sin equipos','err');return;}runExp(rows,'etiquetas_multiaire.zip');}
+function expSel(){const rows=data.filter(r=>selected.has(r.row));if(!rows.length){toast('Selecciona equipos primero','err');return;}runExp(rows,'etiquetas_seleccion.zip');}
+
+async function runExp(rows,fname){
+  toast('Generando '+rows.length+' etiquetas...','warn');
+  try{const b=await genZip(rows);dlb(b,fname);toast(rows.length+' etiquetas ✓','ok');ce();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── LABEL CANVAS ──────────────────────────────────────────────────────────────
+function drawLabel(ctx,r){
+  const W=472,H=354,MX=6;
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+  const HH=36,DH=68,BH=108,SH=4,FH=H-HH-DH-BH-SH;
+  const sede=(r.sede||'').toUpperCase(),desc=(r.descripcion||'').toUpperCase(),area=(r.area||'').toUpperCase();
+  const modelo=r.modelo||'-',serie=r.serie||'-',marca=(r.marca||'').toUpperCase()||'-',equipo=(r.equipo||'').toUpperCase();
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,HH);
+  ctx.fillStyle='#fff';ctx.font='bold 22px Arial';ctx.textAlign='center';ctx.fillText('RIPLEY',W/2,HH-10);
+  ctx.fillStyle='#000';ctx.textAlign='center';
+  const dL=fitT(ctx,desc,W-2*MX,30,true),dLH=34,dTH=dL.length*dLH+(dL.length-1)*8;
+  let dy=HH+(DH-dTH)/2+24;dL.forEach(l=>{ctx.font='bold 30px Arial';ctx.fillText(l,W/2,dy);dy+=dLH+8;});
+  const bx=MX,by=HH+DH+2,bw=W-2*MX,bh=BH-4;
+  rR(ctx,bx,by,bw,bh,8);ctx.strokeStyle='#000';ctx.lineWidth=2;ctx.stroke();
+  ctx.font='9px Arial';ctx.fillStyle='#000';ctx.textAlign='left';ctx.fillText('ID: '+(r.eq_id||'-'),bx+6,by+14);
+  const aL=fitT(ctx,area,bw-14,28,true),aLH=30,aTH=aL.length*aLH+(aL.length-1)*8,aZH=bh-20;
+  let ay=by+18+(aZH-aTH)/2+24;ctx.textAlign='center';aL.forEach(l=>{ctx.font='bold 28px Arial';ctx.fillText(l,W/2,ay);ay+=aLH+8;});
+  const sY=HH+DH+BH+SH/2;ctx.strokeStyle='#aaa';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(MX,sY);ctx.lineTo(W-MX,sY);ctx.stroke();
+  const fY=HH+DH+BH+SH,rH=FH/2,c1=MX+3,c2=W/2+3,cW=W/2-MX-6;
+  function kv(l,v,x,y){ctx.font='9px Arial';ctx.fillStyle='#888';ctx.textAlign='left';ctx.fillText(l,x,y+10);ctx.fillStyle='#000';const vl=fitT(ctx,v,cW,14,true);let vy=y+22;vl.forEach(t=>{ctx.font='bold 14px Arial';ctx.fillText(t,x,vy);vy+=16;});}
+  kv('EQUIPO:',equipo,c1,fY+2);kv('MODELO:',modelo,c2,fY+2);kv('SERIE:',serie,c1,fY+rH+2);kv('MARCA:',marca,c2,fY+rH+2);
+}
+function fitT(ctx,text,maxW,sz,bold){let s=sz;while(s>=8){ctx.font=(bold?'bold ':'')+s+'px Arial';if(ctx.measureText(text).width<=maxW)return[text];const ws=text.split(' ');for(let i=1;i<ws.length;i++){const l1=ws.slice(0,i).join(' '),l2=ws.slice(i).join(' ');if(ctx.measureText(l1).width<=maxW&&ctx.measureText(l2).width<=maxW)return[l1,l2];}s--;}return[text.substring(0,20)];}
+function rR(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();}
+async function genZip(rows){if(!window.JSZip)await ls('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');const zip=new JSZip(),canvas=document.getElementById('lc');canvas.width=472;canvas.height=354;const ctx=canvas.getContext('2d');for(const r of rows){ctx.clearRect(0,0,472,354);drawLabel(ctx,r);const name=((r.sede||'').replace(/[^a-zA-Z0-9]/g,'_')+'_'+(r.descripcion||'').replace(/[^a-zA-Z0-9]/g,'_')+'.png').substring(0,80);const blob=await new Promise(res=>canvas.toBlob(res,'image/png'));zip.file(name,await blob.arrayBuffer());}return zip.generateAsync({type:'blob'});}
+function ls(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+function dlb(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);}
+function toast(msg,type='ok'){const el=document.getElementById('toast');el.textContent=msg;el.className='toast show '+type;setTimeout(()=>el.classList.remove('show'),3500);}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+document.addEventListener('change',e=>{if(e.target.name==='esc'){document.querySelectorAll('.eopt').forEach(el=>el.classList.remove('act'));e.target.closest('.eopt').classList.add('act');}});
+
+sync();
+
+function exportPDF() {
+  const rows = filtered; // whatever is currently filtered
+  if(!rows.length){ toast('Sin equipos en la vista actual','err'); return; }
+
+  // Detect current filters for title
+  const sede = document.getElementById('fSede').value || 'Todas las sedes';
+  const tipo = document.getElementById('fEquipo').value || '';
+  const area = document.getElementById('fArea').value || '';
+  const marca = document.getElementById('fMarca').value || '';
+  const search = document.getElementById('search').value || '';
+
+  const filtroDesc = [tipo, area, marca, search].filter(Boolean).join(' · ') || 'Todos los tipos';
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+
+  // Group by tipo
+  const byTipo = {};
+  rows.forEach(r => {
+    if(!byTipo[r.equipo]) byTipo[r.equipo] = [];
+    byTipo[r.equipo].push(r);
+  });
+
+  // Build tipo sections
+  let secHtml = '';
+  Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([tipo, eqs]) => {
+    const rows_html = eqs.map((r,i) => `
+      <tr style="background:${i%2===0?'#fff':'#f8f9fc'}">
+        <td style="padding:7px 10px;font-size:11px;color:#666;white-space:nowrap">${i+1}</td>
+        <td style="padding:7px 10px;font-size:11px;font-weight:600">${esc(r.nombre||r.descripcion)}</td>
+        <td style="padding:7px 10px;font-size:11px;color:#555">${esc(r.area)}</td>
+        <td style="padding:7px 10px;font-size:11px">${esc(r.marca)}</td>
+        <td style="padding:7px 10px;font-size:11px;font-family:monospace;color:#555">${esc(r.modelo)}</td>
+        <td style="padding:7px 10px;font-size:11px;font-family:monospace;color:#888">${esc(r.serie)}</td>
+      </tr>`).join('');
+
+    secHtml += `
+      <div style="margin-bottom:20px;break-inside:avoid">
+        <div style="background:#1e3a5f;color:#fff;padding:8px 14px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.05em;display:flex;align-items:center;justify-content:space-between">
+          <span>${tipo}</span>
+          <span style="opacity:.7;font-size:11px">${eqs.length} equipo${eqs.length!==1?'s':''}</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #dde;border-top:none;border-radius:0 0 6px 6px;overflow:hidden">
+          <thead>
+            <tr style="background:#eef2ff">
+              <th style="padding:6px 10px;font-size:10px;text-align:left;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.06em;width:30px">#</th>
+              <th style="padding:6px 10px;font-size:10px;text-align:left;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Nombre</th>
+              <th style="padding:6px 10px;font-size:10px;text-align:left;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Área / Ubicación</th>
+              <th style="padding:6px 10px;font-size:10px;text-align:left;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Marca</th>
+              <th style="padding:6px 10px;font-size:10px;text-align:left;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Modelo</th>
+              <th style="padding:6px 10px;font-size:10px;text-align:left;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Serie</th>
+            </tr>
+          </thead>
+          <tbody>${rows_html}</tbody>
+        </table>
+      </div>`;
+  });
+
+  const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Inventario ${sede}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;background:#fff;color:#111;font-size:13px}
+  @media print{
+    .no-print{display:none!important}
+    @page{margin:12mm;size:A4}
+    div{break-inside:auto}
+  }
+</style>
+</head><body>
+
+<div class="no-print" style="background:#1e3a5f;color:#fff;padding:10px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10">
+  <span style="font-weight:700">📄 Inventario MultiAire — ${sede}</span>
+  <button onclick="window.print()" style="background:#fff;color:#1e3a5f;border:none;padding:7px 16px;border-radius:5px;font-weight:700;cursor:pointer">🖨️ Guardar PDF</button>
+  <button onclick="window.close()" style="background:transparent;color:#aaa;border:1px solid #aaa;padding:7px 12px;border-radius:5px;cursor:pointer;margin-left:auto">✕ Cerrar</button>
+</div>
+
+<div style="padding:20px 24px;max-width:960px;margin:0 auto">
+
+  <!-- HEADER -->
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;border-bottom:3px solid #1e3a5f;padding-bottom:12px;margin-bottom:18px">
+    <div>
+      <div style="font-size:22px;font-weight:900;color:#1e3a5f">MultiAire</div>
+      <div style="font-size:12px;color:#666;margin-top:2px">Inventario de Equipos de Aire Acondicionado</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:16px;font-weight:700">${sede}</div>
+      <div style="font-size:11px;color:#666;margin-top:2px">${filtroDesc}</div>
+      <div style="font-size:10px;color:#999;margin-top:2px">${dateStr}</div>
+    </div>
+  </div>
+
+  <!-- SUMMARY -->
+  <div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+    <div style="background:#eef2ff;border:1px solid #c0d0ef;border-radius:8px;padding:12px 20px;text-align:center">
+      <div style="font-size:28px;font-weight:900;color:#1e3a5f">${rows.length}</div>
+      <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.08em">Total Equipos</div>
+    </div>
+    <div style="background:#eef2ff;border:1px solid #c0d0ef;border-radius:8px;padding:12px 20px;text-align:center">
+      <div style="font-size:28px;font-weight:900;color:#1e3a5f">${Object.keys(byTipo).length}</div>
+      <div style="font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.08em">Tipos</div>
+    </div>
+    ${Object.entries(byTipo).map(([t,e])=>`
+    <div style="background:#f8f9fc;border:1px solid #dde;border-radius:8px;padding:10px 16px;text-align:center">
+      <div style="font-size:20px;font-weight:900;color:#333">${e.length}</div>
+      <div style="font-size:9px;color:#666;text-transform:uppercase;letter-spacing:.06em">${t}</div>
+    </div>`).join('')}
+  </div>
+
+  <!-- DETAIL -->
+  ${secHtml}
+
+  <!-- FOOTER -->
+  <div style="border-top:1px solid #dde;margin-top:16px;padding-top:10px;display:flex;justify-content:space-between;font-size:10px;color:#999">
+    <span>MultiAire · Inventario de Equipos · ${sede}</span>
+    <span>${dateStr}</span>
+  </div>
+</div>
+<script>window.onload=()=>{setTimeout(()=>window.print(),400);}<\/script>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w){ toast('Permite ventanas emergentes en tu navegador','warn'); return; }
+  w.document.write(html);
+  w.document.close();
+  toast('PDF generado ✓', 'ok');
+}
+
+</script>
+</body>
+</html>
