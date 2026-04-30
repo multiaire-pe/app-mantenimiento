@@ -333,6 +333,46 @@ option{background:#fff}
 .add-email-row button:hover{background:var(--blue-light)}
 .admin-foot{padding:14px 22px;border-top:1.5px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
 
+
+/* ── AUTH OVERLAY ── */
+#auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;}
+.auth-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:36px 32px;max-width:380px;width:100%;text-align:center;box-shadow:var(--shadow-lg);}
+.auth-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px}
+.auth-logo-dot{width:10px;height:10px;border-radius:50%;background:var(--orange)}
+.auth-logo-text{font-weight:700;font-size:20px;color:var(--blue)}
+.auth-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px}
+.auth-sub{font-size:12px;color:var(--muted2);margin-bottom:24px;line-height:1.5}
+.auth-err{margin-top:14px;padding:10px 14px;background:#fdf0f2;border:1px solid #f0c0c8;border-radius:8px;font-size:12px;color:var(--red);display:none;line-height:1.5;text-align:left}
+.auth-err.show{display:block}
+.auth-loading{font-size:12px;color:var(--muted2);margin-top:10px;display:none}
+.auth-loading.show{display:block}
+/* User pill */
+.user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;transition:all .15s;}
+.user-pill:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.1)}
+.user-avatar{width:26px;height:26px;border-radius:50%;object-fit:cover;}
+.user-avatar-init{width:26px;height:26px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.user-name{font-size:11px;color:rgba(255,255,255,.85);font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Admin panel */
+#admin-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:8000;align-items:center;justify-content:center;padding:20px;}
+#admin-overlay.open{display:flex}
+.admin-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;width:480px;max-width:95vw;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow-lg);}
+.admin-head{padding:16px 20px;border-bottom:1.5px solid var(--border);background:var(--blue-pale);display:flex;align-items:center;gap:10px;}
+.admin-head h2{font-size:14px;font-weight:700;color:var(--blue);flex:1}
+.admin-body{padding:20px;overflow-y:auto;flex:1}
+.admin-slabel{font-family:var(--mono);font-size:9px;color:var(--blue);text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:10px}
+.email-list{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+.email-item{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;font-size:12px;}
+.email-item.is-admin{border-color:#b0e0c8;background:#f0faf5}
+.email-addr{flex:1;font-family:var(--mono);font-size:11px;color:var(--text)}
+.email-role{font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;background:var(--blue-pale);color:var(--blue);border:1px solid var(--border)}
+.email-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px;transition:all .15s;}
+.email-del:hover{color:var(--red);background:#fdf0f2}
+.add-row{display:flex;gap:8px;margin-bottom:6px}
+.add-row input{flex:1;background:var(--surface2);border:1.5px solid var(--border);color:var(--text);font-family:var(--font);font-size:12px;padding:8px 10px;border-radius:6px;outline:none;}
+.add-row input:focus{border-color:var(--blue)}
+.add-row button{padding:8px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;}
+.add-row button:hover{background:var(--blue-light)}
+.admin-foot{padding:14px 20px;border-top:1.5px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
 </style>
 </head>
 <body>
@@ -340,7 +380,7 @@ option{background:#fff}
 <header>
   <button class="mob-menu" onclick="toggleSidebar()">☰</button>
   <div class="logo"><div style="width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0"></div>MultiAire <span>/ Mantenimiento</span></div>
-  <div class="hpill" id="connPill">⟳ Conectando...</div><div id="user-pill" class="user-pill" style="display:none;margin-left:8px" onclick="openAdmin()" title="Gestión de accesos"></div><a href="index.html" class="back-link">← Inicio</a>
+  <div class="hpill" id="connPill">⟳ Conectando...</div><div id="user-pill" class="user-pill" style="display:none;margin-left:8px" onclick="openAdmin()" title="Gestión de accesos"></div><div id="user-pill" class="user-pill" style="display:none;margin-left:8px" onclick="maOpenAdmin()" title="Mi cuenta"></div><a href="index.html" class="back-link">← Inicio</a>
   <div class="hactions">
     <div class="saving" id="savingInd"><div class="spin"></div> Guardando...</div>
     <button class="btn btn-sm" style="color:var(--orange);border-color:#f0c09a;background:var(--orange-pale)" onclick="exportWhatsApp()" id="btnExport" style="display:none">📤 WhatsApp</button>
@@ -955,6 +995,196 @@ function exportWhatsApp() {
   </div>
 </div>
 
+
+<!-- AUTH OVERLAY -->
+<div id="auth-overlay" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;align-items:center;justify-content:center;padding:20px;">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-dot"></div>
+      <div class="auth-logo-text">MultiAire</div>
+    </div>
+    <div class="auth-title">Acceso restringido</div>
+    <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada para continuar.</div>
+    <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="auth-loading" id="auth-loading"></div>
+  </div>
+</div>
+<!-- ADMIN OVERLAY -->
+<div id="admin-overlay" onclick="if(event.target===this)maCloseAdmin()">
+  <div class="admin-card">
+    <div class="admin-head">
+      <h2>⚙️ Gestión de accesos</h2>
+      <button class="btn btn-sm" onclick="maCloseAdmin()">✕</button>
+    </div>
+    <div class="admin-body">
+      <div class="admin-slabel">Usuarios con acceso</div>
+      <div class="email-list" id="admin-email-list">Cargando...</div>
+      <div class="admin-slabel">Agregar usuario</div>
+      <div class="add-row">
+        <input type="email" id="new-email-input" placeholder="correo@gmail.com" onkeydown="if(event.key==='Enter')maAddEmail()">
+        <button onclick="maAddEmail()">+ Agregar</button>
+      </div>
+    </div>
+    <div class="admin-foot">
+      <button class="btn btn-sm" style="color:var(--red);border-color:#f0c0c8" onclick="maSignOut()">Cerrar sesión</button>
+      <button class="btn btn-sm btn-primary" onclick="maCloseAdmin()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+// ── GOOGLE AUTH ──────────────────────────────────────────────────────────────
+var MA_CLIENT_ID = '859362309270-23def0uf0j6j70upft0u5gg4csoe97k2.apps.googleusercontent.com';
+var MA_ADMIN = 'marchenaangulojoseluis@gmail.com';
+var MA_GAS = 'https://script.google.com/macros/s/AKfycbwk8ZI3w_g1AL71LCWcEvQBUcyjyZ2MVFRh6pvrxPe0RibUXoZT-uPtCrOpV4FC6VfM/exec';
+var maUser = null;
+var maEmails = null;
+
+(function(){
+  var s = document.createElement('script');
+  s.src = 'https://accounts.google.com/gsi/client';
+  s.async = true; s.defer = true;
+  s.onload = maInitAuth;
+  document.head.appendChild(s);
+})();
+
+function maInitAuth() {
+  var saved = sessionStorage.getItem('ma_user');
+  if (saved) {
+    try { maVerify(JSON.parse(saved), false); return; } catch(e) {}
+  }
+  maShowLogin();
+}
+
+function maShowLogin() {
+  var ov = document.getElementById('auth-overlay');
+  if (ov) { ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+  if (window.google && google.accounts) {
+    google.accounts.id.initialize({ client_id: MA_CLIENT_ID, callback: maHandleToken });
+    google.accounts.id.renderButton(document.getElementById('g-btn'), { theme:'outline', size:'large', text:'signin_with', locale:'es', width:300 });
+  }
+}
+
+function maHandleToken(resp) {
+  var payload = maParseJwt(resp.credential);
+  maVerify(payload, true);
+}
+
+function maVerify(payload, save) {
+  var email = (payload.email || '').toLowerCase();
+  var errEl = document.getElementById('auth-err');
+  var ldEl = document.getElementById('auth-loading');
+  if (ldEl) { ldEl.textContent = 'Verificando acceso...'; ldEl.classList.add('show'); }
+  if (errEl) errEl.classList.remove('show');
+
+  maGetEmails().then(function(emails) {
+    if (emails.indexOf(email) === -1) {
+      if (ldEl) ldEl.classList.remove('show');
+      if (errEl) { errEl.textContent = 'Acceso denegado para ' + email + '. Contacta al administrador.'; errEl.classList.add('show'); }
+      sessionStorage.removeItem('ma_user');
+      return;
+    }
+    maUser = { email: email, name: payload.name || email, picture: payload.picture || '' };
+    if (save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
+    if (ldEl) ldEl.classList.remove('show');
+    var ov = document.getElementById('auth-overlay');
+    if (ov) { ov.style.display = 'none'; document.body.style.overflow = ''; }
+    maRenderPill();
+    maLogAccess(email);
+  }).catch(function() {
+    if (ldEl) ldEl.classList.remove('show');
+    if (errEl) { errEl.textContent = 'Error verificando acceso. Intenta de nuevo.'; errEl.classList.add('show'); }
+  });
+}
+
+function maGetEmails() {
+  if (maEmails) return Promise.resolve(maEmails);
+  return fetch(MA_GAS + '?action=getEmails').then(function(r){ return r.json(); }).then(function(d) {
+    maEmails = (d.emails || [MA_ADMIN]).map(function(e){ return e.toLowerCase(); });
+    return maEmails;
+  }).catch(function() {
+    maEmails = [MA_ADMIN.toLowerCase()];
+    return maEmails;
+  });
+}
+
+function maLogAccess(email) {
+  fetch(MA_GAS, { method:'POST', body: JSON.stringify({ action:'logAccess', email:email, app:document.title }) }).catch(function(){});
+}
+
+function maRenderPill() {
+  var pill = document.getElementById('user-pill');
+  if (!pill || !maUser) return;
+  var init = maUser.name ? maUser.name.split(' ').map(function(n){return n[0];}).join('').substring(0,2).toUpperCase() : '?';
+  pill.innerHTML = maUser.picture
+    ? '<img class="user-avatar" src="'+maUser.picture+'" alt="'+maUser.name+'"><span class="user-name">'+maUser.name+'</span>'
+    : '<div class="user-avatar-init">'+init+'</div><span class="user-name">'+maUser.name+'</span>';
+  pill.style.display = 'flex';
+}
+
+function maSignOut() {
+  sessionStorage.removeItem('ma_user');
+  maUser = null;
+  location.reload();
+}
+
+function maParseJwt(token) {
+  var base64 = token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+  return JSON.parse(atob(base64));
+}
+
+// ── ADMIN PANEL ──────────────────────────────────────────────────────────────
+function maOpenAdmin() {
+  if (!maUser || maUser.email !== MA_ADMIN.toLowerCase()) return;
+  maRenderAdmin();
+  document.getElementById('admin-overlay').classList.add('open');
+}
+
+function maCloseAdmin() {
+  document.getElementById('admin-overlay').classList.remove('open');
+}
+
+function maRenderAdmin() {
+  maGetEmails().then(function(emails) {
+    var list = document.getElementById('admin-email-list');
+    if (!list) return;
+    list.innerHTML = emails.map(function(e) {
+      var isAdmin = e === MA_ADMIN.toLowerCase();
+      return '<div class="email-item'+(isAdmin?' is-admin':'')+'">'+
+        '<span class="email-addr">'+e+'</span>'+
+        '<span class="email-role">'+(isAdmin?'ADMIN':'USUARIO')+'</span>'+
+        (!isAdmin ? '<button class="email-del" onclick="maRemoveEmail(''+e+'')">✕</button>' : '')+
+        '</div>';
+    }).join('');
+  });
+}
+
+function maAddEmail() {
+  var input = document.getElementById('new-email-input');
+  var email = (input.value || '').trim().toLowerCase();
+  if (!email || email.indexOf('@') === -1) return;
+  maGetEmails().then(function(emails) {
+    if (emails.indexOf(email) !== -1) { input.value = ''; return; }
+    emails.push(email);
+    return maSaveEmails(emails);
+  }).then(function() { if(input) input.value = ''; maRenderAdmin(); });
+}
+
+function maRemoveEmail(email) {
+  if (email === MA_ADMIN.toLowerCase()) return;
+  maGetEmails().then(function(emails) {
+    return maSaveEmails(emails.filter(function(e){ return e !== email; }));
+  }).then(function(){ maRenderAdmin(); });
+}
+
+function maSaveEmails(emails) {
+  maEmails = emails;
+  return fetch(MA_GAS, { method:'POST', body: JSON.stringify({ action:'saveEmails', emails:emails }) }).catch(function(){});
+}
+
+</script>
 </body></html>');
     w.document.close();
   });
