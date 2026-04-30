@@ -405,7 +405,7 @@ function maVerify(payload, save) {
       document.body.style.overflow = '';
       maRenderPill();
       loadTareas(false);
-    loadMaestros();
+      loadMaestros();
       return;
     }
 
@@ -906,24 +906,25 @@ async function loadMaestros() {
   try {
     const r = await fetch(GAS + '?action=getMaestros');
     const d = await r.json();
+    // Include ALL personal/tiendas from sheet (activo or not)
     maestrosData.personal = (d.personal || []).map((p, i) => ({
-      id: p.id || ('PER' + String(i+1).padStart(3,'0')),
-      nombre: p.nombre || '',
-      cargo: p.cargo || 'TÉCNICO',
-      activo: p.activo !== 'NO' ? 'SI' : 'NO'
-    }));
+      id: String(p.id || ('PER' + String(i+1).padStart(3,'0'))).trim(),
+      nombre: String(p.nombre || '').trim(),
+      cargo: String(p.cargo || 'TÉCNICO').trim(),
+      activo: String(p.activo || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI'
+    })).filter(p => p.nombre);
     maestrosData.tiendas = (d.tiendas || []).map((t, i) => ({
-      id: t.id || ('TIE' + String(i+1).padStart(3,'0')),
-      cliente: t.cliente || '',
-      tienda: t.tienda || '',
-      sede: t.sede || '',
-      activo: t.activo !== 'NO' ? 'SI' : 'NO'
-    }));
+      id: String(t.id || ('TIE' + String(i+1).padStart(3,'0'))).trim(),
+      cliente: String(t.cliente || '').trim(),
+      tienda: String(t.tienda || '').trim(),
+      sede: String(t.sede || '').trim(),
+      activo: String(t.activo || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI'
+    })).filter(t => t.tienda);
     maestrosData.grupos = (d.grupos || []).map((g, i) => ({
-      id: g.id || ('GRP' + String(i+1).padStart(3,'0')),
-      grupo: g.grupo || '',
+      id: String(g.id || ('GRP' + String(i+1).padStart(3,'0'))).trim(),
+      grupo: String(g.grupo || '').trim(),
       activo: 'SI'
-    }));
+    })).filter(g => g.grupo);
     renderPersonal();
     renderTiendas();
     renderGrupos();
