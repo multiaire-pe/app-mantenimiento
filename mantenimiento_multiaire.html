@@ -569,7 +569,7 @@ async function loadPeriodo() {
     try {
       const { getDoc, doc } = window.__fb;
       const snap = await getDoc(doc(window.__db, 'mantenimiento', key));
-      const d = snap.exists() ? snap.data() : {};
+      const d = snap.exists ? snap.data() : {};
       seleccionados = typeof d.seleccionados === 'string' ? JSON.parse(d.seleccionados||'{}') : (d.seleccionados||{});
       tareaStatus = typeof d.tareaStatus === 'string' ? JSON.parse(d.tareaStatus||'{}') : (d.tareaStatus||{});
       sessionStorage.setItem(cacheKey, JSON.stringify({ seleccionados, tareaStatus }));
