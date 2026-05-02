@@ -1252,9 +1252,11 @@ function exportPDF() {
 <scr'+'ipt>window.onload=()=>{ setTimeout(()=>window.print(),400); }</scr'+'ipt>
 </body></html>`;
 
-  const w = window.open('', '_blank');
-  w.document.write(html);
-  w.document.close();
+  // Use blob URL to ensure proper HTML rendering with scripts
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 
