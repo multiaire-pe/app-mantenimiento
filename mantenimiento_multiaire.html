@@ -1442,8 +1442,7 @@ function maGetEmails(){
     return maEmails;
   }).catch(function(){maEmails={emails:[MA_ADM.toLowerCase()],roles:{}};maEmails.roles[MA_ADM.toLowerCase()]='ADMIN';return maEmails;});
 }
-function maLogAccess(email){ /* Firebase */ });
-}
+function maLogAccess(email){ /* Firebase */ }
 function maRenderPill(){
   var pill=document.getElementById('user-pill');
   if(!pill||!maUser)return;
