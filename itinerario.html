@@ -748,7 +748,11 @@ async function saveItinerario() {
     };
   });
 
+  // Disable button to prevent double submit
+  const saveBtn = document.querySelector('#modal-iti .modal-foot .btn-primary');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Guardando...'; }
   document.getElementById('savingInd').classList.add('show');
+
   try {
     const res = await fetch(GAS, { method: 'POST', body: JSON.stringify({
       action: 'saveItinerario',
@@ -761,14 +765,15 @@ async function saveItinerario() {
       toast('Itinerario guardado ✓', 'ok');
       closeModal();
       await loadFecha(fecha);
-      // Refresh recientes
       const rRes = await fetch(GAS + '?action=getItinerariosRecientes').then(r => r.json());
       renderRecientes(rRes.itinerarios || []);
     } else {
       toast('Error guardando: ' + (d.error || ''), 'err');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Guardar itinerario'; }
     }
   } catch(e) {
     toast('Error de conexión', 'err');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Guardar itinerario'; }
   }
   document.getElementById('savingInd').classList.remove('show');
 }
