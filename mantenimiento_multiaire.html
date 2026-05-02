@@ -271,6 +271,8 @@ option{background:#fff}
 .add-row button{padding:8px 14px;background:#1B3F8B;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;}
 .admin-foot{padding:14px 20px;border-top:1.5px solid #d0daf0;display:flex;justify-content:flex-end;gap:8px}
 
+.back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:20px;white-space:nowrap;transition:all .15s}
+.back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
 </style>
 </head>
 <body>
@@ -278,11 +280,13 @@ option{background:#fff}
 <header>
   <button class="mob-menu" onclick="toggleSidebar()">☰</button>
   <div class="logo"><div style="width:8px;height:8px;border-radius:50%;background:#F47920;flex-shrink:0"></div>MultiAire <span>/ Mantenimiento</span></div>
-  <div class="hpill" id="connPill">⟳ Conectando...</div><div style="flex:1"></div><div id="user-pill" class="user-pill" style="display:none;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:20px;white-space:nowrap;margin-left:auto">&#8592; Inicio</a><div class="hactions" style="margin-left:0">
-    <div class="saving" id="savingInd"><div class="spin"></div> Guardando...</div>
-    <button class="btn btn-sm btn-green" onclick="exportWhatsApp()" id="btnExport" style="display:none">📤 WhatsApp</button>
-    <button class="btn btn-sm" onclick="exportPDF()" id="btnPNG" style="display:none;border-color:#7c5cfc;color:#7c5cfc">📄 PDF</button>
-  </div>
+  <div class="hpill" id="connPill">⟳ Conectando...</div>
+  <div class="saving" id="savingInd"><div class="spin"></div> Guardando...</div>
+  <div style="flex:1"></div>
+  <button class="btn btn-sm" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.25);background:none" onclick="exportWhatsApp()" id="btnExport" style="display:none">📤 WhatsApp</button>
+  <button class="btn btn-sm" onclick="exportPDF()" id="btnPNG" style="display:none;border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.7)">📄 PDF</button>
+  <div id="user-pill" class="user-pill" style="display:none" onclick="maOpenAdmin()"></div>
+  <a href="index.html" class="back-link">← Inicio</a>
 </header>
 
 <div class="app">
@@ -527,18 +531,18 @@ async function loadPeriodo() {
     const d = JSON.parse(localCache);
     seleccionados = d.seleccionados || {};
     tareaStatus  = d.tareaStatus  || {};
-    renderChecklist();
-    return;
-  }
-  // Load from sheet
-  try {
-    const r = await fetch(GAS + '?action=getMaint&key=' + encodeURIComponent(key));
-    const d = await r.json();
-    seleccionados = d.seleccionados || {};
-    tareaStatus  = d.tareaStatus  || {};
-    sessionStorage.setItem(cacheKey, JSON.stringify(d));
-  } catch(e) {
-    seleccionados = {}; tareaStatus = {};
+    // Don't return early - let normal flow continue to renderChecklist
+  } else {
+    // Load from sheet
+    try {
+      const r = await fetch(GAS + '?action=getMaint&key=' + encodeURIComponent(key));
+      const d = await r.json();
+      seleccionados = d.seleccionados || {};
+      tareaStatus  = d.tareaStatus  || {};
+      sessionStorage.setItem(cacheKey, JSON.stringify(d));
+    } catch(e) {
+        seleccionados = {}; tareaStatus = {};
+    }
   }
 
   renderMain();
