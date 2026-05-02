@@ -490,7 +490,8 @@ function renderRecientes(itinerarios) {
     else fecha = excelDateToDate(f);
     const fechaStr = fecha.toLocaleDateString('es-PE', { weekday:'short', day:'2-digit', month:'short' });
     const estadoClass = iti.estado === 'ACTUALIZADO' ? 'estado-actualizado' : 'estado-registrado';
-    const fechaISO = fecha instanceof Date ? fecha.toISOString().slice(0,10) : String(fecha).slice(0,10);
+    // Use UTC date to match what's stored in Firestore
+    const fechaISO = iti.fecha && typeof iti.fecha === 'string' ? iti.fecha.slice(0,10) : fecha instanceof Date ? fecha.toISOString().slice(0,10) : String(fecha).slice(0,10);
     return `<div class="iti-item" onclick="loadItiById('${iti.id}','${fechaISO}')">
       <div class="iti-item-date">${fechaStr}</div>
       <div class="iti-item-meta">${iti.totalBloques} bloques · v${iti.version}</div>
@@ -530,15 +531,17 @@ async function loadFecha(fecha) {
   try {
     const { getDocs, collection, query, where } = window.__fb;
     const iSnap = await getDocs(collection(window.__db, 'bd_itinerarios'));
-    const fd = new Date(fecha + 'T12:00:00').toDateString();
+    // Compare using UTC date slice (YYYY-MM-DD) to avoid timezone issues
+    const fd = fecha.slice(0, 10); // e.g. '2026-05-01'
     const matching = iSnap.docs.map(dd=>dd.data()).filter(dd=>{
       const f = dd.fecha;
-      // Handle Firestore Timestamp, Date object, or string
       let d;
       if (f && typeof f.toDate === 'function') d = f.toDate();
       else if (f && f.seconds) d = new Date(f.seconds * 1000);
       else d = new Date(f);
-      return d.toDateString() === fd;
+      // Get UTC date string YYYY-MM-DD
+      const dStr = d.toISOString().slice(0, 10);
+      return dStr === fd;
     }).sort((a,b)=>b.version-a.version);
     const iti = matching[0] || null;
     let bloques = [];
@@ -673,8 +676,15 @@ function editarItinerario() {
 async function loadFechaForEdit(fecha, d) {
   const { getDocs, collection: col2 } = window.__fb;
   const iSnap2 = await getDocs(col2(window.__db, 'bd_itinerarios'));
-  const fd2 = new Date(fecha + 'T12:00:00').toDateString();
-  const matching2 = iSnap2.docs.map(dd=>dd.data()).filter(dd=>new Date(dd.fecha).toDateString()===fd2).sort((a,b)=>b.version-a.version);
+  const fd2 = fecha.slice(0, 10);
+  const matching2 = iSnap2.docs.map(dd=>dd.data()).filter(dd=>{
+    const f2 = dd.fecha;
+    let d2;
+    if (f2 && typeof f2.toDate === 'function') d2 = f2.toDate();
+    else if (f2 && f2.seconds) d2 = new Date(f2.seconds * 1000);
+    else d2 = new Date(f2);
+    return d2.toISOString().slice(0,10) === fd2;
+  }).sort((a,b)=>b.version-a.version);
   const iti2 = matching2[0] || null;
   let bloques2 = [];
   if (iti2) {
