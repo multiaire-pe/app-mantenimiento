@@ -921,6 +921,112 @@ function maToggleRole(email){
   }).then(function(){maRenderAdmin();});
 }
 
+
+
+// ── GESTIÓN DE ACCESOS ────────────────────────────────────────────────────────
+let accessUsers = [];
+
+function openAccessPanel() {
+  if (!maUser || maUser.rol !== 'ADMIN') { 
+    alert('Solo administradores pueden gestionar accesos'); 
+    return; 
+  }
+  const overlay = document.getElementById('access-overlay');
+  if (overlay) { overlay.style.display = 'flex'; loadAccessUsers(); }
+  const menu = document.getElementById('user-menu');
+  if (menu) menu.classList.remove('open');
+}
+
+function closeAccessPanel() {
+  const overlay = document.getElementById('access-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function loadAccessUsers() {
+  const list = document.getElementById('access-users-list');
+  if (!list) return;
+  list.innerHTML = '<div style="text-align:center;color:#8a9ab8;font-size:12px;padding:16px">Cargando...</div>';
+  
+  try {
+    const { getDocs, collection } = window.__fb;
+    const snap = await getDocs(collection(window.__db, 'usuarios'));
+    accessUsers = snap.docs.map(d => d.data()).sort((a,b) => a.email.localeCompare(b.email));
+    renderAccessUsers();
+  } catch(e) {
+    list.innerHTML = '<div style="color:#d63344;font-size:12px;padding:16px">Error cargando usuarios: ' + e.message + '</div>';
+  }
+}
+
+function renderAccessUsers() {
+  var list = document.getElementById('access-users-list');
+  if (!accessUsers.length) {
+    list.innerHTML = '<div style="text-align:center;color:#8a9ab8;font-size:12px;padding:16px">Sin usuarios registrados</div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < accessUsers.length; i++) {
+    var u = accessUsers[i];
+    var isMe = maUser && u.email === maUser.email;
+    var rolColor = u.rol === 'ADMIN' ? '#1B3F8B' : '#6a7a9a';
+    var rolBg = u.rol === 'ADMIN' ? '#e8eef8' : '#f5f8ff';
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f5f8ff;border:1.5px solid #d0daf0;border-radius:8px;margin-bottom:4px">';
+    html += '<div style="flex:1;font-size:13px;color:#1a2540">' + u.email;
+    if (isMe) html += ' <span style="font-size:10px;color:#1B3F8B">(tú)</span>';
+    html += '</div>';
+    html += '<select data-email="' + u.email + '" onchange="changeUserRolByEl(this)" style="padding:4px 8px;border:1px solid #d0daf0;border-radius:6px;font-size:11px;font-weight:700;color:' + rolColor + ';background:' + rolBg + ';outline:none"' + (isMe ? ' disabled' : '') + '>';
+    html += '<option value="USUARIO"' + (u.rol === 'USUARIO' ? ' selected' : '') + '>USUARIO</option>';
+    html += '<option value="ADMIN"' + (u.rol === 'ADMIN' ? ' selected' : '') + '>ADMIN</option>';
+    html += '</select>';
+    if (!isMe) html += '<button data-email="' + u.email + '" onclick="removeUserAccessByEl(this)" style="background:none;border:none;color:#d63344;cursor:pointer;font-size:16px;padding:2px 6px" title="Eliminar">x</button>';
+    html += '</div>';
+  }
+  list.innerHTML = html;
+}
+function changeUserRolByEl(sel) { changeUserRol(sel.getAttribute('data-email'), sel.value); }
+function removeUserAccessByEl(btn) { removeUserAccess(btn.getAttribute('data-email')); }
+
+async function addUserAccess() {
+  const email = document.getElementById('new-user-email')?.value?.trim()?.toLowerCase();
+  const rol = document.getElementById('new-user-rol')?.value || 'USUARIO';
+  if (!email || !email.includes('@')) { alert('Ingresa un email válido'); return; }
+  if (accessUsers.find(u => u.email === email)) { alert('Este usuario ya existe'); return; }
+  
+  try {
+    const { setDoc, doc } = window.__fb;
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol });
+    accessUsers.push({ email, rol });
+    accessUsers.sort((a,b) => a.email.localeCompare(b.email));
+    document.getElementById('new-user-email').value = '';
+    renderAccessUsers();
+    // Clear email cache
+    sessionStorage.removeItem('ma_emails');
+    sessionStorage.removeItem('ma_emails_time');
+  } catch(e) { alert('Error agregando usuario: ' + e.message); }
+}
+
+async function removeUserAccess(email) {
+  if (!confirm('¿Eliminar acceso de ' + email + '?')) return;
+  try {
+    const { deleteDoc, doc } = window.__fb;
+    await deleteDoc(doc(window.__db, 'usuarios', email));
+    accessUsers = accessUsers.filter(u => u.email !== email);
+    renderAccessUsers();
+    sessionStorage.removeItem('ma_emails');
+    sessionStorage.removeItem('ma_emails_time');
+  } catch(e) { alert('Error eliminando usuario: ' + e.message); }
+}
+
+async function changeUserRol(email, newRol) {
+  try {
+    const { setDoc, doc } = window.__fb;
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol });
+    const u = accessUsers.find(u => u.email === email);
+    if (u) u.rol = newRol;
+    sessionStorage.removeItem('ma_emails');
+    sessionStorage.removeItem('ma_emails_time');
+  } catch(e) { alert('Error cambiando rol: ' + e.message); }
+}
+
 </script>
 
 <!-- PANEL DE GESTIÓN DE ACCESOS -->
