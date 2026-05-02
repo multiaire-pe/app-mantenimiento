@@ -606,133 +606,58 @@ function renderModal(fecha, d, iti) {
 
   function bloqueFormHtml(b, i) {
     if (!window.bloquesPersonal[i]) {
-      // Init slots from existing data
-      const slots = [];
       const existing = [b.p1||b.personal1?.id, b.p2||b.personal2?.id, b.p3||b.personal3?.id, b.p4||b.personal4?.id].filter(Boolean);
-      existing.forEach(id => slots.push(id));
-      if (!slots.length) slots.push('');
-      window.bloquesPersonal[i] = slots;
+      window.bloquesPersonal[i] = existing.length ? existing : [''];
     }
     const slots = window.bloquesPersonal[i];
-
-    // Get all assigned IDs in other bloques for warning
     const otherAssigned = {};
     editBloques.forEach((_, j) => {
       if (j === i) return;
       (window.bloquesPersonal[j] || []).forEach(id => { if(id) otherAssigned[id] = j+1; });
     });
 
-    const personalSlotsHtml = slots.map((pid, si) => {
-      // Filter out IDs already in this bloque (except current slot)
+    let personalSlotsHtml = '';
+    slots.forEach((pid, si) => {
       const usedInThis = slots.filter((x,xi) => x && xi !== si);
-      const opts = '<option value="">— Sin asignar —</option>' + maestros.personal
-        .filter(p => p.activo !== 'NO')
-        .map(p => {
-          const inThis = usedInThis.includes(p.id);
-          const inOther = otherAssigned[p.id];
-          const warn = inOther ? ` ⚠ (Bloque ${inOther})` : '';
-          return `<option value="${p.id}" ${inThis?'disabled':''} ${pid===p.id?'selected':''}>${p.nombre} (${p.cargo})${warn}</option>`;
-        }).join('');
-      return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-        <select class="form-select" style="flex:1" onchange="onPersonalChange(${i},${si},this.value)">${opts}</select>
-        ${si > 0 ? `<button onclick="removePersonalSlot(${i},${si})" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;padding:4px">✕</button>` : ''}
-      </div>`;
-    }).join('');
-
-    return `<div class="bloque-form-item" id="bloque-form-${i}">
-      <div class="bloque-form-num">BLOQUE ${i+1} <button class="remove-bloque" onclick="removeBloque(${i})" title="Eliminar bloque">✕</button></div>
-      <div class="form-grid">
-        <div class="form-group">
-          <div class="form-label">Tienda</div>
-          <select class="form-select" id="bf-tienda-${i}">
-            <option value="">Seleccionar...</option>${tiendaOpts}
-          </select>
-        </div>
-        <div class="form-group">
-          <div class="form-label">Grupo / Tipo</div>
-          <select class="form-select" id="bf-grupo-${i}">
-            <option value="">Seleccionar...</option>${grupoOpts}
-          </select>
-        </div>
-        <div class="form-group">
-          <div class="form-label">Hora inicio</div>
-          <input type="time" class="form-input" id="bf-hi-${i}" value="${b.horaInicio||'08:00'}">
-        </div>
-        <div class="form-group">
-          <div class="form-label">Hora fin</div>
-          <input type="time" class="form-input" id="bf-hf-${i}" value="${b.horaFin||'17:30'}">
-        </div>
-        <div class="form-group">
-          <div class="form-label">Estado</div>
-          <select class="form-select" id="bf-estado-${i}">
-            <option value="PROGRAMADO" ${(b.estado||'PROGRAMADO')==='PROGRAMADO'?'selected':''}>PROGRAMADO</option>
-            <option value="EN CURSO" ${b.estado==='EN CURSO'?'selected':''}>EN CURSO</option>
-            <option value="COMPLETADO" ${b.estado==='COMPLETADO'?'selected':''}>COMPLETADO</option>
-            <option value="CANCELADO" ${b.estado==='CANCELADO'?'selected':''}>CANCELADO</option>
-          </select>
-        </div>
-        <div class="form-group full">
-          <div class="form-label">Detalle de trabajo</div>
-          <textarea class="form-textarea" id="bf-detalle-${i}" placeholder="Describe las actividades a realizar...">${b.detalle||''}</textarea>
-        </div>
-      </div>
-      <div class="bloque-sep">Personal asignado</div>
-      <div id="personal-slots-${i}">${personalSlotsHtml}</div>
-      <button onclick="addPersonalSlot(${i})" class="btn btn-sm" style="margin-top:4px">+ Agregar persona</button>
-    </div>`;
-  }
-
-  function onPersonalChange(bloqueIdx, slotIdx, value) {
-    window.bloquesPersonal[bloqueIdx][slotIdx] = value;
-    // Re-render just the form to update warnings
-    const fecha = document.getElementById('modal-fecha').value;
-    const d = new Date(fecha + 'T12:00:00');
-    renderModal(fecha, d, currentIti);
-  }
-
-  function addPersonalSlot(bloqueIdx) {
-    if (!window.bloquesPersonal[bloqueIdx]) window.bloquesPersonal[bloqueIdx] = [];
-    const totalAssigned = maestros.personal.filter(p => p.activo !== 'NO').length;
-    if (window.bloquesPersonal[bloqueIdx].length >= totalAssigned) { toast('No hay más personal disponible', 'err'); return; }
-    window.bloquesPersonal[bloqueIdx].push('');
-    const fecha = document.getElementById('modal-fecha').value;
-    renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
-  }
-
-  function removePersonalSlot(bloqueIdx, slotIdx) {
-    window.bloquesPersonal[bloqueIdx].splice(slotIdx, 1);
-    const fecha = document.getElementById('modal-fecha').value;
-    renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
-  }
-
-  document.getElementById('modal-body').innerHTML = `
-    <div style="margin-bottom:16px">
-      <div class="form-label" style="margin-bottom:5px">Anotaciones generales (opcional)</div>
-      <textarea class="form-textarea" id="obs-generales" placeholder="Indicaciones generales para el día...">${iti?.obsGenerales||''}</textarea>
-    </div>
-    <div class="bloque-sep">Bloques de trabajo</div>
-    <div id="bloques-forms">${editBloques.map((b,i) => bloqueFormHtml(b,i)).join('')}</div>
-    <button class="btn btn-orange" onclick="addBloque()" style="width:100%;margin-top:4px">+ Agregar bloque</button>
-    <input type="hidden" id="modal-fecha" value="${fecha}">
-    <input type="hidden" id="modal-version" value="${version}">
-    <input type="hidden" id="modal-id-iti" value="${idIti}">
-    <input type="hidden" id="modal-dia" value="${diaStr}">`;
-
-  // Set existing values
-  setTimeout(() => {
-    editBloques.forEach((b, i) => {
-      if (b.idTienda) { const sel = document.getElementById(`bf-tienda-${i}`); if(sel) sel.value = b.idTienda; }
-      if (b.idGrupo) { const sel = document.getElementById(`bf-grupo-${i}`); if(sel) sel.value = b.idGrupo; }
+      let opts = '<option value="">— Sin asignar —</option>';
+      maestros.personal.filter(p => p.activo !== 'NO').forEach(p => {
+        const inThis = usedInThis.includes(p.id);
+        const inOther = otherAssigned[p.id];
+        const warn = inOther ? ' ⚠ (Bloque ' + inOther + ')' : '';
+        opts += '<option value="' + p.id + '"' + (inThis?' disabled':'') + (pid===p.id?' selected':'') + '>' + p.nombre + ' (' + p.cargo + ')' + warn + '</option>';
+      });
+      const removeBtn = si > 0 ? '<button onclick="removePersonalSlot(' + i + ',' + si + ')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;padding:4px 6px;line-height:1">✕</button>' : '';
+      personalSlotsHtml += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+        + '<select class="form-select" style="flex:1" onchange="onPersonalChange(' + i + ',' + si + ',this.value)">' + opts + '</select>'
+        + removeBtn + '</div>';
     });
-  }, 50);
 
-  document.getElementById('modal-iti').classList.add('open');
-}
+    const tiendaOpts = maestros.tiendas.map(t => '<option value="' + t.id + '">' + t.tienda + '</option>').join('');
+    const grupoOpts = maestros.grupos.map(g => '<option value="' + g.id + '">' + g.grupo + '</option>').join('');
 
-function onTiendaChange(i) {
-  const sel = document.getElementById(`bf-tienda-${i}`);
-  // No extra action needed, tienda data read on save
-}
+    let html = '<div class="bloque-form-item" id="bloque-form-' + i + '">';
+    html += '<div class="bloque-form-num">BLOQUE ' + (i+1) + ' <button class="remove-bloque" onclick="removeBloque(' + i + ')" title="Eliminar bloque">✕</button></div>';
+    html += '<div class="form-grid">';
+    html += '<div class="form-group"><div class="form-label">Tienda</div><select class="form-select" id="bf-tienda-' + i + '"><option value="">Seleccionar...</option>' + tiendaOpts + '</select></div>';
+    html += '<div class="form-group"><div class="form-label">Grupo / Tipo</div><select class="form-select" id="bf-grupo-' + i + '"><option value="">Seleccionar...</option>' + grupoOpts + '</select></div>';
+    html += '<div class="form-group"><div class="form-label">Hora inicio</div><input type="time" class="form-input" id="bf-hi-' + i + '" value="' + (b.horaInicio||'08:00') + '"></div>';
+    html += '<div class="form-group"><div class="form-label">Hora fin</div><input type="time" class="form-input" id="bf-hf-' + i + '" value="' + (b.horaFin||'17:30') + '"></div>';
+    html += '<div class="form-group"><div class="form-label">Estado</div><select class="form-select" id="bf-estado-' + i + '">';
+    html += '<option value="PROGRAMADO"' + ((b.estado||'PROGRAMADO')==='PROGRAMADO'?' selected':'') + '>PROGRAMADO</option>';
+    html += '<option value="EN CURSO"' + (b.estado==='EN CURSO'?' selected':'') + '>EN CURSO</option>';
+    html += '<option value="COMPLETADO"' + (b.estado==='COMPLETADO'?' selected':'') + '>COMPLETADO</option>';
+    html += '<option value="CANCELADO"' + (b.estado==='CANCELADO'?' selected':'') + '>CANCELADO</option>';
+    html += '</select></div>';
+    html += '<div class="form-group full"><div class="form-label">Detalle de trabajo</div>';
+    html += '<textarea class="form-textarea" id="bf-detalle-' + i + '" placeholder="Describe las actividades...">' + (b.detalle||'') + '</textarea></div>';
+    html += '</div>';
+    html += '<div class="bloque-sep">Personal asignado</div>';
+    html += '<div id="personal-slots-' + i + '">' + personalSlotsHtml + '</div>';
+    html += '<button onclick="addPersonalSlot(' + i + ')" class="btn btn-sm" style="margin-top:6px">+ Agregar persona</button>';
+    html += '</div>';
+    return html;
+  }
+
 
 function addBloque() {
   const i = editBloques.length;
@@ -822,6 +747,35 @@ async function saveItinerario() {
     toast('Error de conexión', 'err');
   }
   document.getElementById('savingInd').classList.remove('show');
+}
+
+
+// ── PERSONAL SLOT MANAGEMENT (global) ────────────────────────────────────────
+function onPersonalChange(bloqueIdx, slotIdx, value) {
+  if (!window.bloquesPersonal) window.bloquesPersonal = {};
+  if (!window.bloquesPersonal[bloqueIdx]) window.bloquesPersonal[bloqueIdx] = [];
+  window.bloquesPersonal[bloqueIdx][slotIdx] = value;
+  const fecha = document.getElementById('modal-fecha').value;
+  renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
+}
+
+function addPersonalSlot(bloqueIdx) {
+  if (!window.bloquesPersonal) window.bloquesPersonal = {};
+  if (!window.bloquesPersonal[bloqueIdx]) window.bloquesPersonal[bloqueIdx] = [];
+  const totalActive = maestros.personal.filter(p => p.activo !== 'NO').length;
+  if (window.bloquesPersonal[bloqueIdx].length >= totalActive) { 
+    toast('No hay más personal disponible', 'err'); return; 
+  }
+  window.bloquesPersonal[bloqueIdx].push('');
+  const fecha = document.getElementById('modal-fecha').value;
+  renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
+}
+
+function removePersonalSlot(bloqueIdx, slotIdx) {
+  if (!window.bloquesPersonal?.[bloqueIdx]) return;
+  window.bloquesPersonal[bloqueIdx].splice(slotIdx, 1);
+  const fecha = document.getElementById('modal-fecha').value;
+  renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
 }
 
 function closeModal() {
