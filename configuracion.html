@@ -749,24 +749,38 @@ async function loadAccessUsers() {
 }
 
 function renderAccessUsers() {
-  const list = document.getElementById('access-users-list');
+  var list = document.getElementById('access-users-list');
   if (!accessUsers.length) {
     list.innerHTML = '<div style="text-align:center;color:#8a9ab8;font-size:12px;padding:16px">Sin usuarios registrados</div>';
     return;
   }
-  list.innerHTML = accessUsers.map((u, i) => {
-    const isMe = u.email === maUser?.email;
-    const rolColor = u.rol === 'ADMIN' ? '#1B3F8B' : '#6a7a9a';
-    const rolBg = u.rol === 'ADMIN' ? '#e8eef8' : '#f5f8ff';
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f5f8ff;border:1.5px solid #d0daf0;border-radius:8px">'
-      + '<div style="flex:1;font-size:13px;color:#1a2540">' + u.email + (isMe ? ' <span style="font-size:10px;color:#1B3F8B">(tú)</span>' : '') + '</div>'
-      + '<select onchange="changeUserRol('' + u.email + '',this.value)" style="padding:4px 8px;border:1px solid #d0daf0;border-radius:6px;font-size:11px;font-weight:700;color:' + rolColor + ';background:' + rolBg + ';outline:none;cursor:pointer"' + (isMe ? ' disabled' : '') + '>'
-      + '<option value="USUARIO"' + (u.rol === 'USUARIO' ? ' selected' : '') + '>USUARIO</option>'
-      + '<option value="ADMIN"' + (u.rol === 'ADMIN' ? ' selected' : '') + '>ADMIN</option>'
-      + '</select>'
-      + (isMe ? '' : '<button onclick="removeUserAccess('' + u.email + '')" style="background:none;border:none;color:#d63344;cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px" title="Eliminar">✕</button>')
-      + '</div>';
-  }).join('');
+  var html = '';
+  for (var i = 0; i < accessUsers.length; i++) {
+    var u = accessUsers[i];
+    var isMe = maUser && u.email === maUser.email;
+    var rolColor = u.rol === 'ADMIN' ? '#1B3F8B' : '#6a7a9a';
+    var rolBg = u.rol === 'ADMIN' ? '#e8eef8' : '#f5f8ff';
+    var emailEsc = u.email.replace(/'/g, "\'");
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f5f8ff;border:1.5px solid #d0daf0;border-radius:8px;margin-bottom:4px">';
+    html += '<div style="flex:1;font-size:13px;color:#1a2540">' + u.email;
+    if (isMe) html += ' <span style="font-size:10px;color:#1B3F8B">(tú)</span>';
+    html += '</div>';
+    html += '<select data-email="' + u.email + '" onchange="changeUserRolByEl(this)" style="padding:4px 8px;border:1px solid #d0daf0;border-radius:6px;font-size:11px;font-weight:700;color:' + rolColor + ';background:' + rolBg + ';outline:none;cursor:pointer"' + (isMe ? ' disabled' : '') + '>';
+    html += '<option value="USUARIO"' + (u.rol === 'USUARIO' ? ' selected' : '') + '>USUARIO</option>';
+    html += '<option value="ADMIN"' + (u.rol === 'ADMIN' ? ' selected' : '') + '>ADMIN</option>';
+    html += '</select>';
+    if (!isMe) html += '<button data-email="' + u.email + '" onclick="removeUserAccessByEl(this)" style="background:none;border:none;color:#d63344;cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px" title="Eliminar">✕</button>';
+    html += '</div>';
+  }
+  list.innerHTML = html;
+}
+
+function changeUserRolByEl(sel) {
+  changeUserRol(sel.getAttribute('data-email'), sel.value);
+}
+
+function removeUserAccessByEl(btn) {
+  removeUserAccess(btn.getAttribute('data-email'));
 }
 
 async function addUserAccess() {
