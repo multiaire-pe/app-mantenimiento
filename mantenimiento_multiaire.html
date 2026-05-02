@@ -275,17 +275,31 @@ option{background:#fff}
 .back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
 </style>
 <script src="firebase-config.js"></script>
-<script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-const _fc = window.__firebaseConfig;
-const _fa = initializeApp(_fc, 'mantenimiento');
-window.__db = getFirestore(_fa);
-window.__auth = getAuth(_fa);
-window.__prov = new GoogleAuthProvider();
-window.__fb = { signInWithPopup, signOut, onAuthStateChanged, collection, doc, getDoc, getDocs, setDoc, writeBatch };
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script>
+  // Initialize Firebase using config from firebase-config.js
+  const _fbApp = firebase.initializeApp(window.__firebaseConfig);
+  window.__db = firebase.firestore();
+  window.__auth = firebase.auth();
+  window.__prov = new firebase.auth.GoogleAuthProvider();
+  window.__fb = {
+    getDocs: (q) => q.get(),
+    getDoc: (r) => r.get(),
+    collection: (db, col) => db.collection(col),
+    doc: (db, col, id) => db.collection(col).doc(id),
+    setDoc: (ref, data) => ref.set(data),
+    deleteDoc: (ref) => ref.delete(),
+    writeBatch: (db) => db.batch(),
+    query: (col, ...args) => col, // simplified
+    where: (field, op, val) => firebase.firestore.Filter ? firebase.firestore.Filter.where(field, op, val) : {field, op, val},
+    signInWithPopup: (auth, prov) => firebase.auth().signInWithPopup(prov),
+    signOut: () => firebase.auth().signOut(),
+    onAuthStateChanged: (auth, cb) => firebase.auth().onAuthStateChanged(cb),
+  };
 </script>
+
 </head>
 <body>
 
@@ -1341,11 +1355,26 @@ var MA_CID='859362309270-23def0uf0j6j70upft0u5gg4csoe97k2.apps.googleusercontent
 var MA_ADM='marchenaangulojoseluis@gmail.com';
 var MA_GAS='https://script.google.com/macros/s/AKfycbwk8ZI3w_g1AL71LCWcEvQBUcyjyZ2MVFRh6pvrxPe0RibUXoZT-uPtCrOpV4FC6VfM/exec';
 var maUser=null,maEmails=null;
+// Firebase auth - initialize directly without GSI
 (function(){
-  var s=document.createElement('script');
-  s.src='https://accounts.google.com/gsi/client';
-  s.async=true;s.defer=true;s.onload=maInit;
-  document.head.appendChild(s);
+  // Wait for Firebase to be ready then init
+  function waitForFirebase() {
+    if (window.__auth && window.__fb) {
+      // Check if user is already signed in
+      window.__fb.onAuthStateChanged(window.__auth, function(user) {
+        if (user && !window._maInitDone) {
+          window._maInitDone = true;
+          maVerify({ email: user.email, name: user.displayName, picture: user.photoURL }, true);
+        } else if (!user && !window._maInitDone) {
+          window._maInitDone = true;
+          maShowLogin();
+        }
+      });
+    } else {
+      setTimeout(waitForFirebase, 50);
+    }
+  }
+  waitForFirebase();
 })();
 function maInit(){
   var saved=sessionStorage.getItem('ma_user');
@@ -1355,12 +1384,23 @@ function maInit(){
 function maShowLogin(){
   var ov=document.getElementById('auth-overlay');
   if(ov){ov.style.display='flex';document.body.style.overflow='hidden';}
-  if(window.google&&google.accounts){
-    google.accounts.id.initialize({client_id:MA_CID,callback:maHandleToken});
-    google.accounts.id.renderButton(document.getElementById('g-btn'),{theme:'outline',size:'large',text:'signin_with',locale:'es',width:300});
+  var btn=document.getElementById('g-btn');
+  if(btn){btn.innerHTML='<button onclick="maFirebaseSignIn()" style="display:flex;align-items:center;gap:10px;padding:10px 20px;border:1.5px solid #d0daf0;border-radius:8px;background:#fff;font-family:IBM Plex Sans,sans-serif;font-size:14px;cursor:pointer;font-weight:500"><img src=\'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg\' width=18>Continuar con Google</button>';}
+}
+
+async function maFirebaseSignIn() {
+  try {
+    const result = await window.__fb.signInWithPopup(window.__auth, window.__prov);
+    const user = result.user;
+    maVerify({ email: user.email, name: user.displayName, picture: user.photoURL }, true);
+  } catch(e) {
+    var errEl=document.getElementById('auth-err');
+    if(errEl){errEl.textContent='Error al iniciar sesión: '+e.message;errEl.classList.add('show');}
+  }
+});
   }
 }
-function maHandleToken(resp){maVerify(maParseJwt(resp.credential),true);}
+function maHandleToken(resp){ /* handled by Firebase */ }
 function maVerify(payload,save){
   var email=(payload.email||'').toLowerCase();
   var errEl=document.getElementById('auth-err');
@@ -1424,7 +1464,7 @@ function maRenderPill(){
     +'</div>';
   pill.style.display='flex';
 }
-function maSignOut(){sessionStorage.removeItem('ma_user');maUser=null;location.reload();}
+function maSignOut(){sessionStorage.removeItem('ma_user');maUser=null;if(window.__fb&&window.__auth)window.__fb.signOut(window.__auth);location.reload();}
 function maParseJwt(t){var b=t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return JSON.parse(atob(b));}
 function maOpenAdmin(){
   var menu=document.getElementById('user-menu');
