@@ -494,9 +494,7 @@ function maGetEmails() {
   }).catch(function() { maEmails = { emails: [MA_ADM.toLowerCase()], roles: {} }; return maEmails; });
 }
 
-function maLogAccess(email) {
-  fetch(MA_GAS, { method: 'POST', body: JSON.stringify({ action: 'logAccess', email: email, app: document.title }) }).catch(function() {});
-}
+function maLogAccess(email) { /* Firebase */ }
 
 function maRenderPill() {
   var pill = document.getElementById('user-pill');
@@ -704,8 +702,16 @@ async function saveTareas() {
     });
   });
   try {
-    const r = await fetch(GAS, { method: 'POST', body: JSON.stringify({ action: 'saveTareas', rows }) });
-    const d = await r.json();
+    const {writeBatch:_wbT,doc:_docT,collection:_colT,getDocs:_dgT}=window.__fb;
+    const _bT=_wbT(window.__db);
+    const _exT=await _dgT(_colT(window.__db,'tareas_config'));
+    _exT.docs.forEach(dd=>_bT.delete(dd.ref));
+    Object.keys(tareasData).forEach(tipo=>{
+      const ts=tareasData[tipo]||[];
+      _bT.set(_docT(window.__db,'tareas_config',tipo),{tipo,tareas:ts.map(t=>t.nombre),minutos:ts.map(t=>t.minutos||5)});
+    });
+    await _bT.commit();
+    const d = { ok: true };
     if (d.ok) { changed = false; toast('Cambios guardados ✓', 'ok'); }
     else toast('Error guardando', 'err');
   } catch(e) { toast('Error de conexión', 'err'); }
@@ -1017,9 +1023,11 @@ async function confirmImport() {
     if (pendingImport.files['inventario.csv']) {
       addLog('📦 Importando inventario...', 'info');
       const rows = parseCSV(pendingImport.files['inventario.csv']);
-      await fetch(GAS, { method:'POST', body: JSON.stringify({
-        action: 'importInventario', rows, mode
-      })});
+      const {writeBatch:_wb2,doc:_doc2,collection:_col2,getDocs:_dg2}=window.__fb;
+      const _b2=_wb2(window.__db);
+      if(mode==='replace'){const _ex=await _dg2(_col2(window.__db,'inventario'));_ex.docs.forEach(d=>_b2.delete(d.ref));}
+      rows.forEach(r=>{if(r.EQ_ID)_b2.set(_doc2(window.__db,'inventario',r.EQ_ID),{eq_id:r.EQ_ID,sede:r.SEDE||'',cliente:r.CLIENTE||'RIPLEY',tipo:r.TIPO||'',nombre:r.NOMBRE||'',area:r.AREA||'',marca:r.MARCA||'',modelo:r.MODELO||'',serie:r.SERIE||''});});
+      await _b2.commit();
       addLog('✓ Inventario importado (' + rows.length + ' equipos)', 'ok');
     }
 
@@ -1028,7 +1036,12 @@ async function confirmImport() {
       addLog('📋 Importando tareas...', 'info');
       const rows = parseCSV(pendingImport.files['tareas_config.csv']);
       const tareasRows = rows.map(r => ({ tipo: r.TIPO, tarea: r.TAREA, minutos: +r.MINUTOS||5, orden: +r.ORDEN||1 }));
-      await fetch(GAS, { method:'POST', body: JSON.stringify({ action:'saveTareas', rows: tareasRows }) });
+      const {writeBatch:_wb1,doc:_doc1,collection:_col1,getDocs:_dg1}=window.__fb;
+      const _b1=_wb1(window.__db);
+      const _ex1=await _dg1(_col1(window.__db,'tareas_config'));
+      _ex1.docs.forEach(d=>_b1.delete(d.ref));
+      tareasRows.forEach(r=>{_b1.set(_doc1(window.__db,'tareas_config',r.tipo),{tipo:r.tipo,tareas:[r.tarea],minutos:[r.minutos||5]});});
+      await _b1.commit();
       addLog('✓ Tareas importadas (' + rows.length + ' tareas)', 'ok');
     }
 
@@ -1039,12 +1052,18 @@ async function confirmImport() {
       const users = rows.map(r => ({ email: r.EMAIL, rol: r.ROL || 'USUARIO' }));
       if (mode === 'merge') {
         // Merge: add new users only
-        const existing = await fetch(GAS + '?action=getEmails').then(r=>r.json());
+        const {getDocs:_dg3,collection:_col3}=window.__fb;
+        const _uSnap=await _dg3(_col3(window.__db,'usuarios'));
+        const _uData=_uSnap.docs.map(d=>d.data());
+        const existing={emails:_uData.map(u=>u.email),roles:Object.fromEntries(_uData.map(u=>[u.email,u.rol||'USUARIO']))};
         const existingEmails = existing.emails || [];
         const newUsers = users.filter(u => !existingEmails.includes(u.email));
         if (newUsers.length > 0) {
           const allUsers = existingEmails.map(e => ({ email: e, rol: existing.roles[e] || 'USUARIO' }));
-          await fetch(GAS, { method:'POST', body: JSON.stringify({ action:'saveUsers', users: [...allUsers, ...newUsers] }) });
+          const {writeBatch:_wb4,doc:_doc4,collection:_col4,getDocs:_dg4}=window.__fb;
+          const _b4=_wb4(window.__db);
+          [...allUsers,...newUsers].forEach(u=>{_b4.set(_doc4(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:u.rol||'USUARIO'});});
+          await _b4.commit();
         }
         addLog('✓ Usuarios fusionados (' + newUsers.length + ' nuevos)', 'ok');
       } else {
@@ -1060,7 +1079,11 @@ async function confirmImport() {
     if (pendingImport.files['mantenimiento.csv']) {
       addLog('🔧 Importando mantenimiento...', 'info');
       const rows = parseCSV(pendingImport.files['mantenimiento.csv']);
-      await fetch(GAS, { method:'POST', body: JSON.stringify({ action:'importMaint', rows, mode }) });
+      const {writeBatch:_wb5,doc:_doc5,collection:_col5,getDocs:_dg5}=window.__fb;
+      const _b5=_wb5(window.__db);
+      if(mode==='replace'){const _ex5=await _dg5(_col5(window.__db,'mantenimiento'));_ex5.docs.forEach(d=>_b5.delete(d.ref));}
+      rows.forEach(r=>{if(r.CLAVE)_b5.set(_doc5(window.__db,'mantenimiento',r.CLAVE),{clave:r.CLAVE,seleccionados:r.SELECCIONADOS||{},tareaStatus:r.TAREA_STATUS||{}});});
+      await _b5.commit();
       addLog('✓ Mantenimiento importado (' + rows.length + ' registros)', 'ok');
     }
 
@@ -1289,6 +1312,7 @@ async function saveMaestros() {
 }
 
 </script>
+
 
 <!-- PANEL DE GESTIÓN DE ACCESOS -->
 <div class="overlay" id="access-overlay" onclick="if(event.target===this)closeAccessPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto">

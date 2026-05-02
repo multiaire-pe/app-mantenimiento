@@ -816,8 +816,7 @@ function maGetEmails(){
     return maEmails;
   }).catch(function(){maEmails={emails:[MA_ADM.toLowerCase()],roles:{}};maEmails.roles[MA_ADM.toLowerCase()]='ADMIN';return maEmails;});
 }
-function maLogAccess(email){
-  fetch(MA_GAS,{method:'POST',body:JSON.stringify({action:'logAccess',email:email,app:document.title})}).catch(function(){});
+function maLogAccess(email){ /* Firebase - no audit log needed */ })}).catch(function(){});
 }
 function maRenderPill(){
   var pill=document.getElementById('user-pill');
@@ -1028,6 +1027,7 @@ async function changeUserRol(email, newRol) {
 }
 
 </script>
+
 
 <!-- PANEL DE GESTIÓN DE ACCESOS -->
 <div class="overlay" id="access-overlay" onclick="if(event.target===this)closeAccessPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto">

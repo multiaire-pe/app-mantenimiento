@@ -570,8 +570,14 @@ async function loadPeriodo() {
       const { getDoc, doc } = window.__fb;
       const snap = await getDoc(doc(window.__db, 'mantenimiento', key));
       const d = snap.exists ? snap.data() : {};
-      seleccionados = typeof d.seleccionados === 'string' ? JSON.parse(d.seleccionados||'{}') : (d.seleccionados||{});
-      tareaStatus = typeof d.tareaStatus === 'string' ? JSON.parse(d.tareaStatus||'{}') : (d.tareaStatus||{});
+      // Handle both string and object formats
+      function parseField(val) {
+        if (!val) return {};
+        if (typeof val === 'string') { try { return JSON.parse(val); } catch(e) { return {}; } }
+        return val; // already an object
+      }
+      seleccionados = parseField(d.seleccionados);
+      tareaStatus = parseField(d.tareaStatus);
       sessionStorage.setItem(cacheKey, JSON.stringify({ seleccionados, tareaStatus }));
     } catch(e) {
         seleccionados = {}; tareaStatus = {};
@@ -793,12 +799,9 @@ function scheduleSave() {
 async function doSave() {
   const key = currentSede + '|' + currentPeriodo + '|' + currentAnio;
   try {
-    await fetch(GAS, {
-      method: 'POST',
-      body: JSON.stringify({
-        action: 'saveMaint',
-        key, seleccionados, tareaStatus
-      })
+    const { setDoc, doc } = window.__fb;
+    await setDoc(doc(window.__db, 'mantenimiento', key), {
+      clave: key, seleccionados, tareaStatus, updatedAt: new Date().toISOString()
     });
     toast('Guardado ✓', 'ok');
   } catch(e) {
@@ -1439,8 +1442,7 @@ function maGetEmails(){
     return maEmails;
   }).catch(function(){maEmails={emails:[MA_ADM.toLowerCase()],roles:{}};maEmails.roles[MA_ADM.toLowerCase()]='ADMIN';return maEmails;});
 }
-function maLogAccess(email){
-  Promise.resolve().catch(function(){});
+function maLogAccess(email){ /* Firebase */ });
 }
 function maRenderPill(){
   var pill=document.getElementById('user-pill');
@@ -1651,6 +1653,7 @@ async function changeUserRol(email, newRol) {
 }
 
 </script>
+
 
 <!-- PANEL DE GESTIÓN DE ACCESOS -->
 <div class="overlay" id="access-overlay" onclick="if(event.target===this)closeAccessPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto">
