@@ -1422,6 +1422,7 @@ function maVerify(payload,save){
     var ov=document.getElementById('auth-overlay');
     if(ov){ov.style.display='none';document.body.style.overflow='';}
     maRenderPill();maLogAccess(email);
+    Promise.all([loadTareas(), loadInventario()]); // Load after auth
   }).catch(function(){
     if(ldEl)ldEl.classList.remove('show');
     if(errEl){errEl.textContent='Error verificando. Intenta de nuevo.';errEl.classList.add('show');}

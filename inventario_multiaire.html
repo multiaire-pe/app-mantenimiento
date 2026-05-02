@@ -775,8 +775,6 @@ async function maFirebaseSignIn() {
     var errEl=document.getElementById('auth-err');
     if(errEl){errEl.textContent='Error al iniciar sesión: '+e.message;errEl.classList.add('show');}
   }
-});
-  }
 }
 function maHandleToken(resp){ /* handled by Firebase */ }
 function maVerify(payload,save){
@@ -800,6 +798,7 @@ function maVerify(payload,save){
     var ov=document.getElementById('auth-overlay');
     if(ov){ov.style.display='none';document.body.style.overflow='';}
     maRenderPill();maLogAccess(email);
+    sync(); // Load data after auth
   }).catch(function(){
     if(ldEl)ldEl.classList.remove('show');
     if(errEl){errEl.textContent='Error verificando. Intenta de nuevo.';errEl.classList.add('show');}
