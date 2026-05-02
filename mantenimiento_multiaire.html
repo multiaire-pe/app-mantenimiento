@@ -274,11 +274,12 @@ option{background:#fff}
 .back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:20px;white-space:nowrap;transition:all .15s}
 .back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
 </style>
+<script src="firebase-config.js"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-const _fc = { apiKey:"AIzaSyB4evOa_eqi7GQ5B8jK_-hXZMPWnKGinEQ", authDomain:"multiaire-fee43.firebaseapp.com", projectId:"multiaire-fee43", storageBucket:"multiaire-fee43.firebasestorage.app", messagingSenderId:"607794460192", appId:"1:607794460192:web:20967d0905703d0f43ae45" };
+const _fc = window.__firebaseConfig;
 const _fa = initializeApp(_fc, 'mantenimiento');
 window.__db = getFirestore(_fa);
 window.__auth = getAuth(_fa);
