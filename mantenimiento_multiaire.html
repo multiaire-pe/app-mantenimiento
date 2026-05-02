@@ -1249,14 +1249,16 @@ function exportPDF() {
   </div>
 </div>
 
-<scr'+'ipt>window.onload=()=>{ setTimeout(()=>window.print(),400); }</scr'+'ipt>
 </body></html>`;
 
-  // Use blob URL to ensure proper HTML rendering with scripts
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const w = window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  const w = window.open('', '_blank');
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  // Call print after the content is fully loaded
+  w.onload = () => { w.focus(); w.print(); };
+  // Fallback in case onload already fired
+  setTimeout(() => { try { w.focus(); w.print(); } catch(e) {} }, 800);
 }
 
 
