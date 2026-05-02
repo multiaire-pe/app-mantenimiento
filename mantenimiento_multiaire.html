@@ -995,6 +995,22 @@ function renderDashboard() {
   // ── 3. Por equipo individual (sorted by pct asc)
   const eqSorted = [...sel].sort((a,b)=>getPct(a)-getPct(b));
 
+  // ── 4. Top pendientes: ordenado por minutos pendientes reales (desc)
+  function getMinsPendientes(eq) {
+    const tareas = TAREAS[eq.tipo] || [];
+    const mins = MINUTOS_TAREA[eq.tipo] || [];
+    const statusMap = tareaStatus[eq.eq_id] || {};
+    let pendiente = 0;
+    tareas.forEach((_, i) => {
+      if(statusMap[i] !== true) pendiente += (mins[i] || 10);
+    });
+    return pendiente;
+  }
+  const topPendientes = [...sel]
+    .filter(e => getPct(e) < 100)
+    .sort((a,b) => getMinsPendientes(b) - getMinsPendientes(a))
+    .slice(0, 5);
+
   // counts
   const g=sel.filter(e=>getPct(e)===100).length;
   const y=sel.filter(e=>{const p=getPct(e);return p>0&&p<100}).length;
@@ -1062,12 +1078,14 @@ function renderDashboard() {
       <div class="dash-card">
         <h3>Top Pendientes (mayor peso)</h3>
         <div class="bar-list">
-          ${eqSorted.slice(0,5).filter(e=>getPct(e)<100).map(eq=>{
+          ${topPendientes.map(eq=>{
             const pct=getPct(eq);
             const col=pctColor(pct);
+            const minsPend=getMinsPendientes(eq);
             return `<div class="bar-item">
               <div class="bar-item-header">
                 <span class="bar-item-name" style="font-size:11px">${eq.nombre}</span>
+                <span style="font-family:var(--mono);font-size:10px;color:var(--muted2);margin-left:4px">${minsPend}min</span>
                 <span class="bar-item-pct" style="color:var(--${col})">${pct}%</span>
               </div>
               <div class="bar-track"><div class="bar-fill ${col}" style="width:${pct}%"></div></div>
