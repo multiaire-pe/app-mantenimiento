@@ -1397,8 +1397,6 @@ async function maFirebaseSignIn() {
     var errEl=document.getElementById('auth-err');
     if(errEl){errEl.textContent='Error al iniciar sesión: '+e.message;errEl.classList.add('show');}
   }
-});
-  }
 }
 function maHandleToken(resp){ /* handled by Firebase */ }
 function maVerify(payload,save){
