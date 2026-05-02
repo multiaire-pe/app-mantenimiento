@@ -930,35 +930,7 @@ function exportWhatsApp() {
   }).catch(() => {
     // Fallback: open in new window for easy copy
     const w = window.open('', '_blank', 'width=600,height=700');
-    w.document.write('<html><body style="font-family:monospace;white-space:pre-wrap;padding:20px;background:#111;color:#eee;font-size:13px">' + fullTxt.replace(/</g,'&lt;') + '
-<!-- PANEL DE GESTIÓN DE ACCESOS -->
-<div class="overlay" id="access-overlay" onclick="if(event.target===this)closeAccessPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto">
-  <div style="background:#fff;border:1.5px solid #d0daf0;border-radius:14px;width:560px;max-width:100%;overflow:hidden;box-shadow:0 8px 32px rgba(27,63,139,.14)">
-    <div style="padding:18px 22px;border-bottom:1.5px solid #d0daf0;background:#e8eef8;display:flex;align-items:center;gap:10px">
-      <h2 style="font-size:14px;font-weight:700;color:#1B3F8B;flex:1">⚙️ Gestión de accesos</h2>
-      <button onclick="closeAccessPanel()" style="background:none;border:1px solid #d0daf0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">✕</button>
-    </div>
-    <div style="padding:20px 22px">
-      <p style="font-size:12px;color:#6a7a9a;margin-bottom:16px">Administra los usuarios que pueden acceder al sistema. Solo admins pueden ver este panel.</p>
-      
-      <!-- Add user -->
-      <div style="display:flex;gap:8px;margin-bottom:16px">
-        <input type="email" id="new-user-email" placeholder="correo@ejemplo.com" style="flex:1;padding:8px 12px;border:1.5px solid #d0daf0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
-        <select id="new-user-rol" style="padding:8px 12px;border:1.5px solid #d0daf0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff">
-          <option value="USUARIO">USUARIO</option>
-          <option value="ADMIN">ADMIN</option>
-        </select>
-        <button onclick="addUserAccess()" style="padding:8px 16px;background:#1B3F8B;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">+ Agregar</button>
-      </div>
-
-      <!-- Users list -->
-      <div id="access-users-list" style="display:flex;flex-direction:column;gap:6px;max-height:350px;overflow-y:auto">
-        <div style="text-align:center;color:#8a9ab8;font-size:12px;padding:16px">Cargando...</div>
-      </div>
-    </div>
-  </div>
-</div>
-</body></html>');
+    w.document.write('<html><body style="font-family:monospace;white-space:pre-wrap;padding:20px;background:#111;color:#eee;font-size:13px">' + fullTxt.replace(/</g,'&lt;') + '</body></html>');
     w.document.close();
   });
 }
@@ -1573,5 +1545,33 @@ function maToggleRole(email){
 }
 
 </script>
+
+<!-- PANEL DE GESTIÓN DE ACCESOS -->
+<div class="overlay" id="access-overlay" onclick="if(event.target===this)closeAccessPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto">
+  <div style="background:#fff;border:1.5px solid #d0daf0;border-radius:14px;width:560px;max-width:100%;overflow:hidden;box-shadow:0 8px 32px rgba(27,63,139,.14)">
+    <div style="padding:18px 22px;border-bottom:1.5px solid #d0daf0;background:#e8eef8;display:flex;align-items:center;gap:10px">
+      <h2 style="font-size:14px;font-weight:700;color:#1B3F8B;flex:1">⚙️ Gestión de accesos</h2>
+      <button onclick="closeAccessPanel()" style="background:none;border:1px solid #d0daf0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">✕</button>
+    </div>
+    <div style="padding:20px 22px">
+      <p style="font-size:12px;color:#6a7a9a;margin-bottom:16px">Administra los usuarios que pueden acceder al sistema. Solo admins pueden ver este panel.</p>
+      
+      <!-- Add user -->
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <input type="email" id="new-user-email" placeholder="correo@ejemplo.com" style="flex:1;padding:8px 12px;border:1.5px solid #d0daf0;border-radius:8px;font-size:13px;font-family:inherit;outline:none">
+        <select id="new-user-rol" style="padding:8px 12px;border:1.5px solid #d0daf0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#fff">
+          <option value="USUARIO">USUARIO</option>
+          <option value="ADMIN">ADMIN</option>
+        </select>
+        <button onclick="addUserAccess()" style="padding:8px 16px;background:#1B3F8B;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">+ Agregar</button>
+      </div>
+
+      <!-- Users list -->
+      <div id="access-users-list" style="display:flex;flex-direction:column;gap:6px;max-height:350px;overflow-y:auto">
+        <div style="text-align:center;color:#8a9ab8;font-size:12px;padding:16px">Cargando...</div>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>

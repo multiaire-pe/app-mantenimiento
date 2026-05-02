@@ -423,10 +423,11 @@ function maRenderPill() {
   try { n = decodeURIComponent(escape(n)); } catch(e) {}
   const init = n.split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase();
   const isAdmin = maUser.rol === 'ADMIN';
+  const adminItem = isAdmin ? '<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-divider"></div>' : '';
   pill.innerHTML = (maUser.picture ? `<img class="user-avatar" src="${maUser.picture}">` : `<div class="user-avatar-init">${init}</div>`)
     + `<span class="user-name">${n}</span>`
     + `<div class="user-menu" id="user-menu">`
-    + `<div class="user-menu-header">${maUser.email}</div>`
+    + `<div class="user-menu-header">${maUser.email}</div>` + adminItem
     + `<div class="user-menu-divider"></div>`
     + `<button class="user-menu-item danger" onclick="maSignOut()">→ Cerrar sesión</button>`
     + `</div>`;
