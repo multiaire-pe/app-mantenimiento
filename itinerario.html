@@ -826,6 +826,7 @@ function renderModal(fecha, d, iti) {
 }
 
 function addBloque() {
+  captureEditBloques();
   const i = editBloques.length;
   editBloques.push(newBloque());
   if (!window.bloquesPersonal) window.bloquesPersonal = {};
@@ -837,6 +838,7 @@ function addBloque() {
 
 function removeBloque(i) {
   if (editBloques.length <= 1) { toast('Debe haber al menos un bloque', 'err'); return; }
+  captureEditBloques();
   editBloques.splice(i, 1);
   // Re-index personal slots
   if (window.bloquesPersonal) {
@@ -939,10 +941,30 @@ async function saveItinerario() {
 
 
 // ── PERSONAL SLOT MANAGEMENT (global) ────────────────────────────────────────
+
+// Captura el estado actual del DOM en editBloques antes de re-renderizar
+function captureEditBloques() {
+  editBloques.forEach((b, i) => {
+    const tiendaSel = document.getElementById('bf-tienda-' + i);
+    const grupoSel  = document.getElementById('bf-grupo-' + i);
+    const hiEl      = document.getElementById('bf-hi-' + i);
+    const hfEl      = document.getElementById('bf-hf-' + i);
+    const estadoSel = document.getElementById('bf-estado-' + i);
+    const detalleEl = document.getElementById('bf-detalle-' + i);
+    if (tiendaSel) { b.idTienda = tiendaSel.value; b.tienda = tiendaSel.options[tiendaSel.selectedIndex]?.text || ''; }
+    if (grupoSel)  { b.idGrupo  = grupoSel.value;  b.grupo  = grupoSel.options[grupoSel.selectedIndex]?.text || ''; }
+    if (hiEl)      b.horaInicio = hiEl.value;
+    if (hfEl)      b.horaFin    = hfEl.value;
+    if (estadoSel) b.estado     = estadoSel.value;
+    if (detalleEl) b.detalle    = detalleEl.value;
+  });
+}
+
 function onPersonalChange(bloqueIdx, slotIdx, value) {
   if (!window.bloquesPersonal) window.bloquesPersonal = {};
   if (!window.bloquesPersonal[bloqueIdx]) window.bloquesPersonal[bloqueIdx] = [];
   window.bloquesPersonal[bloqueIdx][slotIdx] = value;
+  captureEditBloques();
   const fecha = document.getElementById('modal-fecha').value;
   renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
 }
@@ -954,6 +976,7 @@ function addPersonalSlot(bloqueIdx) {
   if (window.bloquesPersonal[bloqueIdx].length >= totalActive) { 
     toast('No hay más personal disponible', 'err'); return; 
   }
+  captureEditBloques();
   window.bloquesPersonal[bloqueIdx].push('');
   const fecha = document.getElementById('modal-fecha').value;
   renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
@@ -961,6 +984,7 @@ function addPersonalSlot(bloqueIdx) {
 
 function removePersonalSlot(bloqueIdx, slotIdx) {
   if (!window.bloquesPersonal?.[bloqueIdx]) return;
+  captureEditBloques();
   window.bloquesPersonal[bloqueIdx].splice(slotIdx, 1);
   const fecha = document.getElementById('modal-fecha').value;
   renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
