@@ -319,9 +319,7 @@ function pf() {
   fs('fEquipo', u('equipo'), 'Todos los tipos');
   const formTipo = document.getElementById('f_equipo');
   if (formTipo) {
-    const tiposData = u('equipo');
-    const tiposConf = Object.keys(TAREAS || {});
-    const todosTipos = [...new Set([...tiposData, ...tiposConf])].sort();
+    const todosTipos = u('equipo');
     formTipo.innerHTML = '<option value="">Seleccionar tipo...</option>';
     todosTipos.forEach(t => {
       const o = document.createElement('option');
@@ -379,7 +377,35 @@ function usb(){const b=document.getElementById('selbar');b.classList.toggle('on'
 function us(){document.getElementById('sTotal').textContent=data.length;document.getElementById('sSedes').textContent=new Set(data.map(r=>r.sede)).size;document.getElementById('sTipos').textContent=new Set(data.map(r=>r.equipo)).size;}
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
-function openNew(){editRow=null;document.getElementById('mtitle').textContent='Nuevo equipo';document.getElementById('sbtn').textContent='Guardar en Sheets';['sede','equipo','desc','area','marca','modelo','serie'].forEach(f=>document.getElementById('f_'+f).value='');document.getElementById('mov').classList.add('open');}
+async function openNew(){
+  editRow=null;
+  document.getElementById('mtitle').textContent='Nuevo equipo';
+  document.getElementById('sbtn').textContent='Guardar en Sheets';
+  ['sede','equipo','desc','area','marca','modelo','serie'].forEach(f=>{
+    const el = document.getElementById('f_'+f);
+    if(el) el.value='';
+  });
+  // Load tipos from TAREAS_CONFIG to populate tipo selector
+  const formTipo = document.getElementById('f_equipo');
+  if (formTipo) {
+    try {
+      const r = await fetch(GAS + '?action=getTareas');
+      const d = await r.json();
+      const tiposConf = Object.keys(d.tareas || {}).sort();
+      const tiposData = [...new Set(data.map(x=>x.equipo).filter(Boolean))].sort();
+      const todosTipos = [...new Set([...tiposData, ...tiposConf])].sort();
+      formTipo.innerHTML = '<option value="">Seleccionar tipo...</option>';
+      todosTipos.forEach(t => {
+        const o = document.createElement('option');
+        o.value = t; o.textContent = t;
+        formTipo.appendChild(o);
+      });
+    } catch(e) {
+      // fallback: just use existing tipos from data
+    }
+  }
+  document.getElementById('mov').classList.add('open');
+}
 function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;document.getElementById('f_equipo').value=r.equipo;document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('mov').classList.add('open');}
 function cm(){document.getElementById('mov').classList.remove('open');}
 
