@@ -536,7 +536,10 @@ async function maVerify(payload,save){
       // name siempre viene del payload de Google, no de Firestore
       name: payload.name || fsData.nombre || fsData.name || email,
     };
-    if(maUser.email===MA_ADM.toLowerCase())maUser.rol='SUPER_ADMIN';
+    if(maUser.email===MA_ADM.toLowerCase()){
+      maUser.rol='SUPER_ADMIN';
+      if(snap.data().rol!=='SUPER_ADMIN'){try{db.collection('usuarios').doc(email).set({email:email,rol:'SUPER_ADMIN',apps:[]},{merge:true});}catch(e){}}
+    }
     if(!PERMS[maUser.rol])maUser.rol='TECNICO';
     if(save)sessionStorage.setItem('ma_user',JSON.stringify(maUser));
     if(ldEl)ldEl.classList.remove('show');
@@ -594,22 +597,66 @@ function renderAccessPanel(){
   const list=document.getElementById('access-list');
   if(!accessUsers.length){list.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Sin usuarios</div>';return;}
   const ROLES=['TECNICO','SUPERVISOR','ADMIN','SUPER_ADMIN'];
+  const ALL_APPS=[
+    {id:'inventario',label:'\u{1F4E6} Inv'},
+    {id:'mantenimiento',label:'\u{1F527} Mant'},
+    {id:'itinerario',label:'\u{1F5D3} Iti'},
+    {id:'insumos',label:'\u{1F9F0} Ins'}
+  ];
   const iAmSuperAdmin=maUser&&maUser.rol==='SUPER_ADMIN';
   list.innerHTML=accessUsers.map(u=>{
     const isMe=u.email===maUser.email;
     const rol=u.rol||'TECNICO';
     const isSuperTarget=rol==='SUPER_ADMIN';
+    const isAdminOrSuper=rol==='ADMIN'||rol==='SUPER_ADMIN';
     const canEdit=!isMe&&(isSuperTarget?iAmSuperAdmin:true);
     const canDelete=!isMe&&(isSuperTarget?iAmSuperAdmin:true);
     const opts=ROLES.map(r=>`<option value="${r}"${rol===r?' selected':''}>${r.replace('_',' ')}</option>`).join('');
-    return`<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
-      <div style="flex:1;font-family:var(--mono);font-size:11px">${u.email}${isMe?' <span style="font-size:9px;color:var(--blue);font-weight:700">(tú)</span>':''}${isSuperTarget&&!isMe?' <span style="font-size:9px;color:var(--orange-dark)">★</span>':''}</div>
-      <select style="width:140px;font-size:11px;padding:4px 8px;${canEdit?'':'opacity:.6;cursor:not-allowed'}" ${canEdit?'':' disabled'} onchange="changeUserRol('${u.email}',this.value)">
-        ${opts}
-      </select>
-      ${canDelete?`<button class="btn btn-sm btn-red" onclick="deleteUser('${u.email}')">🗑</button>`:'<span style="width:34px"></span>'}
+    const userApps=u.apps||[];
+    let appsHtml;
+    if(isAdminOrSuper){
+      appsHtml=`<div style="font-size:10px;color:var(--orange-dark);padding:6px 0 2px;font-style:italic">\u2713 Acceso a todas las apps por rol</div>`;
+    }else{
+      appsHtml=`<div style="display:flex;gap:4px;flex-wrap:wrap;padding:6px 0 2px">`+ALL_APPS.map(app=>{
+        const checked=userApps.indexOf(app.id)!==-1;
+        const dis=!canEdit;
+        return `<label style="display:flex;align-items:center;gap:3px;font-size:10px;padding:2px 6px;border-radius:10px;border:1px solid ${checked?'var(--blue)':'var(--border)'};background:${checked?'#e8eef8':'#fff'};color:${checked?'var(--blue)':'var(--muted)'};cursor:${dis?'not-allowed':'pointer'};${dis?'opacity:.5':''}">
+          <input type="checkbox" data-email="${u.email}" data-app="${app.id}"${checked?' checked':''}${dis?' disabled':''} onchange="toggleAppForUser(this)" style="margin:0;cursor:inherit">${app.label}</label>`;
+      }).join('')+`</div>`;
+    }
+    const meMark=isMe?` <span style="font-size:9px;color:var(--blue);font-weight:700">(t\u00FA)</span>`:'';
+    const superMark=(isSuperTarget&&!isMe)?` <span style="font-size:9px;color:var(--orange-dark);font-weight:700">\u2605</span>`:'';
+    return`<div style="padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;font-family:var(--mono);font-size:11px">${u.email}${meMark}${superMark}</div>
+        <select style="width:140px;font-size:11px;padding:4px 8px;${canEdit?'':'opacity:.6;cursor:not-allowed'}" ${canEdit?'':'disabled'} onchange="changeUserRol('${u.email}',this.value)">
+          ${opts}
+        </select>
+        ${canDelete?`<button class="btn btn-sm btn-red" onclick="deleteUser('${u.email}')">\uD83D\uDDD1</button>`:'<span style="width:34px"></span>'}
+      </div>
+      ${appsHtml}
     </div>`;
   }).join('');
+}
+
+async function toggleAppForUser(cb){
+  const email=cb.getAttribute('data-email');
+  const app=cb.getAttribute('data-app');
+  const u=accessUsers.find(x=>x.email===email);
+  if(!u)return;
+  if(!u.apps)u.apps=[];
+  if(cb.checked){
+    if(u.apps.indexOf(app)===-1)u.apps.push(app);
+  }else{
+    u.apps=u.apps.filter(a=>a!==app);
+  }
+  try{
+    await db.collection('usuarios').doc(email).update({apps:u.apps});
+    sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');
+  }catch(e){
+    alert('Error: '+e.message);
+    cb.checked=!cb.checked;
+  }
 }
 async function changeUserRol(email,rol){
   try{

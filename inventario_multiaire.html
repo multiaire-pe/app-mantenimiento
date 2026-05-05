@@ -791,7 +791,13 @@ function maVerify(payload,save){
       sessionStorage.removeItem('ma_user');return;
     }
     var rol=roles[email]||'USUARIO';
-    if(email===MA_ADM.toLowerCase())rol='SUPER_ADMIN';
+    if(email===MA_ADM.toLowerCase()){
+      rol='SUPER_ADMIN';
+      // Auto-persistir SUPER_ADMIN en Firestore para el creador
+      if(roles[email]!=='SUPER_ADMIN'&&window.__db){
+        try{window.__db.collection('usuarios').doc(email).set({email:email,rol:'SUPER_ADMIN',apps:[]},{merge:true});sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');}catch(e){}
+      }
+    }
     var appsMap=data.apps||{};
     if(['ADMIN','SUPER_ADMIN'].indexOf(rol)===-1){
       var userApps=appsMap[email]||[];
@@ -1058,10 +1064,17 @@ function maRenderAccessPanel() {
   var list = document.getElementById('ma-access-list');
   if (!maAccessUsers.length) { list.innerHTML = '<div style="text-align:center;color:#8a9ab8;font-size:12px;padding:16px">Sin usuarios</div>'; return; }
   var iAmSuperAdmin = maUser && maUser.rol === 'SUPER_ADMIN';
+  var ALL_APPS = [
+    {id:'inventario',    label:'\u{1F4E6} Inv'},
+    {id:'mantenimiento', label:'\u{1F527} Mant'},
+    {id:'itinerario',    label:'\u{1F5D3} Iti'},
+    {id:'insumos',       label:'\u{1F9F0} Ins'}
+  ];
   list.innerHTML = maAccessUsers.map(function(u) {
     var isMe = maUser && u.email === maUser.email;
     var rol = u.rol || 'TECNICO';
     var isSuperTarget = rol === 'SUPER_ADMIN';
+    var isAdminOrSuper = rol === 'ADMIN' || rol === 'SUPER_ADMIN';
     var canEdit = !isMe && (isSuperTarget ? iAmSuperAdmin : true);
     var canDelete = !isMe && (isSuperTarget ? iAmSuperAdmin : true);
     var rColor = MA_ROL_COLORS[rol] || '#6a7a9a';
@@ -1070,12 +1083,45 @@ function maRenderAccessPanel() {
     var selStyle = 'padding:4px 8px;border:1px solid #d0daf0;border-radius:6px;font-size:11px;font-weight:700;color:' + rColor + ';background:' + rBg + ';outline:none;' + (canEdit ? 'cursor:pointer' : 'cursor:not-allowed;opacity:.6');
     var meMark = isMe ? ' <span style="font-size:9px;color:#1B3F8B;font-weight:700">(t\u00FA)</span>' : '';
     var superMark = (isSuperTarget && !isMe) ? ' <span style="font-size:9px;color:#d4621a;font-weight:700">\u2605</span>' : '';
-    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #e8eef8;font-size:12px">'
+    // Apps row (solo para roles que necesitan asignación específica)
+    var userApps = u.apps || [];
+    var appsHtml;
+    if (isAdminOrSuper) {
+      appsHtml = '<div style="font-size:10px;color:#d4621a;padding:6px 0 2px;font-style:italic">\u2713 Acceso a todas las apps por rol</div>';
+    } else {
+      appsHtml = '<div style="display:flex;gap:4px;flex-wrap:wrap;padding:6px 0 2px">' + ALL_APPS.map(function(app) {
+        var checked = userApps.indexOf(app.id) !== -1;
+        var dis = !canEdit;
+        return '<label style="display:flex;align-items:center;gap:3px;font-size:10px;padding:2px 6px;border-radius:10px;border:1px solid ' + (checked?'#1B3F8B':'#d0daf0') + ';background:' + (checked?'#e8eef8':'#fff') + ';color:' + (checked?'#1B3F8B':'#8a9ab8') + ';cursor:' + (dis?'not-allowed':'pointer') + ';' + (dis?'opacity:.5':'') + '">'
+          + '<input type="checkbox" data-email="' + u.email + '" data-app="' + app.id + '"' + (checked?' checked':'') + (dis?' disabled':'') + ' onchange="maToggleApp(this)" style="margin:0;cursor:inherit">'
+          + app.label + '</label>';
+      }).join('') + '</div>';
+    }
+    return '<div style="padding:10px 0;border-bottom:1px solid #e8eef8;font-size:12px">'
+      + '<div style="display:flex;align-items:center;gap:10px">'
       + '<div style="flex:1;font-family:monospace;font-size:11px;color:#1a2540">' + u.email + meMark + superMark + '</div>'
       + '<select data-email="' + u.email + '" onchange="maChangeRol(this.dataset.email,this.value)" ' + (canEdit ? '' : 'disabled ') + 'style="' + selStyle + '">' + opts + '</select>'
       + (canDelete ? '<button data-email="' + u.email + '" onclick="maDeleteUser(this.dataset.email)" style="background:none;border:1px solid #f0c0c8;color:#d63344;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px" title="Eliminar">\uD83D\uDDD1</button>' : '<span style="width:34px"></span>')
+      + '</div>'
+      + appsHtml
       + '</div>';
   }).join('');
+}
+
+function maToggleApp(cb) {
+  var email = cb.getAttribute('data-email');
+  var app = cb.getAttribute('data-app');
+  var u = maAccessUsers.find(function(x){ return x.email === email; });
+  if (!u) return;
+  if (!u.apps) u.apps = [];
+  if (cb.checked) {
+    if (u.apps.indexOf(app) === -1) u.apps.push(app);
+  } else {
+    u.apps = u.apps.filter(function(a){ return a !== app; });
+  }
+  window.__db.collection('usuarios').doc(email).update({apps: u.apps}).then(function() {
+    sessionStorage.removeItem('ma_emails'); sessionStorage.removeItem('ma_emails_time');
+  }).catch(function(e) { alert('Error: ' + e.message); cb.checked = !cb.checked; });
 }
 function maChangeRol(email, rol) {
   window.__db.collection('usuarios').doc(email).update({rol: rol}).then(function() {
