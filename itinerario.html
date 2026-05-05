@@ -791,14 +791,17 @@ function renderModal(fecha, d, iti) {
         + removeBtn + '</div>';
     });
 
-    const tiendaOpts = maestros.tiendas.map(t => '<option value="' + t.id + '">' + t.tienda + '</option>').join('');
-    const grupoOpts = maestros.grupos.map(g => '<option value="' + g.id + '">' + g.grupo + '</option>').join('');
-
     let html = '<div class="bloque-form-item" id="bloque-form-' + i + '">';
     html += '<div class="bloque-form-num">BLOQUE ' + (i+1) + ' <button class="remove-bloque" onclick="removeBloque(' + i + ')" title="Eliminar bloque">✕</button></div>';
     html += '<div class="form-grid">';
-    html += '<div class="form-group"><div class="form-label">Tienda</div><select class="form-select" id="bf-tienda-' + i + '"><option value="">Seleccionar...</option>' + tiendaOpts + '</select></div>';
-    html += '<div class="form-group"><div class="form-label">Grupo / Tipo</div><select class="form-select" id="bf-grupo-' + i + '"><option value="">Seleccionar...</option>' + grupoOpts + '</select></div>';
+    // Tienda options con selected
+    const tOpts = '<option value="">' + (b.idTienda ? '' : 'Seleccionar...') + '</option>'
+      + maestros.tiendas.map(t => '<option value="' + t.id + '"' + (t.id===b.idTienda?' selected':'') + '>' + t.tienda + '</option>').join('');
+    html += '<div class="form-group"><div class="form-label">Tienda</div><select class="form-select" id="bf-tienda-' + i + '">' + tOpts + '</select></div>';
+    // Grupo options con selected
+    const gOpts = '<option value="">' + (b.idGrupo ? '' : 'Seleccionar...') + '</option>'
+      + maestros.grupos.map(g => '<option value="' + g.id + '"' + (g.id===b.idGrupo?' selected':'') + '>' + g.grupo + '</option>').join('');
+    html += '<div class="form-group"><div class="form-label">Grupo / Tipo</div><select class="form-select" id="bf-grupo-' + i + '">' + gOpts + '</select></div>';
     html += '<div class="form-group"><div class="form-label">Hora inicio</div><input type="time" class="form-input" id="bf-hi-' + i + '" value="' + (b.horaInicio||'08:00') + '"></div>';
     html += '<div class="form-group"><div class="form-label">Hora fin</div><input type="time" class="form-input" id="bf-hf-' + i + '" value="' + (b.horaFin||'17:30') + '"></div>';
     html += '<div class="form-group"><div class="form-label">Estado</div><select class="form-select" id="bf-estado-' + i + '">';
@@ -831,13 +834,7 @@ function renderModal(fecha, d, iti) {
     + '<input type="hidden" id="modal-id-iti" value="' + idIti + '">'
     + '<input type="hidden" id="modal-dia" value="' + diaStr + '">';
 
-  // Set existing values after render
-  setTimeout(() => {
-    editBloques.forEach((b, i) => {
-      if (b.idTienda) { const sel = document.getElementById('bf-tienda-' + i); if(sel) sel.value = b.idTienda; }
-      if (b.idGrupo)  { const sel = document.getElementById('bf-grupo-' + i);  if(sel) sel.value = b.idGrupo; }
-    });
-  }, 50);
+  // tienda/grupo se setean directo con selected en el HTML generado
 
   const saveBtnEl = document.querySelector('#modal-iti .modal-foot .btn-primary');
   if (saveBtnEl) { saveBtnEl.disabled = false; saveBtnEl.textContent = '💾 Guardar itinerario'; }
@@ -961,16 +958,30 @@ async function saveItinerario() {
 
 // ── PERSONAL SLOT MANAGEMENT (global) ────────────────────────────────────────
 function captureEditBloques() {
-  editBloques = editBloques.map((b, i) => ({
-    ...b,
-    tienda:     (document.getElementById('bf-tienda-'  + i) || {}).value || b.tienda,
-    grupo:      (document.getElementById('bf-grupo-'   + i) || {}).value || b.grupo,
-    horaInicio: (document.getElementById('bf-hi-'      + i) || {}).value || b.horaInicio,
-    horaFin:    (document.getElementById('bf-hf-'      + i) || {}).value || b.horaFin,
-    estado:     (document.getElementById('bf-estado-'  + i) || {}).value || b.estado,
-    detalle:    (document.getElementById('bf-detalle-' + i) || {}).value || b.detalle,
-    personal:   window.bloquesPersonal ? (window.bloquesPersonal[i] || b.personal || []) : (b.personal || []),
-  }));
+  editBloques = editBloques.map((b, i) => {
+    const tiendaSel  = document.getElementById('bf-tienda-'  + i);
+    const grupoSel   = document.getElementById('bf-grupo-'   + i);
+    const estadoSel  = document.getElementById('bf-estado-'  + i);
+    const hiEl       = document.getElementById('bf-hi-'      + i);
+    const hfEl       = document.getElementById('bf-hf-'      + i);
+    const detEl      = document.getElementById('bf-detalle-' + i);
+    const idTienda   = tiendaSel ? tiendaSel.value : b.idTienda;
+    const tiendaTxt  = tiendaSel && tiendaSel.selectedIndex >= 0 ? (tiendaSel.options[tiendaSel.selectedIndex] || {}).text || b.tienda : b.tienda;
+    const idGrupo    = grupoSel  ? grupoSel.value  : b.idGrupo;
+    const grupoTxt   = grupoSel  && grupoSel.selectedIndex  >= 0 ? (grupoSel.options[grupoSel.selectedIndex]   || {}).text || b.grupo  : b.grupo;
+    return {
+      ...b,
+      idTienda:   idTienda   || b.idTienda,
+      tienda:     tiendaTxt  || b.tienda,
+      idGrupo:    idGrupo    || b.idGrupo,
+      grupo:      grupoTxt   || b.grupo,
+      horaInicio: hiEl      ? hiEl.value      : b.horaInicio,
+      horaFin:    hfEl      ? hfEl.value      : b.horaFin,
+      estado:     estadoSel ? estadoSel.value : b.estado,
+      detalle:    detEl     ? detEl.value     : b.detalle,
+      personal:   window.bloquesPersonal ? (window.bloquesPersonal[i] || b.personal || []) : (b.personal || []),
+    };
+  });
 }
 
 function onPersonalChange(bloqueIdx, slotIdx, value) {
