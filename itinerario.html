@@ -845,6 +845,7 @@ function renderModal(fecha, d, iti) {
 }
 
 function addBloque() {
+  captureEditBloques();
   const i = editBloques.length;
   editBloques.push(newBloque());
   if (!window.bloquesPersonal) window.bloquesPersonal = {};
@@ -856,6 +857,7 @@ function addBloque() {
 
 function removeBloque(i) {
   if (editBloques.length <= 1) { toast('Debe haber al menos un bloque', 'err'); return; }
+  captureEditBloques();
   editBloques.splice(i, 1);
   // Re-index personal slots
   if (window.bloquesPersonal) {
@@ -958,15 +960,31 @@ async function saveItinerario() {
 
 
 // ── PERSONAL SLOT MANAGEMENT (global) ────────────────────────────────────────
+function captureEditBloques() {
+  editBloques = editBloques.map((b, i) => ({
+    ...b,
+    tienda:     (document.getElementById('bf-tienda-'  + i) || {}).value || b.tienda,
+    grupo:      (document.getElementById('bf-grupo-'   + i) || {}).value || b.grupo,
+    horaInicio: (document.getElementById('bf-hi-'      + i) || {}).value || b.horaInicio,
+    horaFin:    (document.getElementById('bf-hf-'      + i) || {}).value || b.horaFin,
+    estado:     (document.getElementById('bf-estado-'  + i) || {}).value || b.estado,
+    detalle:    (document.getElementById('bf-detalle-' + i) || {}).value || b.detalle,
+    personal:   window.bloquesPersonal ? (window.bloquesPersonal[i] || b.personal || []) : (b.personal || []),
+  }));
+}
+
 function onPersonalChange(bloqueIdx, slotIdx, value) {
+  captureEditBloques();
   if (!window.bloquesPersonal) window.bloquesPersonal = {};
   if (!window.bloquesPersonal[bloqueIdx]) window.bloquesPersonal[bloqueIdx] = [];
   window.bloquesPersonal[bloqueIdx][slotIdx] = value;
+  editBloques[bloqueIdx].personal = window.bloquesPersonal[bloqueIdx];
   const fecha = document.getElementById('modal-fecha').value;
   renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
 }
 
 function addPersonalSlot(bloqueIdx) {
+  captureEditBloques();
   if (!window.bloquesPersonal) window.bloquesPersonal = {};
   if (!window.bloquesPersonal[bloqueIdx]) window.bloquesPersonal[bloqueIdx] = [];
   const totalActive = maestros.personal.filter(p => p.activo !== 'NO').length;
@@ -974,13 +992,16 @@ function addPersonalSlot(bloqueIdx) {
     toast('No hay más personal disponible', 'err'); return; 
   }
   window.bloquesPersonal[bloqueIdx].push('');
+  editBloques[bloqueIdx].personal = window.bloquesPersonal[bloqueIdx];
   const fecha = document.getElementById('modal-fecha').value;
   renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
 }
 
 function removePersonalSlot(bloqueIdx, slotIdx) {
+  captureEditBloques();
   if (!window.bloquesPersonal?.[bloqueIdx]) return;
   window.bloquesPersonal[bloqueIdx].splice(slotIdx, 1);
+  editBloques[bloqueIdx].personal = window.bloquesPersonal[bloqueIdx];
   const fecha = document.getElementById('modal-fecha').value;
   renderModal(fecha, new Date(fecha + 'T12:00:00'), currentIti);
 }
