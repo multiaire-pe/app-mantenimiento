@@ -1672,14 +1672,18 @@ function onQRScanned(code) {
 }
 
 function closeScanner() {
-  if (html5QrScanner) {
-    html5QrScanner.stop().then(() => {
-      html5QrScanner.clear();
-      html5QrScanner = null;
-    }).catch(() => { html5QrScanner = null; });
-  }
   const el = document.getElementById('modal-scanner');
   if(el){ el.style.display = 'none'; el.classList.remove('open'); }
+  if (html5QrScanner) {
+    try {
+      html5QrScanner.stop().then(() => {
+        html5QrScanner.clear();
+        html5QrScanner = null;
+      }).catch(() => { html5QrScanner = null; });
+    } catch(e) {
+      html5QrScanner = null;
+    }
+  }
 }
 </script>
 </body>
