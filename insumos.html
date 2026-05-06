@@ -1372,7 +1372,13 @@ function switchTab(tab,btn){
   document.getElementById('tab-'+tab).classList.add('active');
   btn.classList.add('active');
 }
-function closeModal(id){document.getElementById(id).classList.remove('open');}
+function closeModal(id){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.remove('open');
+  el.style.display = 'none';
+  setTimeout(() => { el.style.display = ''; }, 50);
+}
 function toast(msg,type){
   const el=document.getElementById('toast');el.textContent=msg;
   el.className='toast show '+(type||'');
