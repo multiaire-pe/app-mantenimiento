@@ -7,6 +7,8 @@
 <title>MultiAire – Insumos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 :root{
@@ -254,7 +256,14 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <div class="stat-card"><div class="stat-val red" id="st-out">—</div><div class="stat-lbl">Sin stock</div></div>
       </div>
       <div id="alert-banners"></div>
-      <div style="margin-bottom:10px"><input type="search" id="q-search" placeholder="Buscar por nombre, código, marca..." oninput="applyFilters()" style="max-width:340px;font-size:12px"></div>
+      <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="search" id="q-search" placeholder="Buscar por nombre, código, marca..." oninput="applyFilters()" style="max-width:340px;font-size:12px">
+        <div id="qr-selection-bar" style="display:none;align-items:center;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
+          <span id="qr-selected-count" style="font-size:11px;color:var(--blue);font-weight:600">0 seleccionados</span>
+          <button class="btn btn-sm btn-primary" onclick="exportSelectedQRZip()">⬇ Exportar etiquetas ZIP</button>
+          <button class="btn btn-sm" onclick="clearQRSelection()">✕ Limpiar</button>
+        </div>
+      </div>
       <div class="table-wrap" id="catalogo-table"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
     </div>
 
@@ -822,7 +831,7 @@ function renderCatalogo(){
   const wrap=document.getElementById('catalogo-table');
   if(!filteredCatalogo.length){wrap.innerHTML='<div class="empty"><div class="empty-icon">📭</div>Sin ítems</div>';return;}
   const isEd=can('editarItem'),isReset=can('eliminarMov');
-  wrap.innerHTML=`<table><thead><tr><th>Código</th><th>Nombre</th><th>Cat.</th><th>Marca/Modelo</th><th>Unidad</th><th>Stock total</th>${isEd?'<th></th>':''}</tr></thead><tbody>
+  wrap.innerHTML=`<table><thead><tr><th style='width:32px'><input type='checkbox' id='chk-all' onchange='toggleAllQR(this.checked)' title='Seleccionar todos'></th><th>Código</th><th>Nombre</th><th>Cat.</th><th>Marca/Modelo</th><th>Unidad</th><th>Stock total</th>${isEd?'<th></th>':''}</tr></thead><tbody>
   ${filteredCatalogo.map(item=>{
     const n=sNivel(item),t=totalS(item.id);
     const pC=n==='ok'?'stock-ok':n==='low'?'stock-low':'stock-out';
@@ -837,7 +846,7 @@ function renderCatalogo(){
       ${can('eliminarItem')?`<button class="btn btn-sm btn-red" onclick="deleteInsumo('${item.id}','${item.nombre.replace(/'/g,"\\'")}')">🗑</button>`:''}
       ${isReset?`<button class="btn btn-sm" style="color:var(--muted2)" title="Resetear stock a 0" onclick="resetStockItem('${item.id}','${item.nombre.replace(/'/g,"\\'")}')">⟳</button>`:''}
     </div></td>`:'';
-    return `<tr><td class="td-code">${item.codigo||'—'}</td><td class="td-name">${item.nombre}</td>
+    return `<tr><td style='text-align:center'><input type='checkbox' class='qr-chk' data-id='${item.id}' onchange='updateQRSelection()'></td><td class="td-code">${item.codigo||'—'}</td><td class="td-name">${item.nombre}</td>
     <td><span class="td-cat ${cC}">${cL}</span></td>
     <td style="color:var(--muted2);font-size:11px">${item.marca||'—'}${item.modelo?' · '+item.modelo:''}</td>
     <td style="font-family:var(--mono);font-size:11px">${item.unidad||'UND'}</td>
@@ -1411,6 +1420,115 @@ document.querySelectorAll('.modal-overlay').forEach(o=>{
 </div>
 
 <script>
+// ── QR SELECTION & ZIP EXPORT ─────────────────────────────
+let selectedQRIds = new Set();
+
+function toggleAllQR(checked) {
+  document.querySelectorAll('.qr-chk').forEach(chk => {
+    chk.checked = checked;
+    if (checked) selectedQRIds.add(chk.dataset.id);
+    else selectedQRIds.delete(chk.dataset.id);
+  });
+  updateQRSelectionBar();
+}
+
+function updateQRSelection() {
+  selectedQRIds.clear();
+  document.querySelectorAll('.qr-chk:checked').forEach(chk => selectedQRIds.add(chk.dataset.id));
+  updateQRSelectionBar();
+}
+
+function updateQRSelectionBar() {
+  const bar = document.getElementById('qr-selection-bar');
+  const count = document.getElementById('qr-selected-count');
+  if (selectedQRIds.size > 0) {
+    bar.style.display = 'flex';
+    count.textContent = selectedQRIds.size + ' seleccionado' + (selectedQRIds.size > 1 ? 's' : '');
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function clearQRSelection() {
+  selectedQRIds.clear();
+  document.querySelectorAll('.qr-chk').forEach(c => c.checked = false);
+  const chkAll = document.getElementById('chk-all');
+  if (chkAll) chkAll.checked = false;
+  updateQRSelectionBar();
+}
+
+async function generateQRCanvas(itemId) {
+  const item = catalogoData.find(x => x.id === itemId);
+  if (!item) return null;
+
+  // Canvas 319x240px = 40x30mm a 203dpi
+  const canvas = document.createElement('canvas');
+  canvas.width = 319; canvas.height = 240;
+  const ctx = canvas.getContext('2d');
+
+  // Fondo blanco
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 319, 240);
+
+  // Generar QR en canvas temporal
+  const qrDiv = document.createElement('div');
+  document.body.appendChild(qrDiv);
+  await new Promise(resolve => {
+    new QRCode(qrDiv, {
+      text: itemId,
+      width: 180,
+      height: 180,
+      correctLevel: QRCode.CorrectLevel.H,
+      colorDark: '#000000',
+      colorLight: '#ffffff'
+    });
+    setTimeout(resolve, 300);
+  });
+  const qrEl = qrDiv.querySelector('canvas') || qrDiv.querySelector('img');
+  if (qrEl) ctx.drawImage(qrEl, 70, 8, 180, 180);
+  document.body.removeChild(qrDiv);
+
+  // ID / código
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(item.codigo || itemId, 159, 203);
+
+  // Nombre — ajustar si es largo
+  ctx.font = 'bold 16px sans-serif';
+  const nombre = item.nombre.toUpperCase();
+  const maxW = 300;
+  let fontSize = 16;
+  while (ctx.measureText(nombre).width > maxW && fontSize > 9) {
+    fontSize--;
+    ctx.font = `bold ${fontSize}px sans-serif`;
+  }
+  ctx.fillText(nombre, 159, 225);
+
+  return canvas;
+}
+
+async function exportSelectedQRZip() {
+  if (selectedQRIds.size === 0) { toast('Selecciona al menos un ítem', 'warn'); return; }
+  toast('Generando etiquetas...', '');
+  const zip = new JSZip();
+  for (const id of selectedQRIds) {
+    const item = catalogoData.find(x => x.id === id);
+    if (!item) continue;
+    const canvas = await generateQRCanvas(id);
+    if (!canvas) continue;
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png', 1.0));
+    const fileName = `${(item.codigo || id).replace(/[^a-zA-Z0-9]/g,'_')}_${item.nombre.replace(/[^a-zA-Z0-9]/g,'_')}.png`;
+    zip.file(fileName, blob);
+  }
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(zipBlob);
+  link.download = `etiquetas_multiaire_${new Date().toISOString().slice(0,10)}.zip`;
+  link.click();
+  toast('✓ ZIP descargado con ' + selectedQRIds.size + ' etiquetas', 'ok');
+}
+
 // ── QR SYSTEM ──────────────────────────────────────────────
 let currentQRItemId = null;
 let html5QrScanner = null;
@@ -1433,6 +1551,16 @@ function openQRModal(itemId) {
 }
 
 async function exportQRLabel() {
+  const item = catalogoData.find(x => x.id === currentQRItemId);
+  if (!item) return;
+  const canvas = await generateQRCanvas(currentQRItemId);
+  if (!canvas) return;
+  const link = document.createElement('a');
+  link.download = `QR_${(item.codigo||currentQRItemId).replace(/\s/g,'_')}_${item.nombre.replace(/\s/g,'_')}.png`;
+  link.href = canvas.toDataURL('image/png', 1.0);
+  link.click();
+}
+async function exportQRLabel_OLD() {
   const item = catalogoData.find(x => x.id === currentQRItemId);
   if (!item) return;
   const canvas = document.createElement('canvas');
