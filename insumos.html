@@ -1388,7 +1388,7 @@ document.querySelectorAll('.modal-overlay').forEach(o=>{
   <div class="modal" style="max-width:400px">
     <div class="modal-header">
       <div class="modal-title">▣ Código QR del ítem</div>
-      <button type="button" onclick="closeModal('modal-qr')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation">✕</button>
+      <div ontouchend="closeModal('modal-qr')" onclick="closeModal('modal-qr')" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
     </div>
     <div class="modal-body">
       <div class="modal-qr-wrap">
@@ -1411,7 +1411,7 @@ document.querySelectorAll('.modal-overlay').forEach(o=>{
   <div class="modal" style="max-width:440px">
     <div class="modal-header">
       <div class="modal-title">📷 Escanear QR</div>
-      <button type="button" onclick="closeScanner()" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation">✕</button>
+      <div ontouchend="closeScanner()" onclick="closeScanner()" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
     </div>
     <div class="modal-body">
       <div class="scanner-modal-body">
