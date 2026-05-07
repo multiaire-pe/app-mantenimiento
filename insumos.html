@@ -875,7 +875,12 @@ function buildSidebar(){
   if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('BAJA')" style="color:var(--red)">⚠️ Dar de baja</button>`;
   if(can('transferencia')===1)  h+=`<button class="btn btn-block" onclick="openModalTransferencia()">🔄 Transferencia</button>`;
   if(can('entrada')===1)        h+=`<button class="btn btn-block" onclick="openModalRango()">📊 Actualizar nivel</button>`;
-  if(maUser&&maUser.rol==='SUPER_ADMIN') h+=`<button class="btn btn-block" style="color:var(--muted2);font-size:11px" onclick="cargarDatosPrueba()">🧪 Cargar datos prueba</button>`;
+  if(maUser&&maUser.rol==='SUPER_ADMIN'){
+    h+=`<div style="height:1px;background:var(--border);margin:4px 0"></div>`;
+    h+=`<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:2px 0">Dev tools</div>`;
+    h+=`<button class="btn btn-block" style="color:var(--muted2);font-size:11px" onclick="cargarDatosPrueba()">🧪 Cargar datos prueba</button>`;
+    h+=`<button class="btn btn-block" style="color:var(--red);font-size:11px;border-color:var(--red-border)" onclick="resetearBaseDatos()">🗑 Resetear BD</button>`;
+  }
   document.getElementById('sidebar-actions').innerHTML=h;
   if(can('paquetes')) document.getElementById('btn-nuevo-paquete')?.style&&(document.getElementById('btn-nuevo-paquete').style.display='inline-flex');
 }
@@ -2291,40 +2296,79 @@ async function exportSelectedQRZip() {
   toast('✓ ZIP descargado con ' + selectedQRIds.size + ' etiquetas', 'ok');
 }
 
-// ── DATOS DE PRUEBA ───────────────────────────────────────────
+// ── DATOS DE PRUEBA Y RESET ───────────────────────────────────
 async function cargarDatosPrueba() {
-  if (!confirm('¿Cargar datos de prueba? Esto creará ítems e instancias en Firebase.')) return;
+  if (!confirm('¿Cargar datos de prueba?\nSe crearán ítems de catálogo e instancias físicas en Firebase.')) return;
+  toast('Cargando datos...', '');
   try {
-    // Crear ítems en catálogo
+    const ts = new Date().toISOString();
+    // Catálogo
     const items = [
-      { id: 'HERR-ESC', nombre: 'ESCALERA', categoria: 'HERRAMIENTA', unidad: 'UND', tipoCantidad: 'UNIDAD', stockMin: 0 },
-      { id: 'HERR-MRT', nombre: 'MARTILLO', categoria: 'HERRAMIENTA', unidad: 'UND', tipoCantidad: 'UNIDAD', stockMin: 0 },
-      { id: 'INSU-REF', nombre: 'REFRIGERANTE R410A', categoria: 'INSUMO', unidad: 'BOTELLA', tipoCantidad: 'RANGO', stockMin: 0 },
-      { id: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', categoria: 'INSUMO', unidad: 'LITRO', tipoCantidad: 'RANGO', stockMin: 0 },
+      { id: 'HERR-ESC6', nombre: 'ESCALERA 6 PASOS', categoria: 'HERRAMIENTA', unidad: 'UND', tipoCantidad: 'UNIDAD', codigo: 'ESC6', stockMin: 1 },
+      { id: 'HERR-ESC8', nombre: 'ESCALERA 8 PASOS', categoria: 'HERRAMIENTA', unidad: 'UND', tipoCantidad: 'UNIDAD', codigo: 'ESC8', stockMin: 1 },
+      { id: 'HERR-MRT', nombre: 'MARTILLO', categoria: 'HERRAMIENTA', unidad: 'UND', tipoCantidad: 'UNIDAD', codigo: 'MRT', stockMin: 2 },
+      { id: 'HERR-DES', nombre: 'DESARMADOR SET', categoria: 'HERRAMIENTA', unidad: 'SET', tipoCantidad: 'UNIDAD', codigo: 'DES', stockMin: 1 },
+      { id: 'INSU-REF', nombre: 'REFRIGERANTE R410A', categoria: 'INSUMO', unidad: 'BOTELLA', tipoCantidad: 'RANGO', codigo: 'REF', stockMin: 0 },
+      { id: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', categoria: 'INSUMO', unidad: 'LITRO', tipoCantidad: 'RANGO', codigo: 'ACE', stockMin: 0 },
     ];
     for (const item of items) {
-      await db.collection('insumos_catalogo').doc(item.id).set({...item, creadoEn: new Date().toISOString(), creadoPor: maUser.email});
+      await db.collection('insumos_catalogo').doc(item.id).set({...item, creadoEn: ts, creadoPor: maUser.email});
     }
 
-    // Crear instancias
+    // Instancias físicas
     const instancias = [
-      { id: 'ESC-001', itemId: 'HERR-ESC', nombre: 'ESCALERA', sede: 'OFICINA', estado: 'DISPONIBLE' },
-      { id: 'ESC-002', itemId: 'HERR-ESC', nombre: 'ESCALERA', sede: 'JOCKEY PLAZA', estado: 'EN_USO' },
-      { id: 'ESC-003', itemId: 'HERR-ESC', nombre: 'ESCALERA', sede: 'MIRAFLORES', estado: 'DISPONIBLE' },
+      // Escaleras 6 pasos
+      { id: 'ESC6-001', itemId: 'HERR-ESC6', nombre: 'ESCALERA 6 PASOS', sede: 'OFICINA', estado: 'DISPONIBLE' },
+      { id: 'ESC6-002', itemId: 'HERR-ESC6', nombre: 'ESCALERA 6 PASOS', sede: 'JOCKEY PLAZA', estado: 'EN_USO' },
+      { id: 'ESC6-003', itemId: 'HERR-ESC6', nombre: 'ESCALERA 6 PASOS', sede: 'MIRAFLORES', estado: 'DISPONIBLE' },
+      // Escaleras 8 pasos
+      { id: 'ESC8-001', itemId: 'HERR-ESC8', nombre: 'ESCALERA 8 PASOS', sede: 'OFICINA', estado: 'DISPONIBLE' },
+      { id: 'ESC8-002', itemId: 'HERR-ESC8', nombre: 'ESCALERA 8 PASOS', sede: 'SANTA ANITA', estado: 'MANTENIMIENTO', notas: 'Peldaño roto' },
+      // Martillos
       { id: 'MRT-001', itemId: 'HERR-MRT', nombre: 'MARTILLO', sede: 'OFICINA', estado: 'DISPONIBLE' },
-      { id: 'MRT-002', itemId: 'HERR-MRT', nombre: 'MARTILLO', sede: 'SANTA ANITA', estado: 'DISPONIBLE' },
+      { id: 'MRT-002', itemId: 'HERR-MRT', nombre: 'MARTILLO', sede: 'JOCKEY PLAZA', estado: 'DISPONIBLE' },
+      { id: 'MRT-003', itemId: 'HERR-MRT', nombre: 'MARTILLO', sede: 'MIRAFLORES', estado: 'DETERIORADO', notas: 'Mango partido' },
+      // Desarmadores
+      { id: 'DES-001', itemId: 'HERR-DES', nombre: 'DESARMADOR SET', sede: 'OFICINA', estado: 'DISPONIBLE' },
+      { id: 'DES-002', itemId: 'HERR-DES', nombre: 'DESARMADOR SET', sede: 'SANTA ANITA', estado: 'DISPONIBLE' },
+      // Refrigerantes
       { id: 'REF-001', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'OFICINA', estado: 'DISPONIBLE', nivel: 100 },
       { id: 'REF-002', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'JOCKEY PLAZA', estado: 'DISPONIBLE', nivel: 50 },
       { id: 'REF-003', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'MIRAFLORES', estado: 'DISPONIBLE', nivel: 25 },
+      { id: 'REF-004', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'SANTA ANITA', estado: 'DISPONIBLE', nivel: 75 },
+      // Aceites
       { id: 'ACE-001', itemId: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', sede: 'OFICINA', estado: 'DISPONIBLE', nivel: 75 },
       { id: 'ACE-002', itemId: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', sede: 'SANTA ANITA', estado: 'DISPONIBLE', nivel: 5 },
     ];
     for (const inst of instancias) {
-      await db.collection('insumos_instancias').doc(inst.id).set({...inst, creadoEn: new Date().toISOString(), creadoPor: maUser.email});
+      await db.collection('insumos_instancias').doc(inst.id).set({...inst, creadoEn: ts, creadoPor: maUser.email});
     }
-
-    toast('✓ Datos de prueba cargados', 'ok');
+    toast(`✓ ${items.length} tipos y ${instancias.length} instancias cargadas`, 'ok');
     await loadAll();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+}
+
+async function resetearBaseDatos() {
+  if (!confirm('⚠️ RESETEAR BASE DE DATOS\n\nEsto eliminará PERMANENTEMENTE:\n• Todo el catálogo de ítems\n• Todas las instancias\n• Todos los movimientos\n\n¿Estás seguro?')) return;
+  if (!confirm('Segunda confirmación — ¿seguro que quieres borrar TODO?')) return;
+  toast('Reseteando...', '');
+  try {
+    // Eliminar catálogo
+    const catSnap = await db.collection('insumos_catalogo').get();
+    for (const doc of catSnap.docs) await doc.ref.delete();
+    // Eliminar instancias
+    const instSnap = await db.collection('insumos_instancias').get();
+    for (const doc of instSnap.docs) await doc.ref.delete();
+    // Eliminar movimientos
+    const movSnap = await db.collection('insumos_movimientos').get();
+    for (const doc of movSnap.docs) await doc.ref.delete();
+    // Eliminar stock legacy
+    const stockSnap = await db.collection('insumos_stock').get();
+    for (const doc of stockSnap.docs) await doc.ref.delete();
+    // Limpiar memoria
+    catalogoData = []; instanciasData = []; movimientosData = []; stockData = {};
+    toast('✓ Base de datos reseteada', 'ok');
+    renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
 }
 
