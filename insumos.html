@@ -239,6 +239,21 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .alert-yellow{background:var(--yellow-bg);border:1px solid var(--yellow-border)}
 .alert-red{background:var(--red-bg);border:1px solid var(--red-border)}
 .tip-row{display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.pkg-card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .15s}
+.pkg-card:hover{box-shadow:var(--shadow)}
+.pkg-card.activo{border-left:4px solid var(--green)}
+.pkg-card.inactivo{border-left:4px solid var(--muted);opacity:.75}
+.pkg-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.pkg-id{font-family:var(--mono);font-size:11px;color:var(--muted2);font-weight:600}
+.pkg-nombre{font-size:14px;font-weight:700;color:var(--accent);margin-top:2px}
+.pkg-tipo{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;background:var(--blue-pale);color:var(--blue);border:1px solid #c0d0ef;display:inline-block}
+.pkg-meta{font-size:11px;color:var(--muted2);display:flex;flex-direction:column;gap:3px}
+.pkg-insts{background:var(--surface2);border-radius:7px;padding:8px 10px}
+.pkg-inst-row{display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border)}
+.pkg-inst-row:last-child{border-bottom:none}
+.pkg-foot{display:flex;gap:6px;margin-top:4px;padding-top:10px;border-top:1px solid var(--border);flex-wrap:wrap}
+.tec-section{margin-bottom:20px}
+.tec-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
 .tip-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted2)}
 .pending-badge{background:var(--orange);color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 5px;margin-left:4px;font-family:var(--mono)}
 .modal-overlay{position:fixed;inset:0;background:rgba(10,20,50,.45);backdrop-filter:blur(2px);z-index:200;display:none;align-items:center;justify-content:center;padding:16px;cursor:pointer}.modal-overlay .modal{cursor:default}
@@ -334,6 +349,8 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <button class="tab-btn" onclick="switchTab('instancias',this)">🏷️ Instancias</button>
       <button class="tab-btn" onclick="switchTab('movimientos',this)">📋 Movimientos</button>
       <button class="tab-btn" onclick="switchTab('stock',this)">🏢 Por Sede</button>
+      <button class="tab-btn" onclick="switchTab('paquetes',this)">🎒 Paquetes</button>
+      <button class="tab-btn" onclick="switchTab('tecnicos',this)">👤 Por Técnico</button>
     </div>
 
     <div class="tab-view active" id="tab-catalogo">
@@ -405,6 +422,131 @@ tbody td{padding:9px 12px;vertical-align:middle}
 
     <div class="tab-view" id="tab-stock">
       <div id="stock-sede-content"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
+    </div>
+
+    <!-- TAB PAQUETES -->
+    <div class="tab-view" id="tab-paquetes">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+        <input type="search" id="q-pkg" placeholder="Buscar por nombre, ID, responsable..." oninput="renderPaquetes()" style="max-width:300px;font-size:12px;flex:1">
+        <select id="f-pkg-estado" onchange="renderPaquetes()" style="max-width:140px;font-size:12px">
+          <option value="">Todos</option>
+          <option value="ACTIVO">✅ Activos</option>
+          <option value="INACTIVO">⚫ Inactivos</option>
+        </select>
+        <select id="f-pkg-sede" onchange="renderPaquetes()" style="max-width:160px;font-size:12px"><option value="">Todas las sedes</option></select>
+      </div>
+      <div id="paquetes-grid" class="paq-grid"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
+    </div>
+
+    <!-- TAB POR TÉCNICO -->
+    <div class="tab-view" id="tab-tecnicos">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+        <select id="f-tec-persona" onchange="renderPorTecnico()" style="max-width:240px;font-size:12px"><option value="">Seleccionar técnico...</option></select>
+      </div>
+      <div id="tecnico-content"><div class="empty"><div class="empty-icon">👤</div>Selecciona un técnico para ver su inventario</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CREAR/EDITAR PAQUETE -->
+<div class="modal-overlay" id="modal-paquete" onclick="if(event.target===this)closeModal('modal-paquete')">
+  <div class="modal" style="max-width:540px;max-height:88vh;display:flex;flex-direction:column">
+    <div class="modal-header" style="flex-shrink:0">
+      <div class="modal-title" id="modal-pkg-title">🎒 Nuevo paquete</div>
+      <div onclick="closeModal('modal-paquete')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div style="overflow-y:auto;flex:1">
+      <div class="form-grid" style="margin-top:4px">
+        <div class="form-group full">
+          <div class="form-label">Nombre *</div>
+          <input type="text" class="form-input" id="fpkg-nombre" placeholder="Ej: MOCHILA TÉCNICO A" style="text-transform:uppercase">
+        </div>
+        <div class="form-group">
+          <div class="form-label">Tipo de contenedor</div>
+          <select class="form-select" id="fpkg-tipo">
+            <option value="MOCHILA">🎒 Mochila</option>
+            <option value="CAJA">📦 Caja</option>
+            <option value="CAJON">🗄 Cajón</option>
+            <option value="ANAQUEL">🗃 Anaquel</option>
+            <option value="MALETÍN">💼 Maletín</option>
+            <option value="OTRO">📋 Otro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <div class="form-label">Estado</div>
+          <select class="form-select" id="fpkg-estado">
+            <option value="ACTIVO">✅ Activo</option>
+            <option value="INACTIVO">⚫ Inactivo</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <div class="form-label">Sede *</div>
+          <select class="form-select" id="fpkg-sede"></select>
+        </div>
+        <div class="form-group full">
+          <div class="form-label">Responsable</div>
+          <select class="form-select" id="fpkg-responsable"></select>
+        </div>
+        <div class="form-group full">
+          <div class="form-label">Notas</div>
+          <textarea class="form-textarea" id="fpkg-notas" placeholder="Opcional..."></textarea>
+        </div>
+        <div class="form-group full">
+          <div class="form-label">Instancias en este paquete</div>
+          <div style="display:flex;gap:8px;margin-bottom:6px">
+            <input type="text" class="form-input" id="fpkg-inst-buscar" placeholder="Buscar instancia disponible..." oninput="buscarInstanciasPkg()" style="font-size:12px">
+          </div>
+          <div id="fpkg-inst-resultados" style="max-height:120px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;display:none"></div>
+          <div id="fpkg-inst-seleccionadas" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot" style="flex-shrink:0;margin-top:0">
+      <button class="btn btn-red" id="fpkg-btn-delete" style="display:none" onclick="deletePaquete()">🗑 Eliminar</button>
+      <button class="btn" onclick="closeModal('modal-paquete')">Cancelar</button>
+      <button class="btn btn-primary" onclick="savePaquete()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL TRANSFERIR PAQUETE -->
+<div class="modal-overlay" id="modal-pkg-transf" onclick="if(event.target===this)closeModal('modal-pkg-transf')">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <div class="modal-title">🔄 Transferir paquete</div>
+      <div onclick="closeModal('modal-pkg-transf')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div class="modal-sub" style="margin-bottom:14px">🎒 Al transferir el paquete, todas sus instancias cambiarán de sede y/o responsable. Esta acción es reversible desde Movimientos.</div>
+    <div style="font-family:var(--mono);font-size:11px;color:var(--muted2);background:var(--surface2);padding:8px 12px;border-radius:6px;margin-bottom:12px" id="pkg-transf-info"></div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <div class="form-label">¿Qué transferir?</div>
+        <div style="display:flex;gap:16px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="fpkt-chk-sede" checked onchange="onPkgTransfTipoChange()" style="width:16px;height:16px"> Sede</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" id="fpkt-chk-resp" onchange="onPkgTransfTipoChange()" style="width:16px;height:16px"> Responsable</label>
+        </div>
+      </div>
+      <div id="fpkt-leyenda" style="grid-column:1/-1;font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:6px;padding:8px 10px;border-left:3px solid var(--blue);line-height:1.6;display:none"></div>
+      <div id="fpkt-sede-wrap" class="form-group full">
+        <div class="form-label">Sede destino *</div>
+        <select class="form-select" id="fpkt-sede-dest"></select>
+      </div>
+      <div id="fpkt-resp-wrap" class="form-group full" style="display:none">
+        <div class="form-label">Nuevo responsable *</div>
+        <select class="form-select" id="fpkt-resp-dest"></select>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">Realizado por</div>
+        <select class="form-select" id="fpkt-realizado"></select>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">Observación</div>
+        <textarea class="form-textarea" id="fpkt-obs" placeholder="Opcional..."></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-pkg-transf')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveTransfPaquete()">🔄 Confirmar</button>
     </div>
   </div>
 </div>
@@ -1117,6 +1259,13 @@ function buildSidebar(){
     h+=`<button class="btn btn-block" id="btn-pendientes" onclick="switchTab('movimientos',document.querySelector('.tab-btn:nth-child(3)'));document.getElementById('f-mov-tipo').value='PENDIENTE';renderMovimientos()" style="color:var(--yellow);border-color:var(--yellow-border)">⏳ Solicitudes pendientes${nPend>0?` <span class="pending-badge">${nPend}</span>`:''}</button>`;
   }
 
+  // Paquetes — pueden crear ADMIN, SUPER_ADMIN, SUPERVISOR
+  if(can('crearItem')||maUser?.rol==='SUPERVISOR')
+    h+=`<button class="btn btn-block" onclick="openModalPaquete(null)">🎒 Nuevo paquete</button>`;
+  // Técnico puede solicitar paquete
+  if(can('salida')===0&&can('solicitarSalida')===1)
+    h+=`<button class="btn btn-block" onclick="openModalSolicitud('PAQUETE')">📤 Solicitar paquete</button>`;
+
   if(maUser&&maUser.rol==='SUPER_ADMIN'){
     h+=`<div style="height:1px;background:var(--border);margin:4px 0"></div>`;
     h+=`<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:2px 0">Dev tools</div>`;
@@ -1150,6 +1299,14 @@ async function loadAll(){
     paquetesData=paqS.docs.map(d=>({id:d.id,...d.data()}));
     populateSedes();
     renderAll();
+    // Poblar filtro sede paquetes y selector técnico después de renderAll
+    const fPkgSede = document.getElementById('f-pkg-sede');
+    if(fPkgSede) fPkgSede.innerHTML='<option value="">Todas las sedes</option>'+sedes.map(s=>`<option value="${s.sede}">${s.sede}</option>`).join('');
+    const fTec = document.getElementById('f-tec-persona');
+    if(fTec) {
+      const responsables = [...new Set([...personalData.map(p=>p.nombre), ...paquetesData.map(p=>p.responsable).filter(Boolean)])].sort();
+      fTec.innerHTML = '<option value="">Seleccionar técnico...</option>' + responsables.map(r=>`<option value="${r}">${r}</option>`).join('');
+    }
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
@@ -1171,7 +1328,7 @@ function populateSedes(){
   ['fap-sede'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=sedeOpts(false);});
 }
 
-function renderAll(){applyFilters();renderMovimientos();renderStockSede();renderStats();renderAlerts();renderInstancias();}
+function renderAll(){applyFilters();renderMovimientos();renderStockSede();renderStats();renderAlerts();renderInstancias();renderPaquetes();renderPorTecnico();}
 
 function renderInstancias() {
   selectedInstQRIds.clear();
@@ -1348,7 +1505,7 @@ function renderMovimientos(){
   });
   const c=document.getElementById('movimientos-list');
   if(!list.length){c.innerHTML='<div class="empty"><div class="empty-icon">📋</div>Sin movimientos</div>';return;}
-  const icons={ENTRADA:'⬇️',SALIDA:'⬆️',BAJA:'⚠️',TRANSFERENCIA:'🔄',SOLICITUD_SALIDA:'⏳',SOLICITUD_TRANSF:'⏳',SOLICITUD_ENTRADA:'📋',ACTUALIZACION:'✏️'};
+  const icons={ENTRADA:'⬇️',SALIDA:'⬆️',BAJA:'⚠️',TRANSFERENCIA:'🔄',TRANSFERENCIA_PAQUETE:'🎒',SOLICITUD_SALIDA:'⏳',SOLICITUD_TRANSF:'⏳',SOLICITUD_ENTRADA:'📋',ACTUALIZACION:'✏️'};
   c.innerHTML='<div class="mov-list">'+list.map(m=>{
     const f=m.fecha?(m.fecha.toDate?m.fecha.toDate():new Date(m.fecha)):new Date();
     const fs=f.toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'});
@@ -1364,16 +1521,19 @@ function renderMovimientos(){
     const cantInfo = m.tipo==='ACTUALIZACION' ? '' : m.tipo==='SOLICITUD_ENTRADA' ? (m.cantidadRequerida ? `${m.cantidadRequerida} uds` : '') : (m.cantidad ? `${sg}${m.cantidad}` : (m.instanciaId ? sg+'1' : ''));
     // Detalle de cambios para ACTUALIZACION
     const cambiosInfo = m.tipo==='ACTUALIZACION' && m.cambios ? `<span style="font-size:10px;color:var(--muted2)"> · ${m.cambios}</span>` : '';
+    const pkgBadge = m.origenPaquete ? `<span class="tipo-badge" style="background:var(--blue-pale);color:var(--blue);border:1px solid #c0d0ef" title="Generado por transferencia de paquete ${m.paqueteId||''}">🎒 paquete</span>` : '';
     const badge=m.estado==='PENDIENTE'?`<span class="tipo-badge tipo-pendiente">⏳ pendiente</span>`:m.estado==='RECHAZADO'?`<span class="tipo-badge" style="background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)" title="${m.motivoRechazo||''}">✗ rechazado</span>`:m.estado==='APROBADO'?`<span class="tipo-badge" style="background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)">✓ aprobado</span>`:'';
     const esSolicitud = m.tipo==='SOLICITUD_SALIDA'||m.tipo==='SOLICITUD_TRANSF';
-    const canMod=can('eliminarMov')&&!isPend&&!(esSolicitud&&(m.estado==='APROBADO'||m.estado==='RECHAZADO'));
+    const esDePaquete = !!(m.origenPaquete); // generado por transferencia de paquete
+    const esPkgTransf = m.tipo==='TRANSFERENCIA_PAQUETE';
+    const canMod=can('eliminarMov')&&!isPend&&!(esSolicitud&&(m.estado==='APROBADO'||m.estado==='RECHAZADO'))&&!esDePaquete;
     const delBtn=canMod?`<button class="btn btn-sm btn-red" title="Revertir acción" onclick="revertirMovimiento('${m.id}')">↩ Revertir</button>`:'';
     const editBtn=canMod&&can('editarMov')?`<button class="btn btn-sm" title="Editar" onclick="editarMovimiento('${m.id}')">✏️</button>`:'';
     const aprobarBtn=isPend&&can('aprobar')===1?`<button class="btn btn-sm btn-green" onclick="aprobarSolicitud('${m.id}')">✓ Aprobar</button><button class="btn btn-sm btn-red" onclick="rechazarSolicitud('${m.id}')">✗ Rechazar</button>`:'';
     return `<div class="mov-item ${isPend?'pendiente':''}">
       <div class="mov-icon ${tCls}">${icons[m.tipo]||'📦'}</div>
       <div class="mov-body">
-        <div class="mov-title">${m.itemNombre||'—'} <span class="tipo-badge tipo-${tCls.replace('solicitud_','')}">${(m.tipo||'').replace('SOLICITUD_','')}</span> ${badge}</div>
+        <div class="mov-title">${m.tipo==='TRANSFERENCIA_PAQUETE'?'🎒 '+(m.paqueteNombre||m.paqueteId||'Paquete'):m.itemNombre||'—'} <span class="tipo-badge tipo-${tCls.replace('solicitud_','')}">${(m.tipo||'').replace('SOLICITUD_','')}</span> ${badge}${pkgBadge}</div>
         <div class="mov-meta">${fs} · ${m.responsable||m.usuario||'—'}${sedeStr?' · '+sedeStr:''}${m.motivo?' · '+m.motivo:''}${instInfo}${cambiosInfo}</div>
       </div>
       <div class="mov-qty ${tCls}">${cantInfo} ${m.unidad||'UND'}</div>
@@ -1708,12 +1868,13 @@ let currentQRItemId = null;
 let html5QrScanner = null;
 
 function openQRModal(id) {
-  // Puede ser id de catálogo o de instancia
+  // Puede ser id de catálogo, instancia o paquete
   const item = catalogoData.find(x => x.id === id);
   const inst = instanciasData.find(x => x.id === id);
-  const nombre = item ? item.nombre : (inst ? inst.nombre : id);
+  const pkg = paquetesData.find(x => x.id === id);
+  const nombre = item ? item.nombre : inst ? inst.nombre : pkg ? pkg.nombre : id;
   const codigo = item ? (item.codigo || id) : id;
-  if (!item && !inst) return;
+  if (!item && !inst && !pkg) return;
   currentQRItemId = id;
   const wrap = document.getElementById('qr-canvas-wrap');
   wrap.innerHTML = '';
@@ -3116,6 +3277,353 @@ async function confirmarRechazo() {
     buildSidebar();
     renderMovimientos();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
+}
+
+
+// ── PAQUETES ──────────────────────────────────────────────
+let editingPaqueteId = null;
+let pkgInstanciasSeleccionadas = new Set();
+const PKG_TIPO_ICON = {MOCHILA:'🎒',CAJA:'📦',CAJON:'🗄',ANAQUEL:'🗃','MALETÍN':'💼',OTRO:'📋'};
+
+function renderPaquetes() {
+  const wrap = document.getElementById('paquetes-grid');
+  if (!wrap) return;
+  const q = (document.getElementById('q-pkg')?.value||'').toLowerCase();
+  const estFil = document.getElementById('f-pkg-estado')?.value||'';
+  const sedeFil = document.getElementById('f-pkg-sede')?.value||'';
+  let list = paquetesData.filter(p => {
+    if (estFil && p.estado !== estFil) return false;
+    if (sedeFil && p.sede !== sedeFil) return false;
+    if (q && !((p.nombre||'')+(p.id||'')+(p.responsable||'')).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if (!list.length) { wrap.innerHTML='<div class="empty"><div class="empty-icon">🎒</div>Sin paquetes</div>'; return; }
+  const canEdit = can('crearItem') || maUser?.rol==='SUPERVISOR';
+  wrap.innerHTML = list.map(pkg => {
+    const insts = instanciasData.filter(i => i.paqueteId === pkg.id);
+    const ico = PKG_TIPO_ICON[pkg.tipo]||'📦';
+    const estCls = pkg.estado==='ACTIVO'?'activo':'inactivo';
+    const estBadge = pkg.estado==='ACTIVO'
+      ? '<span class="stock-pill stock-ok" style="font-size:9px">✅ Activo</span>'
+      : '<span class="stock-pill stock-out" style="font-size:9px">⚫ Inactivo</span>';
+    return `<div class="pkg-card ${estCls}">
+      <div class="pkg-header">
+        <div>
+          <div class="pkg-id">${ico} ${pkg.id}</div>
+          <div class="pkg-nombre">${pkg.nombre||'—'}</div>
+          <div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span class="pkg-tipo">${pkg.tipo||'OTRO'}</span>${estBadge}
+          </div>
+        </div>
+        <button class="qr-btn" onclick="openQRModal('${pkg.id}')" title="Ver QR">▣</button>
+      </div>
+      <div class="pkg-meta">
+        <span>📍 ${pkg.sede||'—'}</span>
+        <span>👤 ${pkg.responsable||'—'}</span>
+        ${pkg.notas?`<span style="font-style:italic;color:var(--muted)">${pkg.notas}</span>`:''}
+      </div>
+      <div class="pkg-insts">
+        <div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${insts.length} instancia${insts.length!==1?'s':''}</div>
+        ${insts.length ? insts.map(i=>{
+          const estColor={DISPONIBLE:'stock-ok',EN_USO:'stock-uso',MANTENIMIENTO:'stock-low',DETERIORADO:'stock-deteriorado',BAJA:'stock-out'};
+          const est=i.estado||'DISPONIBLE';
+          return `<div class="pkg-inst-row">
+            <span style="font-family:var(--mono);font-size:10px;font-weight:600;flex:1">${i.id}</span>
+            <span style="font-size:10px;color:var(--muted2);flex:2">${i.nombre}</span>
+            <span class="stock-pill ${estColor[est]||'stock-ok'}" style="font-size:9px;padding:1px 5px">${est}</span>
+          </div>`;
+        }).join('') : '<div style="font-size:11px;color:var(--muted2)">Sin instancias asignadas</div>'}
+      </div>
+      <div class="pkg-foot">
+        ${canEdit?`<button class="btn btn-sm" onclick="openModalPaquete('${pkg.id}')">✏️ Editar</button>`:''}
+        <button class="btn btn-sm" onclick="openModalTransfPaquete('${pkg.id}')">🔄 Transferir</button>
+        ${canEdit?`<button class="btn btn-sm btn-red" onclick="deletePaquete('${pkg.id}')">🗑</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openModalPaquete(id) {
+  editingPaqueteId = id || null;
+  pkgInstanciasSeleccionadas = new Set();
+  document.getElementById('modal-pkg-title').textContent = id ? '✏️ Editar paquete' : '🎒 Nuevo paquete';
+  document.getElementById('fpkg-btn-delete').style.display = id ? 'inline-flex' : 'none';
+  document.getElementById('fpkg-sede').innerHTML = sedeOpts(false);
+  const pOpts = '<option value="">—</option>' + personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  document.getElementById('fpkg-responsable').innerHTML = pOpts;
+  document.getElementById('fpkg-inst-buscar').value = '';
+  document.getElementById('fpkg-inst-resultados').style.display = 'none';
+  if (id) {
+    const pkg = paquetesData.find(x=>x.id===id);
+    if (!pkg) return;
+    document.getElementById('fpkg-nombre').value = pkg.nombre||'';
+    document.getElementById('fpkg-tipo').value = pkg.tipo||'MOCHILA';
+    document.getElementById('fpkg-estado').value = pkg.estado||'ACTIVO';
+    document.getElementById('fpkg-sede').value = pkg.sede||'';
+    document.getElementById('fpkg-responsable').value = pkg.responsable||'';
+    document.getElementById('fpkg-notas').value = pkg.notas||'';
+    (pkg.instancias||[]).forEach(i => pkgInstanciasSeleccionadas.add(i));
+  } else {
+    document.getElementById('fpkg-nombre').value = '';
+    document.getElementById('fpkg-tipo').value = 'MOCHILA';
+    document.getElementById('fpkg-estado').value = 'ACTIVO';
+    document.getElementById('fpkg-notas').value = '';
+  }
+  renderPkgInstSeleccionadas();
+  document.getElementById('modal-paquete').classList.add('open');
+}
+
+function buscarInstanciasPkg() {
+  const q = document.getElementById('fpkg-inst-buscar').value.toLowerCase();
+  const res = document.getElementById('fpkg-inst-resultados');
+  if (!q) { res.style.display='none'; return; }
+  // Solo instancias sin paquete o ya en este paquete
+  const list = instanciasData.filter(i =>
+    i.estado !== 'BAJA' &&
+    (!i.paqueteId || i.paqueteId === editingPaqueteId) &&
+    !pkgInstanciasSeleccionadas.has(i.id) &&
+    (i.id+i.nombre+(i.sede||'')).toLowerCase().includes(q)
+  ).slice(0, 8);
+  if (!list.length) { res.innerHTML='<div style="padding:8px 10px;color:var(--muted2)">Sin resultados</div>'; res.style.display='block'; return; }
+  res.innerHTML = list.map(i=>`<div onclick="addInstToPkg('${i.id}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background=''">
+    <span style="font-family:var(--mono);font-size:10px;font-weight:600;min-width:70px">${i.id}</span>
+    <span style="font-size:11px;flex:1">${i.nombre}</span>
+    <span style="font-size:10px;color:var(--muted2)">${i.sede||'—'}</span>
+  </div>`).join('');
+  res.style.display='block';
+}
+
+function addInstToPkg(instId) {
+  pkgInstanciasSeleccionadas.add(instId);
+  document.getElementById('fpkg-inst-buscar').value = '';
+  document.getElementById('fpkg-inst-resultados').style.display = 'none';
+  renderPkgInstSeleccionadas();
+}
+
+function removeInstFromPkg(instId) {
+  pkgInstanciasSeleccionadas.delete(instId);
+  renderPkgInstSeleccionadas();
+}
+
+function renderPkgInstSeleccionadas() {
+  const wrap = document.getElementById('fpkg-inst-seleccionadas');
+  if (!pkgInstanciasSeleccionadas.size) { wrap.innerHTML='<div style="font-size:11px;color:var(--muted2)">Sin instancias asignadas</div>'; return; }
+  wrap.innerHTML = [...pkgInstanciasSeleccionadas].map(id => {
+    const inst = instanciasData.find(x=>x.id===id);
+    return `<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px">
+      <span style="font-family:var(--mono);font-size:10px;font-weight:600">${id}</span>
+      <span style="font-size:11px;flex:1;color:var(--muted2)">${inst?inst.nombre:''}</span>
+      <button onclick="removeInstFromPkg('${id}')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:14px;padding:0 2px">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function savePaquete() {
+  const nombre = document.getElementById('fpkg-nombre').value.trim().toUpperCase();
+  const sede = document.getElementById('fpkg-sede').value;
+  if (!nombre) { toast('Nombre obligatorio','err'); return; }
+  if (!sede) { toast('Sede obligatoria','err'); return; }
+  const instanciasAntes = editingPaqueteId ? (paquetesData.find(x=>x.id===editingPaqueteId)?.instancias||[]) : [];
+  const instanciasDespues = [...pkgInstanciasSeleccionadas];
+  const pkg = {
+    nombre, tipo: document.getElementById('fpkg-tipo').value,
+    estado: document.getElementById('fpkg-estado').value,
+    sede, responsable: document.getElementById('fpkg-responsable').value,
+    notas: document.getElementById('fpkg-notas').value.trim(),
+    instancias: instanciasDespues,
+    updatedAt: new Date().toISOString(), updatedBy: maUser.email
+  };
+  try {
+    let pkgId = editingPaqueteId;
+    if (!pkgId) {
+      // Generar ID único
+      const snap = await db.collection('insumos_paquetes').get();
+      const nums = snap.docs.map(d=>parseInt(d.id.replace('PKG-',''))||0);
+      const next = (nums.length?Math.max(...nums):0)+1;
+      pkgId = `PKG-${String(next).padStart(3,'0')}`;
+      pkg.creadoEn = new Date().toISOString(); pkg.creadoPor = maUser.email;
+    }
+    await db.collection('insumos_paquetes').doc(pkgId).set(pkg, {merge:!!editingPaqueteId});
+    // Actualizar paqueteId en instancias añadidas
+    const agregadas = instanciasDespues.filter(i=>!instanciasAntes.includes(i));
+    const quitadas = instanciasAntes.filter(i=>!instanciasDespues.includes(i));
+    for (const id of agregadas) {
+      await db.collection('insumos_instancias').doc(id).update({paqueteId: pkgId, sede, updatedAt: new Date().toISOString()});
+      const idx=instanciasData.findIndex(x=>x.id===id); if(idx>=0){instanciasData[idx].paqueteId=pkgId;instanciasData[idx].sede=sede;}
+    }
+    for (const id of quitadas) {
+      await db.collection('insumos_instancias').doc(id).update({paqueteId: null, updatedAt: new Date().toISOString()});
+      const idx=instanciasData.findIndex(x=>x.id===id); if(idx>=0){delete instanciasData[idx].paqueteId;}
+    }
+    if (editingPaqueteId) {
+      const idx=paquetesData.findIndex(x=>x.id===pkgId); if(idx>=0) paquetesData[idx]={id:pkgId,...pkg};
+    } else { paquetesData.push({id:pkgId,...pkg}); }
+    toast(`✓ Paquete ${editingPaqueteId?'actualizado':'creado'} — ${pkgId}`,'ok');
+    closeModal('modal-paquete'); renderAll();
+  } catch(e){toast('Error: '+e.message,'err');}
+}
+
+async function deletePaquete(pkgId) {
+  const id = pkgId || editingPaqueteId;
+  if (!id) return;
+  const pkg = paquetesData.find(x=>x.id===id);
+  const nInsts = (pkg?.instancias||[]).length;
+  if (!confirm(`¿Eliminar paquete ${id}?${nInsts?`
+Se desasignarán ${nInsts} instancia(s) del paquete (no se eliminan).`:''}`)) return;
+  try {
+    // Desasignar instancias
+    for (const instId of (pkg?.instancias||[])) {
+      await db.collection('insumos_instancias').doc(instId).update({paqueteId: null});
+      const idx=instanciasData.findIndex(x=>x.id===instId); if(idx>=0) delete instanciasData[idx].paqueteId;
+    }
+    await db.collection('insumos_paquetes').doc(id).delete();
+    paquetesData = paquetesData.filter(x=>x.id!==id);
+    toast('Paquete eliminado','ok');
+    closeModal('modal-paquete'); renderAll();
+  } catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── TRANSFERIR PAQUETE ────────────────────────────────────
+let transfPaqueteId = null;
+
+function openModalTransfPaquete(pkgId) {
+  transfPaqueteId = pkgId;
+  const pkg = paquetesData.find(x=>x.id===pkgId);
+  if (!pkg) return;
+  document.getElementById('pkg-transf-info').textContent = `${pkg.id} · ${pkg.nombre} · ${(pkg.instancias||[]).length} instancia(s) · Sede: ${pkg.sede||'—'} · Resp: ${pkg.responsable||'—'}`;
+  document.getElementById('fpkt-sede-dest').innerHTML = sedeOpts(false);
+  const pOpts = '<option value="">—</option>'+personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  document.getElementById('fpkt-resp-dest').innerHTML = pOpts;
+  document.getElementById('fpkt-realizado').innerHTML = pOpts;
+  document.getElementById('fpkt-chk-sede').checked = true;
+  document.getElementById('fpkt-chk-resp').checked = false;
+  document.getElementById('fpkt-obs').value = '';
+  onPkgTransfTipoChange();
+  document.getElementById('modal-pkg-transf').classList.add('open');
+}
+
+function onPkgTransfTipoChange() {
+  const sede = document.getElementById('fpkt-chk-sede').checked;
+  const resp = document.getElementById('fpkt-chk-resp').checked;
+  if(!sede&&!resp){document.getElementById('fpkt-chk-sede').checked=true;onPkgTransfTipoChange();return;}
+  document.getElementById('fpkt-sede-wrap').style.display=sede?'flex':'none';
+  document.getElementById('fpkt-resp-wrap').style.display=resp?'flex':'none';
+  const ley=document.getElementById('fpkt-leyenda');
+  let msg=sede&&resp?'📦 + 👤 Se cambiará la <strong>sede</strong> y el <strong>responsable</strong> del paquete y todas sus instancias.'
+    :sede?'📦 Solo se cambiará la <strong>sede</strong> del paquete y todas sus instancias.'
+    :'👤 Solo se cambiará el <strong>responsable</strong> del paquete y sus instancias.';
+  ley.innerHTML=msg; ley.style.display='block';
+}
+
+async function saveTransfPaquete() {
+  const pkg = paquetesData.find(x=>x.id===transfPaqueteId);
+  if (!pkg) return;
+  const chkSede = document.getElementById('fpkt-chk-sede').checked;
+  const chkResp = document.getElementById('fpkt-chk-resp').checked;
+  const sedeD = chkSede ? document.getElementById('fpkt-sede-dest').value : null;
+  const respD = chkResp ? document.getElementById('fpkt-resp-dest').value : null;
+  const obs = document.getElementById('fpkt-obs').value.trim();
+  const realizado = document.getElementById('fpkt-realizado').value;
+  if (chkSede && !sedeD) { toast('Selecciona sede destino','err'); return; }
+  if (chkResp && !respD) { toast('Selecciona responsable destino','err'); return; }
+  const diffs = [];
+  if (chkSede) diffs.push({campo:'sede', de:pkg.sede||'', a:sedeD});
+  if (chkResp) diffs.push({campo:'responsable', de:pkg.responsable||'', a:respD});
+  try {
+    const pkgUpdates = {updatedAt:new Date().toISOString()};
+    if (chkSede) pkgUpdates.sede = sedeD;
+    if (chkResp) pkgUpdates.responsable = respD;
+    await db.collection('insumos_paquetes').doc(transfPaqueteId).update(pkgUpdates);
+    const pkgIdx=paquetesData.findIndex(x=>x.id===transfPaqueteId);
+    if(pkgIdx>=0) Object.assign(paquetesData[pkgIdx],pkgUpdates);
+    // Actualizar todas las instancias del paquete
+    const instIds = pkg.instancias||[];
+    for (const instId of instIds) {
+      const instUpd = {updatedAt:new Date().toISOString()};
+      if(chkSede) instUpd.sede=sedeD;
+      if(chkResp) instUpd.responsable=respD;
+      await db.collection('insumos_instancias').doc(instId).update(instUpd);
+      const instIdx=instanciasData.findIndex(x=>x.id===instId);
+      if(instIdx>=0) Object.assign(instanciasData[instIdx],instUpd);
+    }
+    // Registrar movimiento del paquete
+    const cambiosLabel = diffs.map(d=>d.campo==='sede'?`${d.de}→${d.a}`:`Resp:${d.de}→${d.a}`).join(' | ');
+    const movPkg = {
+      tipo:'TRANSFERENCIA_PAQUETE', paqueteId:transfPaqueteId, paqueteNombre:pkg.nombre,
+      instancias:instIds, diffsData:diffs, cambios:cambiosLabel,
+      motivo:obs, responsable:realizado, usuario:maUser.email,
+      estado:'CONFIRMADO', fecha:new Date()
+    };
+    const movRef = await db.collection('insumos_movimientos').add(movPkg);
+    movimientosData.unshift({id:movRef.id,...movPkg});
+    // Registrar movimientos de instancias (marcados como generados por paquete, no revertibles)
+    for (const instId of instIds) {
+      const inst = instanciasData.find(x=>x.id===instId);
+      const instMov = {
+        tipo:'TRANSFERENCIA', itemId:inst?.itemId, itemNombre:inst?.nombre||instId,
+        instanciaId:instId,
+        sedeOrigen:chkSede?pkg.sede:undefined, sedeDestino:chkSede?sedeD:undefined,
+        diffsData:diffs, cambios:cambiosLabel,
+        origenPaquete:movRef.id, paqueteId:transfPaqueteId,
+        motivo:`Transferencia del paquete ${transfPaqueteId}`,
+        responsable:realizado, usuario:maUser.email,
+        estado:'CONFIRMADO', fecha:new Date()
+      };
+      // limpiar undefined
+      Object.keys(instMov).forEach(k=>instMov[k]===undefined&&delete instMov[k]);
+      const instMovRef = await db.collection('insumos_movimientos').add(instMov);
+      movimientosData.unshift({id:instMovRef.id,...instMov});
+    }
+    toast(`✓ Paquete ${transfPaqueteId} transferido — ${cambiosLabel}`,'ok');
+    closeModal('modal-pkg-transf'); renderAll();
+  } catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── POR TÉCNICO ───────────────────────────────────────────
+function renderPorTecnico() {
+  const wrap = document.getElementById('tecnico-content');
+  if (!wrap) return;
+  const tec = document.getElementById('f-tec-persona')?.value||'';
+  if (!tec) { wrap.innerHTML='<div class="empty"><div class="empty-icon">👤</div>Selecciona un técnico</div>'; return; }
+  const pkgs = paquetesData.filter(p=>p.responsable===tec);
+  const instsSueltas = instanciasData.filter(i=>i.responsable===tec&&!i.paqueteId&&i.estado!=='BAJA');
+  let h='';
+  // Paquetes
+  h+=`<div class="tec-section"><div class="tec-section-title">🎒 Paquetes asignados (${pkgs.length})</div>`;
+  if(pkgs.length){
+    h+=`<div class="paq-grid">`;
+    h+=pkgs.map(pkg=>{
+      const insts=instanciasData.filter(i=>i.paqueteId===pkg.id);
+      const ico=PKG_TIPO_ICON[pkg.tipo]||'📦';
+      const estBadge=pkg.estado==='ACTIVO'?'<span class="stock-pill stock-ok" style="font-size:9px">✅ Activo</span>':'<span class="stock-pill stock-out" style="font-size:9px">⚫ Inactivo</span>';
+      return `<div class="pkg-card ${pkg.estado==='ACTIVO'?'activo':'inactivo'}">
+        <div class="pkg-header">
+          <div><div class="pkg-id">${ico} ${pkg.id}</div><div class="pkg-nombre">${pkg.nombre}</div><div style="margin-top:4px">${estBadge}</div></div>
+          <button class="qr-btn" onclick="openQRModal('${pkg.id}')" title="Ver QR">▣</button>
+        </div>
+        <div class="pkg-meta"><span>📍 ${pkg.sede||'—'}</span></div>
+        <div class="pkg-insts">
+          <div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${insts.length} instancia${insts.length!==1?'s':''}</div>
+          ${insts.slice(0,5).map(i=>`<div class="pkg-inst-row"><span style="font-family:var(--mono);font-size:10px;font-weight:600;flex:1">${i.id}</span><span style="font-size:10px;color:var(--muted2)">${i.nombre}</span></div>`).join('')}
+          ${insts.length>5?`<div style="font-size:10px;color:var(--muted2);padding-top:4px">+${insts.length-5} más...</div>`:''}
+        </div>
+      </div>`;
+    }).join('');
+    h+='</div>';
+  } else { h+='<div style="font-size:12px;color:var(--muted2)">Sin paquetes asignados</div>'; }
+  h+='</div>';
+  // Instancias sueltas
+  h+=`<div class="tec-section"><div class="tec-section-title">🏷️ Instancias sueltas (${instsSueltas.length})</div>`;
+  if(instsSueltas.length){
+    h+=`<div class="table-wrap"><table><thead><tr><th>ID</th><th>Tipo</th><th>Sede</th><th>Estado</th></tr></thead><tbody>`;
+    h+=instsSueltas.map(i=>{
+      const estColor={DISPONIBLE:'stock-ok',EN_USO:'stock-uso',MANTENIMIENTO:'stock-low',DETERIORADO:'stock-deteriorado'};
+      return `<tr><td class="td-code">${i.id}</td><td style="font-size:11px">${i.nombre}</td><td style="font-size:11px">${i.sede||'—'}</td><td><span class="stock-pill ${estColor[i.estado]||'stock-ok'}" style="font-size:9px">${i.estado||'DISPONIBLE'}</span></td></tr>`;
+    }).join('');
+    h+='</tbody></table></div>';
+  } else { h+='<div style="font-size:12px;color:var(--muted2)">Sin instancias sueltas asignadas</div>'; }
+  h+='</div>';
+  wrap.innerHTML=h;
 }
 
 // Cerrar modales al hacer clic fuera
