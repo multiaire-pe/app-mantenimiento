@@ -1635,9 +1635,16 @@ async function exportQRLabel_OLD() {
 
 // ── ESCÁNER POR CELULAR ────────────────────────────────────
 function openScanner() {
-  document.getElementById('modal-scanner').classList.add('open');
+  // Limpiar instancia anterior si existe
+  const readerEl = document.getElementById('qr-reader');
+  readerEl.innerHTML = '';
   document.getElementById('qr-result-box').textContent = 'Esperando escaneo...';
   document.getElementById('scan-item-info').style.display = 'none';
+  
+  const el = document.getElementById('modal-scanner');
+  el.style.display = '';
+  el.classList.add('open');
+
   html5QrScanner = new Html5Qrcode('qr-reader');
   html5QrScanner.start(
     { facingMode: 'environment' },
@@ -1672,16 +1679,29 @@ function onQRScanned(code) {
 }
 
 function closeScanner() {
+  // Cerrar modal primero
   const el = document.getElementById('modal-scanner');
   if(el){ el.style.display = 'none'; el.classList.remove('open'); }
+  
+  // Detener cámara y destruir instancia completamente
   if (html5QrScanner) {
     try {
       html5QrScanner.stop().then(() => {
-        html5QrScanner.clear();
+        try { html5QrScanner.clear(); } catch(e) {}
         html5QrScanner = null;
-      }).catch(() => { html5QrScanner = null; });
+        // Limpiar el div del lector para la próxima vez
+        const readerEl = document.getElementById('qr-reader');
+        if(readerEl) readerEl.innerHTML = '';
+      }).catch(() => {
+        try { html5QrScanner.clear(); } catch(e) {}
+        html5QrScanner = null;
+        const readerEl = document.getElementById('qr-reader');
+        if(readerEl) readerEl.innerHTML = '';
+      });
     } catch(e) {
       html5QrScanner = null;
+      const readerEl = document.getElementById('qr-reader');
+      if(readerEl) readerEl.innerHTML = '';
     }
   }
 }
