@@ -1399,12 +1399,15 @@ function openQRModal(id) {
 }
 
 async function exportQRLabel() {
-  const item = catalogoData.find(x => x.id === currentQRItemId);
-  if (!item) return;
-  const canvas = await generateQRCanvas(currentQRItemId);
+  const id = currentQRItemId;
+  const inst = instanciasData.find(x => x.id === id);
+  const item = inst ? catalogoData.find(x => x.id === inst.itemId) : catalogoData.find(x => x.id === id);
+  const nombre = inst ? inst.nombre : (item ? item.nombre : id);
+  const codigo = inst ? id : (item ? (item.codigo || id) : id);
+  const canvas = await generateQRCanvas(id, nombre, codigo);
   if (!canvas) return;
   const link = document.createElement('a');
-  link.download = `QR_${(item.codigo||currentQRItemId).replace(/\s/g,'_')}_${item.nombre.replace(/\s/g,'_')}.png`;
+  link.download = `QR_${codigo.replace(/[\s/]/g,'_')}_${nombre.replace(/[\s/]/g,'_')}.png`;
   link.href = canvas.toDataURL('image/png', 1.0);
   link.click();
 }
@@ -1957,33 +1960,38 @@ function clearQRSelection() {
   updateQRSelectionBar();
 }
 
-async function generateQRCanvas(itemId) {
-  const item = catalogoData.find(x => x.id === itemId);
-  if (!item) return null;
+async function generateQRCanvas(id, nombre, codigo) {
+  // Resolver nombre y codigo si no se pasan
+  if (!nombre || !codigo) {
+    const inst = instanciasData.find(x => x.id === id);
+    const item = inst ? catalogoData.find(x => x.id === inst.itemId) : catalogoData.find(x => x.id === id);
+    nombre = nombre || (inst ? inst.nombre : (item ? item.nombre : id));
+    codigo = codigo || (inst ? id : (item ? (item.codigo || id) : id));
+  }
   const canvas = document.createElement('canvas');
   canvas.width = 319; canvas.height = 240;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, 319, 240);
   const qrDiv = document.createElement('div');
+  qrDiv.style.position = 'absolute'; qrDiv.style.left = '-9999px';
   document.body.appendChild(qrDiv);
   await new Promise(resolve => {
-    new QRCode(qrDiv, { text: itemId, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.H, colorDark: '#000000', colorLight: '#ffffff' });
-    setTimeout(resolve, 300);
+    new QRCode(qrDiv, { text: id, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.H, colorDark: '#000000', colorLight: '#ffffff' });
+    setTimeout(resolve, 350);
   });
   const qrEl = qrDiv.querySelector('canvas') || qrDiv.querySelector('img');
   if (qrEl) ctx.drawImage(qrEl, 70, 8, 180, 180);
   document.body.removeChild(qrDiv);
   ctx.fillStyle = '#000000';
-  ctx.font = 'bold 14px monospace';
+  ctx.font = 'bold 13px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText(item.codigo || itemId, 159, 203);
-  ctx.font = 'bold 16px sans-serif';
-  const nombre = item.nombre.toUpperCase();
-  const maxW = 300;
-  let fontSize = 16;
-  while (ctx.measureText(nombre).width > maxW && fontSize > 9) { fontSize--; ctx.font = `bold ${fontSize}px sans-serif`; }
-  ctx.fillText(nombre, 159, 225);
+  ctx.fillText(codigo, 159, 203);
+  let fontSize = 15;
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  const nombreUpper = nombre.toUpperCase();
+  while (ctx.measureText(nombreUpper).width > 300 && fontSize > 9) { fontSize--; ctx.font = `bold ${fontSize}px sans-serif`; }
+  ctx.fillText(nombreUpper, 159, 225);
   return canvas;
 }
 
