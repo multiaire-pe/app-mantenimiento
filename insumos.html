@@ -941,15 +941,25 @@ function renderAlerts(){
   document.getElementById('alert-banners').innerHTML=h;
 }
 
-function totalS(id){return Object.values(stockData[id]||{}).reduce((a,b)=>a+(Number(b)||0),0);}
-function sEnSede(id,sede){return Number((stockData[id]||{})[sede]||0);}
+function totalS(id){
+  // Contar instancias activas del tipo
+  const count = instanciasData.filter(i => i.itemId === id && i.estado !== 'BAJA').length;
+  return count;
+}
+function sEnSede(id,sede){
+  return instanciasData.filter(i => i.itemId === id && i.sede === sede && i.estado !== 'BAJA').length;
+}
 function sNivel(item){
   if(item.tipoCantidad==='RANGO'){
-    const t=totalS(item.id);
-    if(t<=0)return'out'; if(t<=25)return'low'; return'ok';
+    // Para RANGO: usar promedio de nivel de instancias
+    const insts = instanciasData.filter(i => i.itemId === item.id && i.nivel !== undefined);
+    if(!insts.length) return 'out';
+    const prom = Math.round(insts.reduce((a,i)=>a+(i.nivel||0),0)/insts.length);
+    if(prom<=0) return 'out'; if(prom<=25) return 'low'; return 'ok';
   }
-  const t=totalS(item.id),m=Number(item.stockMin||0);
-  if(t<=0)return'out';if(m>0&&t<=m)return'low';return'ok';
+  // Para UNIDAD: contar instancias activas
+  const t=totalS(item.id), m=Number(item.stockMin||0);
+  if(t<=0) return 'out'; if(m>0&&t<=m) return 'low'; return 'ok';
 }
 
 // Rangos visuales: el "stock" de un ítem RANGO es 0-100 (promedio de todas las sedes)
