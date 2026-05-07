@@ -510,18 +510,12 @@ tbody td{padding:9px 12px;vertical-align:middle}
 
 <!-- MODAL TRANSFERENCIA -->
 <div class="modal-overlay" id="modal-transf" onclick="if(event.target===this)closeModal('modal-transf')">
-  <div class="modal" style="max-width:500px">
+  <div class="modal" style="max-width:500px;overflow:visible">
     <div class="modal-header">
       <div class="modal-title">🔄 Transferencia</div>
       <div ontouchend="closeModal('modal-transf')" onclick="closeModal('modal-transf')" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
     </div>
-    <div class="modal-sub" style="margin-bottom:14px">
-      🔄 Traslada un bien entre sedes y/o cambia su responsable. El bien mantiene su ID y QR.<br><br>
-      <span style="display:block;margin-top:4px;line-height:1.7">
-        <strong>Nuevo responsable</strong> — persona a quien se asigna el bien (ej: técnico que lo recibe).<br>
-        <strong>Realizado por</strong> — quien ejecuta físicamente el traslado.
-      </span>
-    </div>
+    <div class="modal-sub" style="margin-bottom:14px">🔄 Traslada un bien entre sedes y/o cambia su responsable. El bien mantiene su ID y QR.</div>
     <div class="form-grid">
       <div class="form-group full">
         <div class="form-label">Buscar por sede origen o ID</div>
