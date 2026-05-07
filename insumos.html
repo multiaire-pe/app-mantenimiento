@@ -1869,9 +1869,17 @@ async function saveSalida() {
   try {
     await db.collection('insumos_instancias').doc(instId).delete();
     instanciasData = instanciasData.filter(x => x.id !== instId);
-    await db.collection('insumos_movimientos').add({
+    const movRef = await db.collection('insumos_movimientos').add({
       tipo: currentSalidaTipo, itemId: inst.itemId, itemNombre: inst.nombre,
-      instanciaId: instId, sede: inst.sede, motivo, responsable: resp,
+      instanciaId: instId, sede: inst.sede, cantidad: 1, unidad: 'UND',
+      motivo, responsable: resp,
+      usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
+    });
+    // Actualizar memoria de movimientos
+    movimientosData.unshift({
+      id: movRef.id, tipo: currentSalidaTipo, itemId: inst.itemId,
+      itemNombre: inst.nombre, instanciaId: instId, sede: inst.sede,
+      cantidad: 1, unidad: 'UND', motivo, responsable: resp,
       usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
     });
     toast(`✓ ${esBaja ? 'Baja' : 'Salida'} registrada — ${instId}`, 'ok');
