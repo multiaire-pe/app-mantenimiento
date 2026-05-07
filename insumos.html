@@ -515,7 +515,13 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <div class="modal-title">🔄 Transferencia</div>
       <div ontouchend="closeModal('modal-transf')" onclick="closeModal('modal-transf')" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
     </div>
-    <div class="modal-sub" style="margin-bottom:14px">🔄 Traslada un bien entre sedes y/o cambia su responsable. El bien mantiene su ID y QR.</div>
+    <div class="modal-sub" style="margin-bottom:14px">
+      🔄 Traslada un bien entre sedes y/o cambia su responsable. El bien mantiene su ID y QR.<br><br>
+      <span style="display:block;margin-top:4px;line-height:1.7">
+        <strong>Nuevo responsable</strong> — persona a quien se asigna el bien (ej: técnico que lo recibe).<br>
+        <strong>Realizado por</strong> — quien ejecuta físicamente el traslado.
+      </span>
+    </div>
     <div class="form-grid">
       <div class="form-group full">
         <div class="form-label">Buscar por sede origen o ID</div>
@@ -541,15 +547,16 @@ tbody td{padding:9px 12px;vertical-align:middle}
           </label>
         </div>
       </div>
+      <div id="ft-transf-leyenda" style="font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:6px;padding:8px 10px;border-left:3px solid var(--blue);line-height:1.6;display:none"></div>
       <div id="ft-sede-wrap" class="form-group full">
         <div class="form-label">Sede destino *</div>
         <select class="form-select" id="ft-destino"></select>
       </div>
       <div id="ft-resp-wrap" class="form-group full" style="display:none">
-        <div class="form-label">Responsable destino *</div>
+        <div class="form-label">Nuevo responsable *</div>
         <select class="form-select" id="ft-resp-destino"></select>
       </div>
-      <div class="form-group full"><div class="form-label">Ejecutado por</div><select class="form-select" id="ft-tecnico"></select></div>
+      <div class="form-group full"><div class="form-label">Realizado por</div><select class="form-select" id="ft-tecnico"></select></div>
       <div class="form-group full"><div class="form-label">Observación</div><textarea class="form-textarea" id="ft-obs" placeholder="Opcional..."></textarea></div>
     </div>
     <div class="modal-foot">
@@ -1892,13 +1899,25 @@ function openModalTransferencia() {
 function onTransfTipoChange() {
   const sede = document.getElementById('ft-chk-sede').checked;
   const resp = document.getElementById('ft-chk-resp').checked;
-  document.getElementById('ft-sede-wrap').style.display = sede ? 'flex' : 'none';
-  document.getElementById('ft-resp-wrap').style.display = resp ? 'flex' : 'none';
   // Al menos uno debe estar activo
   if (!sede && !resp) {
     document.getElementById('ft-chk-sede').checked = true;
-    document.getElementById('ft-sede-wrap').style.display = 'flex';
+    onTransfTipoChange(); return;
   }
+  document.getElementById('ft-sede-wrap').style.display = sede ? 'flex' : 'none';
+  document.getElementById('ft-resp-wrap').style.display = resp ? 'flex' : 'none';
+  // Leyenda dinámica
+  const leyenda = document.getElementById('ft-transf-leyenda');
+  let msg = '';
+  if (sede && resp) {
+    msg = '📦 + 👤 Se cambiará la <strong>sede</strong> del bien y se asignará un <strong>nuevo responsable</strong>. Ambos cambios quedarán registrados y podrán revertirse individualmente.';
+  } else if (sede) {
+    msg = '📦 Solo se cambiará la <strong>sede</strong> del bien. El responsable actual (si tiene) no se modifica.';
+  } else if (resp) {
+    msg = '👤 Solo se asignará un <strong>nuevo responsable</strong>. El bien permanece en su sede actual.';
+  }
+  leyenda.innerHTML = msg;
+  leyenda.style.display = msg ? 'block' : 'none';
 }
 
 function onTransfOrigenChange() {
