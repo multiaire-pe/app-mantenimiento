@@ -2264,24 +2264,68 @@ async function exportSelectedQRZip() {
 // ── REVERTIR MOVIMIENTO ───────────────────────────────────
 let editingMovId = null;
 
+// Elimina en cascada todos los movimientos que referencien una instancia (excepto el movimiento actual)
+async function eliminarMovsCascada(instIds, excludeMovId) {
+  const movsACascada = movimientosData.filter(m =>
+    m.id !== excludeMovId && (
+      (m.instanciaId && instIds.includes(m.instanciaId)) ||
+      (m.instancias && m.instancias.some(id => instIds.includes(id)))
+    )
+  );
+  for (const m of movsACascada) {
+    await db.collection('insumos_movimientos').doc(m.id).delete();
+  }
+  movimientosData = movimientosData.filter(m =>
+    m.id === excludeMovId || (
+      !(m.instanciaId && instIds.includes(m.instanciaId)) &&
+      !(m.instancias && m.instancias.some(id => instIds.includes(id)))
+    )
+  );
+  return movsACascada.length;
+}
+
 async function revertirMovimiento(movId) {
   const mov = movimientosData.find(x => x.id === movId);
   if (!mov) return;
   const tipoLabel = {ENTRADA:'entrada',SALIDA:'salida',BAJA:'baja',TRANSFERENCIA:'transferencia',ACTUALIZACION:'actualización'}[mov.tipo] || mov.tipo;
-  if (!confirm(`¿Revertir esta ${tipoLabel}?\nEsta acción deshará el efecto en el inventario.`)) return;
+
+  // Calcular impacto de cascada para informar al usuario
+  let cascadaMsg = '';
+  if (mov.tipo === 'ENTRADA') {
+    const ids = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+    const movsAfectados = movimientosData.filter(m =>
+      m.id !== movId && (
+        (m.instanciaId && ids.includes(m.instanciaId)) ||
+        (m.instancias && m.instancias.some(id => ids.includes(id)))
+      )
+    );
+    if (movsAfectados.length) cascadaMsg = `\n\nSe eliminarán también ${movsAfectados.length} movimiento(s) relacionado(s) (actualizaciones, transferencias, salidas de esas instancias).`;
+  } else if (mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') {
+    const instId = mov.instanciaId;
+    const movsPost = movimientosData.filter(m => m.id !== movId && m.instanciaId === instId);
+    if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de esta instancia.`;
+  }
+
+  if (!confirm(`¿Revertir esta ${tipoLabel}?\nEsta acción deshará el efecto en el inventario.${cascadaMsg}`)) return;
+
   try {
     if (mov.tipo === 'ENTRADA') {
-      // Eliminar las instancias creadas
       const ids = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+      // Cascada: eliminar todos los movimientos de esas instancias primero
+      const nCascada = await eliminarMovsCascada(ids, movId);
+      // Eliminar las instancias
       for (const id of ids) {
         await db.collection('insumos_instancias').doc(id).delete();
         instanciasData = instanciasData.filter(x => x.id !== id);
       }
-      toast(`✓ Entrada revertida — ${ids.length} instancia(s) eliminada(s)`, 'ok');
+      toast(`✓ Entrada revertida — ${ids.length} instancia(s) eliminada(s)${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
+
     } else if (mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') {
-      // Recrear la instancia con estado DISPONIBLE
       const instId = mov.instanciaId;
       if (!instId) { toast('No se puede revertir: sin ID de instancia', 'err'); return; }
+      // Cascada: eliminar movimientos posteriores de esta instancia (no tienen sentido si la instancia "no salió")
+      const nCascada = await eliminarMovsCascada([instId], movId);
+      // Recrear la instancia
       const item = catalogoData.find(x => x.id === mov.itemId);
       const inst = {
         itemId: mov.itemId, nombre: mov.itemNombre || (item ? item.nombre : ''),
@@ -2291,17 +2335,18 @@ async function revertirMovimiento(movId) {
       };
       await db.collection('insumos_instancias').doc(instId).set(inst);
       instanciasData.push({ id: instId, ...inst });
-      toast(`✓ ${mov.tipo === 'BAJA' ? 'Baja' : 'Salida'} revertida — ${instId} restaurado`, 'ok');
+      toast(`✓ ${mov.tipo === 'BAJA' ? 'Baja' : 'Salida'} revertida — ${instId} restaurado${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
+
     } else if (mov.tipo === 'TRANSFERENCIA') {
-      // Devolver instancia a sede origen
       const instId = mov.instanciaId;
       if (!instId || !mov.sedeOrigen) { toast('No se puede revertir: faltan datos', 'err'); return; }
+      // Solo devolver a sede origen — las actualizaciones posteriores siguen siendo válidas
       await db.collection('insumos_instancias').doc(instId).update({ sede: mov.sedeOrigen, updatedAt: new Date().toISOString() });
       const idx = instanciasData.findIndex(x => x.id === instId);
       if (idx >= 0) instanciasData[idx].sede = mov.sedeOrigen;
       toast(`✓ Transferencia revertida — ${instId} devuelto a ${mov.sedeOrigen}`, 'ok');
+
     } else if (mov.tipo === 'ACTUALIZACION') {
-      // Revertir cada campo al valor anterior usando diffsData
       const instId = mov.instanciaId;
       if (!instId) { toast('No se puede revertir: sin ID de instancia', 'err'); return; }
       const diffs = mov.diffsData || [];
@@ -2313,7 +2358,8 @@ async function revertirMovimiento(movId) {
       if (idx >= 0) Object.assign(instanciasData[idx], revertUpdates);
       toast(`✓ Actualización revertida — ${instId}`, 'ok');
     }
-    // Eliminar el movimiento del historial
+
+    // Eliminar el movimiento principal
     await db.collection('insumos_movimientos').doc(movId).delete();
     movimientosData = movimientosData.filter(x => x.id !== movId);
     renderAll();
