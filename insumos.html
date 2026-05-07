@@ -515,7 +515,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <div class="modal-title">🔄 Transferencia</div>
       <div ontouchend="closeModal('modal-transf')" onclick="closeModal('modal-transf')" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
     </div>
-    <div class="modal-sub" style="margin-bottom:14px">🔄 Traslada un bien de una sede a otra. El bien mantiene su ID y QR. Solo cambia su ubicación.</div>
+    <div class="modal-sub" style="margin-bottom:14px">🔄 Traslada un bien entre sedes y/o cambia su responsable. El bien mantiene su ID y QR.</div>
     <div class="form-grid">
       <div class="form-group full">
         <div class="form-label">Buscar por sede origen o ID</div>
@@ -529,11 +529,27 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <select class="form-select" id="ft-instancia" onchange="onTransfInstanciaChange()"><option value="">Seleccionar...</option></select>
       </div>
       <div id="ft-inst-info" style="display:none;grid-column:1/-1;background:var(--surface2);border-radius:8px;padding:10px;font-size:11px"></div>
+      <!-- Checkboxes qué transferir -->
       <div class="form-group full">
+        <div class="form-label">¿Qué deseas transferir? *</div>
+        <div style="display:flex;gap:16px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="ft-chk-sede" onchange="onTransfTipoChange()" checked style="width:16px;height:16px"> Sede
+          </label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="ft-chk-resp" onchange="onTransfTipoChange()" style="width:16px;height:16px"> Responsable
+          </label>
+        </div>
+      </div>
+      <div id="ft-sede-wrap" class="form-group full">
         <div class="form-label">Sede destino *</div>
         <select class="form-select" id="ft-destino"></select>
       </div>
-      <div class="form-group full"><div class="form-label">Técnico responsable</div><select class="form-select" id="ft-tecnico"></select></div>
+      <div id="ft-resp-wrap" class="form-group full" style="display:none">
+        <div class="form-label">Responsable destino *</div>
+        <select class="form-select" id="ft-resp-destino"></select>
+      </div>
+      <div class="form-group full"><div class="form-label">Ejecutado por</div><select class="form-select" id="ft-tecnico"></select></div>
       <div class="form-group full"><div class="form-label">Observación</div><textarea class="form-textarea" id="ft-obs" placeholder="Opcional..."></textarea></div>
     </div>
     <div class="modal-foot">
@@ -1203,7 +1219,8 @@ function renderMovimientos(){
     const tCls=isPend?'pendiente':(m.tipo||'').toLowerCase().replace('solicitud_','');
     const sg=m.tipo==='ENTRADA'?'+':m.tipo==='SALIDA'||m.tipo==='BAJA'||m.tipo==='SOLICITUD_SALIDA'?'-':'⇄';
     const sedeStr=m.tipo==='TRANSFERENCIA'||m.tipo==='SOLICITUD_TRANSF'
-      ?`${m.sedeOrigen} → ${m.sedeDestino}`:(m.sede||'');
+      ? (m.cambios || `${m.sedeOrigen} → ${m.sedeDestino}`)
+      : (m.sede||'');
     // Info de instancias
     const instInfo = m.instanciaId ? `<span style="font-family:var(--mono);font-size:10px;color:var(--muted2)"> · ${m.instanciaId}</span>` :
       m.instancias?.length ? `<span style="font-size:10px;color:var(--muted2)"> · ${m.instancias.length} uds: ${m.instancias.join(', ')}</span>` : '';
@@ -1863,9 +1880,25 @@ function openModalTransferencia() {
   document.getElementById('ft-inst-info').style.display = 'none';
   document.getElementById('ft-buscar-inst').value = '';
   document.getElementById('ft-obs').value = '';
+  document.getElementById('ft-chk-sede').checked = true;
+  document.getElementById('ft-chk-resp').checked = false;
   const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
   document.getElementById('ft-tecnico').innerHTML = `<option value="">—</option>${pOpts}`;
+  document.getElementById('ft-resp-destino').innerHTML = `<option value="">—</option>${pOpts}`;
+  onTransfTipoChange();
   document.getElementById('modal-transf').classList.add('open');
+}
+
+function onTransfTipoChange() {
+  const sede = document.getElementById('ft-chk-sede').checked;
+  const resp = document.getElementById('ft-chk-resp').checked;
+  document.getElementById('ft-sede-wrap').style.display = sede ? 'flex' : 'none';
+  document.getElementById('ft-resp-wrap').style.display = resp ? 'flex' : 'none';
+  // Al menos uno debe estar activo
+  if (!sede && !resp) {
+    document.getElementById('ft-chk-sede').checked = true;
+    document.getElementById('ft-sede-wrap').style.display = 'flex';
+  }
 }
 
 function onTransfOrigenChange() {
@@ -1893,7 +1926,9 @@ function onTransfInstanciaChange() {
   const info = document.getElementById('ft-inst-info');
   if (!inst) { info.style.display = 'none'; return; }
   info.style.display = 'block';
-  info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>📍 Sede actual: <strong>${inst.sede || '—'}</strong>`;
+  info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>
+    📍 Sede actual: <strong>${inst.sede || '—'}</strong>
+    ${inst.responsable ? ` · 👤 Responsable: <strong>${inst.responsable}</strong>` : ''}`;
   const origenSel = document.getElementById('ft-sede-origen');
   if (inst.sede) origenSel.value = inst.sede;
   const destinoSel = document.getElementById('ft-destino');
@@ -1903,28 +1938,59 @@ function onTransfInstanciaChange() {
 
 async function saveTransferencia() {
   const instId = document.getElementById('ft-instancia').value;
-  const destino = document.getElementById('ft-destino').value;
   const obs = document.getElementById('ft-obs').value.trim();
   const tecnico = document.getElementById('ft-tecnico').value;
-  if (!instId || !destino) { toast('Selecciona instancia y sede destino', 'err'); return; }
+  const transferSede = document.getElementById('ft-chk-sede').checked;
+  const transferResp = document.getElementById('ft-chk-resp').checked;
+  if (!instId) { toast('Selecciona una instancia', 'err'); return; }
   const inst = instanciasData.find(x => x.id === instId);
   if (!inst) return;
-  const origen = inst.sede;
-  if (origen === destino) { toast('La sede origen y destino son iguales', 'err'); return; }
+
+  const instUpdates = { updatedAt: new Date().toISOString() };
+  const diffs = [];
+
+  if (transferSede) {
+    const destino = document.getElementById('ft-destino').value;
+    if (!destino) { toast('Selecciona la sede destino', 'err'); return; }
+    if (inst.sede === destino) { toast('La sede origen y destino son iguales', 'err'); return; }
+    instUpdates.sede = destino;
+    diffs.push({ campo: 'sede', de: inst.sede || '', a: destino });
+  }
+
+  if (transferResp) {
+    const respDestino = document.getElementById('ft-resp-destino').value;
+    if (!respDestino) { toast('Selecciona el responsable destino', 'err'); return; }
+    if (inst.responsable === respDestino) { toast('El responsable ya es el mismo', 'err'); return; }
+    instUpdates.responsable = respDestino;
+    diffs.push({ campo: 'responsable', de: inst.responsable || '', a: respDestino });
+  }
+
+  if (!diffs.length) { toast('Selecciona qué deseas transferir', 'err'); return; }
+
+  // Construir label legible
+  const sedeOrig = inst.sede || '—';
+  const sedeD = transferSede ? document.getElementById('ft-destino').value : null;
+  const respD = transferResp ? document.getElementById('ft-resp-destino').value : null;
+  const labelParts = [];
+  if (sedeD) labelParts.push(`${sedeOrig} → ${sedeD}`);
+  if (respD) labelParts.push(`Resp: ${inst.responsable || '—'} → ${respD}`);
+
   try {
-    await db.collection('insumos_instancias').doc(instId).update({ sede: destino, updatedAt: new Date().toISOString() });
+    await db.collection('insumos_instancias').doc(instId).update(instUpdates);
     const idx = instanciasData.findIndex(x => x.id === instId);
-    if (idx >= 0) instanciasData[idx].sede = destino;
-    const movRef = await db.collection('insumos_movimientos').add({
+    if (idx >= 0) Object.assign(instanciasData[idx], instUpdates);
+
+    const movData = {
       tipo: 'TRANSFERENCIA', itemId: inst.itemId, itemNombre: inst.nombre,
-      instanciaId: instId, sedeOrigen: origen, sedeDestino: destino,
+      instanciaId: instId,
+      sedeOrigen: inst.sede || '', sedeDestino: sedeD || inst.sede || '',
+      diffsData: diffs, cambios: labelParts.join(' | '),
       motivo: obs, responsable: tecnico, usuario: maUser.email,
       estado: 'CONFIRMADO', fecha: new Date()
-    });
-    movimientosData.unshift({ id: movRef.id, tipo: 'TRANSFERENCIA', itemId: inst.itemId,
-      itemNombre: inst.nombre, instanciaId: instId, sedeOrigen: origen, sedeDestino: destino,
-      motivo: obs, responsable: tecnico, usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date() });
-    toast(`✓ ${instId} transferido a ${destino}`, 'ok');
+    };
+    const movRef = await db.collection('insumos_movimientos').add(movData);
+    movimientosData.unshift({ id: movRef.id, ...movData });
+    toast(`✓ ${instId} — ${labelParts.join(', ')}`, 'ok');
     closeModal('modal-transf');
     renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
@@ -2339,12 +2405,19 @@ async function revertirMovimiento(movId) {
 
     } else if (mov.tipo === 'TRANSFERENCIA') {
       const instId = mov.instanciaId;
-      if (!instId || !mov.sedeOrigen) { toast('No se puede revertir: faltan datos', 'err'); return; }
-      // Solo devolver a sede origen — las actualizaciones posteriores siguen siendo válidas
-      await db.collection('insumos_instancias').doc(instId).update({ sede: mov.sedeOrigen, updatedAt: new Date().toISOString() });
+      if (!instId) { toast('No se puede revertir: faltan datos', 'err'); return; }
+      // Revertir usando diffsData si existe, sino fallback a sedeOrigen
+      const revertUpdates = { updatedAt: new Date().toISOString() };
+      if (mov.diffsData && mov.diffsData.length) {
+        mov.diffsData.forEach(d => { revertUpdates[d.campo] = d.de; });
+      } else {
+        if (!mov.sedeOrigen) { toast('No se puede revertir: faltan datos', 'err'); return; }
+        revertUpdates.sede = mov.sedeOrigen;
+      }
+      await db.collection('insumos_instancias').doc(instId).update(revertUpdates);
       const idx = instanciasData.findIndex(x => x.id === instId);
-      if (idx >= 0) instanciasData[idx].sede = mov.sedeOrigen;
-      toast(`✓ Transferencia revertida — ${instId} devuelto a ${mov.sedeOrigen}`, 'ok');
+      if (idx >= 0) Object.assign(instanciasData[idx], revertUpdates);
+      toast(`✓ Transferencia revertida — ${instId}`, 'ok');
 
     } else if (mov.tipo === 'ACTUALIZACION') {
       const instId = mov.instanciaId;
