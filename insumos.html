@@ -433,15 +433,47 @@ tbody td{padding:9px 12px;vertical-align:middle}
         </div>
         <div id="fsol-inst-info" style="display:none;grid-column:1/-1;background:var(--surface2);border-radius:8px;padding:10px;font-size:11px;margin-bottom:11px"></div>
       </div>
+      <!-- Campos requerimiento de entrada -->
+      <div id="fsol-entrada-fields" style="display:none">
+        <div class="form-group full" style="margin-bottom:11px">
+          <div class="form-label">Bien que necesitas *</div>
+          <select class="form-select" id="fsol-item-req"><option value="">Seleccionar del catálogo...</option></select>
+        </div>
+        <div class="form-group full" style="margin-bottom:11px">
+          <div class="form-label">Cantidad aproximada</div>
+          <input type="number" class="form-input" id="fsol-qty-req" min="1" value="1" placeholder="Ej: 3">
+        </div>
+        <div class="form-group full" style="margin-bottom:11px">
+          <div class="form-label">Sede donde se necesita</div>
+          <select class="form-select" id="fsol-sede-req"></select>
+        </div>
+      </div>
       <!-- Campos transferencia -->
       <div id="fsol-transf-fields" style="display:none">
         <div class="form-group full" style="margin-bottom:11px">
           <div class="form-label">Instancia a transferir *</div>
-          <select class="form-select" id="fsol-inst-transf"><option value="">Seleccionar...</option></select>
+          <select class="form-select" id="fsol-inst-transf" onchange="onSolicitudTransfInstChange()"><option value="">Seleccionar...</option></select>
         </div>
-        <div class="form-group full" style="margin-bottom:11px">
+        <div id="fsol-transf-info" style="display:none;background:var(--surface2);border-radius:8px;padding:8px 10px;font-size:11px;margin-bottom:11px"></div>
+        <div class="form-group full" style="margin-bottom:8px">
+          <div class="form-label">¿Qué deseas transferir? *</div>
+          <div style="display:flex;gap:16px;margin-top:4px">
+            <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="fsol-chk-sede" onchange="onSolicitudTransfTipoChange()" checked style="width:16px;height:16px"> Sede
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="fsol-chk-resp" onchange="onSolicitudTransfTipoChange()" style="width:16px;height:16px"> Responsable
+            </label>
+          </div>
+        </div>
+        <div id="fsol-transf-leyenda" style="font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:6px;padding:8px 10px;border-left:3px solid var(--blue);line-height:1.6;margin-bottom:11px;display:none"></div>
+        <div id="fsol-sede-dest-wrap" class="form-group full" style="margin-bottom:11px">
           <div class="form-label">Sede destino *</div>
           <select class="form-select" id="fsol-sede-dest"></select>
+        </div>
+        <div id="fsol-resp-dest-wrap" class="form-group full" style="display:none;margin-bottom:11px">
+          <div class="form-label">Nuevo responsable *</div>
+          <select class="form-select" id="fsol-resp-dest"></select>
         </div>
       </div>
       <div class="form-group full"><div class="form-label">Motivo / observación *</div><textarea class="form-textarea" id="fsol-motivo" placeholder="Explica el motivo de la solicitud..."></textarea></div>
@@ -1329,7 +1361,7 @@ function renderMovimientos(){
     // Info de instancias
     const instInfo = m.instanciaId ? `<span style="font-family:var(--mono);font-size:10px;color:var(--muted2)"> · ${m.instanciaId}</span>` :
       m.instancias?.length ? `<span style="font-size:10px;color:var(--muted2)"> · ${m.instancias.length} uds: ${m.instancias.join(', ')}</span>` : '';
-    const cantInfo = m.tipo==='ACTUALIZACION' ? '' : (m.cantidad ? `${sg}${m.cantidad}` : (m.instanciaId ? sg+'1' : ''));
+    const cantInfo = m.tipo==='ACTUALIZACION' ? '' : m.tipo==='SOLICITUD_ENTRADA' ? (m.cantidadRequerida ? `${m.cantidadRequerida} uds` : '') : (m.cantidad ? `${sg}${m.cantidad}` : (m.instanciaId ? sg+'1' : ''));
     // Detalle de cambios para ACTUALIZACION
     const cambiosInfo = m.tipo==='ACTUALIZACION' && m.cambios ? `<span style="font-size:10px;color:var(--muted2)"> · ${m.cambios}</span>` : '';
     const badge=m.estado==='PENDIENTE'?`<span class="tipo-badge tipo-pendiente">⏳ pendiente</span>`:m.estado==='RECHAZADO'?`<span class="tipo-badge" style="background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)" title="${m.motivoRechazo||''}">✗ rechazado</span>`:m.estado==='APROBADO'?`<span class="tipo-badge" style="background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)">✓ aprobado</span>`:'';
@@ -2822,6 +2854,14 @@ function openModalSolicitud(tipo) {
     : '📤 Solicitas la salida de un bien. El supervisor deberá aprobarla.';
   document.getElementById('fsol-salida-fields').style.display = (esTransf||esEntrada) ? 'none' : 'block';
   document.getElementById('fsol-transf-fields').style.display = esTransf ? 'block' : 'none';
+  document.getElementById('fsol-entrada-fields').style.display = esEntrada ? 'block' : 'none';
+  if (esEntrada) {
+    const itemOpts = '<option value="">Seleccionar del catálogo...</option>' +
+      catalogoData.map(i => `<option value="${i.id}" data-nombre="${i.nombre}">${i.nombre} (${i.codigo||i.id})</option>`).join('');
+    document.getElementById('fsol-item-req').innerHTML = itemOpts;
+    document.getElementById('fsol-sede-req').innerHTML = sedeOpts(false);
+    document.getElementById('fsol-qty-req').value = '1';
+  }
   document.getElementById('fsol-motivo').value = '';
   document.getElementById('fsol-inst-info').style.display = 'none';
   // Poblar instancias
@@ -2831,9 +2871,15 @@ function openModalSolicitud(tipo) {
     document.getElementById('fsol-sede-filtro').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s => `<option value="${s.sede}">${s.sede}</option>`).join('');
     document.getElementById('fsol-buscar').value = '';
     document.getElementById('fsol-instancia').innerHTML = opts;
-  } else {
+  } else if (esTransf) {
     document.getElementById('fsol-inst-transf').innerHTML = opts;
     document.getElementById('fsol-sede-dest').innerHTML = sedeOpts(false);
+    const pOpts = '<option value="">—</option>' + personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+    document.getElementById('fsol-resp-dest').innerHTML = pOpts;
+    document.getElementById('fsol-chk-sede').checked = true;
+    document.getElementById('fsol-chk-resp').checked = false;
+    document.getElementById('fsol-transf-info').style.display = 'none';
+    onSolicitudTransfTipoChange();
   }
   document.getElementById('modal-solicitud').classList.add('open');
 }
@@ -2858,34 +2904,87 @@ function onSolicitudInstanciaChange() {
   info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>📍 Sede: <strong>${inst.sede||'—'}</strong> · Estado: <strong>${inst.estado||'DISPONIBLE'}</strong>`;
 }
 
+
+function onSolicitudTransfInstChange() {
+  const instId = document.getElementById('fsol-inst-transf').value;
+  const inst = instanciasData.find(x => x.id === instId);
+  const info = document.getElementById('fsol-transf-info');
+  if (!inst) { info.style.display = 'none'; return; }
+  info.style.display = 'block';
+  info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>📍 Sede actual: <strong>${inst.sede||'—'}</strong>`;
+  // Deshabilitar sede actual en destino
+  const destSel = document.getElementById('fsol-sede-dest');
+  Array.from(destSel.options).forEach(opt => { opt.disabled = opt.value === inst.sede; });
+}
+
+function onSolicitudTransfTipoChange() {
+  const sede = document.getElementById('fsol-chk-sede').checked;
+  const resp = document.getElementById('fsol-chk-resp').checked;
+  if (!sede && !resp) { document.getElementById('fsol-chk-sede').checked = true; onSolicitudTransfTipoChange(); return; }
+  document.getElementById('fsol-sede-dest-wrap').style.display = sede ? 'flex' : 'none';
+  document.getElementById('fsol-resp-dest-wrap').style.display = resp ? 'flex' : 'none';
+  const ley = document.getElementById('fsol-transf-leyenda');
+  let msg = '';
+  if (sede && resp) msg = '📦 + 👤 Solicitas cambio de <strong>sede</strong> y <strong>responsable</strong>.';
+  else if (sede) msg = '📦 Solicitas cambio de <strong>sede</strong> únicamente.';
+  else msg = '👤 Solicitas cambio de <strong>responsable</strong> únicamente.';
+  ley.innerHTML = msg; ley.style.display = 'block';
+}
+
 async function saveSolicitud() {
   const esTransf = currentSolicitudTipo === 'TRANSF';
   const motivo = document.getElementById('fsol-motivo').value.trim();
   if (!motivo) { toast('El motivo es obligatorio', 'err'); return; }
   let instId, itemId, itemNombre, sede, sedeDestino;
   const esEntrada = currentSolicitudTipo === 'ENTRADA';
+  let transfDiffs = [];
   if (esTransf) {
     instId = document.getElementById('fsol-inst-transf').value;
-    sedeDestino = document.getElementById('fsol-sede-dest').value;
-    if (!instId || !sedeDestino) { toast('Completa todos los campos', 'err'); return; }
+    if (!instId) { toast('Selecciona una instancia', 'err'); return; }
+    const transfInst = instanciasData.find(x => x.id === instId);
+    const chkSede = document.getElementById('fsol-chk-sede').checked;
+    const chkResp = document.getElementById('fsol-chk-resp').checked;
+    if (!chkSede && !chkResp) { toast('Selecciona qué deseas transferir', 'err'); return; }
+    if (chkSede) {
+      sedeDestino = document.getElementById('fsol-sede-dest').value;
+      if (!sedeDestino) { toast('Selecciona la sede destino', 'err'); return; }
+      transfDiffs.push({ campo: 'sede', de: transfInst?.sede||'', a: sedeDestino });
+    }
+    if (chkResp) {
+      const respDest = document.getElementById('fsol-resp-dest').value;
+      if (!respDest) { toast('Selecciona el responsable destino', 'err'); return; }
+      transfDiffs.push({ campo: 'responsable', de: transfInst?.responsable||'', a: respDest });
+    }
   } else if (!esEntrada) {
     instId = document.getElementById('fsol-instancia').value;
     if (!instId) { toast('Selecciona una instancia', 'err'); return; }
   }
-  if (!esEntrada) {
+  if (esEntrada) {
+    itemId = document.getElementById('fsol-item-req').value || null;
+    const selOpt = document.getElementById('fsol-item-req').selectedOptions[0];
+    itemNombre = itemId ? (selOpt?.getAttribute('data-nombre') || itemId) : 'No especificado';
+    sede = document.getElementById('fsol-sede-req').value || null;
+  } else {
     const inst = instanciasData.find(x => x.id === instId);
     if (!inst) { toast('Instancia no encontrada', 'err'); return; }
     itemId = inst.itemId; itemNombre = inst.nombre; sede = inst.sede;
   }
   try {
+    // Construir movData limpio sin campos undefined
     const movData = {
       tipo: esEntrada ? 'SOLICITUD_ENTRADA' : esTransf ? 'SOLICITUD_TRANSF' : 'SOLICITUD_SALIDA',
       subTipo: currentSolicitudTipo,
-      itemId, itemNombre, instanciaId: instId,
-      sede, sedeDestino: sedeDestino || null,
+      itemNombre: itemNombre || 'Requerimiento',
       motivo, usuario: maUser.email, responsable: maUser.name || maUser.email,
       estado: 'PENDIENTE', fecha: new Date()
     };
+    // Solo agregar campos opcionales si tienen valor
+    if (itemId) movData.itemId = itemId;
+    if (instId) movData.instanciaId = instId;
+    if (sede) movData.sede = sede;
+    if (transfDiffs.length) { movData.diffsData = transfDiffs; movData.cambios = transfDiffs.map(d => d.campo==='sede'?`${d.de}→${d.a}`:`Resp:${d.de}→${d.a}`).join(' | '); }
+    if (sedeDestino) movData.sedeDestino = sedeDestino;
+    if (esEntrada) movData.cantidadRequerida = Number(document.getElementById('fsol-qty-req').value)||1;
     const ref = await db.collection('insumos_movimientos').add(movData);
     movimientosData.unshift({ id: ref.id, ...movData });
     toast('✓ Solicitud enviada — el supervisor la revisará', 'ok');
@@ -2898,8 +2997,6 @@ async function saveSolicitud() {
 async function aprobarSolicitud(movId) {
   const mov = movimientosData.find(x => x.id === movId);
   if (!mov) return;
-  const inst = instanciasData.find(x => x.id === mov.instanciaId);
-  if (!inst) { toast('La instancia ya no existe', 'err'); return; }
   try {
     if (mov.tipo === 'SOLICITUD_ENTRADA') {
     // Para entrada: solo marcar como aprobado, el admin registra la entrada manualmente
@@ -2924,17 +3021,25 @@ async function aprobarSolicitud(movId) {
         cantidad: 1, motivo: `Aprobado: ${mov.motivo}`, responsable: maUser.email,
         usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date() });
     } else if (mov.tipo === 'SOLICITUD_TRANSF') {
-      // Ejecutar la transferencia real
-      await db.collection('insumos_instancias').doc(mov.instanciaId).update({ sede: mov.sedeDestino, updatedAt: new Date().toISOString() });
+      // Ejecutar la transferencia real usando diffsData si existe
+      const instUpdates = { updatedAt: new Date().toISOString() };
+      if (mov.diffsData && mov.diffsData.length) {
+        mov.diffsData.forEach(d => { instUpdates[d.campo] = d.a; });
+      } else if (mov.sedeDestino) {
+        instUpdates.sede = mov.sedeDestino;
+      }
+      await db.collection('insumos_instancias').doc(mov.instanciaId).update(instUpdates);
       const idx = instanciasData.findIndex(x => x.id === mov.instanciaId);
-      if (idx >= 0) instanciasData[idx].sede = mov.sedeDestino;
-      const movReal = await db.collection('insumos_movimientos').add({
+      if (idx >= 0) Object.assign(instanciasData[idx], instUpdates);
+      const movRealData = {
         tipo: 'TRANSFERENCIA', itemId: mov.itemId, itemNombre: mov.itemNombre,
-        instanciaId: mov.instanciaId, sedeOrigen: mov.sede, sedeDestino: mov.sedeDestino,
+        instanciaId: mov.instanciaId, sedeOrigen: mov.sede, sedeDestino: mov.sedeDestino || mov.sede,
+        diffsData: mov.diffsData || [], cambios: mov.cambios || '',
         motivo: `Aprobado: ${mov.motivo}`, responsable: maUser.email,
         usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
-      });
-      movimientosData.unshift({ id: movReal.id, tipo: 'TRANSFERENCIA', ...movReal });
+      };
+      const movReal = await db.collection('insumos_movimientos').add(movRealData);
+      movimientosData.unshift({ id: movReal.id, ...movRealData });
     }
     // Marcar solicitud como aprobada
     await db.collection('insumos_movimientos').doc(movId).update({ estado: 'APROBADO', aprobadoPor: maUser.email });
