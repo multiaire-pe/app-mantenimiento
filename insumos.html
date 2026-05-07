@@ -388,6 +388,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <option value="SALIDA">⬆ Salidas</option>
           <option value="TRANSFERENCIA">🔄 Transferencias</option>
           <option value="ACTUALIZACION">✏️ Actualizaciones</option>
+          <option value="PENDIENTE">⏳ Solicitudes pendientes</option>
         </select>
         <select id="f-mov-sede" onchange="renderMovimientos()" style="width:180px"><option value="">Todas las sedes</option></select>
         <input type="search" id="q-mov" placeholder="Buscar ítem..." oninput="renderMovimientos()" style="width:180px;font-size:12px">
@@ -404,6 +405,71 @@ tbody td{padding:9px 12px;vertical-align:middle}
 
     <div class="tab-view" id="tab-stock">
       <div id="stock-sede-content"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SOLICITUD (TÉCNICO) -->
+<div class="modal-overlay" id="modal-solicitud" onclick="if(event.target===this)closeModal('modal-solicitud')">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-solic-title">📤 Solicitar salida</div>
+      <div onclick="closeModal('modal-solicitud')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div id="modal-solic-sub" class="modal-sub" style="margin-bottom:14px"></div>
+    <div class="form-grid">
+      <!-- Campos salida/baja -->
+      <div id="fsol-salida-fields">
+        <div class="form-group full" style="margin-bottom:11px">
+          <div class="form-label">Buscar instancia</div>
+          <div style="display:flex;gap:8px">
+            <input type="text" class="form-input" id="fsol-buscar" placeholder="ID o nombre del bien..." oninput="buscarInstanciasSolicitud()">
+            <select class="form-select" id="fsol-sede-filtro" onchange="buscarInstanciasSolicitud()" style="max-width:160px"><option value="">Todas las sedes</option></select>
+          </div>
+        </div>
+        <div class="form-group full" style="margin-bottom:11px">
+          <div class="form-label">Instancia *</div>
+          <select class="form-select" id="fsol-instancia" onchange="onSolicitudInstanciaChange()"><option value="">Seleccionar...</option></select>
+        </div>
+        <div id="fsol-inst-info" style="display:none;grid-column:1/-1;background:var(--surface2);border-radius:8px;padding:10px;font-size:11px;margin-bottom:11px"></div>
+      </div>
+      <!-- Campos transferencia -->
+      <div id="fsol-transf-fields" style="display:none">
+        <div class="form-group full" style="margin-bottom:11px">
+          <div class="form-label">Instancia a transferir *</div>
+          <select class="form-select" id="fsol-inst-transf"><option value="">Seleccionar...</option></select>
+        </div>
+        <div class="form-group full" style="margin-bottom:11px">
+          <div class="form-label">Sede destino *</div>
+          <select class="form-select" id="fsol-sede-dest"></select>
+        </div>
+      </div>
+      <div class="form-group full"><div class="form-label">Motivo / observación *</div><textarea class="form-textarea" id="fsol-motivo" placeholder="Explica el motivo de la solicitud..."></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-solicitud')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-solic" onclick="saveSolicitud()">📤 Enviar solicitud</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL RECHAZAR SOLICITUD -->
+<div class="modal-overlay" id="modal-rechazar" onclick="if(event.target===this)closeModal('modal-rechazar')">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <div class="modal-title">✗ Rechazar solicitud</div>
+      <div onclick="closeModal('modal-rechazar')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:12px;color:var(--muted2)" id="rechazar-info"></div>
+      <div class="form-group full">
+        <div class="form-label">Motivo del rechazo *</div>
+        <textarea class="form-textarea" id="rechazar-motivo" placeholder="Explica por qué se rechaza..."></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-rechazar')">Cancelar</button>
+      <button class="btn btn-red" onclick="confirmarRechazo()">✗ Confirmar rechazo</button>
     </div>
   </div>
 </div>
@@ -779,10 +845,10 @@ function maSignOut(){firebase.auth().signOut().then(()=>{sessionStorage.removeIt
 // SUPERVISOR: puede ver todo, registrar salidas/transferencias directas, aprobar solicitudes
 // TECNICO: solo solicita salidas/transferencias (van a aprobación)
 const PERMS = {
-  SUPER_ADMIN: { crearItem:1,editarItem:1,eliminarItem:1,entrada:1,salida:1,transferencia:1,aprobar:1,paquetes:1,editarMov:1,eliminarMov:1 },
-  ADMIN:       { crearItem:1,editarItem:1,eliminarItem:1,entrada:1,salida:1,transferencia:1,aprobar:1,paquetes:1,editarMov:1,eliminarMov:1 },
-  SUPERVISOR:  { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:1,transferencia:1,aprobar:1,paquetes:0,editarMov:0,eliminarMov:0 },
-  TECNICO:     { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:0,transferencia:0,aprobar:0,paquetes:0,editarMov:0,eliminarMov:0 },
+  SUPER_ADMIN: { crearItem:1,editarItem:1,eliminarItem:1,entrada:1,salida:1,transferencia:1,aprobar:1,paquetes:1,editarMov:1,eliminarMov:1,solicitarSalida:1,solicitarTransf:1 },
+  ADMIN:       { crearItem:1,editarItem:1,eliminarItem:1,entrada:1,salida:1,transferencia:1,aprobar:1,paquetes:1,editarMov:1,eliminarMov:1,solicitarSalida:1,solicitarTransf:1 },
+  SUPERVISOR:  { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:1,transferencia:1,aprobar:1,paquetes:0,editarMov:0,eliminarMov:0,solicitarSalida:1,solicitarTransf:1 },
+  TECNICO:     { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:0,transferencia:0,aprobar:0,paquetes:0,editarMov:0,eliminarMov:0,solicitarSalida:1,solicitarTransf:1 },
 };
 function can(p){ return (PERMS[maUser?.rol]||PERMS.TECNICO)[p]||0; }
 
@@ -1003,6 +1069,19 @@ function buildSidebar(){
   if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('SALIDA')">⬆ Registrar salida</button>`;
   if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('BAJA')" style="color:var(--red)">⚠️ Dar de baja</button>`;
   if(can('transferencia')===1)  h+=`<button class="btn btn-block" onclick="openModalTransferencia()">🔄 Transferencia</button>`;
+  // Botones de solicitud solo para TECNICO (no tiene salida/transf directos)
+  if(can('salida')===0 && can('solicitarSalida')===1) {
+    h+=`<button class="btn btn-block" onclick="openModalSolicitud('SALIDA')">📤 Solicitar salida</button>`;
+    h+=`<button class="btn btn-block" onclick="openModalSolicitud('BAJA')" style="color:var(--red)">📤 Solicitar baja</button>`;
+  }
+  if(can('transferencia')===0 && can('solicitarTransf')===1)
+    h+=`<button class="btn btn-block" onclick="openModalSolicitud('TRANSF')">📤 Solicitar transferencia</button>`;
+  // Badge de pendientes para supervisores/admins
+  if(can('aprobar')===1) {
+    const nPend = movimientosData.filter(m=>m.estado==='PENDIENTE').length;
+    h+=`<div style="height:1px;background:var(--border);margin:4px 0"></div>`;
+    h+=`<button class="btn btn-block" id="btn-pendientes" onclick="switchTab('movimientos',document.querySelector('.tab-btn:nth-child(3)'));document.getElementById('f-mov-tipo').value='PENDIENTE';renderMovimientos()" style="color:var(--yellow);border-color:var(--yellow-border)">⏳ Solicitudes pendientes${nPend>0?` <span class="pending-badge">${nPend}</span>`:''}</button>`;
+  }
 
   if(maUser&&maUser.rol==='SUPER_ADMIN'){
     h+=`<div style="height:1px;background:var(--border);margin:4px 0"></div>`;
@@ -1225,7 +1304,9 @@ function renderMovimientos(){
   const tipo=document.getElementById('f-mov-tipo').value;
   const sede=document.getElementById('f-mov-sede').value;
   const q=document.getElementById('q-mov').value.toLowerCase();
+  const filtroPend = tipo === 'PENDIENTE';
   let list=movimientosData.filter(m=>{
+    if(filtroPend) return m.estado==='PENDIENTE';
     if(tipo&&m.tipo!==tipo)return false;
     if(sede&&m.sede!==sede&&m.sedeOrigen!==sede&&m.sedeDestino!==sede)return false;
     if(q&&!(m.itemNombre||'').toLowerCase().includes(q))return false;
@@ -1249,10 +1330,11 @@ function renderMovimientos(){
     const cantInfo = m.tipo==='ACTUALIZACION' ? '' : (m.cantidad ? `${sg}${m.cantidad}` : (m.instanciaId ? sg+'1' : ''));
     // Detalle de cambios para ACTUALIZACION
     const cambiosInfo = m.tipo==='ACTUALIZACION' && m.cambios ? `<span style="font-size:10px;color:var(--muted2)"> · ${m.cambios}</span>` : '';
-    const badge=m.estado==='PENDIENTE'?`<span class="tipo-badge tipo-pendiente">⏳ pendiente</span>`:m.estado==='RECHAZADO'?`<span class="tipo-badge" style="background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)">✗ rechazado</span>`:'';
+    const badge=m.estado==='PENDIENTE'?`<span class="tipo-badge tipo-pendiente">⏳ pendiente</span>`:m.estado==='RECHAZADO'?`<span class="tipo-badge" style="background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)" title="${m.motivoRechazo||''}">✗ rechazado</span>`:m.estado==='APROBADO'?`<span class="tipo-badge" style="background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)">✓ aprobado</span>`:'';
     const canMod=can('eliminarMov')&&!isPend;
     const delBtn=canMod?`<button class="btn btn-sm btn-red" title="Revertir acción" onclick="revertirMovimiento('${m.id}')">↩ Revertir</button>`:'';
     const editBtn=canMod&&can('editarMov')?`<button class="btn btn-sm" title="Editar" onclick="editarMovimiento('${m.id}')">✏️</button>`:'';
+    const aprobarBtn=isPend&&can('aprobar')===1?`<button class="btn btn-sm btn-green" onclick="aprobarSolicitud('${m.id}')">✓ Aprobar</button><button class="btn btn-sm btn-red" onclick="rechazarSolicitud('${m.id}')">✗ Rechazar</button>`:'';
     return `<div class="mov-item ${isPend?'pendiente':''}">
       <div class="mov-icon ${tCls}">${icons[m.tipo]||'📦'}</div>
       <div class="mov-body">
@@ -1260,7 +1342,7 @@ function renderMovimientos(){
         <div class="mov-meta">${fs} · ${m.responsable||m.usuario||'—'}${sedeStr?' · '+sedeStr:''}${m.motivo?' · '+m.motivo:''}${instInfo}${cambiosInfo}</div>
       </div>
       <div class="mov-qty ${tCls}">${cantInfo} ${m.unidad||'UND'}</div>
-      ${(delBtn||editBtn)?`<div class="mov-actions">${editBtn}${delBtn}</div>`:''}
+      ${(delBtn||editBtn||aprobarBtn)?`<div class="mov-actions">${aprobarBtn}${editBtn}${delBtn}</div>`:''}
     </div>`;
   }).join('')+'</div>';
 }
@@ -2710,6 +2792,162 @@ async function guardarEdicionMovimiento() {
     toast('✓ Movimiento actualizado', 'ok');
     closeModal('modal-edit-mov');
     renderAll();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+}
+
+
+// ── SISTEMA DE SOLICITUDES (TÉCNICO) ─────────────────────
+let currentSolicitudTipo = 'SALIDA';
+let rechazandoMovId = null;
+
+function openModalSolicitud(tipo) {
+  currentSolicitudTipo = tipo;
+  const esBaja = tipo === 'BAJA';
+  const esTransf = tipo === 'TRANSF';
+  document.getElementById('modal-solic-title').textContent =
+    esTransf ? '📤 Solicitar transferencia' : esBaja ? '📤 Solicitar baja' : '📤 Solicitar salida';
+  document.getElementById('modal-solic-sub').innerHTML =
+    esTransf ? '🔄 Tu solicitud será revisada por un supervisor antes de ejecutarse.'
+    : esBaja ? '⚠️ Solicitas dar de baja un bien. El supervisor decidirá si procede.'
+    : '📤 Solicitas la salida de un bien. El supervisor deberá aprobarla.';
+  document.getElementById('fsol-salida-fields').style.display = esTransf ? 'none' : 'block';
+  document.getElementById('fsol-transf-fields').style.display = esTransf ? 'block' : 'none';
+  document.getElementById('fsol-motivo').value = '';
+  document.getElementById('fsol-inst-info').style.display = 'none';
+  // Poblar instancias
+  const list = instanciasData.filter(i => i.estado !== 'BAJA');
+  const opts = '<option value="">Seleccionar...</option>' + list.map(i => `<option value="${i.id}">${i.id} — ${i.nombre} (${i.sede||'sin sede'})</option>`).join('');
+  if (!esTransf) {
+    document.getElementById('fsol-sede-filtro').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s => `<option value="${s.sede}">${s.sede}</option>`).join('');
+    document.getElementById('fsol-buscar').value = '';
+    document.getElementById('fsol-instancia').innerHTML = opts;
+  } else {
+    document.getElementById('fsol-inst-transf').innerHTML = opts;
+    document.getElementById('fsol-sede-dest').innerHTML = sedeOpts(false);
+  }
+  document.getElementById('modal-solicitud').classList.add('open');
+}
+
+function buscarInstanciasSolicitud() {
+  const q = document.getElementById('fsol-buscar').value.toLowerCase();
+  const sede = document.getElementById('fsol-sede-filtro').value;
+  let list = instanciasData.filter(i => i.estado !== 'BAJA');
+  if (sede) list = list.filter(i => i.sede === sede);
+  if (q) list = list.filter(i => (i.id + i.nombre + (i.sede||'')).toLowerCase().includes(q));
+  document.getElementById('fsol-instancia').innerHTML = '<option value="">Seleccionar...</option>' +
+    list.map(i => `<option value="${i.id}">${i.id} — ${i.nombre} (${i.sede||'sin sede'})</option>`).join('');
+  document.getElementById('fsol-inst-info').style.display = 'none';
+}
+
+function onSolicitudInstanciaChange() {
+  const instId = document.getElementById('fsol-instancia').value;
+  const inst = instanciasData.find(x => x.id === instId);
+  const info = document.getElementById('fsol-inst-info');
+  if (!inst) { info.style.display = 'none'; return; }
+  info.style.display = 'block';
+  info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>📍 Sede: <strong>${inst.sede||'—'}</strong> · Estado: <strong>${inst.estado||'DISPONIBLE'}</strong>`;
+}
+
+async function saveSolicitud() {
+  const esTransf = currentSolicitudTipo === 'TRANSF';
+  const motivo = document.getElementById('fsol-motivo').value.trim();
+  if (!motivo) { toast('El motivo es obligatorio', 'err'); return; }
+  let instId, itemId, itemNombre, sede, sedeDestino;
+  if (esTransf) {
+    instId = document.getElementById('fsol-inst-transf').value;
+    sedeDestino = document.getElementById('fsol-sede-dest').value;
+    if (!instId || !sedeDestino) { toast('Completa todos los campos', 'err'); return; }
+  } else {
+    instId = document.getElementById('fsol-instancia').value;
+    if (!instId) { toast('Selecciona una instancia', 'err'); return; }
+  }
+  const inst = instanciasData.find(x => x.id === instId);
+  if (!inst) { toast('Instancia no encontrada', 'err'); return; }
+  itemId = inst.itemId; itemNombre = inst.nombre; sede = inst.sede;
+  try {
+    const movData = {
+      tipo: esTransf ? 'SOLICITUD_TRANSF' : 'SOLICITUD_SALIDA',
+      subTipo: currentSolicitudTipo,
+      itemId, itemNombre, instanciaId: instId,
+      sede, sedeDestino: sedeDestino || null,
+      motivo, usuario: maUser.email, responsable: maUser.name || maUser.email,
+      estado: 'PENDIENTE', fecha: new Date()
+    };
+    const ref = await db.collection('insumos_movimientos').add(movData);
+    movimientosData.unshift({ id: ref.id, ...movData });
+    toast('✓ Solicitud enviada — el supervisor la revisará', 'ok');
+    closeModal('modal-solicitud');
+    buildSidebar();
+    renderMovimientos();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+}
+
+async function aprobarSolicitud(movId) {
+  const mov = movimientosData.find(x => x.id === movId);
+  if (!mov) return;
+  const inst = instanciasData.find(x => x.id === mov.instanciaId);
+  if (!inst) { toast('La instancia ya no existe', 'err'); return; }
+  try {
+    if (mov.tipo === 'SOLICITUD_SALIDA') {
+      // Ejecutar la salida/baja real
+      await db.collection('insumos_instancias').doc(mov.instanciaId).delete();
+      instanciasData = instanciasData.filter(x => x.id !== mov.instanciaId);
+      const tipoReal = mov.subTipo || 'SALIDA';
+      const movReal = await db.collection('insumos_movimientos').add({
+        tipo: tipoReal, itemId: mov.itemId, itemNombre: mov.itemNombre,
+        instanciaId: mov.instanciaId, sede: mov.sede, cantidad: 1,
+        motivo: `Aprobado: ${mov.motivo}`, responsable: maUser.email,
+        usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
+      });
+      movimientosData.unshift({ id: movReal.id, tipo: tipoReal, itemId: mov.itemId,
+        itemNombre: mov.itemNombre, instanciaId: mov.instanciaId, sede: mov.sede,
+        cantidad: 1, motivo: `Aprobado: ${mov.motivo}`, responsable: maUser.email,
+        usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date() });
+    } else if (mov.tipo === 'SOLICITUD_TRANSF') {
+      // Ejecutar la transferencia real
+      await db.collection('insumos_instancias').doc(mov.instanciaId).update({ sede: mov.sedeDestino, updatedAt: new Date().toISOString() });
+      const idx = instanciasData.findIndex(x => x.id === mov.instanciaId);
+      if (idx >= 0) instanciasData[idx].sede = mov.sedeDestino;
+      const movReal = await db.collection('insumos_movimientos').add({
+        tipo: 'TRANSFERENCIA', itemId: mov.itemId, itemNombre: mov.itemNombre,
+        instanciaId: mov.instanciaId, sedeOrigen: mov.sede, sedeDestino: mov.sedeDestino,
+        motivo: `Aprobado: ${mov.motivo}`, responsable: maUser.email,
+        usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
+      });
+      movimientosData.unshift({ id: movReal.id, tipo: 'TRANSFERENCIA', ...movReal });
+    }
+    // Marcar solicitud como aprobada
+    await db.collection('insumos_movimientos').doc(movId).update({ estado: 'APROBADO', aprobadoPor: maUser.email });
+    const idx = movimientosData.findIndex(x => x.id === movId);
+    if (idx >= 0) movimientosData[idx].estado = 'APROBADO';
+    toast('✓ Solicitud aprobada y ejecutada', 'ok');
+    buildSidebar();
+    renderAll();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+}
+
+function rechazarSolicitud(movId) {
+  const mov = movimientosData.find(x => x.id === movId);
+  if (!mov) return;
+  rechazandoMovId = movId;
+  document.getElementById('rechazar-info').textContent = `${mov.tipo.replace('SOLICITUD_','')} · ${mov.itemNombre} · Solicitado por: ${mov.responsable||mov.usuario}`;
+  document.getElementById('rechazar-motivo').value = '';
+  document.getElementById('modal-rechazar').classList.add('open');
+}
+
+async function confirmarRechazo() {
+  const motivo = document.getElementById('rechazar-motivo').value.trim();
+  if (!motivo) { toast('El motivo es obligatorio', 'err'); return; }
+  try {
+    await db.collection('insumos_movimientos').doc(rechazandoMovId).update({
+      estado: 'RECHAZADO', motivoRechazo: motivo, rechazadoPor: maUser.email
+    });
+    const idx = movimientosData.findIndex(x => x.id === rechazandoMovId);
+    if (idx >= 0) { movimientosData[idx].estado = 'RECHAZADO'; movimientosData[idx].motivoRechazo = motivo; }
+    toast('Solicitud rechazada', 'ok');
+    closeModal('modal-rechazar');
+    buildSidebar();
+    renderMovimientos();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
 }
 
