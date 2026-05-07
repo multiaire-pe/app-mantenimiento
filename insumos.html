@@ -493,10 +493,10 @@ tbody td{padding:9px 12px;vertical-align:middle}
         </div>
         <div class="form-group full">
           <div class="form-label">Instancias en este paquete</div>
-          <div style="display:flex;gap:8px;margin-bottom:6px">
-            <input type="text" class="form-input" id="fpkg-inst-buscar" placeholder="Buscar instancia disponible..." oninput="buscarInstanciasPkg()" style="font-size:12px">
+          <div style="position:relative;margin-bottom:6px">
+            <input type="text" class="form-input" id="fpkg-inst-buscar" placeholder="Buscar instancia disponible..." oninput="buscarInstanciasPkg()" style="font-size:12px" autocomplete="off">
+            <div id="fpkg-inst-resultados" style="position:absolute;left:0;right:0;top:100%;max-height:160px;overflow-y:auto;background:var(--surface);border:1.5px solid var(--border2);border-radius:6px;font-size:11px;display:none;z-index:500;box-shadow:var(--shadow-lg)"></div>
           </div>
-          <div id="fpkg-inst-resultados" style="max-height:120px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;display:none"></div>
           <div id="fpkg-inst-seleccionadas" style="margin-top:8px;display:flex;flex-direction:column;gap:4px"></div>
         </div>
       </div>
@@ -2011,10 +2011,21 @@ async function destroyScanner() {
 function onQRScanned(code) {
   document.getElementById('qr-result-box').textContent = '✓ ' + code;
   const infoBox = document.getElementById('scan-item-info');
-  // Buscar en instancias primero, luego en catálogo
+  // Buscar en instancias, catálogo y paquetes
   const inst = instanciasData.find(x => x.id === code);
   const item = inst ? catalogoData.find(x => x.id === inst.itemId) : catalogoData.find(x => x.id === code);
-  if (inst) {
+  const pkg = !inst && !item ? paquetesData.find(x => x.id === code) : null;
+  if (pkg) {
+    const insts = instanciasData.filter(x => x.paqueteId === pkg.id);
+    infoBox.innerHTML = `<strong>${pkg.nombre}</strong> · <span style="font-family:var(--mono)">${pkg.id}</span><br>
+      📍 Sede: <strong>${pkg.sede||'—'}</strong> · 👤 Resp: <strong>${pkg.responsable||'—'}</strong> · ${insts.length} instancia(s)
+      <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${pkg.id}')">▣ Ver QR</button>
+        <button class="btn btn-sm btn-orange" onclick="closeScanner();openModalPaquete('${pkg.id}')">✏️ Editar</button>
+        <button class="btn btn-sm" onclick="closeScanner();openModalTransfPaquete('${pkg.id}')">🔄 Transferir</button>
+      </div>`;
+    infoBox.style.display = 'block';
+  } else if (inst) {
     infoBox.innerHTML = `<strong>${inst.nombre}</strong> · <span style="font-family:var(--mono)">${inst.id}</span><br>
       📍 Sede: <strong>${inst.sede||'—'}</strong> · Estado: <strong>${inst.estado||'DISPONIBLE'}</strong>
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
@@ -3491,7 +3502,12 @@ function openModalTransfPaquete(pkgId) {
   const pkg = paquetesData.find(x=>x.id===pkgId);
   if (!pkg) return;
   document.getElementById('pkg-transf-info').textContent = `${pkg.id} · ${pkg.nombre} · ${(pkg.instancias||[]).length} instancia(s) · Sede: ${pkg.sede||'—'} · Resp: ${pkg.responsable||'—'}`;
+  const sedeActual = pkg.sede||'';
   document.getElementById('fpkt-sede-dest').innerHTML = sedeOpts(false);
+  // Deshabilitar sede actual
+  Array.from(document.getElementById('fpkt-sede-dest').options).forEach(opt => {
+    if (opt.value === sedeActual) opt.disabled = true;
+  });
   const pOpts = '<option value="">—</option>'+personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
   document.getElementById('fpkt-resp-dest').innerHTML = pOpts;
   document.getElementById('fpkt-realizado').innerHTML = pOpts;
@@ -3515,9 +3531,15 @@ function onPkgTransfTipoChange() {
   ley.innerHTML=msg; ley.style.display='block';
 }
 
+let _savingPkgTransf = false;
 async function saveTransfPaquete() {
+  if (_savingPkgTransf) return;
+  _savingPkgTransf = true;
+  const btnConfirmar = document.querySelector('#modal-pkg-transf .btn-primary');
+  if (btnConfirmar) { btnConfirmar.disabled = true; btnConfirmar.textContent = '⏳ Guardando...'; }
+  try {
   const pkg = paquetesData.find(x=>x.id===transfPaqueteId);
-  if (!pkg) return;
+  if (!pkg) { _savingPkgTransf=false; return; }
   const chkSede = document.getElementById('fpkt-chk-sede').checked;
   const chkResp = document.getElementById('fpkt-chk-resp').checked;
   const sedeD = chkSede ? document.getElementById('fpkt-sede-dest').value : null;
@@ -3556,27 +3578,30 @@ async function saveTransfPaquete() {
     };
     const movRef = await db.collection('insumos_movimientos').add(movPkg);
     movimientosData.unshift({id:movRef.id,...movPkg});
-    // Registrar movimientos de instancias (marcados como generados por paquete, no revertibles)
+    // Registrar UN movimiento por instancia (marcado como generado por paquete, no revertible)
     for (const instId of instIds) {
-      const inst = instanciasData.find(x=>x.id===instId);
+      const instData = instanciasData.find(x=>x.id===instId);
       const instMov = {
-        tipo:'TRANSFERENCIA', itemId:inst?.itemId, itemNombre:inst?.nombre||instId,
+        tipo:'TRANSFERENCIA', itemId:instData?.itemId||null, itemNombre:instData?.nombre||instId,
         instanciaId:instId,
-        sedeOrigen:chkSede?pkg.sede:undefined, sedeDestino:chkSede?sedeD:undefined,
         diffsData:diffs, cambios:cambiosLabel,
         origenPaquete:movRef.id, paqueteId:transfPaqueteId,
         motivo:`Transferencia del paquete ${transfPaqueteId}`,
         responsable:realizado, usuario:maUser.email,
         estado:'CONFIRMADO', fecha:new Date()
       };
-      // limpiar undefined
-      Object.keys(instMov).forEach(k=>instMov[k]===undefined&&delete instMov[k]);
+      if(chkSede){instMov.sedeOrigen=pkg.sede||'';instMov.sedeDestino=sedeD;}
       const instMovRef = await db.collection('insumos_movimientos').add(instMov);
       movimientosData.unshift({id:instMovRef.id,...instMov});
     }
     toast(`✓ Paquete ${transfPaqueteId} transferido — ${cambiosLabel}`,'ok');
     closeModal('modal-pkg-transf'); renderAll();
   } catch(e){toast('Error: '+e.message,'err');}
+  } finally {
+    _savingPkgTransf = false;
+    const btn = document.querySelector('#modal-pkg-transf .btn-primary');
+    if (btn) { btn.disabled=false; btn.textContent='🔄 Confirmar'; }
+  }
 }
 
 // ── POR TÉCNICO ───────────────────────────────────────────
