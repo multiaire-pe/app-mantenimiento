@@ -1696,6 +1696,7 @@ function onQRScanned(code) {
         <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${inst.id}')">▣ Ver QR</button>
         <button class="btn btn-sm btn-orange" onclick="closeScanner();openEditInstancia('${inst.id}')">✏️ Editar</button>
         <button class="btn btn-sm" onclick="closeScanner();openModalSalidaDesdeScanner('${inst.id}')">⬆ Salida</button>
+        <button class="btn btn-sm" style="color:var(--red)" onclick="closeScanner();openModalBajaDesdeScanner('${inst.id}')">⚠️ Dar de baja</button>
         <button class="btn btn-sm" onclick="closeScanner();openModalTransferenciaDesdeScanner('${inst.id}')">🔄 Transferir</button>
       </div>`;
     infoBox.style.display = 'block';
@@ -1720,6 +1721,16 @@ async function closeScanner() {
 async function openModalSalidaDesdeScanner(instId) {
   openModalSalida('SALIDA');
   // Esperar que el modal y las opciones estén en el DOM
+  await new Promise(r => setTimeout(r, 120));
+  const sel = document.getElementById('fsal-instancia');
+  if (sel) {
+    sel.value = instId;
+    onSalidaInstanciaChange();
+  }
+}
+
+async function openModalBajaDesdeScanner(instId) {
+  openModalSalida('BAJA');
   await new Promise(r => setTimeout(r, 120));
   const sel = document.getElementById('fsal-instancia');
   if (sel) {
