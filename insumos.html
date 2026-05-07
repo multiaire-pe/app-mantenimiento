@@ -839,6 +839,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <option value="5">🔴 CASI VACÍO (5%)</option><option value="0">⚫ VACÍO (0%)</option>
         </select>
       </div>
+      <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="fi-inst-responsable"></select></div>
       <div class="form-group full"><div class="form-label">Notas</div><input type="text" class="form-input" id="fi-inst-notas" placeholder="Opcional"></div>
     </div>
     <div class="modal-foot"><button class="btn" onclick="closeModal('modal-instancia')">Cancelar</button><button class="btn btn-primary" onclick="saveInstancia()">💾 Crear</button></div>
@@ -869,6 +870,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <option value="MANTENIMIENTO">⚠️ Mantenimiento</option><option value="DETERIORADO">🔴 Deteriorado</option>
         </select>
       </div>
+      <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="fe-inst-responsable"></select></div>
       <div class="form-group full"><div class="form-label">Notas</div><input type="text" class="form-input" id="fe-inst-notas"></div>
     </div>
     <div class="modal-foot">
@@ -1776,7 +1778,7 @@ async function cargarDatosPrueba() {
       // Escaleras 6 pasos — ESC6-001 y ESC6-002 van en paquetes
       { id: 'ESC6-001', itemId: 'HERR-ESC6', nombre: 'ESCALERA 6 PASOS', sede: 'OFICINA', estado: 'DISPONIBLE', paqueteId: 'PKG-001' },
       { id: 'ESC6-002', itemId: 'HERR-ESC6', nombre: 'ESCALERA 6 PASOS', sede: 'JOCKEY PLAZA', estado: 'EN_USO', paqueteId: 'PKG-002' },
-      { id: 'ESC6-003', itemId: 'HERR-ESC6', nombre: 'ESCALERA 6 PASOS', sede: 'MIRAFLORES', estado: 'DISPONIBLE' },
+      { id: 'ESC6-003', itemId: 'HERR-ESC6', nombre: 'ESCALERA 6 PASOS', sede: 'MIRAFLORES', estado: 'DISPONIBLE', responsable: 'ENRIQUE YARANGA' },
       // Escaleras 8 pasos
       { id: 'ESC8-001', itemId: 'HERR-ESC8', nombre: 'ESCALERA 8 PASOS', sede: 'OFICINA', estado: 'DISPONIBLE', paqueteId: 'PKG-001' },
       { id: 'ESC8-002', itemId: 'HERR-ESC8', nombre: 'ESCALERA 8 PASOS', sede: 'SANTA ANITA', estado: 'MANTENIMIENTO', notas: 'Peldaño roto' },
@@ -1786,15 +1788,15 @@ async function cargarDatosPrueba() {
       { id: 'MRT-003', itemId: 'HERR-MRT', nombre: 'MARTILLO', sede: 'MIRAFLORES', estado: 'DETERIORADO', notas: 'Mango partido' },
       // Desarmadores
       { id: 'DES-001', itemId: 'HERR-DES', nombre: 'DESARMADOR SET', sede: 'OFICINA', estado: 'DISPONIBLE', paqueteId: 'PKG-001' },
-      { id: 'DES-002', itemId: 'HERR-DES', nombre: 'DESARMADOR SET', sede: 'SANTA ANITA', estado: 'DISPONIBLE' },
+      { id: 'DES-002', itemId: 'HERR-DES', nombre: 'DESARMADOR SET', sede: 'SANTA ANITA', estado: 'DISPONIBLE', responsable: 'HERNAN ZAVALETA' },
       // Refrigerantes — REF-001 en paquete
       { id: 'REF-001', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'OFICINA', estado: 'DISPONIBLE', nivel: 100, paqueteId: 'PKG-001' },
       { id: 'REF-002', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'JOCKEY PLAZA', estado: 'DISPONIBLE', nivel: 50, paqueteId: 'PKG-002' },
-      { id: 'REF-003', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'MIRAFLORES', estado: 'DISPONIBLE', nivel: 25 },
+      { id: 'REF-003', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'MIRAFLORES', estado: 'DISPONIBLE', nivel: 25, responsable: 'ENRIQUE YARANGA' },
       { id: 'REF-004', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'SANTA ANITA', estado: 'DISPONIBLE', nivel: 75 },
       // Aceites
-      { id: 'ACE-001', itemId: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', sede: 'OFICINA', estado: 'DISPONIBLE', nivel: 75 },
-      { id: 'ACE-002', itemId: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', sede: 'SANTA ANITA', estado: 'DISPONIBLE', nivel: 5 },
+      { id: 'ACE-001', itemId: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', sede: 'OFICINA', estado: 'DISPONIBLE', nivel: 75, responsable: 'JOSE MARCHENA' },
+      { id: 'ACE-002', itemId: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', sede: 'SANTA ANITA', estado: 'DISPONIBLE', nivel: 5, responsable: 'HERNAN ZAVALETA' },
     ];
     for (const inst of instancias) {
       await db.collection('insumos_instancias').doc(inst.id).set({...inst, creadoEn: ts, creadoPor: maUser.email});
@@ -2537,6 +2539,8 @@ function openModalNuevaInstancia() {
   document.getElementById('fi-inst-notas').value = '';
   document.getElementById('fi-inst-nivel-wrap').style.display = 'none';
   document.getElementById('fi-inst-sede').innerHTML = sedeOpts(false);
+  const pOptsNueva = '<option value="">—</option>' + personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  document.getElementById('fi-inst-responsable').innerHTML = pOptsNueva;
   document.getElementById('modal-instancia').classList.add('open');
 }
 
@@ -2605,8 +2609,10 @@ async function saveInstancia() {
   if (!esUnico) { toast('El ID ya existe, usa otro', 'err'); return; }
   const item = catalogoData.find(x => x.id === itemId);
   const nivel = (item && item.tipoCantidad === 'RANGO') ? Number(document.getElementById('fi-inst-nivel').value) : null;
+  const responsableNueva = document.getElementById('fi-inst-responsable').value || null;
   const instancia = { itemId, nombre: item ? item.nombre.toUpperCase() : '', sede, estado: 'DISPONIBLE',
     notas: document.getElementById('fi-inst-notas').value.trim(),
+    ...(responsableNueva && { responsable: responsableNueva }),
     creadoEn: new Date().toISOString(), creadoPor: maUser.email,
     ...(nivel !== null && { nivel }) };
   try {
@@ -2630,6 +2636,9 @@ function openEditInstancia(instId) {
   document.getElementById('fe-inst-sede').value = inst.sede || '';
   document.getElementById('fe-inst-estado').value = inst.estado || 'DISPONIBLE';
   document.getElementById('fe-inst-notas').value = inst.notas || '';
+  const pOptsEdit = '<option value="">—</option>' + personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  document.getElementById('fe-inst-responsable').innerHTML = pOptsEdit;
+  document.getElementById('fe-inst-responsable').value = inst.responsable || '';
   document.getElementById('fe-inst-nivel-wrap').style.display = esRango ? 'block' : 'none';
   if (esRango && inst.nivel !== undefined) document.getElementById('fe-inst-nivel').value = inst.nivel;
   document.getElementById('modal-inst-edit').classList.add('open');
@@ -2643,13 +2652,15 @@ async function updateInstancia() {
   const inst = instanciasData.find(x => x.id === editingInstanciaId);
   const item = inst ? catalogoData.find(x => x.id === inst.itemId) : null;
   const nivel = (item && item.tipoCantidad === 'RANGO') ? Number(document.getElementById('fe-inst-nivel').value) : undefined;
-  const updates = { sede, estado, notas, updatedAt: new Date().toISOString(), updatedBy: maUser.email };
+  const responsableEdit = document.getElementById('fe-inst-responsable').value || null;
+  const updates = { sede, estado, notas, responsable: responsableEdit || null, updatedAt: new Date().toISOString(), updatedBy: maUser.email };
   if (nivel !== undefined) updates.nivel = nivel;
   // Detectar qué cambió para el historial
   const diffs = [];
   if (inst.estado !== estado) diffs.push({campo:'estado', de:inst.estado||'DISPONIBLE', a:estado});
   if (inst.sede !== sede) diffs.push({campo:'sede', de:inst.sede||'', a:sede});
   if (nivel !== undefined && inst.nivel !== nivel) diffs.push({campo:'nivel', de:inst.nivel??0, a:nivel});
+  if ((inst.responsable||null) !== (responsableEdit||null)) diffs.push({campo:'responsable', de:inst.responsable||'', a:responsableEdit||''});
   try {
     await db.collection('insumos_instancias').doc(editingInstanciaId).update(updates);
     const idx = instanciasData.findIndex(x => x.id === editingInstanciaId);
@@ -3678,7 +3689,7 @@ function renderPorTecnico() {
     h+=`<div class="table-wrap"><table><thead><tr><th>ID</th><th>Tipo</th><th>Sede</th><th>Estado</th></tr></thead><tbody>`;
     h+=instsSueltas.map(i=>{
       const estColor={DISPONIBLE:'stock-ok',EN_USO:'stock-uso',MANTENIMIENTO:'stock-low',DETERIORADO:'stock-deteriorado'};
-      return `<tr><td class="td-code">${i.id}</td><td style="font-size:11px">${i.nombre}</td><td style="font-size:11px">${i.sede||'—'}</td><td><span class="stock-pill ${estColor[i.estado]||'stock-ok'}" style="font-size:9px">${i.estado||'DISPONIBLE'}</span></td></tr>`;
+      return `<tr><td class="td-code">${i.id}</td><td style="font-size:11px">${i.nombre}</td><td style="font-size:11px">${i.sede||'—'}</td><td><span class="stock-pill ${estColor[i.estado]||'stock-ok'}" style="font-size:9px">${i.estado||'DISPONIBLE'}</span></td><td style="font-size:11px;color:var(--muted2)" onclick="openEditInstancia('${i.id}')" style="cursor:pointer">✏️</td></tr>`;
     }).join('');
     h+='</tbody></table></div>';
   } else { h+='<div style="font-size:12px;color:var(--muted2)">Sin instancias sueltas asignadas</div>'; }
