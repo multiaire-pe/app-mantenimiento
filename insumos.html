@@ -1803,7 +1803,7 @@ function onEntradaTipoChange() {
   previewInstancias();
 }
 
-function previewInstancias() {
+async function previewInstancias() {
   const itemId = document.getElementById('fent-tipo').value;
   const qty = parseInt(document.getElementById('fent-qty').value) || 0;
   const prev = document.getElementById('fent-preview');
@@ -1811,12 +1811,33 @@ function previewInstancias() {
   const item = catalogoData.find(x => x.id === itemId);
   if (!item) return;
   const prefix = (item.codigo || item.nombre.replace(/[^A-Z0-9]/gi, '')).substring(0, 3).toUpperCase();
-  const existing = instanciasData.filter(i => i.id.startsWith(prefix + '-')).map(i => parseInt(i.id.replace(prefix + '-', '')) || 0).sort((a, b) => b - a);
-  const next = (existing[0] || 0) + 1;
-  const ids = Array.from({length: qty}, (_, i) => `${prefix}-${String(next + i).padStart(3, '0')}`);
-  prev.style.display = 'block';
-  prev.innerHTML = `<div style="font-weight:600;margin-bottom:6px;color:var(--blue)">Se crearán ${qty} instancia${qty > 1 ? 's' : ''}:</div>` +
-    ids.map(id => `<div style="font-family:var(--mono);padding:2px 0">• ${id}</div>`).join('');
+  try {
+    const snap = await db.collection('insumos_instancias').get();
+    const allIds = snap.docs.map(d => d.id);
+    instanciasData.forEach(i => { if (!allIds.includes(i.id)) allIds.push(i.id); });
+    const existing = allIds
+      .filter(id => id.startsWith(prefix + '-'))
+      .map(id => parseInt(id.replace(prefix + '-', '')) || 0)
+      .sort((a, b) => b - a);
+    let next = (existing[0] || 0) + 1;
+    const ids = [];
+    while (ids.length < qty) {
+      const candidate = `${prefix}-${String(next).padStart(3, '0')}`;
+      if (!allIds.includes(candidate)) ids.push(candidate);
+      next++;
+    }
+    prev.style.display = 'block';
+    prev.innerHTML = `<div style="font-weight:600;margin-bottom:6px;color:var(--blue)">Se crearán ${qty} instancia${qty > 1 ? 's' : ''}:</div>` +
+      ids.map(id => `<div style="font-family:var(--mono);padding:2px 0">• ${id}</div>`).join('');
+  } catch(e) {
+    // Fallback
+    const existing = instanciasData.filter(i => i.id.startsWith(prefix + '-')).map(i => parseInt(i.id.replace(prefix + '-', '')) || 0).sort((a, b) => b - a);
+    const next = (existing[0] || 0) + 1;
+    const ids = Array.from({length: qty}, (_, i) => `${prefix}-${String(next + i).padStart(3, '0')}`);
+    prev.style.display = 'block';
+    prev.innerHTML = `<div style="font-weight:600;margin-bottom:6px;color:var(--blue)">Se crearán ${qty} instancia${qty > 1 ? 's' : ''}:</div>` +
+      ids.map(id => `<div style="font-family:var(--mono);padding:2px 0">• ${id}</div>`).join('');
+  }
 }
 
 async function saveEntrada() {
@@ -2193,11 +2214,33 @@ async function generarInstanciaId() {
   const item = catalogoData.find(x => x.id === itemId);
   if (!item) return;
   const prefix = (item.codigo || item.nombre.replace(/[^A-Z0-9]/gi, '')).substring(0, 3).toUpperCase();
-  const existing = instanciasData.filter(i => i.id.startsWith(prefix + '-')).map(i => parseInt(i.id.replace(prefix + '-', '')) || 0).sort((a, b) => b - a);
-  const nextNum = (existing[0] || 0) + 1;
-  const newId = `${prefix}-${String(nextNum).padStart(3, '0')}`;
-  document.getElementById('fi-inst-id').value = newId;
-  await verificarIdUnico(newId);
+  // Consultar Firestore para obtener todos los IDs con este prefijo (incluyendo eliminados/baja)
+  try {
+    const snap = await db.collection('insumos_instancias').get();
+    const allIds = snap.docs.map(d => d.id);
+    // También incluir IDs en memoria (instancias activas)
+    instanciasData.forEach(i => { if (!allIds.includes(i.id)) allIds.push(i.id); });
+    const existing = allIds
+      .filter(id => id.startsWith(prefix + '-'))
+      .map(id => parseInt(id.replace(prefix + '-', '')) || 0)
+      .sort((a, b) => b - a);
+    let nextNum = (existing[0] || 0) + 1;
+    let newId = `${prefix}-${String(nextNum).padStart(3, '0')}`;
+    // Asegurar que el ID generado no exista (por si acaso)
+    while (allIds.includes(newId)) {
+      nextNum++;
+      newId = `${prefix}-${String(nextNum).padStart(3, '0')}`;
+    }
+    document.getElementById('fi-inst-id').value = newId;
+    await verificarIdUnico(newId);
+  } catch(e) {
+    // Fallback a solo memoria si falla Firestore
+    const existing = instanciasData.filter(i => i.id.startsWith(prefix + '-')).map(i => parseInt(i.id.replace(prefix + '-', '')) || 0).sort((a, b) => b - a);
+    const nextNum = (existing[0] || 0) + 1;
+    const newId = `${prefix}-${String(nextNum).padStart(3, '0')}`;
+    document.getElementById('fi-inst-id').value = newId;
+    await verificarIdUnico(newId);
+  }
 }
 
 async function verificarIdUnico(id) {
@@ -2474,7 +2517,7 @@ async function revertirMovimiento(movId) {
         itemId: mov.itemId, nombre: mov.itemNombre || (item ? item.nombre : ''),
         sede: mov.sede || '', estado: 'DISPONIBLE',
         creadoEn: new Date().toISOString(), creadoPor: maUser.email,
-        notas: 'Revertido desde movimiento ' + movId
+        notas: `Restaurado el ${new Date().toLocaleDateString('es-PE')} (revertido desde historial)`
       };
       await db.collection('insumos_instancias').doc(instId).set(inst);
       instanciasData.push({ id: instId, ...inst });
