@@ -385,7 +385,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <select id="f-inst-sede" onchange="renderInstancias()" style="max-width:160px;font-size:12px">
           <option value="">Todas las sedes</option>
         </select>
-        <button class="btn btn-primary btn-sm" onclick="openModalNuevaInstancia()">+ Nueva instancia</button>
+
       </div>
       <div style="margin-bottom:10px">
         <div id="inst-qr-selection-bar" style="display:none;align-items:center;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
@@ -816,35 +816,6 @@ tbody td{padding:9px 12px;vertical-align:middle}
 </div>
 
 
-<!-- MODAL NUEVA INSTANCIA -->
-<div class="modal-overlay" id="modal-instancia">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-header">
-      <div class="modal-title">🏷️ Nueva instancia</div>
-      <div onclick="closeModal('modal-instancia')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
-    </div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
-      <div class="form-group full"><div class="form-label">Tipo de bien *</div><select class="form-select" id="fi-inst-tipo" onchange="onInstTipoChange()"><option value="">Seleccionar...</option></select></div>
-      <div class="form-group full">
-        <div class="form-label">ID único *</div>
-        <div style="display:flex;gap:8px"><input type="text" class="form-input" id="fi-inst-id" placeholder="Ej: ESC-001" style="font-family:var(--mono);text-transform:uppercase"><button class="btn btn-sm" onclick="generarInstanciaId()" style="white-space:nowrap">⚡ Generar</button></div>
-        <div id="fi-inst-id-status" style="font-size:11px;margin-top:4px"></div>
-      </div>
-      <div class="form-group full"><div class="form-label">Sede *</div><select class="form-select" id="fi-inst-sede"></select></div>
-      <div id="fi-inst-nivel-wrap" style="display:none" class="form-group full">
-        <div class="form-label">Nivel inicial</div>
-        <select class="form-select" id="fi-inst-nivel">
-          <option value="100">🟢 LLENO (100%)</option><option value="75">🟢 CASI LLENO (75%)</option>
-          <option value="50">🟡 MEDIO (50%)</option><option value="25">🟠 BAJO (25%)</option>
-          <option value="5">🔴 CASI VACÍO (5%)</option><option value="0">⚫ VACÍO (0%)</option>
-        </select>
-      </div>
-      <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="fi-inst-responsable"></select></div>
-      <div class="form-group full"><div class="form-label">Notas</div><input type="text" class="form-input" id="fi-inst-notas" placeholder="Opcional"></div>
-    </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal('modal-instancia')">Cancelar</button><button class="btn btn-primary" onclick="saveInstancia()">💾 Crear</button></div>
-  </div>
-</div>
 
 <!-- MODAL EDITAR INSTANCIA -->
 <div class="modal-overlay" id="modal-inst-edit">
@@ -870,7 +841,6 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <option value="MANTENIMIENTO">⚠️ Mantenimiento</option><option value="DETERIORADO">🔴 Deteriorado</option>
         </select>
       </div>
-      <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="fe-inst-responsable"></select></div>
       <div class="form-group full"><div class="form-label">Notas</div><input type="text" class="form-input" id="fe-inst-notas"></div>
     </div>
     <div class="modal-foot">
@@ -2529,100 +2499,6 @@ async function exportInstQRZip() {
 // ── INSTANCIAS CRUD ───────────────────────────────────────
 let editingInstanciaId = null;
 
-function openModalNuevaInstancia() {
-  editingInstanciaId = null;
-  const sel = document.getElementById('fi-inst-tipo');
-  sel.innerHTML = '<option value="">Seleccionar...</option>' +
-    catalogoData.map(i => `<option value="${i.id}">${i.nombre}</option>`).join('');
-  document.getElementById('fi-inst-id').value = '';
-  document.getElementById('fi-inst-id-status').textContent = '';
-  document.getElementById('fi-inst-notas').value = '';
-  document.getElementById('fi-inst-nivel-wrap').style.display = 'none';
-  document.getElementById('fi-inst-sede').innerHTML = sedeOpts(false);
-  const pOptsNueva = '<option value="">—</option>' + personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
-  document.getElementById('fi-inst-responsable').innerHTML = pOptsNueva;
-  document.getElementById('modal-instancia').classList.add('open');
-}
-
-function onInstTipoChange() {
-  const itemId = document.getElementById('fi-inst-tipo').value;
-  const item = catalogoData.find(x => x.id === itemId);
-  document.getElementById('fi-inst-nivel-wrap').style.display = (item && item.tipoCantidad === 'RANGO') ? 'block' : 'none';
-  if (itemId) generarInstanciaId();
-}
-
-async function generarInstanciaId() {
-  const itemId = document.getElementById('fi-inst-tipo').value;
-  if (!itemId) { toast('Selecciona el tipo de bien primero', 'warn'); return; }
-  const item = catalogoData.find(x => x.id === itemId);
-  if (!item) return;
-  const prefix = (item.codigo || item.nombre.replace(/[^A-Z0-9]/gi, '')).substring(0, 3).toUpperCase();
-  // Consultar Firestore para obtener todos los IDs con este prefijo (incluyendo eliminados/baja)
-  try {
-    const snap = await db.collection('insumos_instancias').get();
-    const allIds = snap.docs.map(d => d.id);
-    // También incluir IDs en memoria (instancias activas)
-    instanciasData.forEach(i => { if (!allIds.includes(i.id)) allIds.push(i.id); });
-    const existing = allIds
-      .filter(id => id.startsWith(prefix + '-'))
-      .map(id => parseInt(id.replace(prefix + '-', '')) || 0)
-      .sort((a, b) => b - a);
-    let nextNum = (existing[0] || 0) + 1;
-    let newId = `${prefix}-${String(nextNum).padStart(3, '0')}`;
-    // Asegurar que el ID generado no exista (por si acaso)
-    while (allIds.includes(newId)) {
-      nextNum++;
-      newId = `${prefix}-${String(nextNum).padStart(3, '0')}`;
-    }
-    document.getElementById('fi-inst-id').value = newId;
-    await verificarIdUnico(newId);
-  } catch(e) {
-    // Fallback a solo memoria si falla Firestore
-    const existing = instanciasData.filter(i => i.id.startsWith(prefix + '-')).map(i => parseInt(i.id.replace(prefix + '-', '')) || 0).sort((a, b) => b - a);
-    const nextNum = (existing[0] || 0) + 1;
-    const newId = `${prefix}-${String(nextNum).padStart(3, '0')}`;
-    document.getElementById('fi-inst-id').value = newId;
-    await verificarIdUnico(newId);
-  }
-}
-
-async function verificarIdUnico(id) {
-  const statusEl = document.getElementById('fi-inst-id-status');
-  if (!id) { statusEl.textContent = ''; return true; }
-  if (instanciasData.find(i => i.id === id)) {
-    statusEl.innerHTML = '<span style="color:var(--red)">⚠️ ID ya existe</span>'; return false;
-  }
-  try {
-    const snap = await db.collection('insumos_instancias').doc(id).get();
-    if (snap.exists) { statusEl.innerHTML = '<span style="color:var(--red)">⚠️ ID ya existe</span>'; return false; }
-    statusEl.innerHTML = '<span style="color:var(--green)">✓ ID disponible</span>'; return true;
-  } catch(e) { statusEl.textContent = ''; return true; }
-}
-
-async function saveInstancia() {
-  const itemId = document.getElementById('fi-inst-tipo').value;
-  const id = document.getElementById('fi-inst-id').value.trim().toUpperCase();
-  const sede = document.getElementById('fi-inst-sede').value;
-  if (!itemId || !id || !sede) { toast('Completa todos los campos obligatorios', 'err'); return; }
-  if (!catalogoData.find(x => x.id === itemId)) { toast('El tipo de bien no existe en el catálogo', 'err'); return; }
-  const esUnico = await verificarIdUnico(id);
-  if (!esUnico) { toast('El ID ya existe, usa otro', 'err'); return; }
-  const item = catalogoData.find(x => x.id === itemId);
-  const nivel = (item && item.tipoCantidad === 'RANGO') ? Number(document.getElementById('fi-inst-nivel').value) : null;
-  const responsableNueva = document.getElementById('fi-inst-responsable').value || null;
-  const instancia = { itemId, nombre: item ? item.nombre.toUpperCase() : '', sede, estado: 'DISPONIBLE',
-    notas: document.getElementById('fi-inst-notas').value.trim(),
-    ...(responsableNueva && { responsable: responsableNueva }),
-    creadoEn: new Date().toISOString(), creadoPor: maUser.email,
-    ...(nivel !== null && { nivel }) };
-  try {
-    await db.collection('insumos_instancias').doc(id).set(instancia);
-    instanciasData.push({ id, ...instancia });
-    toast('✓ Instancia creada — ' + id, 'ok');
-    closeModal('modal-instancia');
-    renderAll();
-  } catch(e) { toast('Error: ' + e.message, 'err'); }
-}
 
 function openEditInstancia(instId) {
   const inst = instanciasData.find(x => x.id === instId);
@@ -2636,9 +2512,6 @@ function openEditInstancia(instId) {
   document.getElementById('fe-inst-sede').value = inst.sede || '';
   document.getElementById('fe-inst-estado').value = inst.estado || 'DISPONIBLE';
   document.getElementById('fe-inst-notas').value = inst.notas || '';
-  const pOptsEdit = '<option value="">—</option>' + personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
-  document.getElementById('fe-inst-responsable').innerHTML = pOptsEdit;
-  document.getElementById('fe-inst-responsable').value = inst.responsable || '';
   document.getElementById('fe-inst-nivel-wrap').style.display = esRango ? 'block' : 'none';
   if (esRango && inst.nivel !== undefined) document.getElementById('fe-inst-nivel').value = inst.nivel;
   document.getElementById('modal-inst-edit').classList.add('open');
@@ -2652,15 +2525,13 @@ async function updateInstancia() {
   const inst = instanciasData.find(x => x.id === editingInstanciaId);
   const item = inst ? catalogoData.find(x => x.id === inst.itemId) : null;
   const nivel = (item && item.tipoCantidad === 'RANGO') ? Number(document.getElementById('fe-inst-nivel').value) : undefined;
-  const responsableEdit = document.getElementById('fe-inst-responsable').value || null;
-  const updates = { sede, estado, notas, responsable: responsableEdit || null, updatedAt: new Date().toISOString(), updatedBy: maUser.email };
+  const updates = { sede, estado, notas, updatedAt: new Date().toISOString(), updatedBy: maUser.email };
   if (nivel !== undefined) updates.nivel = nivel;
   // Detectar qué cambió para el historial
   const diffs = [];
   if (inst.estado !== estado) diffs.push({campo:'estado', de:inst.estado||'DISPONIBLE', a:estado});
   if (inst.sede !== sede) diffs.push({campo:'sede', de:inst.sede||'', a:sede});
   if (nivel !== undefined && inst.nivel !== nivel) diffs.push({campo:'nivel', de:inst.nivel??0, a:nivel});
-  if ((inst.responsable||null) !== (responsableEdit||null)) diffs.push({campo:'responsable', de:inst.responsable||'', a:responsableEdit||''});
   try {
     await db.collection('insumos_instancias').doc(editingInstanciaId).update(updates);
     const idx = instanciasData.findIndex(x => x.id === editingInstanciaId);
