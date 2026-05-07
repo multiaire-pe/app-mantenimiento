@@ -366,6 +366,13 @@ tbody td{padding:9px 12px;vertical-align:middle}
         </select>
         <button class="btn btn-primary btn-sm" onclick="openModalNuevaInstancia()">+ Nueva instancia</button>
       </div>
+      <div style="margin-bottom:10px">
+        <div id="inst-qr-selection-bar" style="display:none;align-items:center;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
+          <span id="inst-qr-selected-count" style="font-size:11px;color:var(--blue);font-weight:600">0 seleccionados</span>
+          <button class="btn btn-sm btn-primary" onclick="exportInstQRZip()">⬇ Exportar etiquetas ZIP</button>
+          <button class="btn btn-sm" onclick="clearInstQRSelection()">✕ Limpiar</button>
+        </div>
+      </div>
       <div class="table-wrap" id="instancias-table"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
     </div>
 
@@ -954,6 +961,8 @@ function populateSedes(){
 function renderAll(){applyFilters();renderMovimientos();renderStockSede();renderStats();renderAlerts();renderInstancias();}
 
 function renderInstancias() {
+  selectedInstQRIds.clear();
+  updateInstQRSelectionBar();
   const wrap = document.getElementById('instancias-table');
   if (!wrap) return;
   const q = (document.getElementById('q-inst')?.value || '').toLowerCase();
@@ -994,6 +1003,7 @@ function renderInstancias() {
   const estadoLabel = {DISPONIBLE:'✅ Disponible', EN_USO:'🔧 En uso', MANTENIMIENTO:'⚠️ Mantenimiento', DETERIORADO:'🔴 Deteriorado', BAJA:'❌ Baja'};
 
   wrap.innerHTML = `<table><thead><tr>
+    <th style='width:32px'><input type='checkbox' id='inst-chk-all' onchange='toggleAllInstQR(this.checked)' title='Seleccionar todos'></th>
     <th>ID / QR</th><th>Tipo</th><th>Sede</th><th>Nivel</th><th>Estado</th><th></th>
   </tr></thead><tbody>
   ${list.map(inst => {
@@ -1003,6 +1013,7 @@ function renderInstancias() {
     const est = inst.estado || 'DISPONIBLE';
     const estColor = estadoColor[est] || 'ok';
     return `<tr>
+      <td style='text-align:center'><input type='checkbox' class='inst-qr-chk' data-id='${inst.id}' onchange='updateInstQRSelection()'></td>
       <td class="td-code" style="font-weight:700">${inst.id}</td>
       <td style="font-size:11px">${inst.nombre || (item ? item.nombre : '—')}</td>
       <td style="font-size:11px">${inst.sede || '—'}</td>
@@ -1800,6 +1811,101 @@ async function saveTransferencia() {
     closeModal('modal-transf');
     renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
+}
+
+// ── INSTANCIAS QR SELECCIÓN Y ZIP ─────────────────────────
+let selectedInstQRIds = new Set();
+
+function toggleAllInstQR(checked) {
+  document.querySelectorAll('.inst-qr-chk').forEach(chk => {
+    chk.checked = checked;
+    if (checked) selectedInstQRIds.add(chk.dataset.id);
+    else selectedInstQRIds.delete(chk.dataset.id);
+  });
+  updateInstQRSelectionBar();
+}
+
+function updateInstQRSelection() {
+  selectedInstQRIds.clear();
+  document.querySelectorAll('.inst-qr-chk:checked').forEach(chk => selectedInstQRIds.add(chk.dataset.id));
+  updateInstQRSelectionBar();
+}
+
+function updateInstQRSelectionBar() {
+  const bar = document.getElementById('inst-qr-selection-bar');
+  const count = document.getElementById('inst-qr-selected-count');
+  if (selectedInstQRIds.size > 0) {
+    bar.style.display = 'flex';
+    count.textContent = selectedInstQRIds.size + ' seleccionado' + (selectedInstQRIds.size > 1 ? 's' : '');
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function clearInstQRSelection() {
+  selectedInstQRIds.clear();
+  document.querySelectorAll('.inst-qr-chk').forEach(c => c.checked = false);
+  const chkAll = document.getElementById('inst-chk-all');
+  if (chkAll) chkAll.checked = false;
+  updateInstQRSelectionBar();
+}
+
+async function generateInstQRCanvas(instId) {
+  const inst = instanciasData.find(x => x.id === instId);
+  if (!inst) return null;
+  const nombre = inst.nombre || instId;
+  const sede = inst.sede ? ` · ${inst.sede}` : '';
+  const canvas = document.createElement('canvas');
+  canvas.width = 319; canvas.height = 260;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 319, 260);
+  const qrDiv = document.createElement('div');
+  qrDiv.style.position = 'absolute'; qrDiv.style.left = '-9999px';
+  document.body.appendChild(qrDiv);
+  await new Promise(resolve => {
+    new QRCode(qrDiv, { text: instId, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.H, colorDark: '#000000', colorLight: '#ffffff' });
+    setTimeout(resolve, 350);
+  });
+  const qrEl = qrDiv.querySelector('canvas') || qrDiv.querySelector('img');
+  if (qrEl) ctx.drawImage(qrEl, 70, 8, 180, 180);
+  document.body.removeChild(qrDiv);
+  ctx.fillStyle = '#000000';
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(instId, 159, 203);
+  let fontSize = 14;
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  const nombreUpper = nombre.toUpperCase();
+  while (ctx.measureText(nombreUpper).width > 300 && fontSize > 9) { fontSize--; ctx.font = `bold ${fontSize}px sans-serif`; }
+  ctx.fillText(nombreUpper, 159, 221);
+  if (inst.sede) {
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#666666';
+    const sedeText = inst.sede.toUpperCase();
+    ctx.fillText(sedeText, 159, 240);
+  }
+  return canvas;
+}
+
+async function exportInstQRZip() {
+  if (selectedInstQRIds.size === 0) { toast('Selecciona al menos una instancia', 'warn'); return; }
+  toast('Generando etiquetas...', '');
+  const zip = new JSZip();
+  for (const id of selectedInstQRIds) {
+    const inst = instanciasData.find(x => x.id === id);
+    if (!inst) continue;
+    const canvas = await generateInstQRCanvas(id);
+    if (!canvas) continue;
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png', 1.0));
+    zip.file(`${id.replace(/[^a-zA-Z0-9]/g, '_')}_${(inst.nombre||'').replace(/[^a-zA-Z0-9]/g, '_')}.png`, blob);
+  }
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(zipBlob);
+  link.download = `etiquetas_instancias_${new Date().toISOString().slice(0, 10)}.zip`;
+  link.click();
+  toast('✓ ZIP descargado con ' + selectedInstQRIds.size + ' etiquetas', 'ok');
 }
 
 // ── INSTANCIAS CRUD ───────────────────────────────────────
