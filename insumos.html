@@ -1187,25 +1187,19 @@ async function cargarDatosPrueba() {
 async function resetearBaseDatos() {
   if (!confirm('⚠️ RESETEAR BASE DE DATOS\n\nEsto eliminará PERMANENTEMENTE:\n• Todo el catálogo de ítems\n• Todas las instancias\n• Todos los movimientos\n\n¿Estás seguro?')) return;
   if (!confirm('Segunda confirmación — ¿seguro que quieres borrar TODO?')) return;
+  const toastEl = document.getElementById('toast');
+  const showMsg = (msg) => { if(toastEl){ toastEl.textContent=msg; toastEl.className='toast show'; setTimeout(()=>toastEl.classList.remove('show'),3000); }};
   try {
-    toast('Reseteando...', '');
-    // Eliminar catálogo
-    const catSnap = await db.collection('insumos_catalogo').get();
-    for (const doc of catSnap.docs) await doc.ref.delete();
-    // Eliminar instancias
-    const instSnap = await db.collection('insumos_instancias').get();
-    for (const doc of instSnap.docs) await doc.ref.delete();
-    // Eliminar movimientos
-    const movSnap = await db.collection('insumos_movimientos').get();
-    for (const doc of movSnap.docs) await doc.ref.delete();
-    // Eliminar stock legacy
-    const stockSnap = await db.collection('insumos_stock').get();
-    for (const doc of stockSnap.docs) await doc.ref.delete();
-    // Limpiar memoria
+    showMsg('Reseteando...');
+    const colecciones = ['insumos_catalogo','insumos_instancias','insumos_movimientos','insumos_stock'];
+    for (const col of colecciones) {
+      const snap = await db.collection(col).get();
+      for (const doc of snap.docs) await doc.ref.delete();
+    }
     catalogoData = []; instanciasData = []; movimientosData = []; stockData = {};
-    toast('✓ Base de datos reseteada', 'ok');
+    showMsg('✓ Base de datos reseteada');
     renderAll();
-  } catch(e) { toast('Error: ' + e.message, 'err'); }
+  } catch(e) { showMsg('Error: ' + e.message); console.error(e); }
 }
 
 // ── QR SYSTEM ──────────────────────────────────────────────
