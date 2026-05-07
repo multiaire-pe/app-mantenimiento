@@ -825,7 +825,7 @@ async function loadAll(){
     ]);
     catalogoData=catS.docs.map(d=>({id:d.id,...d.data()}));
     movimientosData=movS.docs.map(d=>({id:d.id,...d.data()}));
-    stockData={};stockS.docs.forEach(d=>{stockData[d.id]=d.data();});
+    stockData={};
     instanciasData=instS.docs.map(d=>({id:d.id,...d.data()}));
     // Sedes activas de maestros_tiendas, agrupadas por cliente
     sedes=tiendasS.docs
