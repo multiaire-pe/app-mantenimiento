@@ -8,7 +8,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 :root{
@@ -330,9 +329,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <button class="tab-btn active" onclick="switchTab('catalogo',this)">📦 Catálogo</button>
       <button class="tab-btn" onclick="switchTab('instancias',this)">🏷️ Instancias</button>
       <button class="tab-btn" onclick="switchTab('movimientos',this)">📋 Movimientos</button>
-      <button class="tab-btn" onclick="switchTab('paquetes',this)">🎁 Paquetes</button>
       <button class="tab-btn" onclick="switchTab('stock',this)">🏢 Por Sede</button>
-      <button class="tab-btn" id="tab-btn-pendientes" style="display:none" onclick="switchTab('pendientes',this)">⏳ Pendientes <span class="pending-badge" id="pending-count">0</span></button>
     </div>
 
     <div class="tab-view active" id="tab-catalogo">
@@ -392,24 +389,8 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <div id="movimientos-list"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
     </div>
 
-    <div class="tab-view" id="tab-paquetes">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <div>
-          <div style="font-weight:600;font-size:14px">Paquetes de trabajo</div>
-          <div style="font-size:11px;color:var(--muted2);margin-top:2px">Kits de insumos para un tipo de trabajo. Aplica el paquete para registrar todas las salidas de una vez.</div>
-        </div>
-        <button class="btn btn-orange btn-sm" id="btn-nuevo-paquete" style="display:none" onclick="openModalPaquete(null)">+ Nuevo paquete</button>
-      </div>
-      <div class="paq-grid" id="paq-grid"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
-    </div>
-
     <div class="tab-view" id="tab-stock">
       <div id="stock-sede-content"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
-    </div>
-
-    <div class="tab-view" id="tab-pendientes">
-      <div style="font-size:12px;color:var(--muted2);margin-bottom:12px">Solicitudes de técnicos esperando aprobación de SUPERVISOR o ADMIN.</div>
-      <div id="pendientes-list"><div class="empty"><div class="empty-icon">✅</div>Sin solicitudes pendientes</div></div>
     </div>
   </div>
 </div>
@@ -544,58 +525,6 @@ tbody td{padding:9px 12px;vertical-align:middle}
   </div>
 </div>
 
-<!-- MODAL MOV (legacy - mantener para compatibilidad) -->
-<div class="modal-overlay" id="modal-mov" style="display:none"></div>
-
-<!-- MODAL PAQUETE -->
-<div class="modal-overlay" id="modal-paquete">
-  <div class="modal">
-    <h2 id="modal-paq-title">Nuevo paquete</h2>
-    <div class="modal-sub">Agrupa insumos de un tipo de trabajo. Al aplicar el paquete, se registran todas las salidas de una vez.</div>
-    <div class="form-grid">
-      <div class="form-group full"><div class="form-label">Nombre *</div><input type="text" class="form-input" id="fp-nombre" placeholder="Ej: Mantto preventivo SPLIT CONSOLA"></div>
-      <div class="form-group full"><div class="form-label">Descripción</div><input type="text" class="form-input" id="fp-desc" placeholder="Ej: Kit estándar limpieza y revisión"></div>
-    </div>
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);margin-bottom:8px">Ítems del paquete</div>
-    <div id="paq-items-editor"></div>
-    <button class="btn btn-sm" style="margin-top:6px" onclick="addPaqItem()">+ Agregar ítem</button>
-    <div class="modal-foot">
-      <button class="btn" onclick="closeModal('modal-paquete')">Cancelar</button>
-      <button class="btn btn-primary" onclick="savePaquete()">💾 Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL APLICAR PAQUETE -->
-<div class="modal-overlay" id="modal-apply-paq">
-  <div class="modal">
-    <h2 id="modal-apply-title">Aplicar paquete</h2>
-    <div class="modal-sub">Se registrará una salida de cada ítem desde la sede seleccionada.</div>
-    <div class="form-grid">
-      <div class="form-group full"><div class="form-label">Sede *</div><select class="form-select" id="fap-sede"></select></div>
-      <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="fap-personal"></select></div>
-      <div class="form-group full"><div class="form-label">Observación</div><textarea class="form-textarea" id="fap-obs" placeholder="Ej: Mantto equipo MA-SAN-001"></textarea></div>
-    </div>
-    <div class="info-box" id="apply-paq-preview" style="margin-top:4px"></div>
-    <div class="modal-foot">
-      <button class="btn" onclick="closeModal('modal-apply-paq')">Cancelar</button>
-      <button class="btn btn-primary" onclick="applyPaquete()">⬆ Registrar salidas</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL ACTUALIZAR RANGO -->
-<div class="modal-overlay" id="modal-rango">
-  <div class="modal">
-    <h2>📊 Actualizar nivel de ítem</h2>
-    <div class="modal-sub">Indica el nivel estimado del insumo en cada sede. Esto no genera un movimiento contable — es solo una actualización visual del estado actual.</div>
-    <div id="rango-sedes-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px"></div>
-    <div class="modal-foot">
-      <button class="btn" onclick="closeModal('modal-rango')">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveRango()">💾 Actualizar niveles</button>
-    </div>
-  </div>
-</div>
 
 <!-- MODAL ACCESOS -->
 <div class="modal-overlay" id="modal-access">
@@ -652,11 +581,11 @@ const PERMS = {
   SUPER_ADMIN: { crearItem:1,editarItem:1,eliminarItem:1,entrada:1,salida:1,transferencia:1,aprobar:1,paquetes:1,editarMov:1,eliminarMov:1 },
   ADMIN:       { crearItem:1,editarItem:1,eliminarItem:1,entrada:1,salida:1,transferencia:1,aprobar:1,paquetes:1,editarMov:1,eliminarMov:1 },
   SUPERVISOR:  { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:1,transferencia:1,aprobar:1,paquetes:0,editarMov:0,eliminarMov:0 },
-  TECNICO:     { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:'sol',transferencia:'sol',aprobar:0,paquetes:0,editarMov:0,eliminarMov:0 },
+  TECNICO:     { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:0,transferencia:0,aprobar:0,paquetes:0,editarMov:0,eliminarMov:0 },
 };
 function can(p){ return (PERMS[maUser?.rol]||PERMS.TECNICO)[p]||0; }
 
-let maUser=null, catalogoData=[], movimientosData=[], stockData={}, sedes=[], personalData=[], paquetesData=[];
+let maUser=null, catalogoData=[], movimientosData=[], stockData={}, sedes=[], personalData=[], paquetesData=[], instanciasData=[];
 let filteredCatalogo=[], currentMovTipo='SALIDA', editingInsumoId=null, editingPaqId=null, applyingPaqId=null, paqRowIdx=0;
 
 // ── AUTH — mismo sistema que otras apps ──────────────────────────────────────
@@ -874,7 +803,7 @@ function buildSidebar(){
   if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('SALIDA')">⬆ Registrar salida</button>`;
   if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('BAJA')" style="color:var(--red)">⚠️ Dar de baja</button>`;
   if(can('transferencia')===1)  h+=`<button class="btn btn-block" onclick="openModalTransferencia()">🔄 Transferencia</button>`;
-  if(can('entrada')===1)        h+=`<button class="btn btn-block" onclick="openModalRango()">📊 Actualizar nivel</button>`;
+
   if(maUser&&maUser.rol==='SUPER_ADMIN'){
     h+=`<div style="height:1px;background:var(--border);margin:4px 0"></div>`;
     h+=`<div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:2px 0">Dev tools</div>`;
@@ -882,15 +811,13 @@ function buildSidebar(){
     h+=`<button class="btn btn-block" style="color:var(--red);font-size:11px;border-color:var(--red-border)" onclick="resetearBaseDatos()">🗑 Resetear BD</button>`;
   }
   document.getElementById('sidebar-actions').innerHTML=h;
-  if(can('paquetes')) document.getElementById('btn-nuevo-paquete')?.style&&(document.getElementById('btn-nuevo-paquete').style.display='inline-flex');
 }
 
 async function loadAll(){
   try{
-    const [catS,movS,stockS,tiendasS,persS,paqS,instS]=await Promise.all([
+    const [catS,movS,tiendasS,persS,paqS,instS]=await Promise.all([
       db.collection('insumos_catalogo').get(),
       db.collection('insumos_movimientos').orderBy('fecha','desc').limit(200).get(),
-      db.collection('insumos_stock').get(),
       db.collection('maestros_tiendas').get(),
       db.collection('maestros_personal').get(),
       db.collection('insumos_paquetes').get(),
@@ -928,10 +855,10 @@ function sedeOpts(includeAll=false){
 function populateSedes(){
   document.getElementById('f-sede').innerHTML=sedeOpts(true);
   document.getElementById('f-mov-sede').innerHTML='<option value="">Todas</option>'+sedes.map(s=>`<option value="${s.sede}">${s.sede}</option>`).join('');
-  ['fm-sede','ft-origen','ft-destino','fap-sede'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=sedeOpts(false);});
+  ['fap-sede'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=sedeOpts(false);});
 }
 
-function renderAll(){applyFilters();renderMovimientos();renderStockSede();renderStats();renderAlerts();renderPaquetes();renderPendientes();renderInstancias();}
+function renderAll(){applyFilters();renderMovimientos();renderStockSede();renderStats();renderAlerts();renderInstancias();}
 
 function renderStats(){
   let ok=0,low=0,out=0;
@@ -964,9 +891,8 @@ function sNivel(item){
 
 // Rangos visuales: el "stock" de un ítem RANGO es 0-100 (promedio de todas las sedes)
 function renderRangoBadge(val,item){
-  // val es la suma de valores por sede — mostramos el promedio si hay varias sedes con stock
-  const sedesConStock=Object.entries(stockData[item.id]||{}).filter(([,v])=>Number(v)>0);
-  const prom=sedesConStock.length?Math.round(sedesConStock.reduce((a,[,v])=>a+Number(v),0)/sedesConStock.length):0;
+  const insts = instanciasData.filter(i => i.itemId === item.id && i.nivel !== undefined);
+  const prom = insts.length ? Math.round(insts.reduce((a,i)=>a+(i.nivel||0),0)/insts.length) : 0;
   const cfg=prom>75?{cls:'stock-ok',ico:'🟢',lbl:'LLENO'}:prom>40?{cls:'stock-ok',ico:'🟡',lbl:'MEDIO'}:prom>10?{cls:'stock-low',ico:'🟠',lbl:'BAJO'}:{cls:'stock-out',ico:'🔴',lbl:'VACÍO'};
   return `<span class="stock-pill ${cfg.cls}">${cfg.ico} ${cfg.lbl} ${prom}%</span>`;
 }
@@ -1057,104 +983,21 @@ function renderMovimientos(){
   }).join('')+'</div>';
 }
 
-function renderPendientes(){
-  const pend=movimientosData.filter(m=>m.estado==='PENDIENTE');
-  document.getElementById('pending-count').textContent=pend.length;
-  document.getElementById('tab-btn-pendientes').style.display=can('aprobar')?'block':'none';
-  const c=document.getElementById('pendientes-list');
-  if(!pend.length){c.innerHTML='<div class="empty"><div class="empty-icon">✅</div>Sin solicitudes pendientes</div>';return;}
-  c.innerHTML='<div class="mov-list">'+pend.map(m=>{
-    const f=m.fecha?(m.fecha.toDate?m.fecha.toDate():new Date(m.fecha)):new Date();
-    const fs=f.toLocaleDateString('es-PE',{day:'2-digit',month:'short'});
-    const es=m.tipo==='SOLICITUD_TRANSF';
-    const sd=es?`${m.sedeOrigen} → ${m.sedeDestino}`:(m.sede||'');
-    return `<div class="mov-item pendiente">
-      <div class="mov-icon pendiente">⏳</div>
-      <div class="mov-body">
-        <div class="mov-title">${m.itemNombre||'—'} — ${es?'Transferencia':'Salida'} ${m.cantidad} ${m.unidad||'UND'}</div>
-        <div class="mov-meta">${fs} · ${m.usuario||'—'} · ${sd}${m.motivo?' · '+m.motivo:''}</div>
-      </div>
-      <div class="mov-actions">
-        <button class="btn btn-sm btn-green" onclick="aprobar('${m.id}',true)">✓ Aprobar</button>
-        <button class="btn btn-sm btn-red" onclick="aprobar('${m.id}',false)">✗ Rechazar</button>
-      </div>
-    </div>`;
-  }).join('')+'</div>';
-}
+// renderPendientes() — eliminado (legacy)
 
-async function aprobar(movId,ok2){
-  const m=movimientosData.find(x=>x.id===movId);if(!m)return;
-  try{
-    if(ok2){
-      if(m.tipo==='SOLICITUD_SALIDA'){
-        const a=sEnSede(m.itemId,m.sede);
-        if(a<m.cantidad){toast(`Stock insuficiente en ${m.sede}`,'err');return;}
-        await db.collection('insumos_stock').doc(m.itemId).set({[m.sede]:a-m.cantidad},{merge:true});
-        if(!stockData[m.itemId])stockData[m.itemId]={};
-        stockData[m.itemId][m.sede]=a-m.cantidad;
-      }else if(m.tipo==='SOLICITUD_TRANSF'){
-        const aO=sEnSede(m.itemId,m.sedeOrigen),aD=sEnSede(m.itemId,m.sedeDestino);
-        if(aO<m.cantidad){toast(`Stock insuficiente en ${m.sedeOrigen}`,'err');return;}
-        await db.collection('insumos_stock').doc(m.itemId).set({[m.sedeOrigen]:aO-m.cantidad,[m.sedeDestino]:aD+m.cantidad},{merge:true});
-        if(!stockData[m.itemId])stockData[m.itemId]={};
-        stockData[m.itemId][m.sedeOrigen]=aO-m.cantidad;stockData[m.itemId][m.sedeDestino]=aD+m.cantidad;
-      }
-    }
-    await db.collection('insumos_movimientos').doc(movId).update({estado:ok2?'APROBADO':'RECHAZADO',aprobadoPor:maUser.email,aprobadoAt:new Date().toISOString()});
-    const idx=movimientosData.findIndex(x=>x.id===movId);
-    if(idx>=0)movimientosData[idx].estado=ok2?'APROBADO':'RECHAZADO';
-    toast(ok2?'✓ Aprobado':'✗ Rechazado',ok2?'ok':'warn');
-    renderAll();
-  }catch(e){toast('Error: '+e.message,'err');}
-}
+// aprobar() — eliminado (legacy sistema de solicitudes)
 
-async function deleteMovimiento(movId){
-  if(!confirm('¿Eliminar este movimiento? Se revertirá el stock.'))return;
-  const m=movimientosData.find(x=>x.id===movId);if(!m)return;
-  try{
-    // Leer stock FRESCO de Firestore (no usar caché en memoria)
-    const stockSnap=await db.collection('insumos_stock').doc(m.itemId).get();
-    const stockActual=stockSnap.exists?stockSnap.data():{};
-    const getQ=(sede)=>Number(stockActual[sede]||0);
 
-    if(m.tipo==='ENTRADA'){
-      const nuevo=Math.max(0,getQ(m.sede)-m.cantidad);
-      await db.collection('insumos_stock').doc(m.itemId).set({[m.sede]:nuevo},{merge:true});
-      if(!stockData[m.itemId])stockData[m.itemId]={};
-      stockData[m.itemId][m.sede]=nuevo;
-    }else if(m.tipo==='SALIDA'){
-      const nuevo=getQ(m.sede)+m.cantidad;
-      await db.collection('insumos_stock').doc(m.itemId).set({[m.sede]:nuevo},{merge:true});
-      if(!stockData[m.itemId])stockData[m.itemId]={};
-      stockData[m.itemId][m.sede]=nuevo;
-    }else if(m.tipo==='TRANSFERENCIA'){
-      const nuevoO=getQ(m.sedeOrigen)+m.cantidad;
-      const nuevoD=Math.max(0,getQ(m.sedeDestino)-m.cantidad);
-      await db.collection('insumos_stock').doc(m.itemId).set({[m.sedeOrigen]:nuevoO,[m.sedeDestino]:nuevoD},{merge:true});
-      if(!stockData[m.itemId])stockData[m.itemId]={};
-      stockData[m.itemId][m.sedeOrigen]=nuevoO;
-      stockData[m.itemId][m.sedeDestino]=nuevoD;
-    }
-    await db.collection('insumos_movimientos').doc(movId).delete();
-    movimientosData=movimientosData.filter(x=>x.id!==movId);
-    toast('Movimiento eliminado y stock revertido','ok');
-    renderAll();
-  }catch(e){toast('Error: '+e.message,'err');}
-}
 
 // Resetear stock de un ítem a 0 en todas las sedes (para correcciones manuales)
 async function resetStockItem(itemId,nombre){
   const instanciasDelTipo = instanciasData.filter(i => i.itemId === itemId);
   if(!confirm(`¿Eliminar todas las instancias de "${nombre}"?\nSe eliminarán ${instanciasDelTipo.length} instancia(s). Esta acción no se puede deshacer.`))return;
   try{
-    // Eliminar todas las instancias del tipo
     for(const inst of instanciasDelTipo){
       await db.collection('insumos_instancias').doc(inst.id).delete();
     }
     instanciasData = instanciasData.filter(i => i.itemId !== itemId);
-    // También limpiar stock legacy
-    await db.collection('insumos_stock').doc(itemId).delete();
-    stockData[itemId]={};
     toast(`${instanciasDelTipo.length} instancia(s) eliminadas`, 'ok');
     renderAll();
   }catch(e){toast('Error: '+e.message,'err');}
@@ -1169,7 +1012,9 @@ function renderStockSede(){
     h+=`<div class="sede-cliente-label">${cliente}</div><div class="sede-stock-grid">`;
     ss.forEach(sede=>{
       const items=catalogoData.filter(i=>sEnSede(i.id,sede)>0);
-      if(!items.length)return;
+      // También mostrar instancias específicas en esta sede
+      const instsSede = instanciasData.filter(i => i.sede === sede && i.estado !== 'BAJA');
+      if(!items.length && !instsSede.length)return;
       h+=`<div class="sede-stock-card"><div class="sede-stock-name">🏢 ${sede}</div>
       ${items.map(i=>{
         const q=sEnSede(i.id,sede);
@@ -1186,8 +1031,8 @@ function renderStockSede(){
         }
         const n=q<=0?'stock-out':(Number(i.stockMin)>0&&q<=Number(i.stockMin))?'stock-low':'stock-ok';
         const editBtn=canEdit?`<button class="btn btn-sm" style="font-size:10px;padding:3px 7px;flex-shrink:0"
-          ontouchend="openModalMovimientoDesde('${i.id}','${sede}')"
-          onclick="openModalMovimientoDesde('${i.id}','${sede}')">✏️</button>`:'';
+          ontouchend="openModalSalida('SALIDA')"
+          onclick="openModalSalida('SALIDA')">✏️</button>`:'';
         return`<div class="sede-stock-item">
           <span style="flex:1">${i.nombre}</span>
           <span class="stock-pill ${n}" style="font-size:10px;padding:1px 6px;flex-shrink:0">${q} ${i.unidad||'UND'}</span>
@@ -1200,27 +1045,9 @@ function renderStockSede(){
   c.innerHTML=h||'<div class="empty"><div class="empty-icon">📦</div>Sin stock por sede</div>';
 }
 
-// Abrir modal de movimiento con sede pre-seleccionada
-function openModalMovimientoDesde(itemId, sede) {
-  openModalMovimiento(itemId, can('registrarSalida') ? 'SALIDA' : 'SOLICITUD_SALIDA');
-  setTimeout(() => {
-    const sedeSelect = document.getElementById('fm-sede');
-    if (sedeSelect) { sedeSelect.value = sede; updateStockInfo(); }
-  }, 100);
-}
 
-// Abrir modal de rango con ítem y sede pre-seleccionados
-function openRangoDesde(itemId, sede) {
-  rangoItemId = itemId;
-  renderRangoModal();
-  // Highlight de la sede
-  setTimeout(() => {
-    const sedeKey = sede.replace(/\s/g,'_');
-    const sel = document.getElementById('rango-sede-' + sedeKey);
-    if(sel) sel.style.outline = '2px solid var(--blue)';
-  }, 150);
-  document.getElementById('modal-rango').classList.add('open');
-}
+
+
 
 function toggleStockMinField(){
   const v=document.getElementById('fi-tipo-cant').value;
@@ -1279,64 +1106,12 @@ async function deleteInsumo(id,nombre){
   if(!confirm(`¿Eliminar "${nombre}"?`))return;
   try{
     await db.collection('insumos_catalogo').doc(id).delete();
-    await db.collection('insumos_stock').doc(id).delete();
     catalogoData=catalogoData.filter(x=>x.id!==id);
     toast('Ítem eliminado','ok');renderAll();
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
-function openModalMovimiento(itemId,tipo){
-  currentMovTipo=tipo||'SALIDA';
-  const isSol=tipo==='SOLICITUD_SALIDA',isEnt=tipo==='ENTRADA';
-  const subs={
-    ENTRADA:'Registra el ingreso de nuevo stock a una sede. Aumenta la cantidad disponible.',
-    SALIDA:'Registra el consumo de insumos. El ítem se descuenta del stock de esa sede.',
-    SOLICITUD_SALIDA:'Tu solicitud quedará pendiente hasta que SUPERVISOR o ADMIN la apruebe.'
-  };
-  document.getElementById('modal-mov-title').textContent=isEnt?'⬇ Entrada':isSol?'⬆ Solicitar salida':'⬆ Salida';
-  document.getElementById('modal-mov-sub').textContent=subs[tipo]||'';
-  document.getElementById('btn-save-mov').textContent=isEnt?'⬇ Confirmar entrada':isSol?'📤 Enviar solicitud':'⬆ Confirmar salida';
-  const opts=catalogoData.map(i=>`<option value="${i.id}">${i.nombre}${i.codigo?' ('+i.codigo+')':''}</option>`).join('');
-  document.getElementById('fm-item').innerHTML='<option value="">Seleccionar ítem...</option>'+opts;
-  if(itemId)document.getElementById('fm-item').value=itemId;
-  document.getElementById('fm-sede').innerHTML=sedeOpts(false);
-  const pOpts=personalData.map(p=>`<option value="${p.nombre}">${p.nombre} (${p.cargo||'TÉCNICO'})</option>`).join('');
-  document.getElementById('fm-personal').innerHTML=`<option value="">—</option>${pOpts}`;
-  document.getElementById('fm-qty').value='';document.getElementById('fm-motivo').value='';
-  document.getElementById('stock-info-bar').style.display='none';
-  document.getElementById('modal-mov').classList.add('open');
-}
-
-function updateStockInfo(){
-  const iId=document.getElementById('fm-item').value,sede=document.getElementById('fm-sede').value;
-  const bar=document.getElementById('stock-info-bar');
-  if(!iId||!sede){bar.style.display='none';return;}
-  const i=catalogoData.find(x=>x.id===iId);
-  bar.style.display='block';bar.textContent=`Stock en ${sede}: ${sEnSede(iId,sede)} ${i?.unidad||'UND'}`;
-}
-
-async function saveMovimiento(){
-  const iId=document.getElementById('fm-item').value,sede=document.getElementById('fm-sede').value;
-  const qty=Number(document.getElementById('fm-qty').value),pers=document.getElementById('fm-personal').value;
-  if(!iId||!sede||!qty||qty<=0){toast('Completa todos los campos','err');return;}
-  const item=catalogoData.find(x=>x.id===iId);
-  const isSol=currentMovTipo==='SOLICITUD_SALIDA';
-  if(!isSol&&(currentMovTipo==='SALIDA')&&sEnSede(iId,sede)<qty){toast(`Stock insuficiente en ${sede}`,'err');return;}
-  try{
-    const mov={itemId:iId,itemNombre:item.nombre,tipo:currentMovTipo,sede,cantidad:qty,unidad:item.unidad||'UND',
-      motivo:document.getElementById('fm-motivo').value.trim(),responsable:pers,usuario:maUser.email,
-      estado:isSol?'PENDIENTE':'CONFIRMADO',fecha:new Date()};
-    if(!isSol){
-      const d=currentMovTipo==='ENTRADA'?qty:-qty,a=sEnSede(iId,sede);
-      await db.collection('insumos_stock').doc(iId).set({[sede]:a+d},{merge:true});
-      if(!stockData[iId])stockData[iId]={};stockData[iId][sede]=a+d;
-    }
-    const ref=await db.collection('insumos_movimientos').add(mov);
-    movimientosData.unshift({id:ref.id,...mov});
-    toast(isSol?'📤 Solicitud enviada':currentMovTipo==='ENTRADA'?'✓ Entrada registrada':'✓ Salida registrada','ok');
-    closeModal('modal-mov');renderAll();
-  }catch(e){toast('Error: '+e.message,'err');}
-}
+// openModalMovimiento, updateStockInfo, saveMovimiento — eliminados (legacy)
 
 function openModalTransferencia(esSol){
   document.getElementById('btn-save-transf').textContent=esSol?'📤 Enviar solicitud':'🔄 Confirmar';
@@ -1352,957 +1127,11 @@ function openModalTransferencia(esSol){
   document.getElementById('modal-transf').classList.add('open');
 }
 
-function checkStockOrigen(){
-  const iId=document.getElementById('ft-item').value,sede=document.getElementById('ft-origen').value;
-  const bar=document.getElementById('stock-origen-info');
-  if(!iId||!sede){bar.style.display='none';return;}
-  const i=catalogoData.find(x=>x.id===iId);
-  bar.style.display='block';bar.textContent=`Stock disponible en ${sede}: ${sEnSede(iId,sede)} ${i?.unidad||'UND'}`;
-}
+// checkStockOrigen, saveTransferencia legacy — eliminados
 
-async function saveTransferencia(){
-  const iId=document.getElementById('ft-item').value,orig=document.getElementById('ft-origen').value;
-  const dest=document.getElementById('ft-destino').value,qty=Number(document.getElementById('ft-qty').value);
-  const tec=document.getElementById('ft-tecnico').value;
-  const esSol=document.getElementById('btn-save-transf').dataset.sol==='1';
-  if(!iId||!orig||!dest||!qty||qty<=0){toast('Completa todos los campos','err');return;}
-  if(orig===dest){toast('Origen y destino deben ser distintos','err');return;}
-  const item=catalogoData.find(x=>x.id===iId);
-  if(!esSol&&sEnSede(iId,orig)<qty){toast(`Stock insuficiente en ${orig}`,'err');return;}
-  try{
-    const mov={itemId:iId,itemNombre:item.nombre,tipo:esSol?'SOLICITUD_TRANSF':'TRANSFERENCIA',
-      sedeOrigen:orig,sedeDestino:dest,cantidad:qty,unidad:item.unidad||'UND',
-      tecnico:tec,observacion:document.getElementById('ft-obs').value.trim(),
-      usuario:maUser.email,estado:esSol?'PENDIENTE':'CONFIRMADO',fecha:new Date()};
-    if(!esSol){
-      const aO=sEnSede(iId,orig),aD=sEnSede(iId,dest);
-      await db.collection('insumos_stock').doc(iId).set({[orig]:aO-qty,[dest]:aD+qty},{merge:true});
-      if(!stockData[iId])stockData[iId]={};stockData[iId][orig]=aO-qty;stockData[iId][dest]=aD+qty;
-    }
-    const ref=await db.collection('insumos_movimientos').add(mov);
-    movimientosData.unshift({id:ref.id,...mov});
-    toast(esSol?'📤 Solicitud enviada':`✓ ${qty} ${item.unidad} ${orig} → ${dest}`,'ok');
-    closeModal('modal-transf');renderAll();
-  }catch(e){toast('Error: '+e.message,'err');}
-}
+// Funciones de paquetes eliminadas (legacy)
 
-function renderPaquetes(){
-  const g=document.getElementById('paq-grid');
-  const btnNuevo=document.getElementById('btn-nuevo-paquete');
-  if(btnNuevo)btnNuevo.style.display=can('paquetes')?'inline-flex':'none';
-  if(!paquetesData.length){g.innerHTML='<div class="empty" style="grid-column:1/-1"><div class="empty-icon">🎁</div>Sin paquetes</div>';return;}
-  g.innerHTML=paquetesData.map(paq=>{
-    const items=(paq.items||[]).map(it=>{const c=catalogoData.find(x=>x.id===it.itemId);
-      return`<div class="paq-item-row"><span>${c?.nombre||it.itemNombre||'—'}</span><span style="font-family:var(--mono);font-size:10px;color:var(--muted2)">${it.cantidad} ${c?.unidad||'UND'}</span></div>`;
-    }).join('');
-    const editBtn=can('paquetes')?`<button class="btn btn-sm" onclick="openModalPaquete('${paq.id}')">✏️</button>`:'';
-    return`<div class="paq-card">
-      <div class="paq-name">${paq.nombre}</div>
-      ${paq.descripcion?`<div class="paq-desc">${paq.descripcion}</div>`:''}
-      <div>${items||'<span style="color:var(--muted);font-size:11px">Sin ítems</span>'}</div>
-      <div class="paq-foot">
-        <button class="btn btn-sm btn-primary" style="flex:1" onclick="openModalApplyPaquete('${paq.id}')">⬆ Aplicar</button>
-        ${editBtn}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function openModalPaquete(id){
-  editingPaqId=id;paqRowIdx=0;
-  const ed=document.getElementById('paq-items-editor');ed.innerHTML='';
-  if(id){
-    const p=paquetesData.find(x=>x.id===id);if(!p)return;
-    document.getElementById('modal-paq-title').textContent='Editar paquete';
-    document.getElementById('fp-nombre').value=p.nombre||'';
-    document.getElementById('fp-desc').value=p.descripcion||'';
-    (p.items||[]).forEach(it=>addPaqItem(it));
-  }else{
-    document.getElementById('modal-paq-title').textContent='Nuevo paquete';
-    document.getElementById('fp-nombre').value='';document.getElementById('fp-desc').value='';
-    addPaqItem();
-  }
-  document.getElementById('modal-paquete').classList.add('open');
-}
-
-function addPaqItem(it={}){
-  const i=paqRowIdx++;
-  const opts=catalogoData.map(c=>`<option value="${c.id}" ${c.id===it.itemId?'selected':''}>${c.nombre}</option>`).join('');
-  const div=document.createElement('div');
-  div.className='paq-row';div.id='paq-row-'+i;
-  div.innerHTML=`<select class="form-select" id="paq-item-${i}" style="flex:1"><option value="">Seleccionar...</option>${opts}</select>
-    <input type="text" class="form-input" id="paq-qty-${i}" value="${it.cantidad||1}" placeholder="Cant." style="width:70px">
-    <button class="btn btn-sm btn-red" onclick="document.getElementById('paq-row-${i}').remove()">✕</button>`;
-  document.getElementById('paq-items-editor').appendChild(div);
-}
-
-async function savePaquete(){
-  const nombre=document.getElementById('fp-nombre').value.trim();
-  if(!nombre){toast('Nombre obligatorio','err');return;}
-  const rows=document.querySelectorAll('#paq-items-editor .paq-row');
-  const items=[];
-  rows.forEach(row=>{
-    const idx=row.id.replace('paq-row-','');
-    const iId=document.getElementById(`paq-item-${idx}`)?.value;
-    const qty=Number(document.getElementById(`paq-qty-${idx}`)?.value)||1;
-    if(iId){const c=catalogoData.find(x=>x.id===iId);items.push({itemId:iId,cantidad:qty,itemNombre:c?.nombre||''});}
-  });
-  if(!items.length){toast('Agrega al menos un ítem','err');return;}
-  const paq={nombre,descripcion:document.getElementById('fp-desc').value.trim(),items,updatedBy:maUser.email,updatedAt:new Date().toISOString()};
-  try{
-    const docId=editingPaqId||'PAQ-'+Date.now();
-    await db.collection('insumos_paquetes').doc(docId).set(paq,{merge:!!editingPaqId});
-    if(!editingPaqId)paquetesData.push({id:docId,...paq});
-    else{const idx=paquetesData.findIndex(x=>x.id===docId);if(idx>=0)paquetesData[idx]={id:docId,...paq};}
-    toast('✓ Paquete guardado','ok');closeModal('modal-paquete');renderPaquetes();
-  }catch(e){toast('Error: '+e.message,'err');}
-}
-
-function openModalApplyPaquete(paqId){
-  applyingPaqId=paqId;
-  const paq=paquetesData.find(p=>p.id===paqId);if(!paq)return;
-  document.getElementById('modal-apply-title').textContent=`Aplicar: ${paq.nombre}`;
-  document.getElementById('fap-sede').innerHTML=sedeOpts(false);
-  const pOpts=personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
-  document.getElementById('fap-personal').innerHTML=`<option value="">—</option>${pOpts}`;
-  document.getElementById('fap-obs').value='';
-  const prev=(paq.items||[]).map(it=>{const c=catalogoData.find(x=>x.id===it.itemId);return`<strong>${c?.nombre||it.itemId}</strong>: −${it.cantidad} ${c?.unidad||'UND'}`;}).join('<br>');
-  document.getElementById('apply-paq-preview').innerHTML=prev||'Sin ítems';
-  document.getElementById('modal-apply-paq').classList.add('open');
-}
-
-async function applyPaquete(){
-  const sede=document.getElementById('fap-sede').value;
-  if(!sede){toast('Selecciona una sede','err');return;}
-  const paq=paquetesData.find(p=>p.id===applyingPaqId);if(!paq)return;
-  const isSol=can('salida')==='sol';
-  if(!isSol){
-    for(const it of paq.items||[]){
-      if(sEnSede(it.itemId,sede)<it.cantidad){
-        const c=catalogoData.find(x=>x.id===it.itemId);
-        toast(`Stock insuficiente: ${c?.nombre||it.itemId} en ${sede}`,'err');return;
-      }
-    }
-  }
-  const pers=document.getElementById('fap-personal').value;
-  const obs=document.getElementById('fap-obs').value.trim();
-  try{
-    for(const it of paq.items||[]){
-      const c=catalogoData.find(x=>x.id===it.itemId);
-      const mov={itemId:it.itemId,itemNombre:c?.nombre||it.itemId,tipo:isSol?'SOLICITUD_SALIDA':'SALIDA',
-        sede,cantidad:it.cantidad,unidad:c?.unidad||'UND',
-        motivo:`Paquete: ${paq.nombre}${obs?' — '+obs:''}`,responsable:pers,usuario:maUser.email,
-        estado:isSol?'PENDIENTE':'CONFIRMADO',fecha:new Date()};
-      if(!isSol){
-        const a=sEnSede(it.itemId,sede);
-        await db.collection('insumos_stock').doc(it.itemId).set({[sede]:a-it.cantidad},{merge:true});
-        if(!stockData[it.itemId])stockData[it.itemId]={};stockData[it.itemId][sede]=a-it.cantidad;
-      }
-      const ref=await db.collection('insumos_movimientos').add(mov);
-      movimientosData.unshift({id:ref.id,...mov});
-    }
-    toast(isSol?'📤 Solicitud enviada':`✓ Paquete "${paq.nombre}" aplicado en ${sede}`,'ok');
-    closeModal('modal-apply-paq');renderAll();
-  }catch(e){toast('Error: '+e.message,'err');}
-}
-
-// ── RANGO VISUAL ──────────────────────────────────────────────────────────────
-let rangoItemId=null;
-function openModalRango(itemId){
-  // Si no se pasa itemId, muestra selector de todos los ítems RANGO
-  const rangoItems=catalogoData.filter(i=>i.tipoCantidad==='RANGO');
-  if(!rangoItems.length){toast('No hay ítems con tipo Rango registrados','warn');return;}
-  rangoItemId=itemId||rangoItems[0].id;
-  renderRangoModal();
-  document.getElementById('modal-rango').classList.add('open');
-}
-
-function renderRangoModal(){
-  const item=catalogoData.find(i=>i.id===rangoItemId);
-  if(!item)return;
-  const rangoItems=catalogoData.filter(i=>i.tipoCantidad==='RANGO');
-  // Selector de ítem si hay más de uno
-  const selector=rangoItems.length>1?`<div class="form-group full" style="margin-bottom:14px">
-    <div class="form-label">Ítem</div>
-    <select class="form-select" onchange="rangoItemId=this.value;renderRangoModal()">
-      ${rangoItems.map(i=>`<option value="${i.id}"${i.id===rangoItemId?' selected':''}>${i.nombre}</option>`).join('')}
-    </select>
-  </div>`:'<div style="font-weight:600;margin-bottom:12px">'+item.nombre+'</div>';
-
-  const OPCIONES=[
-    {val:100,ico:'🟢',lbl:'LLENO (100%)'},
-    {val:75,ico:'🟢',lbl:'CASI LLENO (75%)'},
-    {val:50,ico:'🟡',lbl:'MEDIO (50%)'},
-    {val:25,ico:'🟠',lbl:'BAJO (25%)'},
-    {val:5,ico:'🔴',lbl:'CASI VACÍO (5%)'},
-    {val:0,ico:'⚫',lbl:'VACÍO (0%)'},
-  ];
-
-  const sedesHtml=sedes.map(s=>{
-    const actual=sEnSede(item.id,s.sede);
-    const optsHtml=OPCIONES.map(o=>`<option value="${o.val}"${actual===o.val?' selected':''}>${o.ico} ${o.lbl}</option>`).join('');
-    return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:12px;font-weight:500">${s.sede}</span>
-      <span style="font-size:10px;color:var(--muted2)">${renderRangoBadgeSede(actual)}</span>
-      <select class="form-select" id="rango-sede-${s.sede.replace(/\s/g,'_')}" style="width:190px;font-size:11px">${optsHtml}</select>
-    </div>`;
-  }).join('');
-
-  document.getElementById('rango-sedes-list').innerHTML=selector+sedesHtml;
-}
-
-async function saveRango(){
-  const item=catalogoData.find(i=>i.id===rangoItemId);if(!item)return;
-  const updates={};
-  sedes.forEach(s=>{
-    const sel=document.getElementById('rango-sede-'+s.sede.replace(/\s/g,'_'));
-    if(sel)updates[s.sede]=Number(sel.value);
-  });
-  try{
-    await db.collection('insumos_stock').doc(rangoItemId).set(updates,{merge:true});
-    if(!stockData[rangoItemId])stockData[rangoItemId]={};
-    Object.assign(stockData[rangoItemId],updates);
-    // Registrar como movimiento informativo
-    await db.collection('insumos_movimientos').add({
-      itemId:rangoItemId,itemNombre:item.nombre,tipo:'ACTUALIZACION_NIVEL',
-      niveles:updates,usuario:maUser.email,estado:'CONFIRMADO',fecha:new Date(),
-      motivo:'Actualización manual de niveles'
-    });
-    toast('✓ Niveles actualizados','ok');
-    closeModal('modal-rango');
-    renderAll();
-  }catch(e){toast('Error: '+e.message,'err');}
-}
-
-function toggleMobileSidebar(){
-  const sb = document.querySelector('.sidebar');
-  sb.classList.toggle('mobile-open');
-}
-function switchTab(tab,btn){
-  document.querySelectorAll('.tab-view').forEach(v=>v.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('tab-'+tab).classList.add('active');
-  btn.classList.add('active');
-}
-function closeModal(id){
-  const el = document.getElementById(id);
-  if(!el) return;
-  el.style.display = 'none';
-  el.classList.remove('open');
-}
-function toast(msg,type){
-  const el=document.getElementById('toast');el.textContent=msg;
-  el.className='toast show '+(type||'');
-  setTimeout(()=>el.classList.remove('show'),3400);
-}
-document.querySelectorAll('.modal-overlay').forEach(o=>{
-  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});
-});
-</script>
-
-<!-- MODAL NUEVA INSTANCIA -->
-<div class="modal-overlay" id="modal-instancia" onclick="if(event.target===this)closeModal('modal-instancia')">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-header">
-      <div class="modal-title">🏷️ Nueva instancia</div>
-      <div ontouchend="closeModal('modal-instancia')" onclick="closeModal('modal-instancia')" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
-    </div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
-      <div class="form-group full">
-        <div class="form-label">Tipo de bien *</div>
-        <select class="form-select" id="fi-inst-tipo" onchange="onInstTipoChange()">
-          <option value="">Seleccionar...</option>
-        </select>
-      </div>
-      <div class="form-group full">
-        <div class="form-label">ID único (código QR) *</div>
-        <div style="display:flex;gap:8px">
-          <input type="text" class="form-input" id="fi-inst-id" placeholder="Ej: ESC-001" style="font-family:var(--mono);text-transform:uppercase">
-          <button class="btn btn-sm" onclick="generarInstanciaId()" style="flex-shrink:0;white-space:nowrap">⚡ Generar</button>
-        </div>
-        <div id="fi-inst-id-status" style="font-size:11px;margin-top:4px"></div>
-      </div>
-      <div class="form-group full">
-        <div class="form-label">Sede actual *</div>
-        <select class="form-select" id="fi-inst-sede"></select>
-      </div>
-      <div id="fi-inst-nivel-wrap" style="display:none" class="form-group full">
-        <div class="form-label">Nivel inicial</div>
-        <select class="form-select" id="fi-inst-nivel">
-          <option value="100">🟢 LLENO (100%)</option>
-          <option value="75">🟢 CASI LLENO (75%)</option>
-          <option value="50">🟡 MEDIO (50%)</option>
-          <option value="25">🟠 BAJO (25%)</option>
-          <option value="5">🔴 CASI VACÍO (5%)</option>
-          <option value="0">⚫ VACÍO (0%)</option>
-        </select>
-      </div>
-      <div class="form-group full">
-        <div class="form-label">Notas</div>
-        <input type="text" class="form-input" id="fi-inst-notas" placeholder="Opcional">
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn" onclick="closeModal('modal-instancia')">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveInstancia()">💾 Crear instancia</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL EDITAR INSTANCIA -->
-<div class="modal-overlay" id="modal-inst-edit" onclick="if(event.target===this)closeModal('modal-inst-edit')">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-header">
-      <div class="modal-title" id="modal-inst-edit-title">✏️ Editar instancia</div>
-      <div ontouchend="closeModal('modal-inst-edit')" onclick="closeModal('modal-inst-edit')" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
-    </div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
-      <div style="font-family:var(--mono);font-size:12px;color:var(--muted2);background:var(--surface2);padding:8px 12px;border-radius:6px" id="inst-edit-id-display"></div>
-      <div class="form-group full">
-        <div class="form-label">Sede actual *</div>
-        <select class="form-select" id="fe-inst-sede"></select>
-      </div>
-      <div id="fe-inst-nivel-wrap" style="display:none" class="form-group full">
-        <div class="form-label">Nivel actual</div>
-        <select class="form-select" id="fe-inst-nivel">
-          <option value="100">🟢 LLENO (100%)</option>
-          <option value="75">🟢 CASI LLENO (75%)</option>
-          <option value="50">🟡 MEDIO (50%)</option>
-          <option value="25">🟠 BAJO (25%)</option>
-          <option value="5">🔴 CASI VACÍO (5%)</option>
-          <option value="0">⚫ VACÍO (0%)</option>
-        </select>
-      </div>
-      <div class="form-group full">
-        <div class="form-label">Estado</div>
-        <select class="form-select" id="fe-inst-estado">
-          <option value="DISPONIBLE">✅ Disponible</option>
-          <option value="EN_USO">🔧 En uso</option>
-          <option value="MANTENIMIENTO">⚠️ En mantenimiento</option>
-          <option value="BAJA">❌ Baja</option>
-        </select>
-      </div>
-      <div class="form-group full">
-        <div class="form-label">Notas</div>
-        <input type="text" class="form-input" id="fe-inst-notas">
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-red" onclick="deleteInstancia()">🗑 Eliminar</button>
-      <button class="btn" onclick="closeModal('modal-inst-edit')">Cancelar</button>
-      <button class="btn btn-primary" onclick="updateInstancia()">💾 Guardar</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL QR -->
-<div class="modal-overlay" id="modal-qr" onclick="if(event.target===this)closeModal('modal-qr')">
-  <div class="modal" style="max-width:400px">
-    <div class="modal-header">
-      <div class="modal-title">▣ Código QR del ítem</div>
-      <div ontouchend="closeModal('modal-qr')" onclick="closeModal('modal-qr')" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
-    </div>
-    <div class="modal-body">
-      <div class="modal-qr-wrap">
-        <div class="qr-label-preview" id="qr-label-preview">
-          <div id="qr-canvas-wrap"></div>
-          <div class="qr-label-id" id="qr-label-id"></div>
-          <div class="qr-label-name" id="qr-label-name"></div>
-        </div>
-        <div class="qr-actions">
-          <button class="btn btn-primary" onclick="exportQRLabel()">⬇ Descargar etiqueta</button>
-          <button class="btn" onclick="closeModal('modal-qr')" style="min-height:44px">Cerrar</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL ESCÁNER -->
-<div class="modal-overlay" id="modal-scanner" onclick="if(event.target===this)closeScanner()">
-  <div class="modal" style="max-width:440px">
-    <div class="modal-header">
-      <div class="modal-title">📷 Escanear QR</div>
-      <div ontouchend="closeScanner()" onclick="closeScanner()" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
-    </div>
-    <div class="modal-body">
-      <div class="scanner-modal-body">
-        <div id="qr-reader"></div>
-        <div style="font-size:11px;color:var(--muted2);text-align:center">Apunta la cámara al código QR del ítem</div>
-        <div id="qr-result-box">Esperando escaneo...</div>
-        <div id="scan-item-info" style="display:none" class="scan-item-info"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-// ── ENTRADA ───────────────────────────────────────────────────
-let currentSalidaTipo = 'SALIDA'; // SALIDA o BAJA
-
-function openModalEntrada() {
-  const sel = document.getElementById('fent-tipo');
-  sel.innerHTML = '<option value="">Seleccionar...</option>' +
-    catalogoData.map(i => `<option value="${i.id}">${i.codigo ? i.codigo + ' — ' : ''}${i.nombre}</option>`).join('');
-  document.getElementById('fent-sede').innerHTML = sedeOpts(false);
-  document.getElementById('fent-qty').value = '1';
-  document.getElementById('fent-obs').value = '';
-  document.getElementById('fent-preview').style.display = 'none';
-  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
-  document.getElementById('fent-personal').innerHTML = `<option value="">—</option>${pOpts}`;
-  document.getElementById('modal-entrada').classList.add('open');
-}
-
-function onEntradaTipoChange() { previewInstancias(); }
-
-function previewInstancias() {
-  const itemId = document.getElementById('fent-tipo').value;
-  const qty = parseInt(document.getElementById('fent-qty').value) || 0;
-  const prev = document.getElementById('fent-preview');
-  if (!itemId || qty <= 0) { prev.style.display = 'none'; return; }
-  const item = catalogoData.find(x => x.id === itemId);
-  if (!item) return;
-  const prefix = (item.codigo || item.nombre.replace(/[^A-Z0-9]/gi,'')).substring(0,3).toUpperCase();
-  const existing = instanciasData.filter(i => i.id.startsWith(prefix + '-')).map(i => parseInt(i.id.replace(prefix+'-',''))||0).sort((a,b)=>b-a);
-  const next = (existing[0] || 0) + 1;
-  const ids = Array.from({length: qty}, (_,i) => `${prefix}-${String(next+i).padStart(3,'0')}`);
-  prev.style.display = 'block';
-  prev.innerHTML = `<div style="font-weight:600;margin-bottom:6px;color:var(--blue)">Se crearán ${qty} instancia${qty>1?'s':''}:</div>` +
-    ids.map(id => `<div style="font-family:var(--mono);padding:2px 0">• ${id}</div>`).join('');
-}
-
-async function saveEntrada() {
-  const itemId = document.getElementById('fent-tipo').value;
-  const sede = document.getElementById('fent-sede').value;
-  const qty = parseInt(document.getElementById('fent-qty').value) || 0;
-  if (!itemId || !sede || qty <= 0) { toast('Completa todos los campos', 'err'); return; }
-  const item = catalogoData.find(x => x.id === itemId);
-  if (!item) return;
-  const prefix = (item.codigo || item.nombre.replace(/[^A-Z0-9]/gi,'')).substring(0,3).toUpperCase();
-  const existing = instanciasData.filter(i => i.id.startsWith(prefix+'-')).map(i => parseInt(i.id.replace(prefix+'-',''))||0).sort((a,b)=>b-a);
-  let next = (existing[0] || 0) + 1;
-  const obs = document.getElementById('fent-obs').value.trim();
-  const resp = document.getElementById('fent-personal').value;
-  const nuevasInstancias = [];
-  try {
-    for (let i = 0; i < qty; i++) {
-      const id = `${prefix}-${String(next+i).padStart(3,'0')}`;
-      // Verificar unicidad en Firebase
-      const snap = await db.collection('insumos_instancias').doc(id).get();
-      if (snap.exists) { next++; i--; continue; }
-      const inst = { itemId, nombre: item.nombre, sede, estado: 'DISPONIBLE',
-        creadoEn: new Date().toISOString(), creadoPor: maUser.email,
-        ...(item.tipoCantidad === 'RANGO' && { nivel: 100 }) };
-      await db.collection('insumos_instancias').doc(id).set(inst);
-      instanciasData.push({ id, ...inst });
-      nuevasInstancias.push(id);
-    }
-    // Registrar movimiento
-    await db.collection('insumos_movimientos').add({
-      tipo: 'ENTRADA', itemId, itemNombre: item.nombre, sede, cantidad: qty,
-      instancias: nuevasInstancias, responsable: resp, motivo: obs,
-      usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
-    });
-    toast(`✓ ${qty} instancia${qty>1?'s':''} creada${qty>1?'s':''}: ${nuevasInstancias.join(', ')}`, 'ok');
-    closeModal('modal-entrada');
-    renderAll();
-  } catch(e) { toast('Error: ' + e.message, 'err'); }
-}
-
-// ── SALIDA / BAJA ──────────────────────────────────────────
-function openModalSalida(tipo = 'SALIDA', instId = null) {
-  currentSalidaTipo = tipo;
-  const esBaja = tipo === 'BAJA';
-  document.getElementById('modal-salida-title').textContent = esBaja ? '⚠️ Dar de baja' : '⬆ Registrar salida';
-  document.getElementById('modal-salida-sub').innerHTML = esBaja
-    ? '⚠️ <strong>Baja:</strong> El bien ya no sirve por daño, pérdida o robo. El motivo es obligatorio. Quedará registro en el historial.'
-    : '📤 <strong>Salida:</strong> El bien fue consumido o entregado definitivamente. Ejemplo: botella de refrigerante usada en mantenimiento.';
-  document.getElementById('fsal-motivo-label').textContent = esBaja ? 'Motivo * (obligatorio)' : 'Observación';
-  document.getElementById('btn-save-salida').textContent = esBaja ? '⚠️ Confirmar baja' : '⬆ Confirmar salida';
-  document.getElementById('fsal-buscar').value = instId || '';
-  document.getElementById('fsal-sede-filtro').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s=>`<option value="${s.sede}">${s.sede}</option>`).join('');
-  document.getElementById('fsal-motivo').value = '';
-  document.getElementById('fsal-inst-info').style.display = 'none';
-  const pOpts = personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
-  document.getElementById('fsal-personal').innerHTML = `<option value="">—</option>${pOpts}`;
-  buscarInstanciasSalida();
-  if (instId) {
-    setTimeout(() => { document.getElementById('fsal-instancia').value = instId; onSalidaInstanciaChange(); }, 100);
-  }
-  document.getElementById('modal-salida').classList.add('open');
-}
-
-function buscarInstanciasSalida() {
-  const q = document.getElementById('fsal-buscar').value.toLowerCase();
-  const sede = document.getElementById('fsal-sede-filtro').value;
-  let list = instanciasData.filter(i => i.estado !== 'BAJA');
-  if (sede) list = list.filter(i => i.sede === sede);
-  if (q) list = list.filter(i => (i.id + i.nombre + (i.sede||'')).toLowerCase().includes(q));
-  const sel = document.getElementById('fsal-instancia');
-  sel.innerHTML = '<option value="">Seleccionar instancia...</option>' +
-    list.map(i => `<option value="${i.id}">${i.id} — ${i.nombre} (${i.sede||'sin sede'})</option>`).join('');
-  document.getElementById('fsal-inst-info').style.display = 'none';
-}
-
-function onSalidaInstanciaChange() {
-  const instId = document.getElementById('fsal-instancia').value;
-  const inst = instanciasData.find(x => x.id === instId);
-  const info = document.getElementById('fsal-inst-info');
-  if (!inst) { info.style.display = 'none'; return; }
-  const item = catalogoData.find(x => x.id === inst.itemId);
-  const esRango = item && item.tipoCantidad === 'RANGO';
-  info.style.display = 'block';
-  info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>
-    📍 Sede: <strong>${inst.sede||'—'}</strong> · Estado: <strong>${inst.estado||'DISPONIBLE'}</strong>
-    ${esRango && inst.nivel !== undefined ? '<br>📊 Nivel: ' + inst.nivel + '%' : ''}`;
-}
-
-async function saveSalida() {
-  const instId = document.getElementById('fsal-instancia').value;
-  const motivo = document.getElementById('fsal-motivo').value.trim();
-  const resp = document.getElementById('fsal-personal').value;
-  const esBaja = currentSalidaTipo === 'BAJA';
-  if (!instId) { toast('Selecciona una instancia', 'err'); return; }
-  if (esBaja && !motivo) { toast('El motivo es obligatorio para dar de baja', 'err'); return; }
-  const inst = instanciasData.find(x => x.id === instId);
-  if (!inst) return;
-  try {
-    await db.collection('insumos_instancias').doc(instId).delete();
-    instanciasData = instanciasData.filter(x => x.id !== instId);
-    const movRef = await db.collection('insumos_movimientos').add({
-      tipo: currentSalidaTipo, itemId: inst.itemId, itemNombre: inst.nombre,
-      instanciaId: instId, sede: inst.sede, cantidad: 1, unidad: 'UND',
-      motivo, responsable: resp,
-      usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
-    });
-    // Actualizar memoria de movimientos
-    movimientosData.unshift({
-      id: movRef.id, tipo: currentSalidaTipo, itemId: inst.itemId,
-      itemNombre: inst.nombre, instanciaId: instId, sede: inst.sede,
-      cantidad: 1, unidad: 'UND', motivo, responsable: resp,
-      usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
-    });
-    toast(`✓ ${esBaja ? 'Baja' : 'Salida'} registrada — ${instId}`, 'ok');
-    closeModal('modal-salida');
-    renderAll();
-  } catch(e) { toast('Error: ' + e.message, 'err'); }
-}
-
-// ── TRANSFERENCIA ──────────────────────────────────────────
-function openModalTransferencia() {
-  document.getElementById('ft-sede-origen').innerHTML = '<option value="">Seleccionar sede origen...</option>' + sedes.map(s=>`<option value="${s.sede}">${s.sede}</option>`).join('');
-  document.getElementById('ft-destino').innerHTML = sedeOpts(false);
-  document.getElementById('ft-instancia').innerHTML = '<option value="">Seleccionar...</option>';
-  document.getElementById('ft-inst-info').style.display = 'none';
-  document.getElementById('ft-buscar-inst').value = '';
-  document.getElementById('ft-obs').value = '';
-  const pOpts = personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
-  document.getElementById('ft-tecnico').innerHTML = `<option value="">—</option>${pOpts}`;
-  document.getElementById('modal-transf').classList.add('open');
-}
-
-function onTransfOrigenChange() {
-  const sede = document.getElementById('ft-sede-origen').value;
-  let list = instanciasData.filter(i => i.estado !== 'BAJA');
-  if (sede) list = list.filter(i => i.sede === sede);
-  const sel = document.getElementById('ft-instancia');
-  sel.innerHTML = '<option value="">Seleccionar instancia...</option>' +
-    list.map(i => `<option value="${i.id}">${i.id} — ${i.nombre}</option>`).join('');
-  document.getElementById('ft-inst-info').style.display = 'none';
-}
-
-function buscarInstanciasTransf() {
-  const q = document.getElementById('ft-buscar-inst').value.toLowerCase();
-  if (!q) return;
-  document.getElementById('ft-sede-origen').value = '';
-  let list = instanciasData.filter(i => i.estado !== 'BAJA' && (i.id + i.nombre + (i.sede||'')).toLowerCase().includes(q));
-  const sel = document.getElementById('ft-instancia');
-  sel.innerHTML = '<option value="">Seleccionar instancia...</option>' +
-    list.map(i => `<option value="${i.id}">${i.id} — ${i.nombre} (${i.sede||'sin sede'})</option>`).join('');
-  document.getElementById('ft-inst-info').style.display = 'none';
-}
-
-function onTransfInstanciaChange() {
-  const instId = document.getElementById('ft-instancia').value;
-  const inst = instanciasData.find(x => x.id === instId);
-  const info = document.getElementById('ft-inst-info');
-  if (!inst) { info.style.display = 'none'; return; }
-  info.style.display = 'block';
-  info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>📍 Sede actual: <strong>${inst.sede||'—'}</strong>`;
-  // Pre-seleccionar sede origen
-  const origenSel = document.getElementById('ft-sede-origen');
-  if (inst.sede) origenSel.value = inst.sede;
-  // Excluir sede origen del destino
-  const destinoSel = document.getElementById('ft-destino');
-  destinoSel.innerHTML = sedeOpts(false);
-  if (inst.sede) {
-    Array.from(destinoSel.options).forEach(opt => { if(opt.value === inst.sede) opt.disabled = true; });
-  }
-}
-
-async function saveTransferencia() {
-  const instId = document.getElementById('ft-instancia').value;
-  const destino = document.getElementById('ft-destino').value;
-  const obs = document.getElementById('ft-obs').value.trim();
-  const tecnico = document.getElementById('ft-tecnico').value;
-  if (!instId || !destino) { toast('Selecciona instancia y sede destino', 'err'); return; }
-  const inst = instanciasData.find(x => x.id === instId);
-  if (!inst) return;
-  const origen = inst.sede;
-  if (origen === destino) { toast('La sede origen y destino son iguales', 'err'); return; }
-  try {
-    await db.collection('insumos_instancias').doc(instId).update({ sede: destino, updatedAt: new Date().toISOString() });
-    const idx = instanciasData.findIndex(x => x.id === instId);
-    if (idx >= 0) instanciasData[idx].sede = destino;
-    await db.collection('insumos_movimientos').add({
-      tipo: 'TRANSFERENCIA', itemId: inst.itemId, itemNombre: inst.nombre,
-      instanciaId: instId, sedeOrigen: origen, sedeDestino: destino,
-      motivo: obs, responsable: tecnico, usuario: maUser.email,
-      estado: 'CONFIRMADO', fecha: new Date()
-    });
-    toast(`✓ ${instId} transferido a ${destino}`, 'ok');
-    closeModal('modal-transf');
-    renderAll();
-  } catch(e) { toast('Error: ' + e.message, 'err'); }
-}
-
-// ── INSTANCIAS ────────────────────────────────────────────────
-let editingInstanciaId = null;
-
-function renderInstancias() {
-  const q = (document.getElementById('q-inst')?.value || '').toLowerCase();
-  const tipo = document.getElementById('f-inst-tipo')?.value || '';
-  const sede = document.getElementById('f-inst-sede')?.value || '';
-
-  // Poblar filtros
-  const tipoSel = document.getElementById('f-inst-tipo');
-  if (tipoSel && tipoSel.options.length <= 1) {
-    catalogoData.forEach(i => {
-      const opt = document.createElement('option');
-      opt.value = i.id; opt.textContent = i.nombre;
-      tipoSel.appendChild(opt);
-    });
-  }
-  const sedeSel = document.getElementById('f-inst-sede');
-  if (sedeSel && sedeSel.options.length <= 1) {
-    sedes.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.sede; opt.textContent = s.sede;
-      sedeSel.appendChild(opt);
-    });
-  }
-
-  let list = instanciasData.filter(inst => {
-    if (tipo && inst.itemId !== tipo) return false;
-    if (sede && inst.sede !== sede) return false;
-    if (q && !(inst.id + inst.nombre + (inst.sede||'')).toLowerCase().includes(q)) return false;
-    return true;
-  });
-
-  const wrap = document.getElementById('instancias-table');
-  if (!list.length) {
-    wrap.innerHTML = '<div class="empty"><div class="empty-icon">🏷️</div>Sin instancias registradas</div>';
-    return;
-  }
-
-  const estadoColor = {DISPONIBLE:'green', EN_USO:'blue', MANTENIMIENTO:'yellow', BAJA:'red'};
-  const estadoLabel = {DISPONIBLE:'Disponible', EN_USO:'En uso', MANTENIMIENTO:'Mantenimiento', BAJA:'Baja'};
-
-  wrap.innerHTML = `<table><thead><tr>
-    <th>ID / QR</th><th>Tipo</th><th>Sede</th><th>Nivel</th><th>Estado</th><th></th>
-  </tr></thead><tbody>
-  ${list.map(inst => {
-    const item = catalogoData.find(x => x.id === inst.itemId);
-    const esRango = item && item.tipoCantidad === 'RANGO';
-    const nivelHtml = esRango && inst.nivel !== undefined
-      ? renderRangoBadgeSede(inst.nivel)
-      : '—';
-    const est = inst.estado || 'DISPONIBLE';
-    const estColor = estadoColor[est] || 'blue';
-    return `<tr>
-      <td class="td-code" style="font-size:11px;font-weight:700">${inst.id}</td>
-      <td style="font-size:11px">${inst.nombre || (item ? item.nombre : '—')}</td>
-      <td style="font-size:11px">${inst.sede || '—'}</td>
-      <td>${nivelHtml}</td>
-      <td><span class="stock-pill stock-${estColor === 'green' ? 'ok' : estColor === 'yellow' ? 'low' : estColor === 'red' ? 'out' : 'ok'}" style="font-size:9px">${estadoLabel[est]||est}</span></td>
-      <td><div style="display:flex;gap:4px">
-        <button class="btn btn-sm" onclick="openQRModal('${inst.id}')" title="Ver QR">▣</button>
-        <button class="btn btn-sm" onclick="openEditInstancia('${inst.id}')">✏️</button>
-      </div></td>
-    </tr>`;
-  }).join('')}
-  </tbody></table>`;
-}
-
-function openModalNuevaInstancia() {
-  editingInstanciaId = null;
-  // Poblar selector de tipos
-  const sel = document.getElementById('fi-inst-tipo');
-  sel.innerHTML = '<option value="">Seleccionar...</option>' +
-    catalogoData.map(i => `<option value="${i.id}">${i.nombre}</option>`).join('');
-  document.getElementById('fi-inst-id').value = '';
-  document.getElementById('fi-inst-id-status').textContent = '';
-  document.getElementById('fi-inst-notas').value = '';
-  document.getElementById('fi-inst-nivel-wrap').style.display = 'none';
-  document.getElementById('fi-inst-sede').innerHTML = sedeOpts(false);
-  document.getElementById('modal-instancia').classList.add('open');
-}
-
-function onInstTipoChange() {
-  const itemId = document.getElementById('fi-inst-tipo').value;
-  const item = catalogoData.find(x => x.id === itemId);
-  const esRango = item && item.tipoCantidad === 'RANGO';
-  document.getElementById('fi-inst-nivel-wrap').style.display = esRango ? 'block' : 'none';
-  if (itemId) generarInstanciaId();
-}
-
-async function generarInstanciaId() {
-  const itemId = document.getElementById('fi-inst-tipo').value;
-  if (!itemId) { toast('Selecciona el tipo de bien primero', 'warn'); return; }
-  const item = catalogoData.find(x => x.id === itemId);
-  if (!item) return;
-
-  // Prefijo basado en las primeras 3 letras del nombre
-  const prefix = item.nombre.replace(/[^A-Z0-9]/gi,'').substring(0,3).toUpperCase();
-  
-  // Buscar el número más alto existente para ese prefijo
-  const existing = instanciasData
-    .filter(i => i.id.startsWith(prefix + '-'))
-    .map(i => parseInt(i.id.replace(prefix + '-', '')) || 0)
-    .sort((a,b) => b-a);
-  
-  const nextNum = (existing[0] || 0) + 1;
-  const newId = `${prefix}-${String(nextNum).padStart(3,'0')}`;
-  
-  document.getElementById('fi-inst-id').value = newId;
-  await verificarIdUnico(newId);
-}
-
-async function verificarIdUnico(id) {
-  const statusEl = document.getElementById('fi-inst-id-status');
-  if (!id) { statusEl.textContent = ''; return true; }
-  
-  // Verificar en memoria primero
-  const enMemoria = instanciasData.find(i => i.id === id);
-  if (enMemoria) {
-    statusEl.innerHTML = '<span style="color:var(--red)">⚠️ ID ya existe — elige otro</span>';
-    return false;
-  }
-  
-  // Verificar en Firebase
-  try {
-    const snap = await db.collection('insumos_instancias').doc(id).get();
-    if (snap.exists) {
-      statusEl.innerHTML = '<span style="color:var(--red)">⚠️ ID ya existe en la base de datos</span>';
-      return false;
-    }
-    statusEl.innerHTML = '<span style="color:var(--green)">✓ ID disponible</span>';
-    return true;
-  } catch(e) {
-    statusEl.textContent = '';
-    return true;
-  }
-}
-
-async function saveInstancia() {
-  const itemId = document.getElementById('fi-inst-tipo').value;
-  const id = document.getElementById('fi-inst-id').value.trim().toUpperCase();
-  const sede = document.getElementById('fi-inst-sede').value;
-  if (!itemId || !id || !sede) { toast('Completa todos los campos obligatorios', 'err'); return; }
-
-  // Verificar unicidad
-  const esUnico = await verificarIdUnico(id);
-  if (!esUnico) { toast('El ID ya existe, usa otro', 'err'); return; }
-
-  const item = catalogoData.find(x => x.id === itemId);
-  const esRango = item && item.tipoCantidad === 'RANGO';
-  const nivel = esRango ? Number(document.getElementById('fi-inst-nivel').value) : null;
-
-  const instancia = {
-    itemId,
-    nombre: item ? item.nombre : '',
-    sede,
-    estado: 'DISPONIBLE',
-    notas: document.getElementById('fi-inst-notas').value.trim(),
-    creadoEn: new Date().toISOString(),
-    creadoPor: maUser.email,
-    ...(nivel !== null && { nivel })
-  };
-
-  try {
-    await db.collection('insumos_instancias').doc(id).set(instancia);
-    instanciasData.push({ id, ...instancia });
-    toast('✓ Instancia creada — ' + id, 'ok');
-    closeModal('modal-instancia');
-    renderInstancias();
-  } catch(e) { toast('Error: ' + e.message, 'err'); }
-}
-
-function openEditInstancia(instId) {
-  const inst = instanciasData.find(x => x.id === instId);
-  if (!inst) return;
-  editingInstanciaId = instId;
-  
-  const item = catalogoData.find(x => x.id === inst.itemId);
-  const esRango = item && item.tipoCantidad === 'RANGO';
-  
-  document.getElementById('modal-inst-edit-title').textContent = '✏️ ' + inst.nombre;
-  document.getElementById('inst-edit-id-display').textContent = 'ID: ' + instId;
-  document.getElementById('fe-inst-sede').innerHTML = sedeOpts(false);
-  document.getElementById('fe-inst-sede').value = inst.sede || '';
-  document.getElementById('fe-inst-estado').value = inst.estado || 'DISPONIBLE';
-  document.getElementById('fe-inst-notas').value = inst.notas || '';
-  document.getElementById('fe-inst-nivel-wrap').style.display = esRango ? 'block' : 'none';
-  if (esRango && inst.nivel !== undefined) {
-    document.getElementById('fe-inst-nivel').value = inst.nivel;
-  }
-  document.getElementById('modal-inst-edit').classList.add('open');
-}
-
-async function updateInstancia() {
-  if (!editingInstanciaId) return;
-  const sede = document.getElementById('fe-inst-sede').value;
-  const estado = document.getElementById('fe-inst-estado').value;
-  const notas = document.getElementById('fe-inst-notas').value.trim();
-  const inst = instanciasData.find(x => x.id === editingInstanciaId);
-  const item = inst ? catalogoData.find(x => x.id === inst.itemId) : null;
-  const esRango = item && item.tipoCantidad === 'RANGO';
-  const nivel = esRango ? Number(document.getElementById('fe-inst-nivel').value) : undefined;
-
-  const updates = { sede, estado, notas, updatedAt: new Date().toISOString(), updatedBy: maUser.email };
-  if (nivel !== undefined) updates.nivel = nivel;
-
-  try {
-    await db.collection('insumos_instancias').doc(editingInstanciaId).update(updates);
-    const idx = instanciasData.findIndex(x => x.id === editingInstanciaId);
-    if (idx >= 0) Object.assign(instanciasData[idx], updates);
-    toast('✓ Instancia actualizada', 'ok');
-    closeModal('modal-inst-edit');
-    renderInstancias();
-    renderStockSede();
-  } catch(e) { toast('Error: ' + e.message, 'err'); }
-}
-
-async function deleteInstancia() {
-  if (!editingInstanciaId) return;
-  if (!confirm('¿Eliminar esta instancia? Esta acción no se puede deshacer.')) return;
-  try {
-    await db.collection('insumos_instancias').doc(editingInstanciaId).delete();
-    instanciasData = instanciasData.filter(x => x.id !== editingInstanciaId);
-    toast('Instancia eliminada', 'ok');
-    closeModal('modal-inst-edit');
-    renderInstancias();
-  } catch(e) { toast('Error: ' + e.message, 'err'); }
-}
-
-// ── QR SELECTION & ZIP EXPORT ─────────────────────────────
-let selectedQRIds = new Set();
-
-function toggleAllQR(checked) {
-  document.querySelectorAll('.qr-chk').forEach(chk => {
-    chk.checked = checked;
-    if (checked) selectedQRIds.add(chk.dataset.id);
-    else selectedQRIds.delete(chk.dataset.id);
-  });
-  updateQRSelectionBar();
-}
-
-function updateQRSelection() {
-  selectedQRIds.clear();
-  document.querySelectorAll('.qr-chk:checked').forEach(chk => selectedQRIds.add(chk.dataset.id));
-  updateQRSelectionBar();
-}
-
-function updateQRSelectionBar() {
-  const bar = document.getElementById('qr-selection-bar');
-  const count = document.getElementById('qr-selected-count');
-  if (selectedQRIds.size > 0) {
-    bar.style.display = 'flex';
-    count.textContent = selectedQRIds.size + ' seleccionado' + (selectedQRIds.size > 1 ? 's' : '');
-  } else {
-    bar.style.display = 'none';
-  }
-}
-
-function clearQRSelection() {
-  selectedQRIds.clear();
-  document.querySelectorAll('.qr-chk').forEach(c => c.checked = false);
-  const chkAll = document.getElementById('chk-all');
-  if (chkAll) chkAll.checked = false;
-  updateQRSelectionBar();
-}
-
-async function generateQRCanvas(itemId) {
-  const item = catalogoData.find(x => x.id === itemId);
-  if (!item) return null;
-
-  // Canvas 319x240px = 40x30mm a 203dpi
-  const canvas = document.createElement('canvas');
-  canvas.width = 319; canvas.height = 240;
-  const ctx = canvas.getContext('2d');
-
-  // Fondo blanco
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, 319, 240);
-
-  // Generar QR en canvas temporal
-  const qrDiv = document.createElement('div');
-  document.body.appendChild(qrDiv);
-  await new Promise(resolve => {
-    new QRCode(qrDiv, {
-      text: itemId,
-      width: 180,
-      height: 180,
-      correctLevel: QRCode.CorrectLevel.H,
-      colorDark: '#000000',
-      colorLight: '#ffffff'
-    });
-    setTimeout(resolve, 300);
-  });
-  const qrEl = qrDiv.querySelector('canvas') || qrDiv.querySelector('img');
-  if (qrEl) ctx.drawImage(qrEl, 70, 8, 180, 180);
-  document.body.removeChild(qrDiv);
-
-  // ID / código
-  ctx.fillStyle = '#000000';
-  ctx.font = 'bold 14px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(item.codigo || itemId, 159, 203);
-
-  // Nombre — ajustar si es largo
-  ctx.font = 'bold 16px sans-serif';
-  const nombre = item.nombre.toUpperCase();
-  const maxW = 300;
-  let fontSize = 16;
-  while (ctx.measureText(nombre).width > maxW && fontSize > 9) {
-    fontSize--;
-    ctx.font = `bold ${fontSize}px sans-serif`;
-  }
-  ctx.fillText(nombre, 159, 225);
-
-  return canvas;
-}
-
-async function exportSelectedQRZip() {
-  if (selectedQRIds.size === 0) { toast('Selecciona al menos un ítem', 'warn'); return; }
-  toast('Generando etiquetas...', '');
-  const zip = new JSZip();
-  for (const id of selectedQRIds) {
-    const item = catalogoData.find(x => x.id === id);
-    if (!item) continue;
-    const canvas = await generateQRCanvas(id);
-    if (!canvas) continue;
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/png', 1.0));
-    const fileName = `${(item.codigo || id).replace(/[^a-zA-Z0-9]/g,'_')}_${item.nombre.replace(/[^a-zA-Z0-9]/g,'_')}.png`;
-    zip.file(fileName, blob);
-  }
-  const zipBlob = await zip.generateAsync({ type: 'blob' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(zipBlob);
-  link.download = `etiquetas_multiaire_${new Date().toISOString().slice(0,10)}.zip`;
-  link.click();
-  toast('✓ ZIP descargado con ' + selectedQRIds.size + ' etiquetas', 'ok');
-}
+// openModalRango, renderRangoModal, saveRango — eliminados (nivel ahora es por instancia)
 
 // ── DATOS DE PRUEBA Y RESET ───────────────────────────────────
 async function cargarDatosPrueba() {
@@ -2509,8 +1338,8 @@ function onQRScanned(code) {
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${item.id}')">▣ Ver QR</button>
         <button class="btn btn-sm btn-orange" onclick="closeScanner();openModalInsumo('${item.id}')">✏️ Editar</button>
-        <button class="btn btn-sm" onclick="closeScanner();openModalMovimiento('${item.id}','ENTRADA')">⬇ Entrada</button>
-        <button class="btn btn-sm" onclick="closeScanner();openModalMovimiento('${item.id}','SALIDA')">⬆ Salida</button>
+        <button class="btn btn-sm" onclick="closeScanner();openModalEntrada()">⬇ Entrada</button>
+        <button class="btn btn-sm" onclick="closeScanner();openModalSalida('SALIDA')">⬆ Salida</button>
       </div>`;
     infoBox.style.display = 'block';
   } else {
