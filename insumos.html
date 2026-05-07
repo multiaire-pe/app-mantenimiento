@@ -423,7 +423,14 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <option value="PAR">Par</option><option value="JGO">Juego</option>
         </select>
       </div>
-      <div class="form-group"><div class="form-label">Código interno</div><input type="text" class="form-input" id="fi-codigo" placeholder="Ej: INS-001 *" required></div>
+      <div class="form-group">
+        <div class="form-label">Código interno *</div>
+        <div style="display:flex;gap:6px">
+          <input type="text" class="form-input" id="fi-codigo" placeholder="Autogenerado" style="font-family:var(--mono);text-transform:uppercase" oninput="validarCodigoItem()">
+          <button class="btn btn-sm" type="button" onclick="generarCodigoItem()" style="white-space:nowrap">⚡ Generar</button>
+        </div>
+        <div id="fi-codigo-status" style="font-size:11px;margin-top:3px"></div>
+      </div>
       <div class="form-group"><div class="form-label">Marca</div><input type="text" class="form-input" id="fi-marca" placeholder="Ej: 3M"></div>
       <div class="form-group"><div class="form-label">Modelo</div><input type="text" class="form-input" id="fi-modelo" placeholder="Opcional"></div>
       <div class="form-group full"><div class="form-label">Stock mínimo (alerta)</div><input type="text" class="form-input" id="fi-stock-min" placeholder="Ej: 5 — deja 0 para no alertar"></div>
@@ -1236,6 +1243,44 @@ function toggleStockMinField(){
   if(hint)hint.style.display=v==='RANGO'?'block':'none';
 }
 
+function generarCodigoItem(autoMode=false){
+  const nombre = document.getElementById('fi-nombre').value.trim().toUpperCase();
+  // Prefijo: primeras 3 letras significativas del nombre
+  const words = nombre.replace(/[^A-Z0-9 ]/g,'').split(' ').filter(Boolean);
+  let prefix = '';
+  if(words.length >= 3) prefix = words[0][0] + words[1][0] + words[2][0];
+  else if(words.length === 2) prefix = (words[0].substring(0,2) + words[1][0]).substring(0,3);
+  else if(words.length === 1) prefix = words[0].substring(0,3);
+  if(!prefix || prefix.length < 2) {
+    if(!autoMode) toast('Escribe el nombre primero','warn');
+    return;
+  }
+  prefix = prefix.toUpperCase();
+  // Correlativo: buscar el mayor número existente con ese prefijo
+  const existing = catalogoData
+    .map(x => x.codigo||'')
+    .filter(c => c.startsWith(prefix+'-'))
+    .map(c => parseInt(c.replace(prefix+'-',''))||0);
+  const next = (existing.length ? Math.max(...existing) : 0) + 1;
+  const codigo = prefix + '-' + String(next).padStart(3,'0');
+  document.getElementById('fi-codigo').value = codigo;
+  validarCodigoItem();
+}
+
+function validarCodigoItem(){
+  const el = document.getElementById('fi-codigo');
+  const statusEl = document.getElementById('fi-codigo-status');
+  const codigo = (el.value||'').trim().toUpperCase();
+  el.value = codigo;
+  if(!codigo){ statusEl.textContent=''; return; }
+  const duplicado = catalogoData.find(x => x.codigo && x.codigo.toUpperCase()===codigo && x.id!==editingInsumoId);
+  if(duplicado){
+    statusEl.innerHTML = '<span style="color:var(--red)">⚠️ Código ya usado por: '+duplicado.nombre+'</span>';
+  } else {
+    statusEl.innerHTML = '<span style="color:var(--green)">✓ Código disponible</span>';
+  }
+}
+
 function openModalInsumo(id){
   editingInsumoId=id;
   if(id){
@@ -1252,12 +1297,20 @@ function openModalInsumo(id){
   }else{
     document.getElementById('modal-insumo-title').textContent='Nuevo ítem';
     ['fi-nombre','fi-codigo','fi-marca','fi-modelo','fi-stock-min'].forEach(x=>document.getElementById(x).value='');
+    document.getElementById('fi-codigo-status').textContent='';
     document.getElementById('fi-cat').value='INSUMO';
     document.getElementById('fi-unidad').value='UND';
     document.getElementById('fi-tipo-cant').value='UNIDAD';
   }
   toggleStockMinField();
   document.getElementById('modal-insumo').classList.add('open');
+  // Autogenerar código si es nuevo ítem
+  if(!id) {
+    document.getElementById('fi-nombre').oninput = () => { generarCodigoItem(true); };
+  } else {
+    document.getElementById('fi-nombre').oninput = null;
+    validarCodigoItem();
+  }
 }
 
 async function saveInsumo(){
@@ -1265,6 +1318,9 @@ async function saveInsumo(){
   const codigo=document.getElementById('fi-codigo').value.trim().toUpperCase();
   if(!nombre){toast('Nombre obligatorio','err');return;}
   if(!codigo){toast('El código es obligatorio','err');return;}
+  // Validar unicidad del código (excepto al editar el mismo ítem)
+  const duplicado = catalogoData.find(x => x.codigo && x.codigo.toUpperCase()===codigo && x.id!==editingInsumoId);
+  if(duplicado){toast('El código ya existe: '+duplicado.nombre,'err');return;}
   const item={nombre,categoria:document.getElementById('fi-cat').value,unidad:document.getElementById('fi-unidad').value,
     codigo:codigo,
     marca:document.getElementById('fi-marca').value.trim(),modelo:document.getElementById('fi-modelo').value.trim(),
