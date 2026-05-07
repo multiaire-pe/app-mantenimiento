@@ -696,7 +696,6 @@ document.addEventListener('click',e=>{
 
 // ── PANEL DE ACCESOS ─────────────────────────────────────────────────────────
 let accessUsers=[];
-let instanciasData=[]; // Instancias físicas individuales de bienes
 async function openAccessPanel(){
   document.getElementById('user-menu')?.classList.remove('open');
   const snap=await db.collection('usuarios').get();
@@ -1188,8 +1187,8 @@ async function cargarDatosPrueba() {
 async function resetearBaseDatos() {
   if (!confirm('⚠️ RESETEAR BASE DE DATOS\n\nEsto eliminará PERMANENTEMENTE:\n• Todo el catálogo de ítems\n• Todas las instancias\n• Todos los movimientos\n\n¿Estás seguro?')) return;
   if (!confirm('Segunda confirmación — ¿seguro que quieres borrar TODO?')) return;
-  toast('Reseteando...', '');
   try {
+    toast('Reseteando...', '');
     // Eliminar catálogo
     const catSnap = await db.collection('insumos_catalogo').get();
     for (const doc of catSnap.docs) await doc.ref.delete();
