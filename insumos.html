@@ -81,6 +81,85 @@ optgroup{font-style:normal;font-weight:700;color:var(--muted2)}
 .tab-view.active{display:block}
 .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
 @media(max-width:800px){.stats-row{grid-template-columns:repeat(2,1fr)}}
+
+/* ── MOBILE RESPONSIVE ─────────────────────────────────── */
+@media(max-width:768px){
+  /* Header compacto */
+  header{padding:0 12px;height:52px;gap:8px}
+  .logo{font-size:14px}
+  .logo span{display:none}
+  .hpill{display:none}
+  .hactions{gap:6px}
+  .user-pname{display:none}
+
+  /* App layout — sidebar oculto por defecto */
+  .app{flex-direction:column;height:auto;min-height:calc(100vh - 52px)}
+  .sidebar{
+    width:100%;min-width:unset;
+    display:none;
+    border-right:none;
+    border-bottom:1px solid var(--border);
+    flex-direction:row;flex-wrap:wrap;gap:0;
+    overflow-y:visible;
+  }
+  .sidebar.mobile-open{display:flex}
+  .sb-section{width:100%;padding:10px 14px 6px}
+  .sb-group{width:50%;padding:8px 12px;border-bottom:1px solid var(--border)}
+  .sb-actions{
+    width:100%;flex-direction:row;flex-wrap:wrap;
+    gap:6px;padding:10px 12px;margin-top:0;
+    border-top:1px solid var(--border)
+  }
+  .sb-actions .btn{flex:1;min-width:130px;font-size:11px;justify-content:center}
+
+  /* Main ocupa todo */
+  .main{flex:1;overflow:visible}
+
+  /* Tab nav scroll */
+  .tab-nav{padding:0 8px;-webkit-overflow-scrolling:touch}
+  .tab-btn{padding:10px 10px;font-size:11px}
+
+  /* Tab view sin altura fija */
+  .tab-view{height:auto;min-height:calc(100vh - 52px - 90px);padding:10px}
+
+  /* Tabla scrollable horizontal */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{min-width:500px}
+
+  /* Stats 2 columnas */
+  .stats-row{grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
+  .stat-card{padding:10px 12px}
+  .stat-val{font-size:20px}
+
+  /* Botón filtros móvil */
+  .mobile-filter-btn{
+    display:flex;align-items:center;gap:6px;
+    padding:8px 14px;background:var(--surface);
+    border:1.5px solid var(--border);border-radius:8px;
+    font-size:12px;font-weight:600;color:var(--accent);
+    cursor:pointer;margin-bottom:10px;width:100%;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent
+  }
+  .mobile-filter-btn:active{background:var(--surface3)}
+
+  /* Modales full screen en móvil */
+  .modal-overlay{padding:0;align-items:flex-end}
+  .modal{
+    width:100%;max-width:100%;
+    border-radius:16px 16px 0 0;
+    max-height:90vh;
+    padding:20px 16px;
+  }
+  .form-grid{grid-template-columns:1fr}
+  .form-group.full{grid-column:1}
+
+  /* QR modal centrado */
+  .modal-qr-wrap{gap:12px}
+  .qr-label-preview{width:280px;height:210px}
+}
+
+/* Botón filtros — oculto en desktop */
+.mobile-filter-btn{display:none}
 .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
 .stat-val{font-family:var(--mono);font-size:24px;font-weight:700;line-height:1}
 .stat-val.blue{color:#1B3F8B}.stat-val.green{color:var(--green)}.stat-val.yellow{color:var(--yellow)}.stat-val.red{color:var(--red)}
@@ -261,6 +340,9 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <div class="stat-card"><div class="stat-val red" id="st-out">—</div><div class="stat-lbl">Sin stock</div></div>
       </div>
       <div id="alert-banners"></div>
+      <button class="mobile-filter-btn" ontouchend="toggleMobileSidebar()" onclick="toggleMobileSidebar()">
+        ☰ Filtros y acciones
+      </button>
       <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <input type="search" id="q-search" placeholder="Buscar por nombre, código, marca..." oninput="applyFilters()" style="max-width:340px;font-size:12px">
         <div id="qr-selection-bar" style="display:none;align-items:center;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
@@ -1366,6 +1448,10 @@ async function saveRango(){
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
+function toggleMobileSidebar(){
+  const sb = document.querySelector('.sidebar');
+  sb.classList.toggle('mobile-open');
+}
 function switchTab(tab,btn){
   document.querySelectorAll('.tab-view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
