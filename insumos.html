@@ -327,6 +327,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
   <div class="main">
     <div class="tab-nav">
       <button class="tab-btn active" onclick="switchTab('catalogo',this)">📦 Catálogo</button>
+      <button class="tab-btn" onclick="switchTab('instancias',this)">🏷️ Instancias</button>
       <button class="tab-btn" onclick="switchTab('movimientos',this)">📋 Movimientos</button>
       <button class="tab-btn" onclick="switchTab('paquetes',this)">🎁 Paquetes</button>
       <button class="tab-btn" onclick="switchTab('stock',this)">🏢 Por Sede</button>
@@ -353,6 +354,21 @@ tbody td{padding:9px 12px;vertical-align:middle}
         </div>
       </div>
       <div class="table-wrap" id="catalogo-table"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
+    </div>
+
+    <!-- TAB INSTANCIAS -->
+    <div class="tab-view" id="tab-instancias">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <input type="search" id="q-inst" placeholder="Buscar por ID, nombre, sede..." oninput="renderInstancias()" style="max-width:300px;font-size:12px;flex:1">
+        <select id="f-inst-tipo" onchange="renderInstancias()" style="max-width:160px;font-size:12px">
+          <option value="">Todos los tipos</option>
+        </select>
+        <select id="f-inst-sede" onchange="renderInstancias()" style="max-width:160px;font-size:12px">
+          <option value="">Todas las sedes</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="openModalNuevaInstancia()">+ Nueva instancia</button>
+      </div>
+      <div class="table-wrap" id="instancias-table"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
     </div>
 
     <div class="tab-view" id="tab-movimientos">
@@ -699,6 +715,7 @@ document.addEventListener('click',e=>{
 
 // ── PANEL DE ACCESOS ─────────────────────────────────────────────────────────
 let accessUsers=[];
+let instanciasData=[]; // Instancias físicas individuales de bienes
 async function openAccessPanel(){
   document.getElementById('user-menu')?.classList.remove('open');
   const snap=await db.collection('usuarios').get();
@@ -807,23 +824,26 @@ function buildSidebar(){
   if(can('transferencia')===1)    h+=`<button class="btn btn-block" onclick="openModalTransferencia(false)">🔄 Transferencia</button>`;
   if(can('transferencia')==='sol') h+=`<button class="btn btn-block" onclick="openModalTransferencia(true)">🔄 Solicitar transferencia</button>`;
   if(can('entrada')===1)   h+=`<button class="btn btn-block" onclick="openModalRango()">📊 Actualizar nivel</button>`;
+  if(maUser&&maUser.rol==='SUPER_ADMIN') h+=`<button class="btn btn-block" style="color:var(--muted2);font-size:11px" onclick="cargarDatosPrueba()">🧪 Cargar datos prueba</button>`;
   document.getElementById('sidebar-actions').innerHTML=h;
   if(can('paquetes')) document.getElementById('btn-nuevo-paquete')?.style&&(document.getElementById('btn-nuevo-paquete').style.display='inline-flex');
 }
 
 async function loadAll(){
   try{
-    const [catS,movS,stockS,tiendasS,persS,paqS]=await Promise.all([
+    const [catS,movS,stockS,tiendasS,persS,paqS,instS]=await Promise.all([
       db.collection('insumos_catalogo').get(),
       db.collection('insumos_movimientos').orderBy('fecha','desc').limit(200).get(),
       db.collection('insumos_stock').get(),
-      db.collection('maestros_tiendas').get(),  // ← fuente correcta de sedes
+      db.collection('maestros_tiendas').get(),
       db.collection('maestros_personal').get(),
       db.collection('insumos_paquetes').get(),
+      db.collection('insumos_instancias').get(),
     ]);
     catalogoData=catS.docs.map(d=>({id:d.id,...d.data()}));
     movimientosData=movS.docs.map(d=>({id:d.id,...d.data()}));
     stockData={};stockS.docs.forEach(d=>{stockData[d.id]=d.data();});
+    instanciasData=instS.docs.map(d=>({id:d.id,...d.data()}));
     // Sedes activas de maestros_tiendas, agrupadas por cliente
     sedes=tiendasS.docs
       .map(d=>d.data())
@@ -855,7 +875,7 @@ function populateSedes(){
   ['fm-sede','ft-origen','ft-destino','fap-sede'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=sedeOpts(false);});
 }
 
-function renderAll(){applyFilters();renderMovimientos();renderStockSede();renderStats();renderAlerts();renderPaquetes();renderPendientes();}
+function renderAll(){applyFilters();renderMovimientos();renderStockSede();renderStats();renderAlerts();renderPaquetes();renderPendientes();renderInstancias();}
 
 function renderStats(){
   let ok=0,low=0,out=0;
@@ -1512,6 +1532,101 @@ document.querySelectorAll('.modal-overlay').forEach(o=>{
 });
 </script>
 
+<!-- MODAL NUEVA INSTANCIA -->
+<div class="modal-overlay" id="modal-instancia" onclick="if(event.target===this)closeModal('modal-instancia')">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">🏷️ Nueva instancia</div>
+      <div ontouchend="closeModal('modal-instancia')" onclick="closeModal('modal-instancia')" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <div class="form-group full">
+        <div class="form-label">Tipo de bien *</div>
+        <select class="form-select" id="fi-inst-tipo" onchange="onInstTipoChange()">
+          <option value="">Seleccionar...</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">ID único (código QR) *</div>
+        <div style="display:flex;gap:8px">
+          <input type="text" class="form-input" id="fi-inst-id" placeholder="Ej: ESC-001" style="font-family:var(--mono);text-transform:uppercase">
+          <button class="btn btn-sm" onclick="generarInstanciaId()" style="flex-shrink:0;white-space:nowrap">⚡ Generar</button>
+        </div>
+        <div id="fi-inst-id-status" style="font-size:11px;margin-top:4px"></div>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">Sede actual *</div>
+        <select class="form-select" id="fi-inst-sede"></select>
+      </div>
+      <div id="fi-inst-nivel-wrap" style="display:none" class="form-group full">
+        <div class="form-label">Nivel inicial</div>
+        <select class="form-select" id="fi-inst-nivel">
+          <option value="100">🟢 LLENO (100%)</option>
+          <option value="75">🟢 CASI LLENO (75%)</option>
+          <option value="50">🟡 MEDIO (50%)</option>
+          <option value="25">🟠 BAJO (25%)</option>
+          <option value="5">🔴 CASI VACÍO (5%)</option>
+          <option value="0">⚫ VACÍO (0%)</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">Notas</div>
+        <input type="text" class="form-input" id="fi-inst-notas" placeholder="Opcional">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-instancia')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveInstancia()">💾 Crear instancia</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDITAR INSTANCIA -->
+<div class="modal-overlay" id="modal-inst-edit" onclick="if(event.target===this)closeModal('modal-inst-edit')">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-inst-edit-title">✏️ Editar instancia</div>
+      <div ontouchend="closeModal('modal-inst-edit')" onclick="closeModal('modal-inst-edit')" style="min-width:48px;min-height:48px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:22px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none">✕</div>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <div style="font-family:var(--mono);font-size:12px;color:var(--muted2);background:var(--surface2);padding:8px 12px;border-radius:6px" id="inst-edit-id-display"></div>
+      <div class="form-group full">
+        <div class="form-label">Sede actual *</div>
+        <select class="form-select" id="fe-inst-sede"></select>
+      </div>
+      <div id="fe-inst-nivel-wrap" style="display:none" class="form-group full">
+        <div class="form-label">Nivel actual</div>
+        <select class="form-select" id="fe-inst-nivel">
+          <option value="100">🟢 LLENO (100%)</option>
+          <option value="75">🟢 CASI LLENO (75%)</option>
+          <option value="50">🟡 MEDIO (50%)</option>
+          <option value="25">🟠 BAJO (25%)</option>
+          <option value="5">🔴 CASI VACÍO (5%)</option>
+          <option value="0">⚫ VACÍO (0%)</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">Estado</div>
+        <select class="form-select" id="fe-inst-estado">
+          <option value="DISPONIBLE">✅ Disponible</option>
+          <option value="EN_USO">🔧 En uso</option>
+          <option value="MANTENIMIENTO">⚠️ En mantenimiento</option>
+          <option value="BAJA">❌ Baja</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">Notas</div>
+        <input type="text" class="form-input" id="fe-inst-notas">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-red" onclick="deleteInstancia()">🗑 Eliminar</button>
+      <button class="btn" onclick="closeModal('modal-inst-edit')">Cancelar</button>
+      <button class="btn btn-primary" onclick="updateInstancia()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL QR -->
 <div class="modal-overlay" id="modal-qr" onclick="if(event.target===this)closeModal('modal-qr')">
   <div class="modal" style="max-width:400px">
@@ -1554,6 +1669,235 @@ document.querySelectorAll('.modal-overlay').forEach(o=>{
 </div>
 
 <script>
+// ── INSTANCIAS ────────────────────────────────────────────────
+let editingInstanciaId = null;
+
+function renderInstancias() {
+  const q = (document.getElementById('q-inst')?.value || '').toLowerCase();
+  const tipo = document.getElementById('f-inst-tipo')?.value || '';
+  const sede = document.getElementById('f-inst-sede')?.value || '';
+
+  // Poblar filtros
+  const tipoSel = document.getElementById('f-inst-tipo');
+  if (tipoSel && tipoSel.options.length <= 1) {
+    catalogoData.forEach(i => {
+      const opt = document.createElement('option');
+      opt.value = i.id; opt.textContent = i.nombre;
+      tipoSel.appendChild(opt);
+    });
+  }
+  const sedeSel = document.getElementById('f-inst-sede');
+  if (sedeSel && sedeSel.options.length <= 1) {
+    sedes.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.sede; opt.textContent = s.sede;
+      sedeSel.appendChild(opt);
+    });
+  }
+
+  let list = instanciasData.filter(inst => {
+    if (tipo && inst.itemId !== tipo) return false;
+    if (sede && inst.sede !== sede) return false;
+    if (q && !(inst.id + inst.nombre + (inst.sede||'')).toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const wrap = document.getElementById('instancias-table');
+  if (!list.length) {
+    wrap.innerHTML = '<div class="empty"><div class="empty-icon">🏷️</div>Sin instancias registradas</div>';
+    return;
+  }
+
+  const estadoColor = {DISPONIBLE:'green', EN_USO:'blue', MANTENIMIENTO:'yellow', BAJA:'red'};
+  const estadoLabel = {DISPONIBLE:'Disponible', EN_USO:'En uso', MANTENIMIENTO:'Mantenimiento', BAJA:'Baja'};
+
+  wrap.innerHTML = `<table><thead><tr>
+    <th>ID / QR</th><th>Tipo</th><th>Sede</th><th>Nivel</th><th>Estado</th><th></th>
+  </tr></thead><tbody>
+  ${list.map(inst => {
+    const item = catalogoData.find(x => x.id === inst.itemId);
+    const esRango = item && item.tipoCantidad === 'RANGO';
+    const nivelHtml = esRango && inst.nivel !== undefined
+      ? renderRangoBadgeSede(inst.nivel)
+      : '—';
+    const est = inst.estado || 'DISPONIBLE';
+    const estColor = estadoColor[est] || 'blue';
+    return `<tr>
+      <td class="td-code" style="font-size:11px;font-weight:700">${inst.id}</td>
+      <td style="font-size:11px">${inst.nombre || (item ? item.nombre : '—')}</td>
+      <td style="font-size:11px">${inst.sede || '—'}</td>
+      <td>${nivelHtml}</td>
+      <td><span class="stock-pill stock-${estColor === 'green' ? 'ok' : estColor === 'yellow' ? 'low' : estColor === 'red' ? 'out' : 'ok'}" style="font-size:9px">${estadoLabel[est]||est}</span></td>
+      <td><div style="display:flex;gap:4px">
+        <button class="btn btn-sm" onclick="openQRModal('${inst.id}')" title="Ver QR">▣</button>
+        <button class="btn btn-sm" onclick="openEditInstancia('${inst.id}')">✏️</button>
+      </div></td>
+    </tr>`;
+  }).join('')}
+  </tbody></table>`;
+}
+
+function openModalNuevaInstancia() {
+  editingInstanciaId = null;
+  // Poblar selector de tipos
+  const sel = document.getElementById('fi-inst-tipo');
+  sel.innerHTML = '<option value="">Seleccionar...</option>' +
+    catalogoData.map(i => `<option value="${i.id}">${i.nombre}</option>`).join('');
+  document.getElementById('fi-inst-id').value = '';
+  document.getElementById('fi-inst-id-status').textContent = '';
+  document.getElementById('fi-inst-notas').value = '';
+  document.getElementById('fi-inst-nivel-wrap').style.display = 'none';
+  document.getElementById('fi-inst-sede').innerHTML = sedeOpts(false);
+  document.getElementById('modal-instancia').classList.add('open');
+}
+
+function onInstTipoChange() {
+  const itemId = document.getElementById('fi-inst-tipo').value;
+  const item = catalogoData.find(x => x.id === itemId);
+  const esRango = item && item.tipoCantidad === 'RANGO';
+  document.getElementById('fi-inst-nivel-wrap').style.display = esRango ? 'block' : 'none';
+  if (itemId) generarInstanciaId();
+}
+
+async function generarInstanciaId() {
+  const itemId = document.getElementById('fi-inst-tipo').value;
+  if (!itemId) { toast('Selecciona el tipo de bien primero', 'warn'); return; }
+  const item = catalogoData.find(x => x.id === itemId);
+  if (!item) return;
+
+  // Prefijo basado en las primeras 3 letras del nombre
+  const prefix = item.nombre.replace(/[^A-Z0-9]/gi,'').substring(0,3).toUpperCase();
+  
+  // Buscar el número más alto existente para ese prefijo
+  const existing = instanciasData
+    .filter(i => i.id.startsWith(prefix + '-'))
+    .map(i => parseInt(i.id.replace(prefix + '-', '')) || 0)
+    .sort((a,b) => b-a);
+  
+  const nextNum = (existing[0] || 0) + 1;
+  const newId = `${prefix}-${String(nextNum).padStart(3,'0')}`;
+  
+  document.getElementById('fi-inst-id').value = newId;
+  await verificarIdUnico(newId);
+}
+
+async function verificarIdUnico(id) {
+  const statusEl = document.getElementById('fi-inst-id-status');
+  if (!id) { statusEl.textContent = ''; return true; }
+  
+  // Verificar en memoria primero
+  const enMemoria = instanciasData.find(i => i.id === id);
+  if (enMemoria) {
+    statusEl.innerHTML = '<span style="color:var(--red)">⚠️ ID ya existe — elige otro</span>';
+    return false;
+  }
+  
+  // Verificar en Firebase
+  try {
+    const snap = await db.collection('insumos_instancias').doc(id).get();
+    if (snap.exists) {
+      statusEl.innerHTML = '<span style="color:var(--red)">⚠️ ID ya existe en la base de datos</span>';
+      return false;
+    }
+    statusEl.innerHTML = '<span style="color:var(--green)">✓ ID disponible</span>';
+    return true;
+  } catch(e) {
+    statusEl.textContent = '';
+    return true;
+  }
+}
+
+async function saveInstancia() {
+  const itemId = document.getElementById('fi-inst-tipo').value;
+  const id = document.getElementById('fi-inst-id').value.trim().toUpperCase();
+  const sede = document.getElementById('fi-inst-sede').value;
+  if (!itemId || !id || !sede) { toast('Completa todos los campos obligatorios', 'err'); return; }
+
+  // Verificar unicidad
+  const esUnico = await verificarIdUnico(id);
+  if (!esUnico) { toast('El ID ya existe, usa otro', 'err'); return; }
+
+  const item = catalogoData.find(x => x.id === itemId);
+  const esRango = item && item.tipoCantidad === 'RANGO';
+  const nivel = esRango ? Number(document.getElementById('fi-inst-nivel').value) : null;
+
+  const instancia = {
+    itemId,
+    nombre: item ? item.nombre : '',
+    sede,
+    estado: 'DISPONIBLE',
+    notas: document.getElementById('fi-inst-notas').value.trim(),
+    creadoEn: new Date().toISOString(),
+    creadoPor: maUser.email,
+    ...(nivel !== null && { nivel })
+  };
+
+  try {
+    await db.collection('insumos_instancias').doc(id).set(instancia);
+    instanciasData.push({ id, ...instancia });
+    toast('✓ Instancia creada — ' + id, 'ok');
+    closeModal('modal-instancia');
+    renderInstancias();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+}
+
+function openEditInstancia(instId) {
+  const inst = instanciasData.find(x => x.id === instId);
+  if (!inst) return;
+  editingInstanciaId = instId;
+  
+  const item = catalogoData.find(x => x.id === inst.itemId);
+  const esRango = item && item.tipoCantidad === 'RANGO';
+  
+  document.getElementById('modal-inst-edit-title').textContent = '✏️ ' + inst.nombre;
+  document.getElementById('inst-edit-id-display').textContent = 'ID: ' + instId;
+  document.getElementById('fe-inst-sede').innerHTML = sedeOpts(false);
+  document.getElementById('fe-inst-sede').value = inst.sede || '';
+  document.getElementById('fe-inst-estado').value = inst.estado || 'DISPONIBLE';
+  document.getElementById('fe-inst-notas').value = inst.notas || '';
+  document.getElementById('fe-inst-nivel-wrap').style.display = esRango ? 'block' : 'none';
+  if (esRango && inst.nivel !== undefined) {
+    document.getElementById('fe-inst-nivel').value = inst.nivel;
+  }
+  document.getElementById('modal-inst-edit').classList.add('open');
+}
+
+async function updateInstancia() {
+  if (!editingInstanciaId) return;
+  const sede = document.getElementById('fe-inst-sede').value;
+  const estado = document.getElementById('fe-inst-estado').value;
+  const notas = document.getElementById('fe-inst-notas').value.trim();
+  const inst = instanciasData.find(x => x.id === editingInstanciaId);
+  const item = inst ? catalogoData.find(x => x.id === inst.itemId) : null;
+  const esRango = item && item.tipoCantidad === 'RANGO';
+  const nivel = esRango ? Number(document.getElementById('fe-inst-nivel').value) : undefined;
+
+  const updates = { sede, estado, notas, updatedAt: new Date().toISOString(), updatedBy: maUser.email };
+  if (nivel !== undefined) updates.nivel = nivel;
+
+  try {
+    await db.collection('insumos_instancias').doc(editingInstanciaId).update(updates);
+    const idx = instanciasData.findIndex(x => x.id === editingInstanciaId);
+    if (idx >= 0) Object.assign(instanciasData[idx], updates);
+    toast('✓ Instancia actualizada', 'ok');
+    closeModal('modal-inst-edit');
+    renderInstancias();
+    renderStockSede();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+}
+
+async function deleteInstancia() {
+  if (!editingInstanciaId) return;
+  if (!confirm('¿Eliminar esta instancia? Esta acción no se puede deshacer.')) return;
+  try {
+    await db.collection('insumos_instancias').doc(editingInstanciaId).delete();
+    instanciasData = instanciasData.filter(x => x.id !== editingInstanciaId);
+    toast('Instancia eliminada', 'ok');
+    closeModal('modal-inst-edit');
+    renderInstancias();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+}
+
 // ── QR SELECTION & ZIP EXPORT ─────────────────────────────
 let selectedQRIds = new Set();
 
@@ -1661,6 +2005,43 @@ async function exportSelectedQRZip() {
   link.download = `etiquetas_multiaire_${new Date().toISOString().slice(0,10)}.zip`;
   link.click();
   toast('✓ ZIP descargado con ' + selectedQRIds.size + ' etiquetas', 'ok');
+}
+
+// ── DATOS DE PRUEBA ───────────────────────────────────────────
+async function cargarDatosPrueba() {
+  if (!confirm('¿Cargar datos de prueba? Esto creará ítems e instancias en Firebase.')) return;
+  try {
+    // Crear ítems en catálogo
+    const items = [
+      { id: 'HERR-ESC', nombre: 'ESCALERA', categoria: 'HERRAMIENTA', unidad: 'UND', tipoCantidad: 'UNIDAD', stockMin: 0 },
+      { id: 'HERR-MRT', nombre: 'MARTILLO', categoria: 'HERRAMIENTA', unidad: 'UND', tipoCantidad: 'UNIDAD', stockMin: 0 },
+      { id: 'INSU-REF', nombre: 'REFRIGERANTE R410A', categoria: 'INSUMO', unidad: 'BOTELLA', tipoCantidad: 'RANGO', stockMin: 0 },
+      { id: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', categoria: 'INSUMO', unidad: 'LITRO', tipoCantidad: 'RANGO', stockMin: 0 },
+    ];
+    for (const item of items) {
+      await db.collection('insumos_catalogo').doc(item.id).set({...item, creadoEn: new Date().toISOString(), creadoPor: maUser.email});
+    }
+
+    // Crear instancias
+    const instancias = [
+      { id: 'ESC-001', itemId: 'HERR-ESC', nombre: 'ESCALERA', sede: 'OFICINA', estado: 'DISPONIBLE' },
+      { id: 'ESC-002', itemId: 'HERR-ESC', nombre: 'ESCALERA', sede: 'JOCKEY PLAZA', estado: 'EN_USO' },
+      { id: 'ESC-003', itemId: 'HERR-ESC', nombre: 'ESCALERA', sede: 'MIRAFLORES', estado: 'DISPONIBLE' },
+      { id: 'MRT-001', itemId: 'HERR-MRT', nombre: 'MARTILLO', sede: 'OFICINA', estado: 'DISPONIBLE' },
+      { id: 'MRT-002', itemId: 'HERR-MRT', nombre: 'MARTILLO', sede: 'SANTA ANITA', estado: 'DISPONIBLE' },
+      { id: 'REF-001', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'OFICINA', estado: 'DISPONIBLE', nivel: 100 },
+      { id: 'REF-002', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'JOCKEY PLAZA', estado: 'DISPONIBLE', nivel: 50 },
+      { id: 'REF-003', itemId: 'INSU-REF', nombre: 'REFRIGERANTE R410A', sede: 'MIRAFLORES', estado: 'DISPONIBLE', nivel: 25 },
+      { id: 'ACE-001', itemId: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', sede: 'OFICINA', estado: 'DISPONIBLE', nivel: 75 },
+      { id: 'ACE-002', itemId: 'INSU-ACE', nombre: 'ACEITE LUBRICANTE', sede: 'SANTA ANITA', estado: 'DISPONIBLE', nivel: 5 },
+    ];
+    for (const inst of instancias) {
+      await db.collection('insumos_instancias').doc(inst.id).set({...inst, creadoEn: new Date().toISOString(), creadoPor: maUser.email});
+    }
+
+    toast('✓ Datos de prueba cargados', 'ok');
+    await loadAll();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
 }
 
 // ── QR SYSTEM ──────────────────────────────────────────────
