@@ -1025,23 +1025,28 @@ function renderMovimientos(){
   });
   const c=document.getElementById('movimientos-list');
   if(!list.length){c.innerHTML='<div class="empty"><div class="empty-icon">📋</div>Sin movimientos</div>';return;}
-  const icons={ENTRADA:'⬇️',SALIDA:'⬆️',TRANSFERENCIA:'🔄',SOLICITUD_SALIDA:'⏳',SOLICITUD_TRANSF:'⏳'};
+  const icons={ENTRADA:'⬇️',SALIDA:'⬆️',BAJA:'⚠️',TRANSFERENCIA:'🔄',SOLICITUD_SALIDA:'⏳',SOLICITUD_TRANSF:'⏳'};
   c.innerHTML='<div class="mov-list">'+list.map(m=>{
     const f=m.fecha?(m.fecha.toDate?m.fecha.toDate():new Date(m.fecha)):new Date();
     const fs=f.toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'});
     const isPend=m.estado==='PENDIENTE';
     const tCls=isPend?'pendiente':(m.tipo||'').toLowerCase().replace('solicitud_','');
-    const sg=m.tipo==='ENTRADA'?'+':m.tipo==='SALIDA'||m.tipo==='SOLICITUD_SALIDA'?'-':'⇄';
-    const sedeStr=m.tipo==='TRANSFERENCIA'||m.tipo==='SOLICITUD_TRANSF'?`${m.sedeOrigen} → ${m.sedeDestino}`:(m.sede||'');
+    const sg=m.tipo==='ENTRADA'?'+':m.tipo==='SALIDA'||m.tipo==='BAJA'||m.tipo==='SOLICITUD_SALIDA'?'-':'⇄';
+    const sedeStr=m.tipo==='TRANSFERENCIA'||m.tipo==='SOLICITUD_TRANSF'
+      ?`${m.sedeOrigen} → ${m.sedeDestino}`:(m.sede||'');
+    // Info de instancias
+    const instInfo = m.instanciaId ? `<span style="font-family:var(--mono);font-size:10px;color:var(--muted2)"> · ${m.instanciaId}</span>` :
+      m.instancias?.length ? `<span style="font-size:10px;color:var(--muted2)"> · ${m.instancias.length} uds: ${m.instancias.join(', ')}</span>` : '';
+    const cantInfo = m.cantidad ? `${sg}${m.cantidad}` : (m.instanciaId ? sg+'1' : '');
     const badge=m.estado==='PENDIENTE'?`<span class="tipo-badge tipo-pendiente">⏳ pendiente</span>`:m.estado==='RECHAZADO'?`<span class="tipo-badge" style="background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)">✗ rechazado</span>`:'';
     const delBtn=can('eliminarMov')&&!isPend?`<button class="btn btn-sm btn-red" onclick="deleteMovimiento('${m.id}')">🗑</button>`:'';
     return `<div class="mov-item ${isPend?'pendiente':''}">
       <div class="mov-icon ${tCls}">${icons[m.tipo]||'📦'}</div>
       <div class="mov-body">
         <div class="mov-title">${m.itemNombre||'—'} <span class="tipo-badge tipo-${tCls.replace('solicitud_','')}">${(m.tipo||'').replace('SOLICITUD_','')}</span> ${badge}</div>
-        <div class="mov-meta">${fs} · ${m.responsable||m.usuario||'—'}${sedeStr?' · '+sedeStr:''}${m.motivo?' · '+m.motivo:''}</div>
+        <div class="mov-meta">${fs} · ${m.responsable||m.usuario||'—'}${sedeStr?' · '+sedeStr:''}${m.motivo?' · '+m.motivo:''}${instInfo}</div>
       </div>
-      <div class="mov-qty ${tCls}">${sg}${m.cantidad} ${m.unidad||'UND'}</div>
+      <div class="mov-qty ${tCls}">${cantInfo} ${m.unidad||'UND'}</div>
       ${delBtn?`<div class="mov-actions">${delBtn}</div>`:''}
     </div>`;
   }).join('')+'</div>';
@@ -1134,11 +1139,18 @@ async function deleteMovimiento(movId){
 
 // Resetear stock de un ítem a 0 en todas las sedes (para correcciones manuales)
 async function resetStockItem(itemId,nombre){
-  if(!confirm(`¿Resetear stock de "${nombre}" a 0 en todas las sedes?\nUsa esto si el stock quedó desfasado.`))return;
+  const instanciasDelTipo = instanciasData.filter(i => i.itemId === itemId);
+  if(!confirm(`¿Eliminar todas las instancias de "${nombre}"?\nSe eliminarán ${instanciasDelTipo.length} instancia(s). Esta acción no se puede deshacer.`))return;
   try{
+    // Eliminar todas las instancias del tipo
+    for(const inst of instanciasDelTipo){
+      await db.collection('insumos_instancias').doc(inst.id).delete();
+    }
+    instanciasData = instanciasData.filter(i => i.itemId !== itemId);
+    // También limpiar stock legacy
     await db.collection('insumos_stock').doc(itemId).delete();
     stockData[itemId]={};
-    toast('Stock reseteado a 0','ok');
+    toast(`${instanciasDelTipo.length} instancia(s) eliminadas`, 'ok');
     renderAll();
   }catch(e){toast('Error: '+e.message,'err');}
 }
