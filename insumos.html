@@ -196,6 +196,8 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .cat-insumo{background:#e8f4ff;color:#1B3F8B}.cat-herramienta{background:var(--orange-pale);color:var(--orange-dark)}
 .stock-pill{font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;display:inline-block}
 .stock-ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.stock-uso{background:#e8f4ff;color:#1B3F8B;border:1px solid #b0ccf0}
+.stock-deteriorado{background:var(--orange-pale);color:var(--orange-dark);border:1px solid #f5c8a0}
 .stock-low{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
 .stock-out{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
 .td-actions{display:flex;gap:5px;justify-content:flex-end}
@@ -466,6 +468,17 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <div class="form-group full"><div class="form-label">Tipo de bien *</div><select class="form-select" id="fent-tipo" onchange="onEntradaTipoChange()"><option value="">Seleccionar...</option></select></div>
       <div class="form-group"><div class="form-label">Sede destino *</div><select class="form-select" id="fent-sede"></select></div>
       <div class="form-group"><div class="form-label">Cantidad *</div><input type="number" class="form-input" id="fent-qty" min="1" value="1" placeholder="Ej: 3" oninput="previewInstancias()"></div>
+      <div id="fent-nivel-wrap" style="display:none" class="form-group full">
+        <div class="form-label">Nivel inicial</div>
+        <select class="form-select" id="fent-nivel">
+          <option value="100">🟢 LLENO (100%)</option>
+          <option value="75">🟢 CASI LLENO (75%)</option>
+          <option value="50">🟡 MEDIO (50%)</option>
+          <option value="25">🟠 BAJO (25%)</option>
+          <option value="5">🔴 CASI VACÍO (5%)</option>
+          <option value="0">⚫ VACÍO (0%)</option>
+        </select>
+      </div>
       <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="fent-personal"></select></div>
       <div class="form-group full"><div class="form-label">Observación</div><textarea class="form-textarea" id="fent-obs" placeholder="Ej: Compra orden #123"></textarea></div>
     </div>
@@ -1081,7 +1094,7 @@ function renderInstancias() {
     return;
   }
 
-  const estadoColor = {DISPONIBLE:'ok', EN_USO:'ok', MANTENIMIENTO:'low', DETERIORADO:'low', BAJA:'out'};
+  const estadoColor = {DISPONIBLE:'ok', EN_USO:'uso', MANTENIMIENTO:'low', DETERIORADO:'deteriorado', BAJA:'out'};
   const estadoLabel = {DISPONIBLE:'✅ Disponible', EN_USO:'🔧 En uso', MANTENIMIENTO:'⚠️ Mantenimiento', DETERIORADO:'🔴 Deteriorado', BAJA:'❌ Baja'};
 
   wrap.innerHTML = `<table><thead><tr>
@@ -1294,7 +1307,7 @@ function renderStockSede(){
               ${editBtn}
             </div>`;
           }
-          const estColor = {DISPONIBLE:'stock-ok',EN_USO:'stock-ok',MANTENIMIENTO:'stock-low',DETERIORADO:'stock-low',BAJA:'stock-out'};
+          const estColor = {DISPONIBLE:'stock-ok',EN_USO:'stock-uso',MANTENIMIENTO:'stock-low',DETERIORADO:'stock-deteriorado',BAJA:'stock-out'};
           const estLabel = {DISPONIBLE:'✅',EN_USO:'🔧',MANTENIMIENTO:'⚠️',DETERIORADO:'🔴'};
           const est = inst.estado || 'DISPONIBLE';
           return `<div class="sede-stock-item">
@@ -1741,12 +1754,20 @@ function openModalEntrada() {
   document.getElementById('fent-qty').value = '1';
   document.getElementById('fent-obs').value = '';
   document.getElementById('fent-preview').style.display = 'none';
+  document.getElementById('fent-nivel-wrap').style.display = 'none';
+  document.getElementById('fent-nivel').value = '100';
   const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
   document.getElementById('fent-personal').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('modal-entrada').classList.add('open');
 }
 
-function onEntradaTipoChange() { previewInstancias(); }
+function onEntradaTipoChange() {
+  const itemId = document.getElementById('fent-tipo').value;
+  const item = catalogoData.find(x => x.id === itemId);
+  const nivelWrap = document.getElementById('fent-nivel-wrap');
+  nivelWrap.style.display = (item && item.tipoCantidad === 'RANGO') ? 'flex' : 'none';
+  previewInstancias();
+}
 
 function previewInstancias() {
   const itemId = document.getElementById('fent-tipo').value;
@@ -1784,7 +1805,7 @@ async function saveEntrada() {
       if (snap.exists) { next++; i--; continue; }
       const inst = { itemId, nombre: item.nombre.toUpperCase(), sede, estado: 'DISPONIBLE',
         creadoEn: new Date().toISOString(), creadoPor: maUser.email,
-        ...(item.tipoCantidad === 'RANGO' && { nivel: 100 }) };
+        ...(item.tipoCantidad === 'RANGO' && { nivel: Number(document.getElementById('fent-nivel').value) }) };
       await db.collection('insumos_instancias').doc(id).set(inst);
       instanciasData.push({ id, ...inst });
       nuevasInstancias.push(id);
