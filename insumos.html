@@ -1524,8 +1524,8 @@ function renderMovimientos(){
     const pkgBadge = m.origenPaquete ? `<span class="tipo-badge" style="background:var(--blue-pale);color:var(--blue);border:1px solid #c0d0ef" title="Generado por transferencia de paquete ${m.paqueteId||''}">🎒 paquete</span>` : '';
     const badge=m.estado==='PENDIENTE'?`<span class="tipo-badge tipo-pendiente">⏳ pendiente</span>`:m.estado==='RECHAZADO'?`<span class="tipo-badge" style="background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)" title="${m.motivoRechazo||''}">✗ rechazado</span>`:m.estado==='APROBADO'?`<span class="tipo-badge" style="background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)">✓ aprobado</span>`:'';
     const esSolicitud = m.tipo==='SOLICITUD_SALIDA'||m.tipo==='SOLICITUD_TRANSF';
-    const esDePaquete = !!(m.origenPaquete); // generado por transferencia de paquete
-    const esPkgTransf = m.tipo==='TRANSFERENCIA_PAQUETE';
+    const esDePaquete = !!(m.origenPaquete); // generado por transferencia de paquete — NO revertible
+    const esPkgTransf = m.tipo==='TRANSFERENCIA_PAQUETE'; // el paquete SÍ es revertible
     const canMod=can('eliminarMov')&&!isPend&&!(esSolicitud&&(m.estado==='APROBADO'||m.estado==='RECHAZADO'))&&!esDePaquete;
     const delBtn=canMod?`<button class="btn btn-sm btn-red" title="Revertir acción" onclick="revertirMovimiento('${m.id}')">↩ Revertir</button>`:'';
     const editBtn=canMod&&can('editarMov')?`<button class="btn btn-sm" title="Editar" onclick="editarMovimiento('${m.id}')">✏️</button>`:'';
@@ -2092,6 +2092,9 @@ function switchTab(tab, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
   btn.classList.add('active');
+  // Mostrar filtros solo en catálogo
+  const filterSections = document.querySelectorAll('.sb-group');
+  filterSections.forEach(s => { s.style.display = tab === 'catalogo' ? '' : 'none'; });
 }
 
 function closeModal(id) {
@@ -2831,6 +2834,10 @@ async function revertirMovimiento(movId) {
     const instId = mov.instanciaId;
     const movsPost = movimientosData.filter(m => m.id !== movId && m.instanciaId === instId);
     if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de esta instancia (actualizaciones, transferencias).`;
+  } else if (mov.tipo === 'TRANSFERENCIA_PAQUETE') {
+    const movsDePkg = movimientosData.filter(m => m.origenPaquete === movId);
+    const instIds = mov.instancias || [];
+    cascadaMsg = `\n\nSe revertirán ${instIds.length} instancia(s) y se eliminarán ${movsDePkg.length} movimiento(s) generados por esta transferencia.`;
   }
 
   if (!confirm(`¿Revertir esta ${tipoLabel}?\nEsta acción deshará el efecto en el inventario.${cascadaMsg}`)) return;
@@ -2893,6 +2900,34 @@ async function revertirMovimiento(movId) {
       const idx = instanciasData.findIndex(x => x.id === instId);
       if (idx >= 0) Object.assign(instanciasData[idx], revertUpdates);
       toast(`✓ Actualización revertida — ${instId}`, 'ok');
+
+    } else if (mov.tipo === 'TRANSFERENCIA_PAQUETE') {
+      const pkgId = mov.paqueteId;
+      const instIds = mov.instancias || [];
+      if (!pkgId) { toast('No se puede revertir: falta ID de paquete', 'err'); return; }
+      const diffs = mov.diffsData || [];
+      if (!diffs.length) { toast('No hay datos suficientes para revertir', 'warn'); return; }
+      // Revertir el paquete
+      const pkgUpdates = { updatedAt: new Date().toISOString() };
+      diffs.forEach(d => { pkgUpdates[d.campo] = d.de; });
+      await db.collection('insumos_paquetes').doc(pkgId).update(pkgUpdates);
+      const pkgIdx = paquetesData.findIndex(x=>x.id===pkgId);
+      if (pkgIdx>=0) Object.assign(paquetesData[pkgIdx], pkgUpdates);
+      // Revertir todas las instancias del paquete
+      for (const instId of instIds) {
+        const instUpdates = { updatedAt: new Date().toISOString() };
+        diffs.forEach(d => { instUpdates[d.campo] = d.de; });
+        await db.collection('insumos_instancias').doc(instId).update(instUpdates);
+        const instIdx = instanciasData.findIndex(x=>x.id===instId);
+        if (instIdx>=0) Object.assign(instanciasData[instIdx], instUpdates);
+      }
+      // Eliminar en cascada los movimientos de instancias generados por este paquete
+      const movsDePaquete = movimientosData.filter(m => m.origenPaquete === movId);
+      for (const m of movsDePaquete) {
+        await db.collection('insumos_movimientos').doc(m.id).delete();
+      }
+      movimientosData = movimientosData.filter(m => m.origenPaquete !== movId);
+      toast(`✓ Transferencia de paquete revertida — ${pkgId} + ${instIds.length} instancia(s) + ${movsDePaquete.length} movimiento(s) eliminados`, 'ok');
     }
 
     // Eliminar el movimiento principal
