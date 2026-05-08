@@ -2166,6 +2166,10 @@ async function previewInstancias() {
 }
 
 async function saveEntrada() {
+  const btn = document.querySelector('#modal-entrada .btn-primary');
+  if (btn && btn.disabled) return;
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
+  try {
   const itemId = document.getElementById('fent-tipo').value;
   const sede = document.getElementById('fent-sede').value;
   const qty = parseInt(document.getElementById('fent-qty').value) || 0;
@@ -2203,6 +2207,7 @@ async function saveEntrada() {
     closeModal('modal-entrada');
     renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '⬇ Confirmar entrada'; } }
 }
 
 // ── SALIDA / BAJA ─────────────────────────────────────────
@@ -2252,6 +2257,10 @@ function onSalidaInstanciaChange() {
 }
 
 async function saveSalida() {
+  const btn = document.querySelector('#modal-salida .btn-primary');
+  if (btn && btn.disabled) return;
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
+  try {
   const instId = document.getElementById('fsal-instancia').value;
   const motivo = document.getElementById('fsal-motivo').value.trim();
   const resp = document.getElementById('fsal-personal').value;
@@ -2275,6 +2284,7 @@ async function saveSalida() {
     closeModal('modal-salida');
     renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '⬆ Confirmar'; } }
 }
 
 // ── TRANSFERENCIA ─────────────────────────────────────────
@@ -2357,6 +2367,10 @@ function onTransfInstanciaChange() {
 }
 
 async function saveTransferencia() {
+  const btn = document.querySelector('#modal-transf .btn-primary');
+  if (btn && btn.disabled) return;
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
+  try {
   const instId = document.getElementById('ft-instancia').value;
   const obs = document.getElementById('ft-obs').value.trim();
   const tecnico = document.getElementById('ft-tecnico').value;
@@ -2387,7 +2401,20 @@ async function saveTransferencia() {
 
   if (!diffs.length) { toast('Selecciona qué deseas transferir', 'err'); return; }
 
-  // Construir label legible
+  // Si la instancia pertenece a un paquete, sacarla del paquete
+  let paqueteMsg = '';
+  if (inst.paqueteId) {
+    const pkg = paquetesData.find(x => x.id === inst.paqueteId);
+    if (pkg) {
+      const newInsts = (pkg.instancias || []).filter(i => i !== instId);
+      await db.collection('insumos_paquetes').doc(pkg.id).update({ instancias: newInsts, updatedAt: new Date().toISOString() });
+      const pkgIdx = paquetesData.findIndex(x => x.id === pkg.id);
+      if (pkgIdx >= 0) paquetesData[pkgIdx].instancias = newInsts;
+      instUpdates.paqueteId = null;
+      paqueteMsg = ` · salió del paquete ${pkg.id}`;
+    }
+  }
+
   const sedeOrig = inst.sede || '—';
   const sedeD = transferSede ? document.getElementById('ft-destino').value : null;
   const respD = transferResp ? document.getElementById('ft-resp-destino').value : null;
@@ -2395,25 +2422,25 @@ async function saveTransferencia() {
   if (sedeD) labelParts.push(`${sedeOrig} → ${sedeD}`);
   if (respD) labelParts.push(`Resp: ${inst.responsable || '—'} → ${respD}`);
 
-  try {
-    await db.collection('insumos_instancias').doc(instId).update(instUpdates);
-    const idx = instanciasData.findIndex(x => x.id === instId);
-    if (idx >= 0) Object.assign(instanciasData[idx], instUpdates);
+  await db.collection('insumos_instancias').doc(instId).update(instUpdates);
+  const idx = instanciasData.findIndex(x => x.id === instId);
+  if (idx >= 0) Object.assign(instanciasData[idx], instUpdates);
 
-    const movData = {
-      tipo: 'TRANSFERENCIA', itemId: inst.itemId, itemNombre: inst.nombre,
-      instanciaId: instId,
-      sedeOrigen: inst.sede || '', sedeDestino: sedeD || inst.sede || '',
-      diffsData: diffs, cambios: labelParts.join(' | '),
-      motivo: obs, responsable: tecnico, usuario: maUser.email,
-      estado: 'CONFIRMADO', fecha: new Date()
-    };
-    const movRef = await db.collection('insumos_movimientos').add(movData);
-    movimientosData.unshift({ id: movRef.id, ...movData });
-    toast(`✓ ${instId} — ${labelParts.join(', ')}`, 'ok');
-    closeModal('modal-transf');
-    renderAll();
+  const movData = {
+    tipo: 'TRANSFERENCIA', itemId: inst.itemId, itemNombre: inst.nombre,
+    instanciaId: instId,
+    sedeOrigen: inst.sede || '', sedeDestino: sedeD || inst.sede || '',
+    diffsData: diffs, cambios: labelParts.join(' | '),
+    motivo: obs, responsable: tecnico, usuario: maUser.email,
+    estado: 'CONFIRMADO', fecha: new Date()
+  };
+  const movRef = await db.collection('insumos_movimientos').add(movData);
+  movimientosData.unshift({ id: movRef.id, ...movData });
+  toast(`✓ ${instId} — ${labelParts.join(', ')}${paqueteMsg}`, 'ok');
+  closeModal('modal-transf');
+  renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '🔄 Confirmar transferencia'; } }
 }
 
 // ── INSTANCIAS QR SELECCIÓN Y ZIP ─────────────────────────
@@ -3078,6 +3105,10 @@ function onSolicitudTransfTipoChange() {
 }
 
 async function saveSolicitud() {
+  const btn = document.querySelector('#modal-solicitud .btn-primary');
+  if (btn && btn.disabled) return;
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Enviando...'; }
+  try {
   const esTransf = currentSolicitudTipo === 'TRANSF';
   const motivo = document.getElementById('fsol-motivo').value.trim();
   if (!motivo) { toast('El motivo es obligatorio', 'err'); return; }
@@ -3138,6 +3169,7 @@ async function saveSolicitud() {
     buildSidebar();
     renderMovimientos();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '📤 Enviar solicitud'; } }
 }
 
 async function aprobarSolicitud(movId) {
@@ -3581,6 +3613,18 @@ function renderPorTecnico() {
   } else { h+='<div style="font-size:12px;color:var(--muted2)">Sin instancias sueltas asignadas</div>'; }
   h+='</div>';
   wrap.innerHTML=h;
+}
+
+
+// ── DEBOUNCE GLOBAL PARA BOTONES DE GUARDAR ──────────────
+function withSaving(btnSelector, fn) {
+  return async function(...args) {
+    const btn = document.querySelector(btnSelector);
+    if (btn && btn.disabled) return;
+    if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
+    try { await fn(...args); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || 'Guardar'; } }
+  };
 }
 
 // Cerrar modales al hacer clic fuera
