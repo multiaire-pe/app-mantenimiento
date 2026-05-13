@@ -493,7 +493,7 @@ function maShowLogin() {
   if (ov) { ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
   var btn = document.getElementById('g-btn');
   if (btn) {
-    btn.innerHTML = '<button onclick="maFirebaseSignIn()" style="display:flex;align-items:center;gap:10px;padding:10px 20px;border:1.5px solid #d0daf0;border-radius:8px;background:#fff;font-family:IBM Plex Sans,sans-serif;font-size:14px;cursor:pointer;font-weight:500"><img src=\'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg\' width=18>Continuar con Google</button>';
+    btn.innerHTML = '<button onclick="maFirebaseSignIn()" style="display:flex;align-items:center;gap:10px;padding:10px 20px;border:1.5px solid #d0daf0;border-radius:8px;background:#fff;font-family:IBM Plex Sans,sans-serif;font-size:14px;cursor:pointer;font-weight:500"><img src='https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg' width=18>Continuar con Google</button>';
   }
 }
 
@@ -654,9 +654,16 @@ function todayKey() { return new Date().toISOString().slice(0, 10); }
 // ── COLABORADORES ─────────────────────────────────────────────────────────────
 async function loadColabs() {
   const { getDocs, collection } = window.__fb;
-  const snap = await getDocs(collection(window.__db, 'colaboradores'));
-  allColabs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const snap = await getDocs(collection(window.__db, 'maestros_personal'));
+  allColabs = snap.docs.map((d, i) => {
+    const p = d.data();
+    return {
+      id: String(p.id || ('PER' + String(i+1).padStart(3,'0'))).trim(),
+      nombre: String(p.nombre || '').trim(),
+      cargo: String(p.cargo || 'TÉCNICO').trim(),
+      activo: String(p.activo || 'SI').trim().toUpperCase() !== 'NO'
+    };
+  }).filter(p => p.nombre).sort((a, b) => a.nombre.localeCompare(b.nombre));
   renderColabsGrid();
   populateHistColab();
 }
