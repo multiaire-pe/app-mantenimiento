@@ -95,8 +95,8 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .stat-ausente .stat-num{color:var(--red)}
 .stat-total .stat-num{color:var(--orange)}
 .table-wrap{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:20px}
-.table-head{display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr 1fr 80px;gap:0;padding:10px 16px;background:var(--surface3);border-bottom:1.5px solid var(--border);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2)}
-.table-row{display:grid;grid-template-columns:2fr 1.2fr 1fr 1fr 1fr 80px;gap:0;padding:11px 16px;border-bottom:1px solid var(--border);align-items:center;transition:background .12s}
+.table-head{display:grid;grid-template-columns:2fr 1.6fr 1fr 1fr 1fr 80px;gap:0;padding:10px 16px;background:var(--surface3);border-bottom:1.5px solid var(--border);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2)}
+.table-row{display:grid;grid-template-columns:2fr 1.6fr 1fr 1fr 1fr 80px;gap:0;padding:11px 16px;border-bottom:1px solid var(--border);align-items:center;transition:background .12s}
 .table-row:last-child{border-bottom:none}
 .table-row:hover{background:var(--surface2)}
 .td-name{font-size:13px;font-weight:600;color:var(--accent)}
@@ -233,7 +233,48 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 
       <div class="reg-hora-row">
         <label>Hora:</label>
-        <input type="time" class="sb-input" id="reg-hora" style="margin-bottom:0;flex:1">
+        <select class="sb-input" id="reg-hora" style="margin-bottom:0;flex:1">
+          <option value="04:00">04:00</option>
+          <option value="04:30">04:30</option>
+          <option value="05:00">05:00</option>
+          <option value="05:30">05:30</option>
+          <option value="06:00">06:00</option>
+          <option value="06:30">06:30</option>
+          <option value="07:00">07:00</option>
+          <option value="07:30">07:30</option>
+          <option value="08:00">08:00</option>
+          <option value="08:30">08:30</option>
+          <option value="09:00">09:00</option>
+          <option value="09:30">09:30</option>
+          <option value="10:00">10:00</option>
+          <option value="10:30">10:30</option>
+          <option value="11:00">11:00</option>
+          <option value="11:30">11:30</option>
+          <option value="12:00">12:00</option>
+          <option value="12:30">12:30</option>
+          <option value="13:00">13:00</option>
+          <option value="13:30">13:30</option>
+          <option value="14:00">14:00</option>
+          <option value="14:30">14:30</option>
+          <option value="15:00">15:00</option>
+          <option value="15:30">15:30</option>
+          <option value="16:00">16:00</option>
+          <option value="16:30">16:30</option>
+          <option value="17:00">17:00</option>
+          <option value="17:30">17:30</option>
+          <option value="18:00">18:00</option>
+          <option value="18:30">18:30</option>
+          <option value="19:00">19:00</option>
+          <option value="19:30">19:30</option>
+          <option value="20:00">20:00</option>
+          <option value="20:30">20:30</option>
+          <option value="21:00">21:00</option>
+          <option value="21:30">21:30</option>
+          <option value="22:00">22:00</option>
+          <option value="22:30">22:30</option>
+          <option value="23:00">23:00</option>
+          <option value="23:30">23:30</option>
+        </select>
         <button class="btn btn-sm" onclick="setNowHora()" title="Hora actual">⟳</button>
       </div>
 
@@ -625,9 +666,11 @@ function updateHoyDate() {
 
 function setNowHora() {
   const now = new Date();
-  const h = String(now.getHours()).padStart(2, '0');
-  const m = String(now.getMinutes()).padStart(2, '0');
-  document.getElementById('reg-hora').value = `${h}:${m}`;
+  const h = now.getHours();
+  const m = now.getMinutes() < 30 ? 0 : 30;
+  const val = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  const sel = document.getElementById('reg-hora');
+  if (sel) sel.value = val;
 }
 
 function horaToDecimal(horaStr) {
