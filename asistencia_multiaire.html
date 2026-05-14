@@ -96,7 +96,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .stat-total .stat-num{color:var(--orange)}
 .table-wrap{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:var(--shadow);margin-bottom:20px}
 .table-head{display:grid;grid-template-columns:2fr 1.7fr .8fr .8fr .8fr 1.1fr 1.2fr;gap:0;padding:10px 16px;background:var(--surface3);border-bottom:1.5px solid var(--border);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2)}
-.table-row{display:grid;grid-template-columns:2fr 1.7fr .8fr .8fr .8fr 1.1fr 1.2fr;gap:0;padding:11px 16px;border-bottom:1px solid var(--border);align-items:center;transition:background .12s;cursor:pointer}
+.table-row{display:grid;grid-template-columns:2fr 1.7fr .8fr .8fr .8fr 1.1fr 1.2fr;gap:0;padding:11px 16px;border-bottom:1px solid var(--border);align-items:start;transition:background .12s;cursor:pointer}
 .table-row>div{min-width:0}
 .table-row:last-child{border-bottom:none}
 .table-row:hover{background:var(--surface2)}
@@ -113,7 +113,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .hist-filter-input{background:var(--surface2);border:1.5px solid var(--border);color:var(--accent);font-family:var(--font);font-size:12px;padding:7px 10px;border-radius:6px;outline:none}
 .hist-filter-input:focus{border-color:var(--blue)}
 .hist-table-head{display:grid;grid-template-columns:1fr 1.7fr 1.3fr 1fr 1fr 1fr 1fr 1.5fr;gap:0;padding:9px 16px;background:var(--surface3);border-bottom:1.5px solid var(--border);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2)}
-.hist-table-row{display:grid;grid-template-columns:1fr 1.7fr 1.3fr 1fr 1fr 1fr 1fr 1.5fr;gap:0;padding:10px 16px;border-bottom:1px solid var(--border);align-items:center;font-size:12px;transition:background .12s;cursor:pointer}
+.hist-table-row{display:grid;grid-template-columns:1fr 1.7fr 1.3fr 1fr 1fr 1fr 1fr 1.5fr;gap:0;padding:10px 16px;border-bottom:1px solid var(--border);align-items:start;font-size:12px;transition:background .12s;cursor:pointer}
 .hist-table-row>div{min-width:0}
 .hist-table-row:hover{background:var(--surface2)}
 .hist-table-row:last-child{border-bottom:none}
@@ -236,10 +236,9 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
       <input type="date" class="sb-input" id="sidebar-fecha" onchange="onSidebarFechaChange()">
 
       <div class="sb-label">Colaborador</div>
-      <input type="text" class="sb-input" id="search-colab" placeholder="Buscar..." oninput="filterColabs(this.value)" style="margin-bottom:6px">
-      <div id="colabs-grid" class="colabs-grid" style="margin-bottom:10px">
-        <div style="grid-column:1/-1;text-align:center;color:var(--muted);font-size:12px;padding:12px">Cargando...</div>
-      </div>
+      <select class="sb-input" id="reg-colab" onchange="selectColab(this.value)" style="margin-bottom:10px">
+        <option value="">— Seleccionar colaborador —</option>
+      </select>
 
       <div class="reg-hora-row">
         <label>Hora:</label>
@@ -797,26 +796,14 @@ async function loadColabs() {
   populateColabSelects();
 }
 
-function renderColabsGrid(filter='') {
-  const grid=document.getElementById('colabs-grid');
+function renderColabsGrid() {
+  const sel=document.getElementById('reg-colab');
   const activos=allColabs.filter(c=>c.activo);
-  const filtered=filter?activos.filter(c=>c.nombre.toLowerCase().includes(filter.toLowerCase())):activos;
-  if(!filtered.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--muted);font-size:12px;padding:12px">Sin colaboradores</div>';return;}
-  grid.innerHTML=filtered.map(c=>{
-    const init=c.nombre.split(' ').map(x=>x[0]).join('').substring(0,2).toUpperCase();
-    const sel=c.id===selectedColabId;
-    const estadoHoy=getEstadoHoy(c.id);
-    const estadoBadge=estadoHoy==='DENTRO'?'<span style="font-size:8px;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);border-radius:3px;padding:1px 4px">●</span>':estadoHoy==='SALIO'?'<span style="font-size:8px;background:var(--blue-pale);color:var(--blue);border:1px solid #c0d0ef;border-radius:3px;padding:1px 4px">✓</span>':'';
-    return`<div class="colab-btn${sel?' selected':''}" onclick="selectColab('${c.id}')">
-      <div class="colab-avatar" style="background:${avatarColor(c.nombre)}">${init}</div>
-      <div style="flex:1;min-width:0"><div class="colab-name">${escHtml(c.nombre)}</div><div class="colab-cargo-small">${escHtml(c.cargo)}</div></div>
-      ${estadoBadge}
-    </div>`;
-  }).join('');
+  sel.innerHTML='<option value="">— Seleccionar colaborador —</option>'+
+    activos.map(c=>`<option value="${c.id}"${c.id===selectedColabId?' selected':''}>${escHtml(c.nombre)} — ${escHtml(c.cargo)}</option>`).join('');
 }
 
-function filterColabs(val){renderColabsGrid(val);}
-function selectColab(id){selectedColabId=id;renderColabsGrid(document.getElementById('search-colab').value);}
+function selectColab(id){selectedColabId=id;}
 function getEstadoHoy(colabId){const reg=todayRegs.find(r=>r.colabId===colabId);if(!reg)return null;if(reg.horaEntrada&&!reg.horaSalida)return'DENTRO';if(reg.horaEntrada&&reg.horaSalida)return'SALIO';return null;}
 
 function populateColabSelects() {
@@ -891,7 +878,7 @@ function renderTodayTable() {
       <div class="td-hora">${salStr}</div>
       <div class="td-hrs" style="${heColor}">${heStr}${manualBadge}</div>
       <div><span class="badge ${estadoClass}">${estado}</span></div>
-      <div style="font-size:11px;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(reg?.observacion||'')}</div>
+      <div style="font-size:11px;color:var(--muted2);word-break:break-word;line-height:1.4">${escHtml(reg?.observacion||'')}</div>
     </div>`;
   });
   body.innerHTML=rows.length?rows.join(''):'<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text">Sin colaboradores activos</div></div>';
@@ -1064,7 +1051,7 @@ async function loadHistorial() {
         <div class="td-hora" style="font-size:12px">${salStr}</div>
         <div style="font-family:var(--mono);font-size:12px;${heColor}">${heStr}${manualBadge}</div>
         <div><span class="badge ${estadoClass}">${estadoLabel}</span></div>
-        <div style="font-size:11px;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(r.observacion||'')}</div>
+        <div style="font-size:11px;color:var(--muted2);word-break:break-word;line-height:1.4">${escHtml(r.observacion||'')}</div>
       </div>`;
     }).join('');
   } catch(e){body.innerHTML=`<div class="empty-state"><div class="empty-text" style="color:var(--red)">Error: ${e.message}</div></div>`;}
