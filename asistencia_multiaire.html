@@ -1530,12 +1530,12 @@ async function exportAusenciasPDF() {
       tbody+=`<tr>
         <td style="${hdr}">${escHtml(c.nombre)}</td>
         <td style="${base}color:#4a5a7a;">${escHtml(c.cargo)}</td>
-        <td style="${base}text-align:center;"><span style="${red}">${dias.length} día${dias.length>1?'s':''}</span></td>
+        <td style="${base}text-align:center;white-space:nowrap;"><span style="${red}">${dias.length}</span></td>
         <td style="${base}">${dias.map(a=>`<span style="${chip}">${DIAS_C[new Date(a.fecha+'T12:00:00').getDay()]} ${fmtF(a.fecha)}</span>`).join('')}</td>
       </tr>`;
     });
-    var thead=`<colgroup><col style="width:22%"><col style="width:13%"><col style="width:8%"><col style="width:57%"></colgroup>
-      <tr><th style="${hdr}">Colaborador</th><th style="${hdr}">Cargo</th><th style="${hdr}">Días</th><th style="${hdr}">Fechas sin registro</th></tr>`;
+    var thead=`<colgroup><col style="width:23%"><col style="width:14%"><col style="width:6%"><col style="width:57%"></colgroup>
+      <tr><th style="${hdr}">Colaborador</th><th style="${hdr}">Cargo</th><th style="${hdr}">#</th><th style="${hdr}">Fechas sin registro</th></tr>`;
   } else {
     diasLab.forEach(f=>{
       const falta=ausencias.filter(a=>a.fecha===f);
@@ -1548,8 +1548,8 @@ async function exportAusenciasPDF() {
         <td style="${base}">${falta.map(a=>`<span style="${chip}">${escHtml(a.nombre)}</span>`).join('')}</td>
       </tr>`;
     });
-    var thead=`<colgroup><col style="width:12%"><col style="width:8%"><col style="width:10%"><col style="width:70%"></colgroup>
-      <tr><th style="${hdr}">Fecha</th><th style="${hdr}">Día</th><th style="${hdr}">Sin reg.</th><th style="${hdr}">Colaboradores</th></tr>`;
+    var thead=`<colgroup><col style="width:11%"><col style="width:7%"><col style="width:6%"><col style="width:76%"></colgroup>
+      <tr><th style="${hdr}">Fecha</th><th style="${hdr}">Día</th><th style="${hdr}">#</th><th style="${hdr}">Colaboradores</th></tr>`;
   }
 
   const totalDias=ausencias.length;
