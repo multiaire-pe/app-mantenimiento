@@ -730,8 +730,17 @@ function getHeValue(reg) {
 async function loadFeriados() {
   try {
     const snap=await window.__db.collection('maestros_feriados').get();
-    if(!snap.empty) feriados=snap.docs.map(d=>d.data().fecha).filter(Boolean).sort();
-    else feriados=[...FERIADOS_DEFAULT];
+    const currentYear=new Date().getFullYear().toString();
+    if(!snap.empty){
+      feriados=snap.docs.map(d=>d.data().fecha).filter(Boolean).sort();
+      const hasCurrentYear=feriados.some(f=>f.startsWith(currentYear));
+      if(!hasCurrentYear){
+        const defaults=FERIADOS_DEFAULT.filter(f=>f.startsWith(currentYear));
+        feriados=[...new Set([...feriados,...defaults])].sort();
+      }
+    } else {
+      feriados=[...FERIADOS_DEFAULT];
+    }
   } catch(e){feriados=[...FERIADOS_DEFAULT];}
 }
 
@@ -744,19 +753,32 @@ function renderFeriados() {
     '07-28':'Fiestas Patrias','07-29':'Fiestas Patrias','08-30':'Santa Rosa de Lima',
     '10-08':'Combate de Angamos','11-01':'Todos los Santos','12-08':'Inmaculada Concepción','12-25':'Navidad'
   };
-  list.innerHTML=feriados.map(f=>{
-    const[y,m,d]=f.split('-');
-    const key=`${m}-${d}`;
-    const nombre=nombres[key]||'Feriado';
-    const fecha=new Date(f+'T12:00:00');
-    return`<div class="feriado-item">
-      <span style="font-size:16px">🎌</span>
-      <div style="flex:1">
-        <div style="font-weight:600;font-size:13px">${nombre}</div>
-        <div style="font-size:11px;color:var(--muted2)">${DIAS_ES[fecha.getDay()]} ${d}/${m}/${y}</div>
-      </div>
+  const today=new Date().toISOString().slice(0,10);
+  const currentYear=new Date().getFullYear().toString();
+  const byYear={};
+  feriados.forEach(f=>{const y=f.split('-')[0];if(!byYear[y])byYear[y]=[];byYear[y].push(f);});
+  let html='';
+  Object.keys(byYear).sort().forEach((year,idx)=>{
+    const isCY=year===currentYear;
+    html+=`<div style="font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.08em;padding:10px 0 6px;${idx>0?'margin-top:10px;border-top:1px solid var(--border)':''}">
+      ${year}${isCY?' <span style="color:var(--blue)">— año actual</span>':''}
     </div>`;
-  }).join('');
+    byYear[year].forEach(f=>{
+      const[y,m,d]=f.split('-');
+      const nombre=nombres[`${m}-${d}`]||'Feriado';
+      const fecha=new Date(f+'T12:00:00');
+      const isPast=f<today;
+      html+=`<div class="feriado-item" style="${isPast?'opacity:.45;':''}">
+        <span style="font-size:16px">🎌</span>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px${isPast?';text-decoration:line-through':''}">${nombre}</div>
+          <div style="font-size:11px;color:var(--muted2)">${DIAS_ES[fecha.getDay()]} ${d}/${m}/${y}</div>
+        </div>
+        ${isPast?'<span style="font-size:10px;color:var(--muted);font-family:var(--mono)">pasado</span>':''}
+      </div>`;
+    });
+  });
+  list.innerHTML=html;
 }
 
 // ── COLABORADORES ─────────────────────────────────────────────────────────────
