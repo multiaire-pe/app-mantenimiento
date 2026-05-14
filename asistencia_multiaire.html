@@ -1260,25 +1260,33 @@ async function exportESPDF() {
   function fmtFecha(f){const[y,m,d]=f.split('-');return`${d}/${m}/${y}`;}
   function heColor(v){return typeof v==='number'&&v<0?'color:#c02030;font-weight:700':typeof v==='number'&&v>0?'color:#b86000;font-weight:700':'';}
 
+  // Verificar registro ANTES de marcar noLaboral; si hay registro ese día, mostrarlo con fondo naranja
   function celdasColab(c,f){
     const dow=new Date(f+'T12:00:00').getDay();
+    const noLab=dow===0||isFeriado(f);
     const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
-    if(dow===0||isFeriado(f))return{noLaboral:true,cels:['','','',null]};
-    if(reg){const he=getHeValue(reg);return{cels:[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val]};}
-    if(f<=hoy){return{ausente:true,cels:['X','','',heNoShow(f)]};}
+    if(reg){const he=getHeValue(reg);return{noLaboral:noLab,cels:[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val]};}
+    if(noLab)return{noLaboral:true,cels:['','','',null]};
+    if(f<=hoy)return{ausente:true,cels:['X','','',heNoShow(f)]};
     return{cels:['','','',null]};
   }
 
-  // Estilos comunes
-  const base='border:1px solid #d0daf0;padding:3px 5px;text-align:center;white-space:nowrap;font-size:9px;';
-  const hColab='background:#1B3F8B;color:#fff;font-weight:bold;font-size:9px;text-align:center;border:1px solid #0f2860;padding:4px 6px;';
-  const hSub='background:#d0daf0;color:#1a2540;font-weight:bold;font-size:8px;text-align:center;border:1px solid #b0bcd8;padding:3px 5px;text-transform:uppercase;letter-spacing:.04em;';
-  const noLab='background:#FDE8C8;color:#8a5a00;font-weight:600;text-align:center;border:1px solid #e8c898;padding:3px 5px;font-size:9px;';
-  const ausente='background:#fdf0f2;color:#c02030;font-weight:700;border:1px solid #e8b0b8;padding:3px 5px;text-align:center;font-size:9px;';
-  const totCell='background:#1B3F8B;color:#fff;font-weight:bold;border:1px solid #0f2860;padding:4px 5px;text-align:center;font-size:9px;';
-  const totLbl='background:#1B3F8B;color:#fff;font-weight:bold;border:1px solid #0f2860;padding:4px 8px;text-align:right;font-size:9px;';
-  const fechaSt='background:#f5f8ff;font-weight:600;text-align:left;border:1px solid #d0daf0;padding:3px 7px;white-space:nowrap;font-size:9px;';
-  const diaSt='background:#f5f8ff;color:#4a5a7a;text-align:left;border:1px solid #d0daf0;padding:3px 7px;font-size:9px;';
+  // Tamaño de página dinámico según cantidad de colaboradores
+  const ncols=colabFiltro?6:(2+colabs.length*4);
+  const pageWmm=colabFiltro?210:Math.max(297,ncols*12+24);
+  const pageSize=colabFiltro?'A4 portrait':`${pageWmm}mm 210mm`;
+  const fs=colabFiltro?'9px':'8px';
+  const pad=colabFiltro?'3px 6px':'2px 4px';
+
+  const base=`border:1px solid #d0daf0;padding:${pad};text-align:center;white-space:nowrap;font-size:${fs};`;
+  const hColab=`background:#1B3F8B;color:#fff;font-weight:bold;font-size:${fs};text-align:center;border:1px solid #0f2860;padding:${pad};`;
+  const hSub=`background:#d0daf0;color:#1a2540;font-weight:bold;font-size:${fs};text-align:center;border:1px solid #b0bcd8;padding:${pad};text-transform:uppercase;`;
+  const stNoLab=`background:#FDE8C8;color:#8a5a00;font-weight:600;text-align:center;border:1px solid #e8c898;padding:${pad};font-size:${fs};`;
+  const stAus=`background:#fdf0f2;color:#c02030;font-weight:700;border:1px solid #e8b0b8;padding:${pad};text-align:center;font-size:${fs};`;
+  const totCell=`background:#1B3F8B;color:#fff;font-weight:bold;border:1px solid #0f2860;padding:${pad};text-align:center;font-size:${fs};`;
+  const totLbl=`background:#1B3F8B;color:#fff;font-weight:bold;border:1px solid #0f2860;padding:${pad};text-align:right;font-size:${fs};`;
+  const fechaSt=`background:#f5f8ff;font-weight:600;text-align:left;border:1px solid #d0daf0;padding:${pad};white-space:nowrap;font-size:${fs};`;
+  const diaSt=`background:#f5f8ff;color:#4a5a7a;text-align:left;border:1px solid #d0daf0;padding:${pad};font-size:${fs};`;
 
   let tbody='',titulo='';
   if(colabFiltro){
@@ -1287,12 +1295,11 @@ async function exportESPDF() {
     let total=0;
     fechas.forEach(f=>{
       const dow=new Date(f+'T12:00:00').getDay();
-      const noLbg=dow===0||isFeriado(f);
-      const {cels,ausente:aus}=celdasColab(c,f);
+      const {cels,noLaboral,ausente:aus}=celdasColab(c,f);
       if(typeof cels[3]==='number')total+=cels[3];
-      const rs=noLbg?noLab:aus?ausente:base;
-      const heS=noLbg?noLab:aus?ausente:base+heColor(cels[3]);
-      const fBg=noLbg?'background:#FDE8C8;':aus?'background:#fdf0f2;':'';
+      const fBg=noLaboral?'background:#FDE8C8;':aus?'background:#fdf0f2;':'';
+      const rs=noLaboral?stNoLab:aus?stAus:base;
+      const heS=noLaboral?stNoLab+heColor(cels[3]):aus?stAus:base+heColor(cels[3]);
       tbody+=`<tr>
         <td style="${fechaSt}${fBg}">${fmtFecha(f)}</td>
         <td style="${diaSt}${fBg}">${DIAS_ES[dow]}</td>
@@ -1310,18 +1317,19 @@ async function exportESPDF() {
     titulo='Consolidado — todos los colaboradores';
     const totales=new Array(colabs.length).fill(0);
     var thead=`<tr><th style="${hSub}"></th><th style="${hSub}"></th>${colabs.map(c=>`<th colspan="4" style="${hColab}">${escHtml(c.nombre)}</th>`).join('')}</tr>
-      <tr><th style="${hSub}">Fecha</th><th style="${hSub}">Día</th>${colabs.map(()=>`<th style="${hSub}">Estado</th><th style="${hSub}">Ingreso</th><th style="${hSub}">Salida</th><th style="${hSub}">H.E.</th>`).join('')}</tr>`;
+      <tr><th style="${hSub}">Fecha</th><th style="${hSub}">Día</th>${colabs.map(()=>`<th style="${hSub}">Est.</th><th style="${hSub}">Ent.</th><th style="${hSub}">Sal.</th><th style="${hSub}">HE</th>`).join('')}</tr>`;
     fechas.forEach(f=>{
       const dow=new Date(f+'T12:00:00').getDay();
-      const noLbg=dow===0||isFeriado(f);
-      const rowBg=noLbg?'background:#FDE8C8;':'';
+      const rowNoLab=dow===0||isFeriado(f);
+      const rowBg=rowNoLab?'background:#FDE8C8;':'';
       let tr=`<tr><td style="${fechaSt}${rowBg}">${fmtFecha(f)}</td><td style="${diaSt}${rowBg}">${DIAS_ES[dow]}</td>`;
       colabs.forEach((c,i)=>{
         const {cels,noLaboral,ausente:aus}=celdasColab(c,f);
         if(typeof cels[3]==='number')totales[i]+=cels[3];
-        if(noLaboral){tr+=`<td colspan="4" style="${noLab}"></td>`;return;}
-        const rs=aus?ausente:base;
-        const heS=aus?ausente:base+heColor(cels[3]);
+        // Sin registro en día no laboral: celda vacía naranja
+        if(noLaboral&&!cels[0]){tr+=`<td colspan="4" style="${stNoLab}"></td>`;return;}
+        const rs=noLaboral?stNoLab:aus?stAus:base;
+        const heS=noLaboral?stNoLab+heColor(cels[3]):aus?stAus:base+heColor(cels[3]);
         tr+=`<td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td><td style="${heS}">${typeof cels[3]==='number'?cels[3].toFixed(1):''}</td>`;
       });
       tbody+=tr+`</tr>`;
@@ -1331,10 +1339,10 @@ async function exportESPDF() {
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Asistencia E/S</title>
   <style>
-    @page{size:landscape;margin:10mm}
-    body{font-family:Arial,sans-serif;font-size:9px;color:#1a2540;margin:0}
-    h3{margin:0 0 4px;font-size:12px;color:#1B3F8B}
-    .sub{font-size:9px;color:#666;margin-bottom:10px}
+    @page{size:${pageSize};margin:8mm}
+    body{font-family:Arial,sans-serif;font-size:${fs};color:#1a2540;margin:0}
+    h3{margin:0 0 3px;font-size:11px;color:#1B3F8B}
+    .sub{font-size:8px;color:#666;margin-bottom:8px}
     table{border-collapse:collapse;width:100%}
   </style></head><body>
   <h3>Registro de Asistencia — E/S</h3>
@@ -1364,11 +1372,12 @@ async function exportESExcel() {
   function heNoShow(f){return new Date(f+'T12:00:00').getDay()===6?-4.5:-8;}
   function celdasColab(c,f){
     const dow=new Date(f+'T12:00:00').getDay();
+    const noLab=dow===0||isFeriado(f);
     const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
-    if(dow===0||isFeriado(f))return{noLaboral:true,cels:['','','',0]};
-    if(reg){const he=getHeValue(reg);return{cels:[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:'']};}
-    if(f<=hoy){return{ausente:true,cels:['X','','',heNoShow(f)]};}
-    return{cels:['','','','']};
+    if(reg){const he=getHeValue(reg);return{noLaboral:noLab,cels:[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:'']};}
+    if(noLab)return{noLaboral:true,cels:['','','',null]};
+    if(f<=hoy)return{ausente:true,cels:['X','','',heNoShow(f)]};
+    return{cels:['','','',null]};
   }
 
   // Estilos inline para el HTML→XLS
@@ -1401,16 +1410,16 @@ async function exportESExcel() {
     let total=0;
     fechas.forEach(f=>{
       const dow=new Date(f+'T12:00:00').getDay();
-      const noLab=dow===0||isFeriado(f);
-      const {cels,ausente}=celdasColab(c,f);
+      const {cels,noLaboral,ausente}=celdasColab(c,f);
       if(typeof cels[3]==='number')total+=cels[3];
-      const rs=noLab?S.noLab:ausente?S.ausente:S.base;
-      const heS=noLab?S.noLab:ausente?S.ausente:S.base+heStyle(cels[3]);
+      const fBg=noLaboral?'background:#FDE8C8;':ausente?'background:#fdf0f2;':'';
+      const rs=noLaboral?S.noLab:ausente?S.ausente:S.base;
+      const heS=noLaboral?S.noLab+heStyle(cels[3]):ausente?S.ausente:S.base+heStyle(cels[3]);
       html+=`<tr>
-        <td style="${S.fecha}${noLab?'background:#FDE8C8;':ausente?'background:#fdf0f2;':''}">${fmtFecha(f)}</td>
-        <td style="${S.dia}${noLab?'background:#FDE8C8;':ausente?'background:#fdf0f2;':''}">${DIAS_ES[new Date(f+'T12:00:00').getDay()]}</td>
+        <td style="${S.fecha}${fBg}">${fmtFecha(f)}</td>
+        <td style="${S.dia}${fBg}">${DIAS_ES[dow]}</td>
         <td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td>
-        <td style="${heS}">${typeof cels[3]==='number'?cels[3]:cels[3]}</td></tr>`;
+        <td style="${heS}">${typeof cels[3]==='number'?cels[3].toFixed(1):''}</td></tr>`;
     });
     html+=`<tr><td colspan="4"></td><td style="${S.totalLbl}">TOTAL H.E.</td><td style="${S.total}${heStyle(total)}">${total.toFixed(1)}</td></tr>`;
   } else {
@@ -1429,10 +1438,10 @@ async function exportESExcel() {
       colabs.forEach((c,i)=>{
         const {cels,noLaboral,ausente}=celdasColab(c,f);
         if(typeof cels[3]==='number')totales[i]+=cels[3];
-        if(noLaboral){html+=`<td colspan="4" style="${S.noLab}"></td>`;return;}
-        const rs=ausente?S.ausente:S.base;
-        const heS=ausente?S.ausente:S.base+heStyle(cels[3]);
-        html+=`<td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td><td style="${heS}">${typeof cels[3]==='number'?cels[3]:cels[3]}</td>`;
+        if(noLaboral&&!cels[0]){html+=`<td colspan="4" style="${S.noLab}"></td>`;return;}
+        const rs=noLaboral?S.noLab:ausente?S.ausente:S.base;
+        const heS=noLaboral?S.noLab+heStyle(cels[3]):ausente?S.ausente:S.base+heStyle(cels[3]);
+        html+=`<td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td><td style="${heS}">${typeof cels[3]==='number'?cels[3].toFixed(1):''}</td>`;
       });
       html+=`</tr>`;
     });
