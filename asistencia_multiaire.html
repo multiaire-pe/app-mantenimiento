@@ -701,7 +701,7 @@ function calcHorasExtra(entrada,salida,fecha) {
   const esSabado=d.getDay()===6;
   const base=esSabado?4.5:9.5;
   const extra=total-base;
-  return extra>0?Math.round(extra*100)/100:0;
+  return Math.round(extra*100)/100;
 }
 
 function isFeriado(fecha){return feriados.includes(fecha);}
@@ -876,7 +876,8 @@ function renderTodayTable() {
       else sinReg++;
     } else sinReg++;
     const regId=reg?`'${reg.id}'`:'null';
-    const heColor=heStr!=='—'&&heStr!=='0.0h'?'color:var(--orange);font-weight:700':'color:var(--muted)';
+    const _heVal=heStr!=='—'?parseFloat(heStr):null;
+    const heColor=_heVal==null?'color:var(--muted)':_heVal<0?'color:var(--red);font-weight:700':_heVal>0?'color:var(--orange);font-weight:700':'color:var(--muted)';
     const manualBadge=heManual?'<span class="he-manual-badge">M</span>':'';
     return`<div class="table-row" onclick="openEditReg(${regId},'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo||'')}','${todayKey()}')">
       <div style="font-size:13px;font-weight:600">${escHtml(c.nombre)}</div>
@@ -1159,11 +1160,11 @@ async function loadVistaES() {
           heManual=he.manual;
           heStr=he.val!=null?he.val.toFixed(1):'—';
           estadoStr=reg.estado||'A';
-          if(heVal&&heVal>0)totalHE+=heVal;
+          if(heVal!=null)totalHE+=heVal;
         } else if(f<=todayKey()){
           estadoStr='X';// Falta
         }
-        const heColor=heVal&&heVal>0?'color:var(--orange);font-weight:700':'';
+        const heColor=heVal==null?'':heVal<0?'color:var(--red);font-weight:700':heVal>0?'color:var(--orange);font-weight:700':'';
         const manualBadge=heManual?'<span class="he-manual-badge">M</span>':'';
         const regIdParam=reg?`'${reg.id}'`:'null';
         html+=`<div class="es-table-row" onclick="openEditReg(${regIdParam},'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">
@@ -1176,7 +1177,8 @@ async function loadVistaES() {
           <div style="font-size:11px;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(reg?.observacion||'')}</div>
         </div>`;
       });
-      html+=`<div class="es-total-row"><span>Total H. Extra del período:</span><span style="color:var(--orange);font-family:var(--mono)">${totalHE.toFixed(1)}h</span></div>`;
+      const totalColor=totalHE<0?'var(--red)':totalHE>0?'var(--orange)':'var(--muted)';
+      html+=`<div class="es-total-row"><span>Total H. Extra del período:</span><span style="color:${totalColor};font-family:var(--mono)">${totalHE.toFixed(1)}h</span></div>`;
       html+='</div>';
     });
     content.innerHTML=html||'<div class="empty-state"><div class="empty-text">Sin datos en el rango</div></div>';
@@ -1205,7 +1207,7 @@ async function loadResumen() {
         const he=getHeValue(r);
         heTotal+=(he.val||0);
       });
-      const heColor=heTotal>0?'color:var(--orange);font-weight:700':'';
+      const heColor=heTotal<0?'color:var(--red);font-weight:700':heTotal>0?'color:var(--orange);font-weight:700':'';
       html+=`<div class="resumen-table-row">
         <div><div style="font-weight:600;font-size:13px">${escHtml(c.nombre)}</div><div style="font-size:10px;color:var(--muted2)">${escHtml(c.cargo)}</div></div>
         <div style="font-family:var(--mono)">${diasTrab}</div>
