@@ -1344,79 +1344,101 @@ async function exportESExcel() {
   const regs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.fecha>=desde&&r.fecha<=hasta);
   const colabs=colabFiltro?allColabs.filter(c=>c.id===colabFiltro):allColabs.filter(c=>c.activo);
   const hoy=todayKey();
-  // Todas las fechas del rango (incluyendo domingos y feriados)
   const fechas=[];
   let cur=new Date(desde+'T12:00:00'),end=new Date(hasta+'T12:00:00');
   while(cur<=end){fechas.push(cur.toISOString().slice(0,10));cur=new Date(cur.getTime()+86400000);}
 
   function heNoShow(f){return new Date(f+'T12:00:00').getDay()===6?-4.5:-8;}
   function celdasColab(c,f){
-    const d=new Date(f+'T12:00:00'),dow=d.getDay();
+    const dow=new Date(f+'T12:00:00').getDay();
     const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
-    if(dow===0||isFeriado(f))return['','','',0];         // domingo o feriado
-    if(reg){
-      const he=getHeValue(reg);
-      return[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:''];
-    }
-    if(f<=hoy){const h=heNoShow(f);return['X','','',h];}
-    return['','','',''];
+    if(dow===0||isFeriado(f))return{noLaboral:true,cels:['','','',0]};
+    if(reg){const he=getHeValue(reg);return{cels:[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:'']};}
+    if(f<=hoy){return{ausente:true,cels:['X','','',heNoShow(f)]};}
+    return{cels:['','','','']};
   }
 
-  const wb=XLSX.utils.book_new();
+  // Estilos inline para el HTML→XLS
+  const S={
+    base:'font-family:Arial,sans-serif;font-size:10px;border:1px solid #c0cce0;padding:4px 6px;text-align:center;vertical-align:middle;',
+    hColab:'background:#1B3F8B;color:#fff;font-weight:bold;font-size:11px;text-align:center;border:1px solid #0f2860;padding:5px 8px;',
+    hSub:'background:#d0daf0;color:#1a2540;font-weight:bold;font-size:9px;text-align:center;border:1px solid #b0bcd8;padding:4px 6px;text-transform:uppercase;letter-spacing:.05em;',
+    fecha:'background:#f5f8ff;font-weight:600;text-align:left;border:1px solid #c0cce0;padding:4px 8px;white-space:nowrap;',
+    dia:'background:#f5f8ff;color:#4a5a7a;text-align:left;border:1px solid #c0cce0;padding:4px 8px;',
+    noLab:'background:#FDE8C8;color:#8a5a00;font-weight:600;text-align:center;border:1px solid #e8c898;padding:4px 6px;',
+    ausente:'background:#fdf0f2;color:#c02030;font-weight:700;border:1px solid #e8b0b8;padding:4px 6px;text-align:center;',
+    hePos:'color:#b86000;font-weight:700;',
+    heNeg:'color:#c02030;font-weight:700;',
+    total:'background:#1B3F8B;color:#fff;font-weight:bold;border:1px solid #0f2860;padding:5px 6px;text-align:center;',
+    totalLbl:'background:#1B3F8B;color:#fff;font-weight:bold;border:1px solid #0f2860;padding:5px 8px;text-align:right;',
+  };
+
+  function heStyle(v){return typeof v==='number'&&v<0?S.heNeg:typeof v==='number'&&v>0?S.hePos:'';}
+  function fmtFecha(f){const[y,m,d]=f.split('-');return`${d}/${m}/${y}`;}
+
+  let html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Consolidado</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
+<body><table style="border-collapse:collapse;width:100%">`;
+
   if(colabFiltro){
-    // Un solo colaborador
     const c=colabs[0];
-    const header1=['Fecha','Día','Estado','Ingreso','Salida','H. Extra'];
-    const rows=[header1];
+    // Cabecera colaborador
+    html+=`<tr><th colspan="6" style="${S.hColab}">${escHtml(c.nombre)} — ${escHtml(c.cargo||'')}</th></tr>`;
+    html+=`<tr><th style="${S.hSub}">Fecha</th><th style="${S.hSub}">Día</th><th style="${S.hSub}">Estado</th><th style="${S.hSub}">Ingreso</th><th style="${S.hSub}">Salida</th><th style="${S.hSub}">H. Extra</th></tr>`;
     let total=0;
     fechas.forEach(f=>{
-      const d=new Date(f+'T12:00:00');
-      const[,m,dd]=f.split('-');
-      const cels=celdasColab(c,f);
+      const dow=new Date(f+'T12:00:00').getDay();
+      const noLab=dow===0||isFeriado(f);
+      const {cels,ausente}=celdasColab(c,f);
       if(typeof cels[3]==='number')total+=cels[3];
-      rows.push([`${dd}/${m}/${f.slice(0,4)}`,DIAS_ES[d.getDay()],...cels]);
+      const rs=noLab?S.noLab:ausente?S.ausente:S.base;
+      const heS=noLab?S.noLab:ausente?S.ausente:S.base+heStyle(cels[3]);
+      html+=`<tr>
+        <td style="${S.fecha}${noLab?'background:#FDE8C8;':ausente?'background:#fdf0f2;':''}">${fmtFecha(f)}</td>
+        <td style="${S.dia}${noLab?'background:#FDE8C8;':ausente?'background:#fdf0f2;':''}">${DIAS_ES[new Date(f+'T12:00:00').getDay()]}</td>
+        <td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td>
+        <td style="${heS}">${typeof cels[3]==='number'?cels[3]:cels[3]}</td></tr>`;
     });
-    rows.push([]);
-    rows.push(['','','','','TOTAL H.E.:',total.toFixed(1)]);
-    const ws=XLSX.utils.aoa_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb,ws,c.nombre.substring(0,31).replace(/[/\\?*[\]]/g,''));
-    XLSX.writeFile(wb,`Vista_ES_${c.nombre.replace(/[^a-zA-Z0-9]/g,'_')}_${desde}_${hasta}.xlsx`);
+    html+=`<tr><td colspan="4"></td><td style="${S.totalLbl}">TOTAL H.E.</td><td style="${S.total}${heStyle(total)}">${total.toFixed(1)}</td></tr>`;
   } else {
-    // Todos los colaboradores — tabla pivote horizontal
-    // Fila 1: Fecha | Día | NombreColab (x4 cols) | NombreColab (x4 cols) ...
-    // Fila 2: (blank) | (blank) | Estado | Ingreso | Salida | H.Extra | ...
-    const row1=['Fecha','Día'];
-    const row2=['',''];
-    const merges=[]; // para fusionar celdas de nombre
-    let col=2;
-    colabs.forEach(c=>{
-      row1.push(c.nombre,'','','');
-      row2.push('Estado','Ingreso','Salida','H. Extra');
-      merges.push({s:{r:0,c:col},e:{r:0,c:col+3}});
-      col+=4;
-    });
-    const dataRows=[];
+    // Pivote horizontal
     const totales=new Array(colabs.length).fill(0);
+    html+=`<tr><th style="${S.hSub}">Fecha</th><th style="${S.hSub}">Día</th>`;
+    colabs.forEach(c=>html+=`<th colspan="4" style="${S.hColab}">${escHtml(c.nombre)}</th>`);
+    html+=`</tr><tr><th style="${S.hSub}"></th><th style="${S.hSub}"></th>`;
+    colabs.forEach(()=>html+=`<th style="${S.hSub}">Estado</th><th style="${S.hSub}">Ingreso</th><th style="${S.hSub}">Salida</th><th style="${S.hSub}">H. Extra</th>`);
+    html+=`</tr>`;
     fechas.forEach(f=>{
-      const d=new Date(f+'T12:00:00');
-      const[,m,dd]=f.split('-');
-      const fila=[`${dd}/${m}/${f.slice(0,4)}`,DIAS_ES[d.getDay()]];
+      const dow=new Date(f+'T12:00:00').getDay();
+      const noLab=dow===0||isFeriado(f);
+      const rowBg=noLab?'background:#FDE8C8;':'';
+      html+=`<tr><td style="${S.fecha}${rowBg}">${fmtFecha(f)}</td><td style="${S.dia}${rowBg}">${DIAS_ES[dow]}</td>`;
       colabs.forEach((c,i)=>{
-        const cels=celdasColab(c,f);
+        const {cels,noLaboral,ausente}=celdasColab(c,f);
         if(typeof cels[3]==='number')totales[i]+=cels[3];
-        fila.push(...cels);
+        if(noLaboral){html+=`<td colspan="4" style="${S.noLab}"></td>`;return;}
+        const rs=ausente?S.ausente:S.base;
+        const heS=ausente?S.ausente:S.base+heStyle(cels[3]);
+        html+=`<td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td><td style="${heS}">${typeof cels[3]==='number'?cels[3]:cels[3]}</td>`;
       });
-      dataRows.push(fila);
+      html+=`</tr>`;
     });
-    // Fila de totales
-    const filaTotal=['',''];
-    colabs.forEach((_,i)=>filaTotal.push('','','TOTAL H.E.:',totales[i].toFixed(1)));
-    const rows=[row1,row2,...dataRows,filaTotal];
-    const ws=XLSX.utils.aoa_to_sheet(rows);
-    ws['!merges']=merges;
-    XLSX.utils.book_append_sheet(wb,ws,'Consolidado');
-    XLSX.writeFile(wb,`Vista_ES_Consolidado_${desde}_${hasta}.xlsx`);
+    html+=`<tr><td colspan="2" style="${S.totalLbl}">TOTAL H.E.</td>`;
+    colabs.forEach((_,i)=>{
+      const t=totales[i];
+      html+=`<td colspan="3" style="${S.totalLbl}"></td><td style="${S.total}${heStyle(t)}">${t.toFixed(1)}</td>`;
+    });
+    html+=`</tr>`;
   }
+  html+=`</table></body></html>`;
+
+  const blob=new Blob(['﻿',html],{type:'application/vnd.ms-excel;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=colabFiltro?`Vista_ES_${colabs[0].nombre.replace(/[^a-zA-Z0-9]/g,'_')}_${desde}_${hasta}.xls`:`Vista_ES_Consolidado_${desde}_${hasta}.xls`;
+  a.click();
+  URL.revokeObjectURL(url);
   toast('✓ Excel descargado','ok');
 }
 
