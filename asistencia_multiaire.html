@@ -1243,13 +1243,95 @@ function exportTAPDF() {
   w.document.close();
 }
 
-function exportESPDF() {
-  const content=document.getElementById('es-content').innerHTML;
-  if(!content||content.includes('empty-state')){toast('Genera la vista primero','err');return;}
+async function exportESPDF() {
+  const desde=document.getElementById('es-desde').value;
+  const hasta=document.getElementById('es-hasta').value;
+  const colabFiltro=document.getElementById('es-colab').value;
+  if(!desde||!hasta){toast('Genera la vista primero','err');return;}
+  const snap=await window.__db.collection('asistencia_registros').get();
+  const regs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.fecha>=desde&&r.fecha<=hasta);
+  const colabs=colabFiltro?allColabs.filter(c=>c.id===colabFiltro):allColabs.filter(c=>c.activo);
+  const fechas=[];
+  let cur=new Date(desde+'T12:00:00'),end=new Date(hasta+'T12:00:00');
+  while(cur<=end){const f=cur.toISOString().slice(0,10);if(!esDiaNoLaboral(f))fechas.push(f);cur=new Date(cur.getTime()+86400000);}
+  const hoy=todayKey();
+
+  // Calcular totales HE por colaborador
+  const totales={};
+  colabs.forEach(c=>{
+    let t=0;
+    fechas.forEach(f=>{
+      const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
+      if(reg){const he=getHeValue(reg);if(he.val!=null)t+=he.val;}
+      else if(f<=hoy)t+=-8;
+    });
+    totales[c.id]=t;
+  });
+
+  // Cabecera con nombres de colaboradores
+  const thColabs=colabs.map(c=>`<th colspan="3" style="background:#1B3F8B;color:#fff;text-align:center;padding:6px 4px;font-size:9px;border-right:2px solid #fff">${c.nombre}</th>`).join('');
+  const thSub=colabs.map(()=>`<th>E</th><th>S</th><th>HE</th>`).join('');
+
+  // Filas de fechas
+  const filas=fechas.map(f=>{
+    const d=new Date(f+'T12:00:00');
+    const [,m,dd]=f.split('-');
+    const celdas=colabs.map(c=>{
+      const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
+      if(reg){
+        const he=getHeValue(reg);
+        const heStr=he.val!=null?he.val.toFixed(1):'—';
+        const heColor=he.val!=null&&he.val<0?'color:#d63344;font-weight:700':he.val>0?'color:#e07020;font-weight:700':'';
+        if(reg.estado==='DM')return`<td colspan="3" style="text-align:center;background:#f0eeff;color:#6030a0;font-weight:700">DM</td>`;
+        if(reg.estado==='P')return`<td colspan="3" style="text-align:center;background:#eef8ff;color:#1B3F8B;font-weight:700">P</td>`;
+        if(reg.estado==='F')return`<td style="color:#888">—</td><td style="color:#888">—</td><td style="color:#d63344;font-weight:700">-8.0</td>`;
+        return`<td>${reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'—'}</td><td>${reg.horaSalida!=null?decimalToHora(reg.horaSalida):'—'}</td><td style="${heColor}">${heStr}</td>`;
+      } else if(f<=hoy){
+        return`<td colspan="3" style="text-align:center;background:#fdf0f2;color:#d63344;font-weight:700">X / -8</td>`;
+      }
+      return`<td>—</td><td>—</td><td>—</td>`;
+    }).join('');
+    return`<tr><td style="font-family:monospace;white-space:nowrap">${dd}/${m}</td><td style="color:#666">${DIAS_CORTO[d.getDay()]}</td>${celdas}</tr>`;
+  }).join('');
+
+  // Fila de totales
+  const filaTotales=colabs.map(c=>{
+    const t=totales[c.id];
+    const col=t<0?'color:#d63344':t>0?'color:#e07020':'';
+    return`<td colspan="3" style="text-align:center;font-weight:700;${col}">${t.toFixed(1)}h</td>`;
+  }).join('');
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Asistencia E/S</title>
+  <style>
+    @page{size:landscape;margin:12mm}
+    body{font-family:Arial,sans-serif;font-size:10px;color:#1a2540}
+    h3{margin:0 0 8px;font-size:13px;color:#1B3F8B}
+    .sub{font-size:10px;color:#666;margin-bottom:12px}
+    table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #d0daf0;padding:4px 5px;text-align:center;white-space:nowrap}
+    th{background:#e8eef8;font-size:8px;text-transform:uppercase;color:#4a5a7a}
+    tr:nth-child(even) td{background:#f8faff}
+    .td-fecha{text-align:left;font-size:9px;font-weight:600}
+    .td-dia{color:#888;font-size:9px}
+    .tot-row td{background:#f0f4fa;font-size:10px;border-top:2px solid #1B3F8B}
+  </style></head><body>
+  <h3>Registro de Asistencia — E/S</h3>
+  <div class="sub">${desde} → ${hasta}</div>
+  <table>
+    <thead>
+      <tr><th rowspan="2" class="td-fecha">Fecha</th><th rowspan="2" class="td-dia">Día</th>${thColabs}</tr>
+      <tr>${thSub}</tr>
+    </thead>
+    <tbody>
+      ${filas}
+      <tr class="tot-row"><td colspan="2" style="text-align:right;font-weight:700">TOTAL H.E.</td>${filaTotales}</tr>
+    </tbody>
+  </table>
+  <script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script>
+  </body></html>`;
+
   const w=window.open('','_blank');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vista E/S</title>
-  <style>body{font-family:Arial,sans-serif;font-size:11px;color:#1a2540}.es-colab-block{margin-bottom:24px;border:1px solid #d0daf0;border-radius:8px;overflow:hidden;page-break-inside:avoid}.es-colab-header{background:#1B3F8B;color:#fff;padding:10px 14px;display:flex;justify-content:space-between}.es-colab-name{font-size:13px;font-weight:700}.es-colab-cargo{font-size:10px;opacity:.75}.es-table-head{display:grid;grid-template-columns:.8fr .7fr .6fr 1fr 1fr 1fr;padding:7px 14px;background:#e8eef8;font-size:9px;font-weight:700;text-transform:uppercase;color:#6a7a9a}.es-table-row{display:grid;grid-template-columns:.8fr .7fr .6fr 1fr 1fr 1fr;padding:7px 14px;border-bottom:1px solid #e8eef8;font-size:11px}.es-total-row{display:flex;justify-content:flex-end;padding:8px 14px;background:#f5f8ff;border-top:2px solid #d0daf0;font-weight:700;gap:10px}.badge{display:inline-flex;padding:2px 7px;border-radius:10px;font-size:9px;font-weight:700}.badge-ausente{background:#fdf0f2;color:#d63344}.badge-fuera{background:#e8eef8;color:#1B3F8B}.he-manual-badge{font-size:8px;background:#fff3eb;color:#d4621a;border:1px solid #f0c09a;border-radius:3px;padding:1px 4px;margin-left:2px}</style>
-  </head><body>${content}<script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
+  w.document.write(html);
   w.document.close();
 }
 
