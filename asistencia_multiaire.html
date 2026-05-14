@@ -1260,16 +1260,20 @@ async function exportESExcel() {
   const colabFiltro=document.getElementById('es-colab').value;
   if(!desde||!hasta){toast('Genera la vista primero','err');return;}
   const snap=await window.__db.collection('asistencia_registros').get();
-  let regs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.fecha>=desde&&r.fecha<=hasta);
+  const regs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.fecha>=desde&&r.fecha<=hasta);
   const colabs=colabFiltro?allColabs.filter(c=>c.id===colabFiltro):allColabs.filter(c=>c.activo);
   const fechas=[];
   let cur=new Date(desde+'T12:00:00');
   const end=new Date(hasta+'T12:00:00');
   while(cur<=end){fechas.push(cur.toISOString().slice(0,10));cur=new Date(cur.getTime()+86400000);}
+  const hoy=todayKey();
   const wb=XLSX.utils.book_new();
-  colabs.forEach(c=>{
+
+  if(colabFiltro){
+    // Un solo colaborador — una hoja, sin columna Colaborador
+    const c=colabs[0];
     const cRegs=regs.filter(r=>r.colabId===c.id);
-    const rows=[['Fecha','Día','Estado','Entrada','Salida','Horas Extra','Manual','Comentario']];
+    const rows=[['Fecha','Día','Estado','Entrada','Salida','H. Extra']];
     let totalHE=0;
     fechas.forEach(f=>{
       if(new Date(f+'T12:00:00').getDay()===0||isFeriado(f))return;
@@ -1278,19 +1282,45 @@ async function exportESExcel() {
       if(reg){
         const he=getHeValue(reg);
         if(he.val!=null)totalHE+=he.val;
-        rows.push([f,DIAS_ES[d.getDay()],reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:'',he.manual?'SÍ':'NO',reg.observacion||'']);
-      } else if(f<=todayKey()){
-        rows.push([f,DIAS_ES[d.getDay()],'F','','','','','']);
+        rows.push([f,DIAS_ES[d.getDay()],reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:'']);
+      } else if(f<=hoy){
+        totalHE+=-8;
+        rows.push([f,DIAS_ES[d.getDay()],'X','','','-8']);
       }
     });
     rows.push([]);
-    rows.push(['','','','','','TOTAL H.E.:',totalHE.toFixed(1),'']);
+    rows.push(['','','','','TOTAL H.E.:',totalHE.toFixed(1)]);
     const ws=XLSX.utils.aoa_to_sheet(rows);
-    const sheetName=c.nombre.substring(0,31).replace(/[/\\?*[\]]/g,'');
-    XLSX.utils.book_append_sheet(wb,ws,sheetName);
-  });
-  const colabSuffix=colabFiltro&&colabs.length===1?'_'+colabs[0].nombre.replace(/[^a-zA-Z0-9]/g,'_'):'';
-  XLSX.writeFile(wb,`Vista_ES${colabSuffix}_${desde}_${hasta}.xlsx`);
+    XLSX.utils.book_append_sheet(wb,ws,c.nombre.substring(0,31).replace(/[/\\?*[\]]/g,''));
+    XLSX.writeFile(wb,`Vista_ES_${c.nombre.replace(/[^a-zA-Z0-9]/g,'_')}_${desde}_${hasta}.xlsx`);
+  } else {
+    // Todos los colaboradores — una sola hoja consolidada
+    const rows=[['Colaborador','Fecha','Día','Estado','Entrada','Salida','H. Extra']];
+    colabs.forEach(c=>{
+      const cRegs=regs.filter(r=>r.colabId===c.id);
+      let totalHE=0;
+      const colabRows=[];
+      fechas.forEach(f=>{
+        if(new Date(f+'T12:00:00').getDay()===0||isFeriado(f))return;
+        const reg=cRegs.find(r=>r.fecha===f);
+        const d=new Date(f+'T12:00:00');
+        if(reg){
+          const he=getHeValue(reg);
+          if(he.val!=null)totalHE+=he.val;
+          colabRows.push([c.nombre,f,DIAS_ES[d.getDay()],reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:'']);
+        } else if(f<=hoy){
+          totalHE+=-8;
+          colabRows.push([c.nombre,f,DIAS_ES[d.getDay()],'X','','','-8']);
+        }
+      });
+      colabRows.push(['','','','','','TOTAL H.E.:',totalHE.toFixed(1)]);
+      colabRows.forEach(r=>rows.push(r));
+      rows.push([]); // separador entre colaboradores
+    });
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb,ws,'Consolidado');
+    XLSX.writeFile(wb,`Vista_ES_Consolidado_${desde}_${hasta}.xlsx`);
+  }
   toast('✓ Excel descargado','ok');
 }
 
