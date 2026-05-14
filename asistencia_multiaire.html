@@ -1264,7 +1264,7 @@ async function exportESExcel() {
       const d=new Date(f+'T12:00:00');
       if(reg){
         const he=getHeValue(reg);
-        if(he.val&&he.val>0)totalHE+=he.val;
+        if(he.val!=null)totalHE+=he.val;
         rows.push([f,DIAS_ES[d.getDay()],reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:'',he.manual?'SÍ':'NO',reg.observacion||'']);
       } else if(f<=todayKey()){
         rows.push([f,DIAS_ES[d.getDay()],'F','','','','','']);
@@ -1276,7 +1276,8 @@ async function exportESExcel() {
     const sheetName=c.nombre.substring(0,31).replace(/[/\\?*[\]]/g,'');
     XLSX.utils.book_append_sheet(wb,ws,sheetName);
   });
-  XLSX.writeFile(wb,`Vista_ES_${desde}_${hasta}.xlsx`);
+  const colabSuffix=colabFiltro&&colabs.length===1?'_'+colabs[0].nombre.replace(/[^a-zA-Z0-9]/g,'_'):'';
+  XLSX.writeFile(wb,`Vista_ES${colabSuffix}_${desde}_${hasta}.xlsx`);
   toast('✓ Excel descargado','ok');
 }
 
