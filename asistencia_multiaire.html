@@ -1172,7 +1172,7 @@ async function loadVistaES() {
         html+=`<div class="es-table-row" onclick="openEditReg(${regIdParam},'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">
           <div style="font-family:var(--mono);font-size:11px">${fechaStr}</div>
           <div style="font-size:11px;color:var(--muted2)">${diaStr}</div>
-          <div><span class="badge ${estadoStr==='X'?'badge-ausente':estadoStr==='A'||estadoStr==='DM'||estadoStr==='P'?'badge-fuera':''}">${estadoStr}</span></div>
+          <div><span class="badge ${estadoStr==='X'||estadoStr==='F'?'badge-ausente':estadoStr==='A'||estadoStr==='DM'||estadoStr==='P'?'badge-fuera':''}">${estadoStr}</span></div>
           <div style="font-family:var(--mono);font-size:12px">${entStr}</div>
           <div style="font-family:var(--mono);font-size:12px">${salStr}</div>
           <div style="font-family:var(--mono);font-size:12px;${heColor}">${heStr}${manualBadge}</div>
@@ -1200,7 +1200,7 @@ async function loadResumen() {
     const activos=allColabs.filter(c=>c.activo);
     let html='';
     activos.forEach(c=>{
-      const cRegs=regs.filter(r=>r.colabId===c.id&&(r.estado==='A'||!r.estado));
+      const cRegs=regs.filter(r=>r.colabId===c.id&&(r.estado==='A'||r.estado==='F'||!r.estado));
       let diasTrab=0,heAuto=0,heTotal=0;
       cRegs.forEach(r=>{
         if(r.horaEntrada!=null&&r.horaSalida!=null)diasTrab++;
