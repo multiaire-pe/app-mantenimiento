@@ -1164,7 +1164,8 @@ async function loadVistaES() {
           estadoStr=reg.estado||'A';
           if(heVal!=null)totalHE+=heVal;
         } else if(f<=todayKey()){
-          estadoStr='X';// Falta
+          estadoStr='X';
+          heVal=-8;heStr='-8.0';totalHE+=-8;
         }
         const heColor=heVal==null?'':heVal<0?'color:var(--red);font-weight:700':heVal>0?'color:var(--orange);font-weight:700':'';
         const manualBadge=heManual?'<span class="he-manual-badge">M</span>':'';
@@ -1199,6 +1200,11 @@ async function loadResumen() {
     const regs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.fecha>=desde&&r.fecha<=hasta);
     const activos=allColabs.filter(c=>c.activo);
     let html='';
+    // Días laborables del rango (lun–sáb, sin feriados)
+    const diasRango=[];
+    {let cur=new Date(desde+'T12:00:00'),end=new Date(hasta+'T12:00:00');
+    while(cur<=end){const f=cur.toISOString().slice(0,10);if(!esDiaNoLaboral(f))diasRango.push(f);cur=new Date(cur.getTime()+86400000);}}
+    const hoy=todayKey();
     activos.forEach(c=>{
       const cRegs=regs.filter(r=>r.colabId===c.id&&(r.estado==='A'||r.estado==='F'||!r.estado));
       let diasTrab=0,heAuto=0,heTotal=0;
@@ -1208,6 +1214,12 @@ async function loadResumen() {
         heAuto+=autoVal;
         const he=getHeValue(r);
         heTotal+=(he.val||0);
+      });
+      // Días sin registro (pasados) = -8 cada uno
+      diasRango.forEach(f=>{
+        if(f>hoy)return;
+        const tieneReg=regs.some(r=>r.colabId===c.id&&r.fecha===f);
+        if(!tieneReg){heTotal+=-8;}
       });
       const heColor=heTotal<0?'color:var(--red);font-weight:700':heTotal>0?'color:var(--orange);font-weight:700':'';
       html+=`<div class="resumen-table-row">
