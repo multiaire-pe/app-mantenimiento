@@ -1251,82 +1251,95 @@ async function exportESPDF() {
   const snap=await window.__db.collection('asistencia_registros').get();
   const regs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>r.fecha>=desde&&r.fecha<=hasta);
   const colabs=colabFiltro?allColabs.filter(c=>c.id===colabFiltro):allColabs.filter(c=>c.activo);
+  const hoy=todayKey();
   const fechas=[];
   let cur=new Date(desde+'T12:00:00'),end=new Date(hasta+'T12:00:00');
-  while(cur<=end){const f=cur.toISOString().slice(0,10);if(!esDiaNoLaboral(f))fechas.push(f);cur=new Date(cur.getTime()+86400000);}
-  const hoy=todayKey();
+  while(cur<=end){fechas.push(cur.toISOString().slice(0,10));cur=new Date(cur.getTime()+86400000);}
 
-  // Calcular totales HE por colaborador
-  const totales={};
-  colabs.forEach(c=>{
-    let t=0;
+  function heNoShow(f){return new Date(f+'T12:00:00').getDay()===6?-4.5:-8;}
+  function fmtFecha(f){const[y,m,d]=f.split('-');return`${d}/${m}/${y}`;}
+  function heColor(v){return typeof v==='number'&&v<0?'color:#c02030;font-weight:700':typeof v==='number'&&v>0?'color:#b86000;font-weight:700':'';}
+
+  function celdasColab(c,f){
+    const dow=new Date(f+'T12:00:00').getDay();
+    const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
+    if(dow===0||isFeriado(f))return{noLaboral:true,cels:['','','',null]};
+    if(reg){const he=getHeValue(reg);return{cels:[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val]};}
+    if(f<=hoy){return{ausente:true,cels:['X','','',heNoShow(f)]};}
+    return{cels:['','','',null]};
+  }
+
+  // Estilos comunes
+  const base='border:1px solid #d0daf0;padding:3px 5px;text-align:center;white-space:nowrap;font-size:9px;';
+  const hColab='background:#1B3F8B;color:#fff;font-weight:bold;font-size:9px;text-align:center;border:1px solid #0f2860;padding:4px 6px;';
+  const hSub='background:#d0daf0;color:#1a2540;font-weight:bold;font-size:8px;text-align:center;border:1px solid #b0bcd8;padding:3px 5px;text-transform:uppercase;letter-spacing:.04em;';
+  const noLab='background:#FDE8C8;color:#8a5a00;font-weight:600;text-align:center;border:1px solid #e8c898;padding:3px 5px;font-size:9px;';
+  const ausente='background:#fdf0f2;color:#c02030;font-weight:700;border:1px solid #e8b0b8;padding:3px 5px;text-align:center;font-size:9px;';
+  const totCell='background:#1B3F8B;color:#fff;font-weight:bold;border:1px solid #0f2860;padding:4px 5px;text-align:center;font-size:9px;';
+  const totLbl='background:#1B3F8B;color:#fff;font-weight:bold;border:1px solid #0f2860;padding:4px 8px;text-align:right;font-size:9px;';
+  const fechaSt='background:#f5f8ff;font-weight:600;text-align:left;border:1px solid #d0daf0;padding:3px 7px;white-space:nowrap;font-size:9px;';
+  const diaSt='background:#f5f8ff;color:#4a5a7a;text-align:left;border:1px solid #d0daf0;padding:3px 7px;font-size:9px;';
+
+  let tbody='',titulo='';
+  if(colabFiltro){
+    const c=colabs[0];
+    titulo=`${c.nombre} — ${c.cargo||''}`;
+    let total=0;
     fechas.forEach(f=>{
-      const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
-      if(reg){const he=getHeValue(reg);if(he.val!=null)t+=he.val;}
-      else if(f<=hoy)t+=-8;
+      const dow=new Date(f+'T12:00:00').getDay();
+      const noLbg=dow===0||isFeriado(f);
+      const {cels,ausente:aus}=celdasColab(c,f);
+      if(typeof cels[3]==='number')total+=cels[3];
+      const rs=noLbg?noLab:aus?ausente:base;
+      const heS=noLbg?noLab:aus?ausente:base+heColor(cels[3]);
+      const fBg=noLbg?'background:#FDE8C8;':aus?'background:#fdf0f2;':'';
+      tbody+=`<tr>
+        <td style="${fechaSt}${fBg}">${fmtFecha(f)}</td>
+        <td style="${diaSt}${fBg}">${DIAS_ES[dow]}</td>
+        <td style="${rs}">${cels[0]}</td>
+        <td style="${rs}">${cels[1]}</td>
+        <td style="${rs}">${cels[2]}</td>
+        <td style="${heS}">${typeof cels[3]==='number'?cels[3].toFixed(1):''}</td>
+      </tr>`;
     });
-    totales[c.id]=t;
-  });
-
-  // Cabecera con nombres de colaboradores
-  const thColabs=colabs.map(c=>`<th colspan="3" style="background:#1B3F8B;color:#fff;text-align:center;padding:6px 4px;font-size:9px;border-right:2px solid #fff">${c.nombre}</th>`).join('');
-  const thSub=colabs.map(()=>`<th>E</th><th>S</th><th>HE</th>`).join('');
-
-  // Filas de fechas
-  const filas=fechas.map(f=>{
-    const d=new Date(f+'T12:00:00');
-    const [,m,dd]=f.split('-');
-    const celdas=colabs.map(c=>{
-      const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
-      if(reg){
-        const he=getHeValue(reg);
-        const heStr=he.val!=null?he.val.toFixed(1):'—';
-        const heColor=he.val!=null&&he.val<0?'color:#d63344;font-weight:700':he.val>0?'color:#e07020;font-weight:700':'';
-        if(reg.estado==='DM')return`<td colspan="3" style="text-align:center;background:#f0eeff;color:#6030a0;font-weight:700">DM</td>`;
-        if(reg.estado==='P')return`<td colspan="3" style="text-align:center;background:#eef8ff;color:#1B3F8B;font-weight:700">P</td>`;
-        if(reg.estado==='F')return`<td style="color:#888">—</td><td style="color:#888">—</td><td style="color:#d63344;font-weight:700">-8.0</td>`;
-        return`<td>${reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'—'}</td><td>${reg.horaSalida!=null?decimalToHora(reg.horaSalida):'—'}</td><td style="${heColor}">${heStr}</td>`;
-      } else if(f<=hoy){
-        return`<td colspan="3" style="text-align:center;background:#fdf0f2;color:#d63344;font-weight:700">X / -8</td>`;
-      }
-      return`<td>—</td><td>—</td><td>—</td>`;
-    }).join('');
-    return`<tr><td style="font-family:monospace;white-space:nowrap">${dd}/${m}</td><td style="color:#666">${DIAS_CORTO[d.getDay()]}</td>${celdas}</tr>`;
-  }).join('');
-
-  // Fila de totales
-  const filaTotales=colabs.map(c=>{
-    const t=totales[c.id];
-    const col=t<0?'color:#d63344':t>0?'color:#e07020':'';
-    return`<td colspan="3" style="text-align:center;font-weight:700;${col}">${t.toFixed(1)}h</td>`;
-  }).join('');
+    const tS=totCell+heColor(total);
+    tbody+=`<tr><td colspan="4"></td><td style="${totLbl}">TOTAL H.E.</td><td style="${tS}">${total.toFixed(1)}</td></tr>`;
+    var thead=`<tr><th colspan="6" style="${hColab}">${escHtml(c.nombre)} — ${escHtml(c.cargo||'')}</th></tr>
+      <tr><th style="${hSub}">Fecha</th><th style="${hSub}">Día</th><th style="${hSub}">Estado</th><th style="${hSub}">Ingreso</th><th style="${hSub}">Salida</th><th style="${hSub}">H. Extra</th></tr>`;
+  } else {
+    titulo='Consolidado — todos los colaboradores';
+    const totales=new Array(colabs.length).fill(0);
+    var thead=`<tr><th style="${hSub}"></th><th style="${hSub}"></th>${colabs.map(c=>`<th colspan="4" style="${hColab}">${escHtml(c.nombre)}</th>`).join('')}</tr>
+      <tr><th style="${hSub}">Fecha</th><th style="${hSub}">Día</th>${colabs.map(()=>`<th style="${hSub}">Estado</th><th style="${hSub}">Ingreso</th><th style="${hSub}">Salida</th><th style="${hSub}">H.E.</th>`).join('')}</tr>`;
+    fechas.forEach(f=>{
+      const dow=new Date(f+'T12:00:00').getDay();
+      const noLbg=dow===0||isFeriado(f);
+      const rowBg=noLbg?'background:#FDE8C8;':'';
+      let tr=`<tr><td style="${fechaSt}${rowBg}">${fmtFecha(f)}</td><td style="${diaSt}${rowBg}">${DIAS_ES[dow]}</td>`;
+      colabs.forEach((c,i)=>{
+        const {cels,noLaboral,ausente:aus}=celdasColab(c,f);
+        if(typeof cels[3]==='number')totales[i]+=cels[3];
+        if(noLaboral){tr+=`<td colspan="4" style="${noLab}"></td>`;return;}
+        const rs=aus?ausente:base;
+        const heS=aus?ausente:base+heColor(cels[3]);
+        tr+=`<td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td><td style="${heS}">${typeof cels[3]==='number'?cels[3].toFixed(1):''}</td>`;
+      });
+      tbody+=tr+`</tr>`;
+    });
+    tbody+=`<tr><td colspan="2" style="${totLbl}">TOTAL H.E.</td>${colabs.map((_,i)=>{const t=totales[i];return`<td colspan="3" style="${totLbl}"></td><td style="${totCell+heColor(t)}">${t.toFixed(1)}</td>`;}).join('')}</tr>`;
+  }
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Asistencia E/S</title>
   <style>
-    @page{size:landscape;margin:12mm}
-    body{font-family:Arial,sans-serif;font-size:10px;color:#1a2540}
-    h3{margin:0 0 8px;font-size:13px;color:#1B3F8B}
-    .sub{font-size:10px;color:#666;margin-bottom:12px}
+    @page{size:landscape;margin:10mm}
+    body{font-family:Arial,sans-serif;font-size:9px;color:#1a2540;margin:0}
+    h3{margin:0 0 4px;font-size:12px;color:#1B3F8B}
+    .sub{font-size:9px;color:#666;margin-bottom:10px}
     table{border-collapse:collapse;width:100%}
-    th,td{border:1px solid #d0daf0;padding:4px 5px;text-align:center;white-space:nowrap}
-    th{background:#e8eef8;font-size:8px;text-transform:uppercase;color:#4a5a7a}
-    tr:nth-child(even) td{background:#f8faff}
-    .td-fecha{text-align:left;font-size:9px;font-weight:600}
-    .td-dia{color:#888;font-size:9px}
-    .tot-row td{background:#f0f4fa;font-size:10px;border-top:2px solid #1B3F8B}
   </style></head><body>
   <h3>Registro de Asistencia — E/S</h3>
-  <div class="sub">${desde} → ${hasta}</div>
-  <table>
-    <thead>
-      <tr><th rowspan="2" class="td-fecha">Fecha</th><th rowspan="2" class="td-dia">Día</th>${thColabs}</tr>
-      <tr>${thSub}</tr>
-    </thead>
-    <tbody>
-      ${filas}
-      <tr class="tot-row"><td colspan="2" style="text-align:right;font-weight:700">TOTAL H.E.</td>${filaTotales}</tr>
-    </tbody>
-  </table>
+  <div class="sub">${titulo} · ${desde} → ${hasta}</div>
+  <table>${thead}<tbody>${tbody}</tbody></table>
   <script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script>
   </body></html>`;
 
