@@ -315,6 +315,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
         <button class="maestros-tab active" onclick="switchMaestroTab('personal')">Personal</button>
         <button class="maestros-tab" onclick="switchMaestroTab('tiendas')">Tiendas</button>
         <button class="maestros-tab" onclick="switchMaestroTab('grupos')">Grupos / Tipo de trabajo</button>
+        <button class="maestros-tab" onclick="switchMaestroTab('feriados')">Feriados</button>
       </div>
 
       <!-- PERSONAL -->
@@ -346,6 +347,17 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
           <button class="btn btn-orange" onclick="addGrupo()">+ Agregar</button>
         </div>
         <p style="font-size:11px;color:var(--muted2);margin-top:10px">Los colores se asignan automáticamente por nombre del grupo.</p>
+      </div>
+
+      <!-- FERIADOS -->
+      <div class="maestros-panel" id="panel-feriados">
+        <div class="maestros-list" id="feriados-list">Cargando...</div>
+        <div class="add-maestro-row">
+          <input type="text" id="new-fer-nombre" placeholder="Descripción (ej: Año Nuevo)..." style="flex:2">
+          <input type="date" id="new-fer-fecha" style="max-width:160px">
+          <button class="btn btn-orange" onclick="addFeriado()">+ Agregar</button>
+        </div>
+        <p style="font-size:11px;color:var(--muted2);margin-top:10px">Los feriados activos se excluyen del cálculo de días hábiles.</p>
       </div>
     </div>
   </div>
@@ -1114,21 +1126,23 @@ async function confirmImport() {
 
 
 // ── MAESTROS ──────────────────────────────────────────────────────────────────
-let maestrosData = { personal: [], tiendas: [], grupos: [] };
+let maestrosData = { personal: [], tiendas: [], grupos: [], feriados: [] };
 let maestrosChanged = false;
 
 async function loadMaestros() {
   try {
     const { getDocs, collection } = window.__fb;
-    const [pSnap, tSnap, gSnap] = await Promise.all([
+    const [pSnap, tSnap, gSnap, fSnap] = await Promise.all([
       getDocs(collection(window.__db, 'maestros_personal')),
       getDocs(collection(window.__db, 'maestros_tiendas')),
       getDocs(collection(window.__db, 'maestros_grupos')),
+      getDocs(collection(window.__db, 'maestros_feriados')),
     ]);
     const d = {
       personal: pSnap.docs.map(dd => dd.data()),
       tiendas: tSnap.docs.map(dd => dd.data()),
       grupos: gSnap.docs.map(dd => dd.data()),
+      feriados: fSnap.docs.map(dd => dd.data()),
     };
     // Include ALL personal/tiendas from sheet (activo or not)
     maestrosData.personal = (d.personal || []).map((p, i) => ({
@@ -1149,9 +1163,16 @@ async function loadMaestros() {
       grupo: String(g.grupo || '').trim(),
       activo: 'SI'
     })).filter(g => g.grupo);
+    maestrosData.feriados = (d.feriados || []).map((f, i) => ({
+      id: String(f.id || ('FER' + String(i+1).padStart(3,'0'))).trim(),
+      nombre: String(f.nombre || '').trim(),
+      fecha: String(f.fecha || '').trim(),
+      activo: String(f.activo || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI'
+    })).filter(f => f.nombre && f.fecha).sort((a, b) => a.fecha.localeCompare(b.fecha));
     renderPersonal();
     renderTiendas();
     renderGrupos();
+    renderFeriados();
   } catch(e) {
     toast('Error cargando maestros', 'err');
   }
@@ -1285,6 +1306,57 @@ function addGrupo() {
   renderGrupos();
 }
 
+function renderFeriados() {
+  const list = document.getElementById('feriados-list');
+  if (!maestrosData.feriados.length) { list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Sin feriados registrados</div>'; return; }
+  list.innerHTML = maestrosData.feriados.map((f, i) => {
+    const fechaDisplay = f.fecha ? new Date(f.fecha + 'T00:00:00').toLocaleDateString('es-PE', { day:'2-digit', month:'long', year:'numeric' }) : '';
+    return `<div class="maestro-item ${f.activo==='NO'?'inactive':''}">
+      <input class="maestro-input" type="text" value="${f.nombre}" onchange="updateFeriado(${i},'nombre',this.value)" placeholder="Descripción del feriado" style="flex:2">
+      <input type="date" value="${f.fecha}" onchange="updateFeriado(${i},'fecha',this.value)" style="width:150px;background:var(--surface);border:1.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--accent);outline:none;font-family:var(--mono)">
+      <span class="cargo-badge" style="background:var(--blue-pale);color:var(--blue);border:1px solid var(--border2);white-space:nowrap">${fechaDisplay}</span>
+      <button class="maestro-toggle" onclick="toggleFeriado(${i})" title="${f.activo==='SI'?'Desactivar':'Activar'}">${f.activo==='SI'?'✅':'⭕'}</button>
+      <button class="maestro-del" onclick="deleteFeriado(${i})" title="Eliminar">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function updateFeriado(i, field, value) {
+  maestrosData.feriados[i][field] = value;
+  maestrosChanged = true;
+  if (field === 'fecha') {
+    maestrosData.feriados.sort((a, b) => a.fecha.localeCompare(b.fecha));
+    renderFeriados();
+  }
+}
+
+function toggleFeriado(i) {
+  maestrosData.feriados[i].activo = maestrosData.feriados[i].activo === 'SI' ? 'NO' : 'SI';
+  maestrosChanged = true;
+  renderFeriados();
+}
+
+function deleteFeriado(i) {
+  if (!confirm('¿Eliminar feriado "' + maestrosData.feriados[i].nombre + '"?')) return;
+  maestrosData.feriados.splice(i, 1);
+  maestrosChanged = true;
+  renderFeriados();
+}
+
+function addFeriado() {
+  const nombre = document.getElementById('new-fer-nombre').value.trim();
+  const fecha = document.getElementById('new-fer-fecha').value;
+  if (!nombre) { toast('Ingresa la descripción del feriado', 'err'); return; }
+  if (!fecha) { toast('Selecciona una fecha', 'err'); return; }
+  const newId = 'FER' + String(Date.now()).slice(-6);
+  maestrosData.feriados.push({ id: newId, nombre, fecha, activo: 'SI' });
+  maestrosData.feriados.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  maestrosChanged = true;
+  document.getElementById('new-fer-nombre').value = '';
+  document.getElementById('new-fer-fecha').value = '';
+  renderFeriados();
+}
+
 function switchMaestroTab(tab) {
   document.querySelectorAll('.maestros-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.maestros-panel').forEach(p => p.classList.remove('active'));
@@ -1315,6 +1387,12 @@ async function saveMaestros() {
     ex3.docs.forEach(d=>b3.delete(d.ref));
     maestrosData.grupos.forEach(g=>{b3.set(doc(window.__db,'maestros_grupos',g.id),{id:g.id,grupo:g.grupo,activo:g.activo,obs:''});});
     await b3.commit();
+    // Save feriados
+    const b4 = writeBatch(window.__db);
+    const ex4 = await getDocs(collection(window.__db,'maestros_feriados'));
+    ex4.docs.forEach(d=>b4.delete(d.ref));
+    maestrosData.feriados.forEach(f=>{b4.set(doc(window.__db,'maestros_feriados',f.id),{id:f.id,nombre:f.nombre,fecha:f.fecha,activo:f.activo,obs:''});});
+    await b4.commit();
     maestrosChanged = false;
     toast('Maestros guardados ✓', 'ok');
   } catch(e) {
