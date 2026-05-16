@@ -1,0 +1,7 @@
+wsp_import/
+_chat.txt
+CLAUDE.md
+README.md
+*.py
+*.json
+!firebase-config.js

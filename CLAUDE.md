@@ -114,5 +114,10 @@ Script Python `importar_asistencia.py`:
 - Selector de colaborador: `<select>` dropdown (antes era search+grid)
 - `celdasColab()` — verifica registro Firestore ANTES de checar si es día no laboral
 
-## Última actualización
-2026-05-16
+## Changelog
+
+| Fecha | Cambio |
+|---|---|
+| 2026-05-16 | Importación masiva desde WhatsApp: 192 registros, período 2026-03-25 → 2026-05-14 |
+| 2026-05-16 | Creación de CLAUDE.md con documentación completa del proyecto |
+| 2026-05-16 | Configuración de Vercel — deploy en https://app-mantenimiento-pi.vercel.app, creado .vercelignore para excluir wsp_import y archivos pesados |
