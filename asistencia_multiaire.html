@@ -108,6 +108,8 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .badge-ausente{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
 .badge-dm{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
 .badge-permiso{background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-border)}
+.supervisor-mode .sidebar{display:none}
+.supervisor-mode #modal-edit-reg .btn-danger,.supervisor-mode #modal-edit-reg .btn-primary{display:none}
 /* HISTORIAL */
 .hist-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
 .hist-filter-input{background:var(--surface2);border:1.5px solid var(--border);color:var(--accent);font-family:var(--font);font-size:12px;padding:7px 10px;border-radius:6px;outline:none}
@@ -238,9 +240,10 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
       <input type="date" class="sb-input" id="sidebar-fecha" onchange="onSidebarFechaChange()">
 
       <div class="sb-label">Colaborador</div>
-      <select class="sb-input" id="reg-colab" onchange="selectColab(this.value)" style="margin-bottom:10px">
+      <select class="sb-input" id="reg-colab" onchange="selectColab(this.value)" style="margin-bottom:6px">
         <option value="">— Seleccionar colaborador —</option>
       </select>
+      <div id="colab-status" style="display:none;margin-bottom:10px"></div>
 
       <div class="reg-hora-row">
         <label>Hora:</label>
@@ -674,10 +677,15 @@ async function init() {
     await loadTodayData();
     document.getElementById('connPill').textContent='✓ Conectado';
     document.getElementById('connPill').classList.add('ok');
+    applyRoleRestrictions();
   } catch(e) {
     document.getElementById('connPill').textContent='✗ Error';
     toast('Error conectando al sistema','err');
   }
+}
+
+function applyRoleRestrictions() {
+  if(maUser?.rol==='SUPERVISOR')document.body.classList.add('supervisor-mode');
 }
 
 // ── UTILS ─────────────────────────────────────────────────────────────────────
@@ -829,9 +837,25 @@ function renderColabsGrid() {
   const activos=allColabs.filter(c=>c.activo);
   sel.innerHTML='<option value="">— Seleccionar colaborador —</option>'+
     activos.map(c=>`<option value="${c.id}"${c.id===selectedColabId?' selected':''}>${escHtml(c.nombre)} — ${escHtml(c.cargo)}</option>`).join('');
+  if(selectedColabId)selectColab(selectedColabId);
 }
 
-function selectColab(id){selectedColabId=id;}
+function selectColab(id) {
+  selectedColabId=id;
+  const el=document.getElementById('colab-status');
+  if(!el)return;
+  if(!id){el.style.display='none';return;}
+  const fecha=document.getElementById('sidebar-fecha').value||todayKey();
+  if(fecha!==todayKey()){el.style.display='none';return;}
+  const reg=todayRegs.find(r=>r.colabId===id);
+  if(!reg){el.innerHTML='<span style="font-size:11px;color:var(--muted2)">Sin registro hoy</span>';}
+  else if(reg.estado==='DM'){el.innerHTML='<span class="badge badge-dm">🏥 Desc. médico</span>';}
+  else if(reg.estado==='P'){el.innerHTML='<span class="badge badge-permiso">⚠️ Permiso</span>';}
+  else if(reg.estado==='F'){el.innerHTML='<span class="badge badge-ausente">✗ Falta</span>';}
+  else if(reg.horaEntrada!=null&&reg.horaSalida==null){el.innerHTML=`<span class="badge badge-dentro">▶ Entrada: ${decimalToHora(reg.horaEntrada)}</span>`;}
+  else if(reg.horaEntrada!=null&&reg.horaSalida!=null){el.innerHTML=`<span class="badge badge-fuera">■ Salida: ${decimalToHora(reg.horaSalida)}</span>`;}
+  el.style.display='block';
+}
 function getEstadoHoy(colabId){const reg=todayRegs.find(r=>r.colabId===colabId);if(!reg)return null;if(reg.horaEntrada&&!reg.horaSalida)return'DENTRO';if(reg.horaEntrada&&reg.horaSalida)return'SALIO';return null;}
 
 function populateColabSelects() {
@@ -859,6 +883,7 @@ function renderColabsManagerList() {
 function onSidebarFechaChange() {
   const fecha=document.getElementById('sidebar-fecha').value;
   if(fecha>todayKey()){document.getElementById('sidebar-fecha').value=todayKey();toast('No se puede registrar en fechas futuras','err');return;}
+  if(selectedColabId)selectColab(selectedColabId);
 }
 
 // ── REGISTROS ────────────────────────────────────────────────────────────────
@@ -991,6 +1016,9 @@ function openEditReg(regId,colabId,nombre,cargo,fecha) {
     fillEditModal(reg,fecha);
   }
   document.getElementById('modal-edit-reg').classList.add('open');
+  if(maUser?.rol==='SUPERVISOR'){
+    ['edit-reg-entrada','edit-reg-salida','edit-reg-estado','edit-reg-he-manual','edit-reg-he-is-manual','edit-reg-obs'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=true;});
+  }
 }
 
 function fillEditModal(reg,fecha) {
