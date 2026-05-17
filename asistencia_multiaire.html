@@ -1231,20 +1231,20 @@ async function loadResumen() {
     while(cur<=end){const f=cur.toISOString().slice(0,10);if(!esDiaNoLaboral(f))diasRango.push(f);cur=new Date(cur.getTime()+86400000);}}
     const hoy=todayKey();
     activos.forEach(c=>{
-      const cRegs=regs.filter(r=>r.colabId===c.id&&(r.estado==='A'||r.estado==='F'||!r.estado));
+      const cRegs=regs.filter(r=>r.colabId===c.id&&(r.estado==='A'||!r.estado)&&r.horaEntrada!=null&&r.horaSalida!=null);
       let diasTrab=0,heAuto=0,heTotal=0;
       cRegs.forEach(r=>{
-        if(r.horaEntrada!=null&&r.horaSalida!=null)diasTrab++;
+        diasTrab++;
         const autoVal=calcHorasExtra(r.horaEntrada,r.horaSalida,r.fecha)||0;
         heAuto+=autoVal;
         const he=getHeValue(r);
         heTotal+=(he.val||0);
       });
-      // Días sin registro (pasados) = -8 cada uno
+      // Ausencias: sin registro O Falta registrada = -8
       diasRango.forEach(f=>{
         if(f>hoy)return;
-        const tieneReg=regs.some(r=>r.colabId===c.id&&r.fecha===f);
-        if(!tieneReg){heTotal+=-8;}
+        const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
+        if(!reg||reg.estado==='F'){heTotal+=-8;}
       });
       const heColor=heTotal<0?'color:var(--red);font-weight:700':heTotal>0?'color:var(--orange);font-weight:700':'';
       html+=`<div class="resumen-table-row">
