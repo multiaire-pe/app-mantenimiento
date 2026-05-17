@@ -164,3 +164,5 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-17 | Corrige doble conteo de Faltas en Resumen H.E.: cRegs solo procesa días trabajados, diasRango maneja todas las ausencias |
 | 2026-05-17 | Corrige deleteReg: captura fecha antes de closeEditReg para evitar leer editRegData=null |
 | 2026-05-17 | Elimina variable dom duplicada en Vista T/A (condición f==='dom' nunca verdadera) |
+| 2026-05-17 | Confirmación antes de registrar DM/Permiso/Falta para evitar clicks accidentales |
+| 2026-05-17 | Tabla móvil: oculta columnas Cargo y Comentario en pantallas pequeñas |
