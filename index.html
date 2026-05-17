@@ -157,7 +157,7 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleString('es-PE',{weekday:'short',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
 tick();setInterval(tick,1000);
-if(location.hostname.includes('develop')){
+if(!location.hostname.includes('develop')&&location.hostname!=='localhost'){
   ['card-insumos','card-asistencia'].forEach(function(id){
     var el=document.getElementById(id);
     el.removeAttribute('href');
