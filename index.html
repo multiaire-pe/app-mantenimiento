@@ -119,13 +119,13 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
       <div class="card-desc">Planifica y gestiona los itinerarios diarios del equipo técnico por tienda y tipo de trabajo.</div>
       <div class="card-footer"><span class="card-meta">itinerario.html</span><span class="card-arrow">→</span></div>
     </a>
-    <a class="card active-blue" href="insumos.html">
+    <a id="card-insumos" class="card active-blue" href="insumos.html">
       <div class="card-icon-wrap icon-blue">🧰</div>
       <div class="card-title">Insumos <span class="card-tag tag-blue">ACTIVA</span></div>
       <div class="card-desc">Controla el stock central de insumos y herramientas. Registra entradas, salidas y transferencias entre sedes con historial completo.</div>
       <div class="card-footer"><span class="card-meta">insumos.html</span><span class="card-arrow">→</span></div>
     </a>
-    <a class="card active-blue" href="asistencia_multiaire.html">
+    <a id="card-asistencia" class="card active-blue" href="asistencia_multiaire.html">
       <div class="card-icon-wrap icon-blue">🕐</div>
       <div class="card-title">Asistencia <span class="card-tag tag-blue">ACTIVA</span></div>
       <div class="card-desc">Registra entradas y salidas de colaboradores. Vista del día en tiempo real, historial filtrable y gestión del equipo.</div>
@@ -157,6 +157,17 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleString('es-PE',{weekday:'short',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
 tick();setInterval(tick,1000);
+if(location.hostname.includes('develop')){
+  ['card-insumos','card-asistencia'].forEach(function(id){
+    var el=document.getElementById(id);
+    el.removeAttribute('href');
+    el.classList.remove('active-blue','active-orange');
+    el.classList.add('soon');
+    var tag=el.querySelector('.card-tag');
+    tag.textContent='EN DESARROLLO';
+    tag.className='card-tag tag-gray';
+  });
+}
 </script>
 </body>
 </html>
