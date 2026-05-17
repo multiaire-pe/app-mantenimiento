@@ -166,3 +166,5 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-17 | Elimina variable dom duplicada en Vista T/A (condición f==='dom' nunca verdadera) |
 | 2026-05-17 | Confirmación antes de registrar DM/Permiso/Falta para evitar clicks accidentales |
 | 2026-05-17 | Tabla móvil: oculta columnas Cargo y Comentario en pantallas pequeñas |
+| 2026-05-17 | Estado del colaborador en sidebar: badge (entrada/salida/DM/permiso/falta/sin registro) al seleccionar colaborador, solo visible cuando fecha=hoy |
+| 2026-05-17 | Modo SUPERVISOR solo lectura: sidebar oculto, botones Guardar/Eliminar del modal ocultos via CSS (supervisor-mode class), campos del modal deshabilitados |
