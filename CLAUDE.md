@@ -114,10 +114,49 @@ Script Python `importar_asistencia.py`:
 - Selector de colaborador: `<select>` dropdown (antes era search+grid)
 - `celdasColab()` — verifica registro Firestore ANTES de checar si es día no laboral
 
+## Deploy — Vercel
+
+| Entorno | URL fija |
+|---|---|
+| Producción | https://multiaire-peru-app.vercel.app |
+| Develop | https://multiaire-peru-app-develop.vercel.app |
+
+- Cada `git push origin develop` → deploy automático en develop (GitHub Action)
+- Cada `git push origin main` (merge manual) → deploy automático en producción (GitHub Action)
+- `vercel --prod` solo si se necesita deploy manual urgente
+- SSO protection deshabilitada — URLs públicas sin login de Vercel
+- `.vercelignore` excluye `wsp_import/`, `_chat.txt`, `CLAUDE.md`, `*.py`, `*.json` (excepto `firebase-config.js`)
+
+## index.html — lógica por entorno
+
+- **Producción**: cards Insumos y Asistencia en gris, no clickeables, tag "EN DESARROLLO"
+- **Develop / Localhost**: todas las cards activas
+- Versión y entorno se muestran dinámicamente según hostname:
+  - Producción → `3.3.0` / `Producción`
+  - Develop → `3.3.0-dev` / `Develop`
+  - Localhost → `3.3.0-dev` / `Local`
+
+## Firebase — Dominios autorizados
+
+Dominios activos en Firebase Auth:
+- `localhost`, `127.0.0.1` — desarrollo local
+- `multiaire-fee43.firebaseapp.com`, `multiaire-fee43.web.app` — Firebase defaults
+- `marchenaangulojoseluis-dev.github.io` — GitHub Pages (empresa aún en uso)
+- `multiaire-peru-app.vercel.app` — producción Vercel
+- `multiaire-peru-app-develop.vercel.app` — develop Vercel
+
+Todos los dominios de Cloudflare tunnel fueron eliminados.
+
 ## Changelog
 
 | Fecha | Cambio |
 |---|---|
 | 2026-05-16 | Importación masiva desde WhatsApp: 192 registros, período 2026-03-25 → 2026-05-14 |
 | 2026-05-16 | Creación de CLAUDE.md con documentación completa del proyecto |
-| 2026-05-16 | Configuración de Vercel — deploy en https://app-mantenimiento-pi.vercel.app, creado .vercelignore para excluir wsp_import y archivos pesados |
+| 2026-05-16 | Configuración de Vercel — URLs fijas de producción y develop |
+| 2026-05-16 | GitHub Actions para deploy automático en develop y producción |
+| 2026-05-16 | Cards Insumos y Asistencia deshabilitadas en producción, activas en develop |
+| 2026-05-16 | Versión y entorno dinámicos en index.html según hostname |
+| 2026-05-16 | Limpieza de dominios Firebase — eliminados tunnels de Cloudflare |
+| 2026-05-16 | SSO protection de Vercel deshabilitada — URLs públicas sin login |
+| 2026-05-16 | .gitignore actualizado: excluye _chat.txt y settings.local.json |
