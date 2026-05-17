@@ -1,0 +1,123 @@
+# Contexto del proyecto — app-mantenimiento (MultiAire Perú)
+
+## Qué es
+App web interna de MultiAire Perú para gestión de asistencia del personal técnico.
+Vanilla HTML/JS, sin framework. Firebase Firestore como base de datos (SDK compat 9.23.0).
+No hay servidor — todo corre en el browser con Firebase Auth + Firestore directo.
+
+## Archivos principales
+- `asistencia_multiaire.html` — app principal, todo en un solo archivo
+- `firebase-config.js` — config pública de Firebase (project: `multiaire-fee43`)
+- `wsp_import/importar_asistencia.py` — script Python para importar asistencia desde ZIP de WhatsApp
+
+## Firestore — colecciones
+| Colección | Descripción |
+|---|---|
+| `maestros_personal` | Colaboradores (id, nombre, cargo, activo) |
+| `asistencia_registros` | Registros de asistencia diaria |
+| `maestros_feriados` | Feriados (campo `fecha`: YYYY-MM-DD) |
+| `usuarios` | Usuarios del sistema con roles |
+
+### Schema `asistencia_registros`
+```js
+{
+  id, colabId, nombre, cargo, fecha,   // fecha: "YYYY-MM-DD"
+  horaEntrada, horaSalida,             // decimal: 8.5 = 08:30
+  estado,                              // "A" | "DM" | "F" | "P"
+  observacion, heManual, horasExtra,
+  registradoPor, timestamp
+}
+```
+
+### Estados de asistencia
+- `A` — Asistencia
+- `DM` — Descanso médico
+- `F` — Falta
+- `P` — Permiso
+
+## Colaboradores (maestros_personal)
+| ID | Nombre | Cargo |
+|---|---|---|
+| PER001 | RAFAEL SANTOS | TECNICO |
+| PER002 | ORLANDO MERA | TECNICO |
+| PER003 | ENRIQUE YARANGA | TECNICO |
+| PER004 | LUIS AMPUERO | AYUDANTE |
+| PER005 | MATTIW CABRERA | AYUDANTE |
+| PER006 | SEGUNDO INUMA | AYUDANTE |
+| PER007 | LUIS CHAVEZ | AYUDANTE |
+| PER008 | PETER PIZARRO | AYUDANTE |
+| PER009 | HERNAN ZAVALETA | PDR |
+| PER010 | JESUS MARTINEZ | PDR |
+| PER011 | JOSE VIVAR | PDR |
+| PER017563 | JEFFERSON | AYUDANTE |
+| PER781233 | JOSE MARCHENA | ASISTENTE |
+| PER885474 | ANDRES SAN MARTIN | ADMINISTRADOR |
+| PER921832 | LESLIE ZAPATA | ASISTENTE ADMINISTRATIVO |
+
+## Horas extra — lógica
+```js
+function calcHorasExtra(entrada, salida, fecha) {
+  const total = salida - entrada;
+  const dow = new Date(fecha + 'T12:00:00').getDay();
+  const base = dow === 0 || isFeriado(fecha) ? 0 : dow === 6 ? 4.5 : 9.5;
+  return Math.round((total - base) * 100) / 100;
+}
+// Domingo/feriado: base=0 (todo cuenta como HE)
+// Sábado: base=4.5
+// Lunes-Viernes: base=9.5
+```
+
+## Horarios decimales
+- `8.5` = 08:30, `18.0` = 18:00, `19.5` = 19:30
+- Redondeo a media hora: `round(h * 2) / 2`
+
+## Tabs de la app
+1. **Hoy** — registro del día, entrada/salida por colaborador
+2. **Historial** — registros por rango de fechas
+3. **Vista E/S** — pivot por colaborador mostrando entrada/salida
+4. **Resumen HE** — horas extra por período
+5. **Feriados** — gestión de feriados
+6. **Ausencias** — reporte de días sin registro, agrupado por colaborador o fecha
+
+## Exportaciones
+- **Excel** — pivot table con inline CSS (HTML→XLS via Blob), naranja en domingos/feriados
+- **PDF** — mismo formato que Excel, ancho dinámico `Math.max(297, ncols*12+24)mm`
+- Ambos exportan: Nombre, Cargo, y por cada día: E/S/HE
+
+## Import WhatsApp (wsp_import/)
+Script Python `importar_asistencia.py`:
+- Lee `_chat.txt` del ZIP exportado desde celular (formato: `[D/MM/YY, HH:MM:SS] sender: <adjunto: NNNNN-PHOTO-YYYY-MM-DD-HH-MM-SS.jpg>`)
+- Extrae timestamp del nombre del archivo (más confiable que el mensaje)
+- entrada = min foto antes de 12:00, salida = max foto desde 12:00, redondeado a ½h
+- Regex con `\d{1,2}` para día (el formato usa 1 dígito para días 1-9)
+- Requiere `serviceAccount.json` (busca en wsp_import/, ~/Documents/migrar_db/, ~/Downloads/)
+- Mapeo sender → colabId hardcodeado en `SENDER_ID_MAP`
+- Horarios fijos para Leslie, Andres, Jose Marchena (no usan WhatsApp para marcar)
+
+### Importación realizada (2026-05-16)
+- Período: 2026-03-25 → 2026-05-14
+- 192 registros importados desde WhatsApp (25 abr en adelante)
+- Jefferson: estado DM todos los días laborales (descanso médico)
+- Andres/Leslie: horario fijo 08:30–18:00
+- Jose Marchena: horario fijo 11:00–18:30, heManual=true, horasExtra=0
+
+## Roles de usuario
+- `SUPER_ADMIN` — acceso total (marchenaangulojoseluis@gmail.com)
+- `ADMIN` — gestión completa
+- `SUPERVISOR` — solo lectura
+
+## Notas técnicas
+- Firebase SDK compat (no modular) — `firebase.initializeApp()`
+- Brave browser bloquea Firebase longpolling → ERR_BLOCKED_BY_CLIENT en consola, inofensivo
+- CSS Grid con `min-width:0` para que las celdas no desborden
+- Comentarios en filas: `word-break:break-word` en vez de truncar
+- Selector de colaborador: `<select>` dropdown (antes era search+grid)
+- `celdasColab()` — verifica registro Firestore ANTES de checar si es día no laboral
+
+## Changelog
+
+| Fecha | Cambio |
+|---|---|
+| 2026-05-16 | Importación masiva desde WhatsApp: 192 registros, período 2026-03-25 → 2026-05-14 |
+| 2026-05-16 | Creación de CLAUDE.md con documentación completa del proyecto |
+| 2026-05-16 | Configuración de Vercel — deploy en https://app-mantenimiento-pi.vercel.app, creado .vercelignore para excluir wsp_import y archivos pesados |

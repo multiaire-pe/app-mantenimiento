@@ -1,0 +1,4 @@
+.DS_Store
+.vercel
+_chat.txt
+.claude/settings.local.json
