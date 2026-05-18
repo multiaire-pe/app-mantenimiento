@@ -1066,7 +1066,7 @@ async function saveEditReg() {
     else{const ref=window.__db.collection('asistencia_registros').doc();await ref.set({...data,id:ref.id});}
     toast('✓ Registro guardado','ok');
     closeEditReg();
-    if(fecha===todayKey())await loadTodayData();
+    await refreshCurrentTab();
   } catch(e){toast('Error: '+e.message,'err');}
   loading.classList.remove('show');
 }
@@ -1082,7 +1082,7 @@ async function deleteReg() {
     await window.__db.collection('asistencia_registros').doc(regId).delete();
     toast('Registro eliminado','ok');
     closeEditReg();
-    if(fecha===todayKey())await loadTodayData();
+    await refreshCurrentTab();
   } catch(e){toast('Error: '+e.message,'err');}
   loading.classList.remove('show');
 }
@@ -1726,12 +1726,13 @@ function switchTab(tab) {
 }
 
 function refreshCurrentTab() {
-  if(currentTab==='hoy')loadTodayData();
-  else if(currentTab==='historial')loadHistorial();
-  else if(currentTab==='ta')loadVistaTA();
-  else if(currentTab==='es')loadVistaES();
-  else if(currentTab==='resumen')loadResumen();
-  else if(currentTab==='feriados')renderFeriados();
+  if(currentTab==='hoy')return loadTodayData();
+  else if(currentTab==='historial')return loadHistorial();
+  else if(currentTab==='ta')return loadVistaTA();
+  else if(currentTab==='es')return loadVistaES();
+  else if(currentTab==='resumen')return loadResumen();
+  else if(currentTab==='feriados'){renderFeriados();return Promise.resolve();}
+  return Promise.resolve();
 }
 
 // ── PANEL ACCESOS UNIFICADO ───────────────────────────────────────────────────
