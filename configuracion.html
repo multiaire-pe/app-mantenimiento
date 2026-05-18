@@ -266,6 +266,11 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
           <h3>📤 Exportar backup</h3>
           <p>Descarga un ZIP con todos los datos del sistema en formato CSV.</p>
           <div class="backup-files">
+            <div class="backup-file"><span></span>asistencia.csv</div>
+            <div class="backup-file"><span></span>maestros_personal.csv</div>
+            <div class="backup-file"><span></span>maestros_tiendas.csv</div>
+            <div class="backup-file"><span></span>maestros_grupos.csv</div>
+            <div class="backup-file"><span></span>maestros_feriados.csv</div>
             <div class="backup-file"><span></span>inventario.csv</div>
             <div class="backup-file"><span></span>mantenimiento.csv</div>
             <div class="backup-file"><span></span>usuarios.csv</div>
@@ -871,7 +876,12 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [invSnap, maintSnap, usersSnap, tareasSnap] = await Promise.all([
+    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, invSnap, maintSnap, usersSnap, tareasSnap] = await Promise.all([
+      window.__db.collection('asistencia_registros').get(),
+      window.__db.collection('maestros_personal').get(),
+      window.__db.collection('maestros_tiendas').get(),
+      window.__db.collection('maestros_grupos').get(),
+      window.__db.collection('maestros_feriados').get(),
       window.__db.collection('inventario').get(),
       window.__db.collection('mantenimiento').get(),
       window.__db.collection('usuarios').get(),
@@ -880,7 +890,47 @@ async function exportBackup() {
 
     const zip = new JSZip();
 
-    // 1. Inventario CSV
+    // 1. Asistencia registros CSV
+    const asistHeaders = ['ID','COLAB_ID','NOMBRE','CARGO','FECHA','HORA_ENTRADA','HORA_SALIDA','ESTADO','OBSERVACION','HE_MANUAL','HORAS_EXTRA','REGISTRADO_POR','TIMESTAMP'];
+    const asistRows = asistSnap.docs.map(d => {
+      const r = d.data();
+      return [r.id||d.id, r.colabId||'', r.nombre||'', r.cargo||'', r.fecha||'', r.horaEntrada??'', r.horaSalida??'', r.estado||'', r.observacion||'', r.heManual?'1':'0', r.horasExtra??'', r.registradoPor||'', r.timestamp||''].map(escapeCSV).join(',');
+    });
+    zip.file('asistencia.csv', [asistHeaders.join(','), ...asistRows].join('\n'));
+
+    // 2. Maestros personal CSV
+    const persHeaders = ['ID','NOMBRE','CARGO','TELEFONO','ACTIVO'];
+    const persRows = persSnap.docs.map(d => {
+      const r = d.data();
+      return [r.id||d.id, r.nombre||'', r.cargo||'', r.telefono||'', r.activo||'SI'].map(escapeCSV).join(',');
+    });
+    zip.file('maestros_personal.csv', [persHeaders.join(','), ...persRows].join('\n'));
+
+    // 3. Maestros tiendas CSV
+    const tienHeaders = ['ID','CLIENTE','TIENDA','SEDE','ACTIVO'];
+    const tienRows = tienSnap.docs.map(d => {
+      const r = d.data();
+      return [r.id||d.id, r.cliente||'', r.tienda||'', r.sede||'', r.activo||'SI'].map(escapeCSV).join(',');
+    });
+    zip.file('maestros_tiendas.csv', [tienHeaders.join(','), ...tienRows].join('\n'));
+
+    // 4. Maestros grupos CSV
+    const gruHeaders = ['ID','GRUPO','ACTIVO'];
+    const gruRows = gruSnap.docs.map(d => {
+      const r = d.data();
+      return [r.id||d.id, r.grupo||'', r.activo||'SI'].map(escapeCSV).join(',');
+    });
+    zip.file('maestros_grupos.csv', [gruHeaders.join(','), ...gruRows].join('\n'));
+
+    // 5. Maestros feriados CSV
+    const ferHeaders = ['ID','NOMBRE','FECHA','ACTIVO'];
+    const ferRows = ferSnap.docs.map(d => {
+      const r = d.data();
+      return [r.id||d.id, r.nombre||'', r.fecha||'', r.activo||'SI'].map(escapeCSV).join(',');
+    });
+    zip.file('maestros_feriados.csv', [ferHeaders.join(','), ...ferRows].join('\n'));
+
+    // 6. Inventario CSV
     const invHeaders = ['EQ_ID','SEDE','CLIENTE','TIPO','NOMBRE','AREA','MARCA','MODELO','SERIE'];
     const invRows = invSnap.docs.map(d => {
       const r = d.data();
@@ -1043,8 +1093,61 @@ async function confirmImport() {
     });
   }
 
+  async function batchWrite(col, rows, mapFn) {
+    const {writeBatch:_wb,doc:_doc,collection:_col,getDocs:_dg}=window.__fb;
+    if(mode==='replace'){const _b=_wb(window.__db);const _ex=await _dg(_col(window.__db,col));_ex.docs.forEach(d=>_b.delete(d.ref));await _b.commit();}
+    let b=_wb(window.__db), n=0;
+    for(const r of rows){b.set(_doc(window.__db,col,mapFn(r).id),mapFn(r));n++;if(n%400===0){await b.commit();b=_wb(window.__db);}}
+    if(n%400!==0)await b.commit();
+  }
+
   try {
-    // 1. Inventario
+    // 1. Asistencia registros
+    if (pendingImport.files['asistencia.csv']) {
+      addLog('🕐 Importando asistencia...', 'info');
+      const rows = parseCSV(pendingImport.files['asistencia.csv']);
+      await batchWrite('asistencia_registros', rows, r => ({
+        id:r.ID, colabId:r.COLAB_ID, nombre:r.NOMBRE, cargo:r.CARGO, fecha:r.FECHA,
+        horaEntrada:r.HORA_ENTRADA!==''?+r.HORA_ENTRADA:null, horaSalida:r.HORA_SALIDA!==''?+r.HORA_SALIDA:null,
+        estado:r.ESTADO, observacion:r.OBSERVACION, heManual:r.HE_MANUAL==='1',
+        horasExtra:r.HORAS_EXTRA!==''?+r.HORAS_EXTRA:null, registradoPor:r.REGISTRADO_POR, timestamp:r.TIMESTAMP
+      }));
+      addLog('✓ Asistencia importada (' + rows.length + ' registros)', 'ok');
+    }
+
+    // 2. Maestros personal
+    if (pendingImport.files['maestros_personal.csv']) {
+      addLog('👤 Importando personal...', 'info');
+      const rows = parseCSV(pendingImport.files['maestros_personal.csv']);
+      await batchWrite('maestros_personal', rows, r => ({id:r.ID, nombre:r.NOMBRE, cargo:r.CARGO, telefono:r.TELEFONO||'', activo:r.ACTIVO||'SI', obs:''}));
+      addLog('✓ Personal importado (' + rows.length + ' colaboradores)', 'ok');
+    }
+
+    // 3. Maestros tiendas
+    if (pendingImport.files['maestros_tiendas.csv']) {
+      addLog('🏪 Importando tiendas...', 'info');
+      const rows = parseCSV(pendingImport.files['maestros_tiendas.csv']);
+      await batchWrite('maestros_tiendas', rows, r => ({id:r.ID, cliente:r.CLIENTE, tienda:r.TIENDA, sede:r.SEDE, activo:r.ACTIVO||'SI', obs:''}));
+      addLog('✓ Tiendas importadas (' + rows.length + ' tiendas)', 'ok');
+    }
+
+    // 4. Maestros grupos
+    if (pendingImport.files['maestros_grupos.csv']) {
+      addLog('🗂 Importando grupos...', 'info');
+      const rows = parseCSV(pendingImport.files['maestros_grupos.csv']);
+      await batchWrite('maestros_grupos', rows, r => ({id:r.ID, grupo:r.GRUPO, activo:r.ACTIVO||'SI', obs:''}));
+      addLog('✓ Grupos importados (' + rows.length + ' grupos)', 'ok');
+    }
+
+    // 5. Maestros feriados
+    if (pendingImport.files['maestros_feriados.csv']) {
+      addLog('🎌 Importando feriados...', 'info');
+      const rows = parseCSV(pendingImport.files['maestros_feriados.csv']);
+      await batchWrite('maestros_feriados', rows, r => ({id:r.ID, nombre:r.NOMBRE, fecha:r.FECHA, activo:r.ACTIVO||'SI', obs:''}));
+      addLog('✓ Feriados importados (' + rows.length + ' feriados)', 'ok');
+    }
+
+    // 6. Inventario
     if (pendingImport.files['inventario.csv']) {
       addLog('📦 Importando inventario...', 'info');
       const rows = parseCSV(pendingImport.files['inventario.csv']);
