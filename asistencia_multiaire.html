@@ -1283,11 +1283,14 @@ async function loadResumen() {
         const he=getHeValue(r);
         heTotal+=(he.val||0);
       });
-      // Ausencias: sin registro O Falta registrada = -8
+      // Ausencias: sin registro O Falta registrada
       diasRango.forEach(f=>{
         if(f>hoy)return;
         const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
-        if(!reg||reg.estado==='F'){heTotal+=heAusencia(f);}
+        if(!reg||reg.estado==='F'){
+          const saved=reg?.horasExtra;
+          heTotal+=(saved!==null&&saved!==undefined)?saved:heAusencia(f);
+        }
       });
       const heColor=heTotal<0?'color:var(--red);font-weight:700':heTotal>0?'color:var(--orange);font-weight:700':'';
       html+=`<div class="resumen-table-row">
