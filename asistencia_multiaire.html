@@ -424,11 +424,11 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="field-group">
           <div class="field-label">Hora Entrada</div>
-          <select class="field-input" id="edit-reg-entrada"></select>
+          <select class="field-input" id="edit-reg-entrada" onchange="updateHeAutoInfo()"></select>
         </div>
         <div class="field-group">
           <div class="field-label">Hora Salida</div>
-          <select class="field-input" id="edit-reg-salida"></select>
+          <select class="field-input" id="edit-reg-salida" onchange="updateHeAutoInfo()"></select>
         </div>
       </div>
       <div class="field-group">
@@ -1031,6 +1031,16 @@ function fillEditModal(reg,fecha) {
   document.getElementById('edit-reg-he-manual').value=heIsManual&&reg?.horasExtra!=null?reg.horasExtra:'';
   // Auto info
   const autoHe=calcHorasExtra(reg?.horaEntrada,reg?.horaSalida,fecha);
+  document.getElementById('edit-reg-he-auto-info').textContent=autoHe!=null?`Automático: ${autoHe.toFixed(1)}h`:'Automático: sin datos de entrada/salida';
+}
+
+function updateHeAutoInfo() {
+  const entStr=document.getElementById('edit-reg-entrada').value;
+  const salStr=document.getElementById('edit-reg-salida').value;
+  const fecha=editRegData?.fecha;
+  const ent=entStr?horaToDecimal(entStr):null;
+  const sal=salStr?horaToDecimal(salStr):null;
+  const autoHe=calcHorasExtra(ent,sal,fecha);
   document.getElementById('edit-reg-he-auto-info').textContent=autoHe!=null?`Automático: ${autoHe.toFixed(1)}h`:'Automático: sin datos de entrada/salida';
 }
 
