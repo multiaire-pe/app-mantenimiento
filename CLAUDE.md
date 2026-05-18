@@ -177,3 +177,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-18 | Fix: Resumen HE respeta horasExtra guardado en registros individuales — correcciones manuales en faltas prevalecen sobre el cálculo automático |
 | 2026-05-18 | Asistencia habilitada en producción — solo Insumos permanece EN DESARROLLO |
 | 2026-05-18 | Backup/import ampliado: incluye asistencia_registros, maestros_personal, maestros_tiendas, maestros_grupos, maestros_feriados — con batching para colecciones grandes |
+| 2026-05-18 | Backup/import agrega bd_itinerarios y bd_bloques — batchWrite soporta docId separado del campo id interno |
