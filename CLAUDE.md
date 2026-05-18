@@ -173,3 +173,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-18 | Fix: tab Ausencias ahora se refresca automáticamente al guardar/eliminar registro |
 | 2026-05-18 | Fix: guard defensivo en saveEditReg si editRegData es null o colab no se encuentra |
 | 2026-05-18 | Agrega campo `telefono` al maestro de personal — preparación para chatbot WhatsApp |
+| 2026-05-18 | Fix: faltas en sábado descuentan -4.5h (no -8h) en Resumen HE y exportaciones — función global heAusencia() |
