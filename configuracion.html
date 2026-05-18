@@ -324,7 +324,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
         <div class="add-maestro-row">
           <input type="text" id="new-per-nombre" placeholder="Nombre completo...">
           <input type="text" id="new-per-cargo" placeholder="Cargo (ej: TÉCNICO)" style="max-width:160px">
-          <input type="tel" id="new-per-telefono" placeholder="WhatsApp" style="max-width:140px">
+          <input type="tel" id="new-per-telefono" placeholder="51999888777" style="max-width:140px" title="WhatsApp con código de país, sin +">
           <button class="btn btn-orange" onclick="addPersonal()">+ Agregar</button>
         </div>
       </div>
@@ -1241,7 +1241,7 @@ function renderPersonal() {
     <div class="maestro-item ${p.activo==='NO'?'inactive':''}">
       <input class="maestro-input" type="text" value="${p.nombre}" onchange="updatePersonal(${i},'nombre',this.value)" placeholder="Nombre completo">
       <input class="maestro-cargo" type="text" value="${p.cargo}" onchange="updatePersonal(${i},'cargo',this.value)" placeholder="Cargo" title="Cargo del trabajador">
-      <input class="maestro-cargo" type="tel" value="${p.telefono||''}" onchange="updatePersonal(${i},'telefono',this.value)" placeholder="WhatsApp" title="Número de WhatsApp" style="width:130px">
+      <input class="maestro-cargo" type="tel" value="${p.telefono||''}" onchange="updatePersonal(${i},'telefono',this.value)" placeholder="51999888777" title="WhatsApp con código de país, sin +" style="width:130px">
       ${cargoBadgeHtml(p.cargo)}
       <button class="maestro-toggle" onclick="togglePersonal(${i})" title="${p.activo==='SI'?'Desactivar':'Activar'}">${p.activo==='SI'?'✅':'⭕'}</button>
       <button class="maestro-del" onclick="deletePersonal(${i})" title="Eliminar">✕</button>
