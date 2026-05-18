@@ -169,3 +169,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-17 | Estado del colaborador en sidebar: badge (entrada/salida/DM/permiso/falta/sin registro) al seleccionar colaborador, solo visible cuando fecha=hoy |
 | 2026-05-17 | Modo SUPERVISOR solo lectura: sidebar oculto, botones Guardar/Eliminar del modal ocultos via CSS (supervisor-mode class), campos del modal deshabilitados |
 | 2026-05-18 | HE automático en modal de edición: se recalcula en tiempo real al cambiar entrada/salida (onchange → updateHeAutoInfo) |
+| 2026-05-18 | Auto-refresca el tab activo al guardar o eliminar registro — Vista E/S, T/A, Historial y Resumen se actualizan sin tener que regenerar |
