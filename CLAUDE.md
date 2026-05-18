@@ -13,7 +13,7 @@ No hay servidor — todo corre en el browser con Firebase Auth + Firestore direc
 ## Firestore — colecciones
 | Colección | Descripción |
 |---|---|
-| `maestros_personal` | Colaboradores (id, nombre, cargo, activo) |
+| `maestros_personal` | Colaboradores (id, nombre, cargo, telefono, activo) |
 | `asistencia_registros` | Registros de asistencia diaria |
 | `maestros_feriados` | Feriados (campo `fecha`: YYYY-MM-DD) |
 | `usuarios` | Usuarios del sistema con roles |
@@ -172,3 +172,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-18 | Auto-refresca el tab activo al guardar o eliminar registro — Vista E/S, T/A, Historial y Resumen se actualizan sin tener que regenerar |
 | 2026-05-18 | Fix: tab Ausencias ahora se refresca automáticamente al guardar/eliminar registro |
 | 2026-05-18 | Fix: guard defensivo en saveEditReg si editRegData es null o colab no se encuentra |
+| 2026-05-18 | Agrega campo `telefono` al maestro de personal — preparación para chatbot WhatsApp |
