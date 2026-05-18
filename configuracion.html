@@ -324,7 +324,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
         <div class="add-maestro-row">
           <input type="text" id="new-per-nombre" placeholder="Nombre completo...">
           <input type="text" id="new-per-cargo" placeholder="Cargo (ej: TÉCNICO)" style="max-width:160px">
-          <input type="tel" id="new-per-telefono" placeholder="987798615" style="max-width:140px" title="Solo 9 dígitos — se agrega prefijo 51 automáticamente">
+          <input type="tel" id="new-per-telefono" placeholder="987798615" style="max-width:140px" title="Solo 9 dígitos — se agrega prefijo 51 automáticamente" autocomplete="off">
           <button class="btn btn-orange" onclick="addPersonal()">+ Agregar</button>
         </div>
       </div>
@@ -1241,7 +1241,7 @@ function renderPersonal() {
     <div class="maestro-item ${p.activo==='NO'?'inactive':''}">
       <input class="maestro-input" type="text" value="${p.nombre}" onchange="updatePersonal(${i},'nombre',this.value)" placeholder="Nombre completo">
       <input class="maestro-cargo" type="text" value="${p.cargo}" onchange="updatePersonal(${i},'cargo',this.value)" placeholder="Cargo" title="Cargo del trabajador">
-      <input class="maestro-cargo" type="tel" value="${(p.telefono||'').replace(/^51/,'')}" onchange="updatePersonal(${i},'telefono',this.value)" placeholder="987798615" title="Solo 9 dígitos — se agrega prefijo 51 automáticamente" style="width:130px">
+      <input class="maestro-cargo" type="tel" value="${(p.telefono||'').replace(/^51/,'')}" onchange="updatePersonal(${i},'telefono',this.value)" placeholder="987798615" title="Solo 9 dígitos — se agrega prefijo 51 automáticamente" style="width:130px" autocomplete="off">
       ${cargoBadgeHtml(p.cargo)}
       <button class="maestro-toggle" onclick="togglePersonal(${i})" title="${p.activo==='SI'?'Desactivar':'Activar'}">${p.activo==='SI'?'✅':'⭕'}</button>
       <button class="maestro-del" onclick="deletePersonal(${i})" title="Eliminar">✕</button>
