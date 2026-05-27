@@ -612,26 +612,29 @@ function canvasToJpeg(canvas){
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
-// Renders PDF page 1 → canvas → JPEG — same token cost as a regular photo
-async function pdfPageToJpeg(file, pfIndex){
+// Renders ALL pages of a PDF → [{b64, mime, dataUrl}, …] — each page = same cost as a photo
+async function pdfToPages(file, pfIndex){
   const arrayBuffer = await file.arrayBuffer();
-  const pdf  = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
-  const page = await pdf.getPage(1);
-  // Scale so the page renders at roughly MAX_PX wide (A4 = 595pt → scale≈2.7)
-  const viewport0 = page.getViewport({scale: 1});
-  const scale     = Math.min(MAX_PX / viewport0.width, MAX_PX / viewport0.height, 2.5);
-  const viewport  = page.getViewport({scale});
-  const canvas    = document.createElement('canvas');
-  canvas.width    = Math.round(viewport.width);
-  canvas.height   = Math.round(viewport.height);
-  await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
-  const dataUrl = canvasToJpeg(canvas);
-  // Store rendered page as thumbnail
-  if(pfIndex != null && pendingFiles[pfIndex]){
-    pendingFiles[pfIndex].thumbDataUrl = dataUrl;
+  const pdf   = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+  const pages = [];
+  for(let p = 1; p <= pdf.numPages; p++){
+    const page      = await pdf.getPage(p);
+    const viewport0 = page.getViewport({scale: 1});
+    const scale     = Math.min(MAX_PX / viewport0.width, MAX_PX / viewport0.height, 2.5);
+    const viewport  = page.getViewport({scale});
+    const canvas    = document.createElement('canvas');
+    canvas.width    = Math.round(viewport.width);
+    canvas.height   = Math.round(viewport.height);
+    await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+    const dataUrl = canvasToJpeg(canvas);
+    pages.push({ b64: dataUrl.split(',')[1], mime: 'image/jpeg', dataUrl });
+  }
+  // Thumbnail = first page
+  if(pfIndex != null && pendingFiles[pfIndex] && pages.length){
+    pendingFiles[pfIndex].thumbDataUrl = pages[0].dataUrl;
     renderThumbs();
   }
-  return { b64: dataUrl.split(',')[1], mime: 'image/jpeg' };
+  return pages;
 }
 
 function fileToBase64(file){
@@ -671,6 +674,63 @@ Claves requeridas:
 Responde SOLO el JSON. Ejemplo de respuesta válida:
 {"fecha":"27/05/2026","tipo":"FT","numero":"F001-00001234","ruc":"20512345678","proveedor":"FERREYROS S.A.","monto":150.00}`;
 
+// ── GEMINI CALL HELPER ────────────────────────────────────────────────────────
+// Sends one image (b64/mime) to Gemini and returns parsed JSON, throws on error
+async function callGeminiForImage(b64, mime){
+  const res = await fetch(geminiUrl(geminiModelId), {
+    method:  'POST',
+    headers: { 'Content-Type':'application/json', 'x-goog-api-key': geminiKey },
+    body:    JSON.stringify({
+      contents: [{ parts: [
+        { inline_data: { mime_type: mime, data: b64 } },
+        { text: GEMINI_PROMPT }
+      ]}],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 1024,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            fecha:     { type: 'string' },
+            tipo:      { type: 'string', enum: ['FT','BO','TK','NC','OT'] },
+            numero:    { type: 'string' },
+            ruc:       { type: 'string' },
+            proveedor: { type: 'string' },
+            monto:     { type: 'number' }
+          },
+          required: ['fecha','tipo','numero','ruc','proveedor','monto']
+        }
+      }
+    })
+  });
+  if(!res.ok){
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson?.error?.message || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const finishReason = data?.candidates?.[0]?.finishReason;
+  if(finishReason && finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS'){
+    throw new Error(`Gemini no pudo procesar (${finishReason})`);
+  }
+  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  console.log('[ComprobaScan] Gemini raw:', rawText);
+  if(!rawText){
+    console.warn('[ComprobaScan] Empty response. Full payload:', JSON.stringify(data));
+    throw new Error('Gemini no devolvió texto');
+  }
+  const clean = rawText.replace(/```(?:json)?/gi,'').replace(/```/g,'').trim();
+  let parsed = {};
+  try{ parsed = JSON.parse(clean); }
+  catch(parseErr){
+    console.warn('[ComprobaScan] JSON parse failed, raw:', rawText);
+    const match = rawText.match(/\{[\s\S]*\}/);
+    if(match){ try{ parsed = JSON.parse(match[0]); }catch(e2){ console.error('[ComprobaScan] Fallback parse also failed'); } }
+    if(!Object.keys(parsed).length) throw new Error(`Respuesta inesperada: "${rawText.substring(0,80)}"`);
+  }
+  return parsed;
+}
+
 // ── ANALYZE ───────────────────────────────────────────────────────────────────
 async function analyzeAll(){
   if(!geminiKey){ toast('Configura tu API key primero', 'err'); return; }
@@ -687,81 +747,36 @@ async function analyzeAll(){
 
     pendingFiles[i].status = 'processing';
     renderThumbs();
-    statusEl.textContent = `Analizando ${done + 1} de ${toProcess.length}…`;
 
     try{
-      const { b64, mime } = pendingFiles[i].isPdf
-        ? await pdfPageToJpeg(pendingFiles[i].file, i)
-        : await fileToBase64(pendingFiles[i].file);
-      const res = await fetch(geminiUrl(geminiModelId), {
-        method:  'POST',
-        // Auth via header — NOT ?key= query param
-        headers: { 'Content-Type':'application/json', 'x-goog-api-key': geminiKey },
-        body:    JSON.stringify({
-          contents: [{ parts: [
-            { inline_data: { mime_type: mime, data: b64 } },
-            { text: GEMINI_PROMPT }
-          ]}],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 1024,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: 'object',
-              properties: {
-                fecha:     { type: 'string' },
-                tipo:      { type: 'string', enum: ['FT','BO','TK','NC','OT'] },
-                numero:    { type: 'string' },
-                ruc:       { type: 'string' },
-                proveedor: { type: 'string' },
-                monto:     { type: 'number' }
-              },
-              required: ['fecha','tipo','numero','ruc','proveedor','monto']
-            }
-          }
-        })
-      });
-
-      if(!res.ok){
-        const errJson = await res.json().catch(() => ({}));
-        const errMsg  = errJson?.error?.message || `HTTP ${res.status}`;
-        pendingFiles[i].status = 'error';
-        errors++;
-        toast(`Imagen ${i+1}: ${errMsg}`, 'err');
-      } else {
-        const data    = await res.json();
-        // Check finish reason (SAFETY = blocked, OTHER = failed)
-        const finishReason = data?.candidates?.[0]?.finishReason;
-        if(finishReason && finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS'){
-          pendingFiles[i].status = 'error';
-          errors++;
-          toast(`Imagen ${i+1}: Gemini no pudo procesar (${finishReason})`, 'err');
-          renderThumbs();
-          continue;
-        }
-        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        console.log('[ComprobaScan] Gemini raw:', rawText);
-        let parsed = {};
-        if(!rawText){
-          console.warn('[ComprobaScan] Empty response. Full payload:', JSON.stringify(data));
-          toast(`Imagen ${i+1}: Gemini no devolvió texto`, 'err');
-        } else {
+      if(pendingFiles[i].isPdf){
+        // ── PDF: render all pages, one Gemini call + row per page ──────────
+        statusEl.textContent = `Archivo ${done + 1}/${toProcess.length} · cargando PDF…`;
+        const pages = await pdfToPages(pendingFiles[i].file, i);
+        let fileOk = true;
+        for(let p = 0; p < pages.length; p++){
+          statusEl.textContent = `Archivo ${done + 1}/${toProcess.length} · pág. ${p+1}/${pages.length}…`;
+          const label = pages.length > 1
+            ? `${pendingFiles[i].file.name} · p.${p+1}`
+            : pendingFiles[i].file.name;
           try{
-            // responseMimeType:application/json → should always be valid JSON
-            const clean = rawText.replace(/```(?:json)?/gi,'').replace(/```/g,'').trim();
-            parsed = JSON.parse(clean);
-          }catch(parseErr){
-            // Fallback: extract first {...} block
-            console.warn('[ComprobaScan] JSON parse failed, raw:', rawText);
-            const match = rawText.match(/\{[\s\S]*\}/);
-            if(match){
-              try{ parsed = JSON.parse(match[0]); }catch(e2){ console.error('[ComprobaScan] Fallback parse also failed'); }
-            }
-            if(!Object.keys(parsed).length){
-              toast(`Imagen ${i+1}: Gemini dijo: "${rawText.substring(0,80)}"`, 'err');
-            }
+            const parsed = await callGeminiForImage(pages[p].b64, pages[p].mime);
+            appendRow(parsed, label);
+            const hasData = parsed.fecha || parsed.numero || parsed.ruc || parsed.proveedor || parsed.monto;
+            if(!hasData) toast(`${label}: sin datos detectados`, 'err');
+          }catch(pageErr){
+            fileOk = false;
+            errors++;
+            toast(`${label}: ${pageErr.message}`, 'err');
           }
         }
+        if(fileOk){ pendingFiles[i].status = 'ok'; done++; }
+        else { pendingFiles[i].status = 'error'; }
+      } else {
+        // ── Image file ──────────────────────────────────────────────────────
+        statusEl.textContent = `Analizando ${done + 1} de ${toProcess.length}…`;
+        const { b64, mime } = await fileToBase64(pendingFiles[i].file);
+        const parsed = await callGeminiForImage(b64, mime);
         pendingFiles[i].status = 'ok';
         pendingFiles[i].result = parsed;
         appendRow(parsed, pendingFiles[i].file.name);
