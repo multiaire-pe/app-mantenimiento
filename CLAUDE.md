@@ -6,9 +6,24 @@ Vanilla HTML/JS, sin framework. Firebase Firestore como base de datos (SDK compa
 No hay servidor — todo corre en el browser con Firebase Auth + Firestore directo.
 
 ## Archivos principales
-- `asistencia_multiaire.html` — app principal, todo en un solo archivo
+- `asistencia_multiaire.html` — gestión de asistencia del personal
+- `comprobantes.html` — ComprobaScan: escáner de facturas/boletas con Gemini IA
 - `firebase-config.js` — config pública de Firebase (project: `multiaire-fee43`)
 - `wsp_import/importar_asistencia.py` — script Python para importar asistencia desde ZIP de WhatsApp
+
+## ComprobaScan (`comprobantes.html`)
+App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
+- **IA**: Google Gemini REST API directo desde el browser
+- **Auth API**: header `x-goog-api-key: <key>` (NO query param `?key=`)
+- **Endpoint**: `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`
+- **Modelo default**: `gemini-2.5-flash` | Lista: `gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash-latest`, `gemini-1.5-pro-latest`
+- **Selector de modelo**: pills custom (NO `<select>` — el CSS global `appearance:none` lo rompe)
+- **File input**: `<label for="file-input">` (NO `.click()` JS — Brave lo bloquea)
+- **Imágenes**: comprimidas a máx 1600px JPEG 0.85 antes de enviar
+- **API key**: en `sessionStorage` clave `cs_gemini_key` — no persiste entre sesiones
+- **Modelo guardado**: en `sessionStorage` clave `cs_gemini_model` — validar contra lista VALID_IDS al cargar
+- **Columnas Excel**: FECHA, COMP, NUMERO, RUC, PROVEEDOR, DESCRIPCION (manual, obligatoria), MONTO
+- **Estado en develop**: activa | **Estado en producción**: deshabilitada (card gris "EN DESARROLLO")
 
 ## Firestore — colecciones
 | Colección | Descripción |
@@ -182,5 +197,10 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-21 | Mantenimiento: guarda y muestra `updatedBy` (correo del usuario) junto con `updatedAt` en sidebar, Firestore y sessionStorage |
 | 2026-05-21 | Mantenimiento PDF: header muestra recuadro de última actualización (fecha/hora + correo); footer muestra línea de última actualización; nombre del archivo incluye fecha/hora de actualización |
 | 2026-05-21 | Mantenimiento PDF: se elimina "Generado: [hora]" del header — solo queda en footer |
-| 2026-05-27 | Nueva app ComprobaScan (`comprobantes.html`): escáner de facturas/boletas con Gemini 2.0 Flash, tabla editable y exportación a Excel (SheetJS) — activa en develop, deshabilitada en producción |
+| 2026-05-27 | Nueva app ComprobaScan (`comprobantes.html`): escáner de facturas/boletas con IA, tabla editable, exportación a Excel (SheetJS) — activa en develop, deshabilitada en producción |
+| 2026-05-27 | ComprobaScan: IA usa Google Gemini (REST directo, sin backend). Auth: header `x-goog-api-key`. Modelo default: `gemini-2.5-flash`. Lista: 2.5-flash, 2.0-flash, 1.5-flash-latest, 1.5-pro-latest |
+| 2026-05-27 | ComprobaScan: selector de modelo como pills (no `<select>` — CSS global lo rompía). File input con `<label for>` (no `.click()` JS — Brave lo bloqueaba) |
+| 2026-05-27 | ComprobaScan: imágenes comprimidas a máx 1600px / JPEG 0.85 antes de enviar a Gemini |
+| 2026-05-27 | ComprobaScan: columnas Excel — FECHA, COMP, NUMERO, RUC, PROVEEDOR, DESCRIPCION (manual obligatoria), MONTO |
+| 2026-05-27 | SSH configurado: clave ed25519 en ~/.ssh/id_ed25519_github, remote cambiado a git@github.com — no pide contraseña |
 | 2026-05-21 | Mantenimiento WSP: mensaje incluye fecha/hora de última actualización en cursiva (_Actualizado: ..._); confirmación de copiado cambia a banner verde centrado en pantalla |
