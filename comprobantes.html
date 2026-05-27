@@ -276,23 +276,24 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
     <div class="key-ok-badge" id="key-ok">✓ Clave activa <button style="background:none;border:none;cursor:pointer;color:var(--muted2);font-size:10px;padding:0 0 0 6px;font-family:var(--mono)" onclick="resetKey()">cambiar</button></div>
   </div>
 
-  <!-- Model selector bar — siempre visible -->
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:10px 16px;flex-wrap:wrap">
-    <span style="font-size:12px;color:var(--muted2);font-weight:600;white-space:nowrap">🤖 Modelo IA:</span>
-    <select id="model-select" style="width:auto;min-width:200px;appearance:auto;-webkit-appearance:menulist;font-family:var(--mono);font-size:12px;padding:6px 10px;border:1.5px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--accent);outline:none;cursor:pointer;font-weight:600;flex-shrink:0"></select>
-    <span style="font-size:11px;color:var(--muted2)">· Si un modelo falla, cambia a otro</span>
+  <!-- Model selector bar — botones pill, sin <select> -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:10px 16px;flex-wrap:wrap">
+    <span style="font-size:12px;color:var(--muted2);font-weight:600;white-space:nowrap;margin-right:4px">🤖 Modelo:</span>
+    <div id="model-pills" style="display:flex;gap:6px;flex-wrap:wrap"></div>
   </div>
 
   <!-- Upload zone -->
   <div class="upload-section">
+    <!-- file input fuera del zone para evitar conflictos de eventos -->
+    <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" multiple
+           onchange="onFilesSelected(event)"
+           style="position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px">
     <div class="upload-zone" id="upload-zone"
-         ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)"
-         onclick="triggerFileInput(event)">
-      <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" multiple onchange="onFilesSelected(event)" style="display:none">
+         ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
       <div class="upload-icon">📁</div>
       <div class="upload-title">Arrastra imágenes aquí</div>
       <div class="upload-sub" style="margin-bottom:14px">JPG, PNG o WebP · Puedes subir varias a la vez</div>
-      <button class="btn btn-primary btn-sm" onclick="pickFiles(event)" style="pointer-events:all">📂 Seleccionar archivos</button>
+      <label for="file-input" class="btn btn-primary btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">📂 Seleccionar archivos</label>
     </div>
     <div id="file-queue"></div>
     <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -467,26 +468,40 @@ document.addEventListener('click', e => {
 // ── API Key ─────────────────────────────────────────────────────
 let geminiKey = sessionStorage.getItem('cs_gemini_key') || '';
 
-// Inicializa selector de modelos
+// Inicializa selector de modelos como pills
 (function initModelSelect(){
-  const sel = document.getElementById('model-select');
-  GEMINI_MODELS.forEach(m => {
-    const opt = document.createElement('option');
-    opt.value = m.id; opt.textContent = m.label;
-    if(m.id === geminiModelId) opt.selected = true;
-    sel.appendChild(opt);
-  });
-  function syncModelLabel(){
+  const container = document.getElementById('model-pills');
+  function syncHeader(){
     const label = GEMINI_MODELS.find(m=>m.id===geminiModelId)?.label || geminiModelId;
     const pill = document.querySelector('header .hpill');
     if(pill) pill.textContent = label;
   }
-  syncModelLabel();
-  sel.addEventListener('change', () => {
-    geminiModelId = sel.value;
-    sessionStorage.setItem('cs_gemini_model', geminiModelId);
-    syncModelLabel();
+  GEMINI_MODELS.forEach(m => {
+    const btn = document.createElement('button');
+    btn.textContent = m.label;
+    btn.dataset.id = m.id;
+    btn.style.cssText = 'font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:20px;border:1.5px solid;cursor:pointer;font-weight:600;transition:all .15s;white-space:nowrap';
+    const setActive = (active) => {
+      btn.style.background = active ? 'var(--blue)' : 'var(--surface2)';
+      btn.style.color = active ? '#fff' : 'var(--muted2)';
+      btn.style.borderColor = active ? 'var(--blue)' : 'var(--border)';
+    };
+    setActive(m.id === geminiModelId);
+    btn.onclick = () => {
+      geminiModelId = m.id;
+      sessionStorage.setItem('cs_gemini_model', m.id);
+      container.querySelectorAll('button').forEach(b => {
+        const isActive = b.dataset.id === m.id;
+        b.style.background = isActive ? 'var(--blue)' : 'var(--surface2)';
+        b.style.color = isActive ? '#fff' : 'var(--muted2)';
+        b.style.borderColor = isActive ? 'var(--blue)' : 'var(--border)';
+      });
+      syncHeader();
+      toast(`Modelo: ${m.label}`);
+    };
+    container.appendChild(btn);
   });
+  syncHeader();
 })();
 
 (function initKey(){
@@ -522,15 +537,6 @@ document.getElementById('key-input').addEventListener('keydown', e => { if(e.key
 // ── File handling ────────────────────────────────────────────────
 let files = []; // [{id, file, thumb, status, data}]
 
-function triggerFileInput(e){
-  // Solo dispara si no se hizo click en el botón (el botón tiene su propio handler)
-  if(e.target.closest('button')) return;
-  document.getElementById('file-input').click();
-}
-function pickFiles(e){
-  e.stopPropagation();
-  document.getElementById('file-input').click();
-}
 function onDragOver(e){ e.preventDefault(); document.getElementById('upload-zone').classList.add('dragover'); }
 function onDragLeave(){ document.getElementById('upload-zone').classList.remove('dragover'); }
 function onDrop(e){
