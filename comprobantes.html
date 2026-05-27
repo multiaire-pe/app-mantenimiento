@@ -271,12 +271,12 @@ tr:hover td{background:var(--surface2)}
         <thead>
           <tr>
             <th class="col-fecha">Fecha</th>
-            <th class="col-comp">Comp</th>
+            <th class="col-comp">N°Boleta / Factura</th>
             <th class="col-num">Número</th>
             <th class="col-ruc">RUC / DNI</th>
             <th class="col-prov">Proveedor</th>
             <th class="col-desc">Descripción <span style="color:var(--orange)">*</span></th>
-            <th class="col-monto">Monto</th>
+            <th class="col-monto">Valor</th>
             <th class="col-acc"></th>
           </tr>
         </thead>
@@ -1064,7 +1064,7 @@ async function addAccessUser(){
 function exportExcel(){
   if(!rows.length){ toast('Sin datos para exportar', 'err'); return; }
   const data = [
-    ['FECHA','COMP','NUMERO','RUC','PROVEEDOR','DESCRIPCION','MONTO'],
+    ['FECHA','N°BOLETA / FACTURA','NUMERO','RUC','PROVEEDOR','DESCRIPCION','VALOR'],
     ...rows.map(r => [
       r.fecha, r.tipo, r.numero, r.ruc, r.proveedor, r.descripcion,
       r.monto !== '' ? (parseFloat(r.monto) || r.monto) : ''

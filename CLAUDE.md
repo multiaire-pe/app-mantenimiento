@@ -24,7 +24,7 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 - **Imágenes**: comprimidas a máx 1600px JPEG 0.85 antes de enviar
 - **API key**: en `localStorage` clave `cs_gemini_key` — persiste entre sesiones; botón 🗑 Borrar en key-status
 - **Modelo guardado**: en `localStorage` clave `cs_gemini_model` — validar contra lista VALID_IDS al cargar
-- **Columnas Excel**: FECHA, COMP, NUMERO, RUC, PROVEEDOR, DESCRIPCION (manual, obligatoria), MONTO
+- **Columnas Excel**: FECHA, N°BOLETA / FACTURA, NUMERO, RUC, PROVEEDOR, DESCRIPCION (manual, obligatoria), VALOR
 - **Tipos de comprobante**: `FT`=Factura, `BO`=Boleta, `TK`=Ticket, `NC`=Nota de Crédito, `OT`=Otro
 - **Gemini output**: `responseMimeType:'application/json'` + `responseSchema` con enum de tipos — fuerza JSON válido siempre
 - **Prompt**: describe cada campo con ejemplos reales (NO template JSON con valores placeholder)
