@@ -52,6 +52,8 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 .user-menu-item.danger{color:var(--red)}
 .user-menu-item.danger:hover{background:var(--red-bg)}
 .user-menu-div{height:1px;background:var(--border);margin:4px 0}
+.back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:20px;white-space:nowrap;transition:all .15s}
+.back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
 
 /* ── AUTH OVERLAY ─────────────────────────────────────────────────────────── */
 #auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -159,7 +161,7 @@ tr:hover td{background:var(--surface2)}
   <div class="hpill loading" id="conn-pill">⟳ Conectando...</div>
   <div class="hactions">
     <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
-    <button class="btn btn-sm" style="color:#fff;border-color:rgba(255,255,255,.25);background:rgba(255,255,255,.08)" onclick="location.href='index.html'">← Inicio</button>
+    <a href="index.html" class="back-link">← Inicio</a>
   </div>
 </header>
 
