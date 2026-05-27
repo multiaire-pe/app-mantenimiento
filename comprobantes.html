@@ -608,7 +608,23 @@ async function analyzeAll(){
             { inline_data: { mime_type: mime, data: b64 } },
             { text: GEMINI_PROMPT }
           ]}],
-          generationConfig: { temperature: 0, maxOutputTokens: 1024 }
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: 1024,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'object',
+              properties: {
+                fecha:     { type: 'string' },
+                tipo:      { type: 'string', enum: ['F','B','T','O'] },
+                numero:    { type: 'string' },
+                ruc:       { type: 'string' },
+                proveedor: { type: 'string' },
+                monto:     { type: 'number' }
+              },
+              required: ['fecha','tipo','numero','ruc','proveedor','monto']
+            }
+          }
         })
       });
 
@@ -630,28 +646,33 @@ async function analyzeAll(){
           continue;
         }
         const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        console.log('[ComprobaScan] Gemini raw response:', rawText);
+        console.log('[ComprobaScan] Gemini raw:', rawText);
         let parsed = {};
         if(!rawText){
+          console.warn('[ComprobaScan] Empty response. Full payload:', JSON.stringify(data));
           toast(`Imagen ${i+1}: Gemini no devolvió texto`, 'err');
         } else {
           try{
+            // responseMimeType:application/json → should always be valid JSON
             const clean = rawText.replace(/```(?:json)?/gi,'').replace(/```/g,'').trim();
             parsed = JSON.parse(clean);
-          }catch(_){
-            // Try to extract JSON from partial response
+          }catch(parseErr){
+            // Fallback: extract first {...} block
+            console.warn('[ComprobaScan] JSON parse failed, raw:', rawText);
             const match = rawText.match(/\{[\s\S]*\}/);
-            if(match){ try{ parsed = JSON.parse(match[0]); }catch(e2){ console.warn('[ComprobaScan] Parse failed:', rawText); } }
-            if(!parsed || !Object.keys(parsed).length)
-              toast(`Imagen ${i+1}: respuesta inesperada de Gemini`, 'err');
+            if(match){
+              try{ parsed = JSON.parse(match[0]); }catch(e2){ console.error('[ComprobaScan] Fallback parse also failed'); }
+            }
+            if(!Object.keys(parsed).length){
+              toast(`Imagen ${i+1}: Gemini dijo: "${rawText.substring(0,80)}"`, 'err');
+            }
           }
         }
         pendingFiles[i].status = 'ok';
         pendingFiles[i].result = parsed;
         appendRow(parsed, pendingFiles[i].file.name);
-        // Warn if all fields came back empty
         const hasData = parsed.fecha || parsed.numero || parsed.ruc || parsed.proveedor || parsed.monto;
-        if(!hasData) toast(`Imagen ${i+1}: no se detectaron datos — ¿imagen clara de un comprobante?`, 'err');
+        if(!hasData) toast(`Imagen ${i+1}: sin datos detectados — sube una foto clara del comprobante`, 'err');
         done++;
       }
     }catch(e){
