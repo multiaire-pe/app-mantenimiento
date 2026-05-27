@@ -23,6 +23,12 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 - **API key**: en `sessionStorage` clave `cs_gemini_key` — no persiste entre sesiones
 - **Modelo guardado**: en `sessionStorage` clave `cs_gemini_model` — validar contra lista VALID_IDS al cargar
 - **Columnas Excel**: FECHA, COMP, NUMERO, RUC, PROVEEDOR, DESCRIPCION (manual, obligatoria), MONTO
+- **Tipos de comprobante**: `FT`=Factura, `BO`=Boleta, `TK`=Ticket, `NC`=Nota de Crédito, `OT`=Otro
+- **Gemini output**: `responseMimeType:'application/json'` + `responseSchema` con enum de tipos — fuerza JSON válido siempre
+- **Prompt**: describe cada campo con ejemplos reales (NO template JSON con valores placeholder)
+- **Panel Gestión de accesos**: disponible para ADMIN/SUPER_ADMIN — idéntico al de otras apps
+- **Footer**: body `display:flex flex-direction:column` + wrapper `flex:1` siempre visible — footer nunca salta al header durante carga
+- **← Inicio**: usa clase `.back-link` (pill semi-transparente) igual que mantenimiento/asistencia
 - **Estado en develop**: activa | **Estado en producción**: deshabilitada (card gris "EN DESARROLLO")
 
 ## Firestore — colecciones
@@ -204,3 +210,9 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-27 | ComprobaScan: columnas Excel — FECHA, COMP, NUMERO, RUC, PROVEEDOR, DESCRIPCION (manual obligatoria), MONTO |
 | 2026-05-27 | SSH configurado: clave ed25519 en ~/.ssh/id_ed25519_github, remote cambiado a git@github.com — no pide contraseña |
 | 2026-05-21 | Mantenimiento WSP: mensaje incluye fecha/hora de última actualización en cursiva (_Actualizado: ..._); confirmación de copiado cambia a banner verde centrado en pantalla |
+| 2026-05-27 | ComprobaScan: rewrite completo desde cero — header/auth/footer idéntico a insumos.html, todos los bugs corregidos |
+| 2026-05-27 | ComprobaScan: tipos de comprobante a 2 siglas — FT=Factura, BO=Boleta, TK=Ticket, NC=Nota de Crédito, OT=Otro |
+| 2026-05-27 | ComprobaScan: Gemini fuerza JSON con responseMimeType+responseSchema; prompt reescrito con ejemplos reales |
+| 2026-05-27 | ComprobaScan: panel Gestión de accesos para ADMIN/SUPER_ADMIN — lista usuarios, cambia roles, asigna apps |
+| 2026-05-27 | ComprobaScan: fix footer jump — wrapper flex:1 permanente evita que footer suba al header durante carga |
+| 2026-05-27 | ComprobaScan: ← Inicio usa .back-link (pill transparente) igual que mantenimiento/asistencia |
