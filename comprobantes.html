@@ -279,11 +279,13 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
   <!-- Upload zone -->
   <div class="upload-section">
     <div class="upload-zone" id="upload-zone"
-         ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
-      <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" multiple onchange="onFilesSelected(event)">
+         ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)"
+         onclick="triggerFileInput(event)">
+      <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" multiple onchange="onFilesSelected(event)" style="display:none">
       <div class="upload-icon">📁</div>
-      <div class="upload-title">Arrastra imágenes aquí o haz clic para seleccionar</div>
-      <div class="upload-sub">JPG, PNG o WebP · Puedes subir varias a la vez</div>
+      <div class="upload-title">Arrastra imágenes aquí</div>
+      <div class="upload-sub" style="margin-bottom:14px">JPG, PNG o WebP · Puedes subir varias a la vez</div>
+      <button class="btn btn-primary btn-sm" onclick="pickFiles(event)" style="pointer-events:all">📂 Seleccionar archivos</button>
     </div>
     <div id="file-queue"></div>
     <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
@@ -514,6 +516,15 @@ document.getElementById('key-input').addEventListener('keydown', e => { if(e.key
 // ── File handling ────────────────────────────────────────────────
 let files = []; // [{id, file, thumb, status, data}]
 
+function triggerFileInput(e){
+  // Solo dispara si no se hizo click en el botón (el botón tiene su propio handler)
+  if(e.target.closest('button')) return;
+  document.getElementById('file-input').click();
+}
+function pickFiles(e){
+  e.stopPropagation();
+  document.getElementById('file-input').click();
+}
 function onDragOver(e){ e.preventDefault(); document.getElementById('upload-zone').classList.add('dragover'); }
 function onDragLeave(){ document.getElementById('upload-zone').classList.remove('dragover'); }
 function onDrop(e){
