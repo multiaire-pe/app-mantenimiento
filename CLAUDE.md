@@ -20,8 +20,8 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 - **Selector de modelo**: pills custom (NO `<select>` — el CSS global `appearance:none` lo rompe)
 - **File input**: `<label for="file-input">` (NO `.click()` JS — Brave lo bloquea)
 - **Imágenes**: comprimidas a máx 1600px JPEG 0.85 antes de enviar
-- **API key**: en `sessionStorage` clave `cs_gemini_key` — no persiste entre sesiones
-- **Modelo guardado**: en `sessionStorage` clave `cs_gemini_model` — validar contra lista VALID_IDS al cargar
+- **API key**: en `localStorage` clave `cs_gemini_key` — persiste entre sesiones; botón 🗑 Borrar en key-status
+- **Modelo guardado**: en `localStorage` clave `cs_gemini_model` — validar contra lista VALID_IDS al cargar
 - **Columnas Excel**: FECHA, COMP, NUMERO, RUC, PROVEEDOR, DESCRIPCION (manual, obligatoria), MONTO
 - **Tipos de comprobante**: `FT`=Factura, `BO`=Boleta, `TK`=Ticket, `NC`=Nota de Crédito, `OT`=Otro
 - **Gemini output**: `responseMimeType:'application/json'` + `responseSchema` con enum de tipos — fuerza JSON válido siempre
@@ -216,3 +216,5 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-27 | ComprobaScan: panel Gestión de accesos para ADMIN/SUPER_ADMIN — lista usuarios, cambia roles, asigna apps |
 | 2026-05-27 | ComprobaScan: fix footer jump — wrapper flex:1 permanente evita que footer suba al header durante carga |
 | 2026-05-27 | ComprobaScan: ← Inicio usa .back-link (pill transparente) igual que mantenimiento/asistencia |
+| 2026-05-27 | ComprobaScan: soporte PDF multi-página — cada página → Gemini independiente → fila propia en tabla |
+| 2026-05-27 | ComprobaScan: API key y modelo pasan de sessionStorage a localStorage — persisten entre sesiones; botón 🗑 Borrar |

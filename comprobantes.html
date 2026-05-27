@@ -464,9 +464,9 @@ const GEMINI_MODELS = [
 ];
 const VALID_IDS = GEMINI_MODELS.map(m => m.id);
 
-let geminiModelId = (VALID_IDS.includes(sessionStorage.getItem('cs_gemini_model'))
-  ? sessionStorage.getItem('cs_gemini_model') : null) || 'gemini-2.5-flash';
-let geminiKey = sessionStorage.getItem('cs_gemini_key') || '';
+let geminiModelId = (VALID_IDS.includes(localStorage.getItem('cs_gemini_model'))
+  ? localStorage.getItem('cs_gemini_model') : null) || 'gemini-2.5-flash';
+let geminiKey = localStorage.getItem('cs_gemini_key') || '';
 
 function geminiUrl(model){
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
@@ -482,7 +482,7 @@ function initApp(){
   ).join('');
 
   if(geminiKey){
-    document.getElementById('api-key-input').placeholder = '(key guardada en esta sesión)';
+    document.getElementById('api-key-input').placeholder = '(key guardada en este dispositivo)';
     setKeyStatus(true);
   } else {
     setKeyStatus(false);
@@ -493,7 +493,8 @@ function initApp(){
 function setKeyStatus(ok){
   const el = document.getElementById('key-status');
   if(ok){
-    el.innerHTML = `<span style="color:var(--green)">✓ API key activa en esta sesión</span>`;
+    el.innerHTML = `<span style="color:var(--green)">✓ API key guardada en este dispositivo</span>`
+      + `<button onclick="clearKey()" style="margin-left:10px;background:none;border:none;color:var(--muted2);cursor:pointer;font-size:11px;text-decoration:underline;padding:0">🗑 Borrar</button>`;
   } else {
     el.innerHTML = `<span style="color:var(--muted2)">Sin API key. Obtén una gratis en <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">Google AI Studio →</a></span>`;
   }
@@ -502,7 +503,7 @@ function setKeyStatus(ok){
 function selectModel(id){
   if(!VALID_IDS.includes(id)) return;
   geminiModelId = id;
-  sessionStorage.setItem('cs_gemini_model', id);
+  localStorage.setItem('cs_gemini_model', id);
   document.querySelectorAll('.mpill').forEach(p => p.classList.toggle('active', p.dataset.id === id));
 }
 
@@ -510,11 +511,21 @@ function saveKey(){
   const raw = document.getElementById('api-key-input').value.trim();
   if(!raw){ toast('Pega tu API key primero', 'err'); return; }
   geminiKey = raw;
-  sessionStorage.setItem('cs_gemini_key', raw);
+  localStorage.setItem('cs_gemini_key', raw);
   document.getElementById('api-key-input').value       = '';
-  document.getElementById('api-key-input').placeholder = '(key guardada en esta sesión)';
+  document.getElementById('api-key-input').placeholder = '(key guardada en este dispositivo)';
   setKeyStatus(true);
   toast('API key guardada ✓', 'ok');
+  updateAnalyzeBtn();
+}
+
+function clearKey(){
+  geminiKey = '';
+  localStorage.removeItem('cs_gemini_key');
+  document.getElementById('api-key-input').value       = '';
+  document.getElementById('api-key-input').placeholder = 'Pega tu API key de Google AI Studio...';
+  setKeyStatus(false);
+  toast('API key eliminada', 'ok');
   updateAnalyzeBtn();
 }
 
