@@ -137,6 +137,7 @@ tr:hover td{background:var(--surface2)}
 .col-fecha{width:100px}.col-comp{width:68px}.col-num{min-width:130px}
 .col-ruc{min-width:130px}.col-prov{min-width:160px}.col-desc{min-width:170px}
 .col-monto{width:90px}.col-acc{width:42px;text-align:center}
+.btn-camera{display:none}  /* solo visible en móvil */
 .empty-msg{text-align:center;color:var(--muted);padding:40px 20px;font-size:13px}
 
 /* ── MODAL ────────────────────────────────────────────────────────────────── */
@@ -238,7 +239,7 @@ tr:hover td{background:var(--surface2)}
       <label for="file-input" class="btn btn-primary" style="cursor:pointer">
         📂 Seleccionar archivos
       </label>
-      <label for="camera-input" class="btn btn-primary" style="cursor:pointer">
+      <label for="camera-input" class="btn btn-primary btn-camera" style="cursor:pointer">
         📷 Tomar foto
       </label>
     </div>
