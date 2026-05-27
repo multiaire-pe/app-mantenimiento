@@ -22,9 +22,38 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height:100vh;font-size:14px;display:flex;flex-direction:column}
-.page{flex:1}
 
-/* ── AUTH OVERLAY ── */
+/* ── HEADER ───────────────────────────────────────────────────────────────── */
+header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0;animation:blink 2.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.logo{font-weight:700;font-size:16px;letter-spacing:.03em;color:#fff;display:flex;align-items:center;gap:8px}
+.logo span{color:rgba(255,255,255,.5);font-weight:300}
+.hpill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
+.hpill.ok{color:#4ddd88;border-color:rgba(77,221,136,.4)}
+.hpill.loading{color:#ffd866;border-color:rgba(255,216,102,.4)}
+.hactions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.role-badge{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700}
+.role-SUPER_ADMIN{background:#fff3eb;color:var(--orange-dark)}
+.role-ADMIN{background:#e8eef8;color:var(--blue)}
+.role-SUPERVISOR{background:var(--purple-bg);color:var(--purple)}
+
+/* ── USER PILL ────────────────────────────────────────────────────────────── */
+.user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative}
+.user-pill:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.1)}
+.user-avatar-init{width:26px;height:26px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.user-avatar-img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.user-pname{font-size:11px;color:rgba(255,255,255,.85);font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1.5px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);min-width:200px;overflow:hidden;z-index:999}
+.user-menu.open{display:block}
+.user-menu-head{padding:10px 14px 6px;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.user-menu-item{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;color:var(--accent);cursor:pointer;background:none;border:none;width:100%;text-align:left;font-family:var(--font);transition:background .15s}
+.user-menu-item:hover{background:var(--bg)}
+.user-menu-item.danger{color:var(--red)}
+.user-menu-item.danger:hover{background:var(--red-bg)}
+.user-menu-div{height:1px;background:var(--border);margin:4px 0}
+
+/* ── AUTH OVERLAY ─────────────────────────────────────────────────────────── */
 #auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
 .auth-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:36px 32px;max-width:380px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
 .auth-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px}
@@ -37,644 +66,491 @@ body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height
 .auth-loading{font-size:12px;color:var(--muted2);margin-top:10px;display:none}
 .auth-loading.show{display:block}
 
-/* ── HEADER ── */
-header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
-.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0;animation:blink 2.5s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-.logo{font-weight:700;font-size:16px;letter-spacing:.03em;color:#fff;display:flex;align-items:center;gap:8px}
-.logo span{color:rgba(255,255,255,.5);font-weight:300}
-.hpill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
-.hactions{margin-left:auto;display:flex;gap:8px;align-items:center}
-.user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative}
-.user-pill:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.1)}
-.user-avatar-init{width:26px;height:26px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
-.user-pname{font-size:11px;color:rgba(255,255,255,.85);font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.user-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1.5px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);min-width:180px;overflow:hidden;z-index:999}
-.user-menu.open{display:block}
-.user-menu-head{padding:10px 14px 6px;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
-.user-menu-item{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;color:var(--accent);cursor:pointer;background:none;border:none;width:100%;text-align:left;font-family:var(--font);transition:background .15s}
-.user-menu-item:hover{background:var(--bg)}
-.user-menu-item.danger{color:var(--red)}
-.user-menu-item.danger:hover{background:var(--red-bg)}
-.user-menu-div{height:1px;background:var(--border);margin:4px 0}
-.role-badge{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700}
-.role-SUPER_ADMIN{background:#fff3eb;color:var(--orange-dark)}
-.role-ADMIN{background:#e8eef8;color:var(--blue)}
-.role-SUPERVISOR{background:var(--purple-bg);color:var(--purple)}
+/* ── TOAST ────────────────────────────────────────────────────────────────── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a2540;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:all .25s;z-index:9998;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{background:#1a9e5a}.toast.err{background:#d63344}
 
-/* ── LAYOUT ── */
-.page{max-width:1060px;margin:0 auto;padding:24px 20px 60px}
-
-/* ── PAGE HEADER ── */
-.page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px;flex-wrap:wrap}
-.page-title{display:flex;align-items:center;gap:12px}
-.page-title-icon{width:42px;height:42px;border-radius:10px;background:var(--green-bg);border:1.5px solid var(--green-border);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
-.page-title h1{font-size:20px;font-weight:700;color:var(--blue);letter-spacing:-.02em}
-.page-title p{font-size:12px;color:var(--muted2);margin-top:2px}
-.page-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-
-/* ── KEY BANNER ── */
-#key-banner{background:var(--yellow-bg);border:1.5px solid var(--yellow-border);border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-#key-banner.hidden{display:none}
-.key-banner-icon{font-size:20px;flex-shrink:0}
-.key-banner-text{flex:1;min-width:200px}
-.key-banner-text strong{font-size:13px;color:var(--accent);display:block;margin-bottom:2px}
-.key-banner-text span{font-size:11px;color:var(--muted2)}
-.key-banner-text a{color:var(--blue);font-weight:600;text-decoration:none}
-.key-banner-text a:hover{text-decoration:underline}
-.key-input-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
-.key-input-row input{flex:1;min-width:220px;font-family:var(--mono);font-size:12px;padding:8px 12px;border:1.5px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--accent);outline:none}
-.key-input-row input:focus{border-color:var(--blue)}
-.key-ok-badge{display:none;align-items:center;gap:6px;font-size:12px;color:var(--green);font-weight:600;padding:4px 10px;background:var(--green-bg);border:1px solid var(--green-border);border-radius:6px}
-.key-ok-badge.show{display:flex}
-
-/* ── UPLOAD ZONE ── */
-.upload-section{margin-bottom:20px}
-.upload-zone{border:2px dashed var(--border2);border-radius:12px;background:var(--surface);padding:36px 24px;text-align:center;cursor:pointer;transition:all .2s;position:relative}
-.upload-zone:hover,.upload-zone.dragover{border-color:var(--blue);background:var(--blue-pale)}
-.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
-.upload-icon{font-size:32px;margin-bottom:10px}
-.upload-title{font-size:14px;font-weight:600;color:var(--accent);margin-bottom:4px}
-.upload-sub{font-size:11px;color:var(--muted2)}
-
-/* ── FILE QUEUE ── */
-#file-queue{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
-.file-chip{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 6px;background:var(--surface);border:1.5px solid var(--border);border-radius:8px;max-width:220px}
-.file-chip-thumb{width:32px;height:32px;border-radius:4px;object-fit:cover;flex-shrink:0;background:var(--surface3)}
-.file-chip-name{font-size:11px;color:var(--accent);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-.file-chip-remove{background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:0;flex-shrink:0;line-height:1}
-.file-chip-remove:hover{color:var(--red)}
-.file-chip.processing{border-color:var(--blue);background:var(--blue-pale)}
-.file-chip.done{border-color:var(--green-border);background:var(--green-bg)}
-.file-chip.error{border-color:var(--red-border);background:var(--red-bg)}
-.file-chip-status{font-size:10px;color:var(--muted2);font-family:var(--mono)}
-
-/* ── BUTTONS ── */
-.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:7px;border:1.5px solid var(--border);background:var(--surface2);color:var(--accent);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+/* ── BUTTONS ──────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--accent);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;text-decoration:none}
 .btn:hover{background:var(--surface3);border-color:var(--border2)}
 .btn-primary{background:#1B3F8B;border-color:#1B3F8B;color:#fff;font-weight:600}.btn-primary:hover{opacity:.9}
-.btn-green{background:var(--green);border-color:var(--green);color:#fff;font-weight:600}.btn-green:hover{opacity:.9}
-.btn-orange{background:var(--orange);border-color:var(--orange);color:#fff;font-weight:600}.btn-orange:hover{background:var(--orange-dark)}
+.btn-green{color:var(--green);border-color:var(--green-border)}.btn-green:hover{background:var(--green-bg)}
+.btn-red{color:var(--red);border-color:var(--red-border)}.btn-red:hover{background:var(--red-bg)}
 .btn-sm{padding:5px 10px;font-size:11px}
 .btn:disabled{opacity:.4;cursor:not-allowed}
-.spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;flex-shrink:0}
-@keyframes spin{to{transform:rotate(360deg)}}
-.spinner-dark{border-color:rgba(27,63,139,.2);border-top-color:var(--blue)}
 
-/* ── PROCESS BAR ── */
-#proc-bar{display:none;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:16px;align-items:center;gap:14px}
-#proc-bar.show{display:flex}
-.proc-track{flex:1;height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
-.proc-fill{height:100%;background:var(--blue);border-radius:3px;transition:width .3s ease;width:0%}
-.proc-label{font-size:11px;color:var(--muted2);font-family:var(--mono);white-space:nowrap}
-
-/* ── RESULTS ── */
-#results-section{display:none}
-#results-section.show{display:block}
-.results-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px;flex-wrap:wrap}
-.results-title{font-size:13px;font-weight:700;color:var(--accent)}
-.results-hint{font-size:11px;color:var(--muted2);margin-top:2px}
-.table-wrap{overflow-x:auto;border-radius:10px;border:1.5px solid var(--border);box-shadow:var(--shadow)}
-table{width:100%;border-collapse:collapse;background:var(--surface)}
-thead th{background:var(--surface3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);padding:10px 10px;text-align:left;border-bottom:1.5px solid var(--border);white-space:nowrap}
-thead th.req{color:var(--orange-dark)}
-tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
-tbody tr:last-child{border-bottom:none}
-tbody tr:hover{background:var(--surface2)}
-tbody td{padding:6px 8px;vertical-align:middle}
-.td-num{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:center;width:32px}
-.td-thumb{width:44px}
-.td-thumb img{width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid var(--border);display:block}
-.td-thumb .thumb-placeholder{width:36px;height:36px;border-radius:4px;background:var(--surface3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px}
-td input{width:100%;font-family:var(--font);font-size:12px;padding:5px 8px;border:1.5px solid transparent;border-radius:5px;background:transparent;color:var(--accent);outline:none;transition:all .15s}
-td input:hover{background:var(--surface2);border-color:var(--border)}
-td input:focus{background:var(--surface);border-color:var(--blue)}
-td input.required-empty{border-color:var(--orange);background:var(--orange-pale)}
-td input.required-empty:focus{border-color:var(--orange-dark)}
-.td-monto input{font-family:var(--mono);font-weight:600;text-align:right}
-.td-status{width:90px;text-align:center}
-.status-badge{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9px;padding:3px 7px;border-radius:4px;font-weight:700;white-space:nowrap}
-.status-ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
-.status-proc{background:var(--blue-pale);color:var(--blue);border:1px solid #c0d0ef}
-.status-err{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
-.status-pend{background:var(--surface3);color:var(--muted2);border:1px solid var(--border)}
-.td-actions{width:36px;text-align:center}
-.btn-row-del{background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:4px;border-radius:4px;transition:all .15s;line-height:1}
-.btn-row-del:hover{color:var(--red);background:var(--red-bg)}
-
-/* ── STATS ROW ── */
-.stats-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
-.stat-chip{background:var(--surface);border:1.5px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:2px;min-width:100px}
-.stat-chip-val{font-size:18px;font-weight:700;color:var(--blue);font-family:var(--mono)}
-.stat-chip-key{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em}
-
-/* ── MODAL ── */
-.modal-bg{display:none;position:fixed;inset:0;background:rgba(10,20,50,.45);z-index:500;align-items:center;justify-content:center;padding:20px}
-.modal-bg.open{display:flex}
-.modal{background:var(--surface);border-radius:14px;padding:28px 28px 24px;max-width:480px;width:100%;box-shadow:var(--shadow-lg);position:relative}
-.modal-title{font-size:16px;font-weight:700;color:var(--accent);margin-bottom:6px;display:flex;align-items:center;gap:8px}
-.modal-sub{font-size:12px;color:var(--muted2);margin-bottom:20px;line-height:1.5}
-.modal-summary{background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;padding:14px;margin-bottom:18px}
-.modal-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
-.modal-row:last-child{border-bottom:none;padding-bottom:0}
-.modal-row-key{font-size:12px;color:var(--muted2)}
-.modal-row-val{font-size:13px;font-weight:600;color:var(--accent);font-family:var(--mono)}
-.modal-warn{display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:var(--yellow-bg);border:1px solid var(--yellow-border);border-radius:7px;margin-bottom:16px;font-size:12px;color:var(--yellow);line-height:1.5}
-.modal-warn.hidden{display:none}
-.modal-footer{display:flex;justify-content:flex-end;gap:8px}
-
-/* ── TOAST ── */
-#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a2540;color:#fff;font-size:12px;padding:10px 18px;border-radius:8px;box-shadow:var(--shadow-lg);z-index:9990;opacity:0;pointer-events:none;transition:opacity .25s;white-space:nowrap;max-width:90vw;text-align:center}
-#toast.show{opacity:1}
-
-/* ── FOOTER ── */
-footer{border-top:1px solid var(--border);background:var(--surface);padding:14px 24px;display:flex;align-items:center;gap:12px}
-.footer-logo{font-family:var(--mono);font-size:11px;color:var(--muted)}
+/* ── PAGE & FOOTER ────────────────────────────────────────────────────────── */
+.page{flex:1;padding:24px;max-width:1100px;width:100%;margin:0 auto}
+footer{background:var(--surface);border-top:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px}
+.footer-txt{font-family:var(--mono);font-size:11px;color:var(--muted)}
 .footer-time{font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:auto}
 
-/* ── RESPONSIVE ── */
-@media(max-width:640px){
-  .page{padding:16px 14px 48px}
-  .page-header{flex-direction:column;align-items:flex-start}
-  .key-input-row{flex-direction:column}
-  .key-input-row input{min-width:100%;width:100%}
-  th,td{font-size:11px}
-  td input{font-size:11px}
+/* ── CARDS ────────────────────────────────────────────────────────────────── */
+.card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
+.card-title{font-size:13px;font-weight:700;color:var(--blue);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.form-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.form-group{display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px}
+.form-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2)}
+.form-input{background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:var(--mono);font-size:12px;padding:8px 10px;border-radius:6px;outline:none;width:100%}
+.form-input:focus{border-color:var(--blue);background:#fff}
+
+/* ── MODEL PILLS ──────────────────────────────────────────────────────────── */
+/* Must be custom buttons, NOT <select> — global select{appearance:none} breaks dropdowns */
+.model-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.mpill{padding:5px 14px;border-radius:20px;border:1.5px solid var(--border);background:var(--surface2);color:var(--muted2);font-family:var(--mono);font-size:10px;cursor:pointer;transition:all .15s;user-select:none}
+.mpill:hover{border-color:var(--blue-light);color:var(--blue)}
+.mpill.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+
+/* ── UPLOAD ZONE ──────────────────────────────────────────────────────────── */
+.upload-zone{background:var(--surface);border:2px dashed var(--border2);border-radius:12px;padding:36px 20px;margin-bottom:20px;text-align:center;transition:border-color .2s,background .2s}
+.upload-zone.dragover{border-color:var(--blue);background:var(--blue-pale)}
+.upload-icon{font-size:42px;margin-bottom:8px}
+.upload-title{font-size:14px;font-weight:600;color:var(--accent);margin-bottom:4px}
+.upload-sub{font-size:11px;color:var(--muted2);margin-bottom:16px}
+.thumb-grid{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:16px}
+.thumb-wrap{position:relative;display:inline-flex;flex-direction:column;align-items:center;gap:3px}
+.thumb-img{width:76px;height:76px;object-fit:cover;border-radius:8px;border:2px solid var(--border);display:block;transition:border-color .2s}
+.thumb-img.st-ok{border-color:var(--green)}
+.thumb-img.st-processing{border-color:var(--orange);opacity:.65}
+.thumb-img.st-error{border-color:var(--red)}
+.thumb-name{font-size:8px;color:var(--muted2);max-width:76px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono)}
+.thumb-remove{position:absolute;top:-6px;right:-6px;width:17px;height:17px;background:var(--red);color:#fff;border-radius:50%;font-size:9px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.thumb-overlay{position:absolute;top:0;left:0;right:0;bottom:0;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:22px;pointer-events:none}
+
+/* ── RESULTS TABLE ────────────────────────────────────────────────────────── */
+.results-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.results-header h3{font-size:13px;font-weight:700;color:var(--blue)}
+.table-scroll{overflow-x:auto;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:var(--surface3);color:var(--muted2);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:8px;text-align:left;border-bottom:2px solid var(--border);white-space:nowrap}
+td{padding:5px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:var(--surface2)}
+.td-inp{background:transparent;border:none;border-bottom:1px solid transparent;width:100%;font-family:var(--font);font-size:12px;color:var(--accent);padding:3px 5px;border-radius:3px;outline:none}
+.td-inp:focus{background:#fff;border-bottom:1px solid var(--blue)}
+.td-req{border-bottom:1px solid rgba(244,121,32,.45)}
+.td-req:focus{border-bottom:1px solid var(--orange)}
+.td-sel{border:1px solid var(--border);background:var(--surface2);width:100%;font-family:var(--font);font-size:11px;color:var(--accent);padding:3px 5px;border-radius:4px;outline:none;cursor:pointer}
+.td-sel:focus{border-color:var(--blue)}
+.col-fecha{width:100px}.col-comp{width:68px}.col-num{min-width:130px}
+.col-ruc{width:108px}.col-prov{min-width:160px}.col-desc{min-width:170px}
+.col-monto{width:90px}.col-acc{width:42px;text-align:center}
+.empty-msg{text-align:center;color:var(--muted);padding:40px 20px;font-size:13px}
+
+/* ── MOBILE ───────────────────────────────────────────────────────────────── */
+@media(max-width:768px){
+  header{padding:0 12px;height:52px;gap:8px}
+  .logo{font-size:14px}
+  .logo span{display:none}
+  .hpill{display:none}
+  .hactions{gap:6px}
+  .user-pname{display:none}
+  .user-pill{padding:2px 4px;border-radius:50%}
+  .page{padding:14px 12px}
+  footer{padding:12px 16px;flex-wrap:wrap}
 }
-::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 </style>
 </head>
 <body>
 
-<!-- ───── AUTH OVERLAY ───── -->
+<header>
+  <div class="logo-dot"></div>
+  <div class="logo">MultiAire <span>/ ComprobaScan</span></div>
+  <div class="hpill loading" id="conn-pill">⟳ Conectando...</div>
+  <div class="hactions">
+    <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
+    <button class="btn btn-sm" style="color:#fff;border-color:rgba(255,255,255,.25);background:rgba(255,255,255,.08)" onclick="location.href='index.html'">← Inicio</button>
+  </div>
+</header>
+
 <div id="auth-overlay" style="display:none">
   <div class="auth-card">
     <div class="auth-logo"><div class="auth-logo-dot"></div><div class="auth-logo-text">MultiAire</div></div>
     <div class="auth-title">ComprobaScan</div>
-    <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada para continuar.</div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex-shrink:0"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-      Continuar con Google
-    </button>
+    <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada.</div>
+    <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
     <div class="auth-err" id="auth-err"></div>
-    <div class="auth-loading" id="auth-loading">Verificando acceso…</div>
+    <div class="auth-loading" id="auth-loading"></div>
   </div>
 </div>
 
-<!-- ───── HEADER ───── -->
-<header>
-  <div class="logo-dot"></div>
-  <div class="logo">MultiAire <span>/ ComprobaScan</span></div>
-  <span class="hpill">Gemini 1.5 Flash</span>
-  <div class="hactions">
-    <a href="index.html" class="btn btn-sm" style="color:rgba(255,255,255,.75);border-color:rgba(255,255,255,.2);background:transparent;font-size:11px">← Panel</a>
-    <div class="user-pill" id="user-pill" onclick="toggleUserMenu()">
-      <div class="user-avatar-init" id="user-avatar">?</div>
-      <span class="user-pname" id="user-name">—</span>
-    </div>
-    <div class="user-menu" id="user-menu">
-      <div class="user-menu-head" id="user-menu-email">—</div>
-      <div id="user-menu-role-wrap"></div>
-      <div class="user-menu-div"></div>
-      <button class="user-menu-item danger" onclick="maSignOut()">↩ Cerrar sesión</button>
-    </div>
-  </div>
-</header>
+<div class="page" id="main-page" style="display:none">
 
-<!-- ───── PAGE ───── -->
-<div class="page">
-
-  <!-- Page header -->
-  <div class="page-header">
-    <div class="page-title">
-      <div class="page-title-icon">🧾</div>
-      <div>
-        <h1>ComprobaScan</h1>
-        <p>Escanea facturas y boletas con IA · Exporta a Excel</p>
+  <!-- CONFIG CARD -->
+  <div class="card">
+    <div class="card-title">🤖 Configuración de IA — Gemini</div>
+    <div class="form-row">
+      <div class="form-group" style="flex:2">
+        <div class="form-label">API Key de Google Gemini</div>
+        <input type="password" id="api-key-input" class="form-input"
+               placeholder="Pega tu API key de Google AI Studio..." autocomplete="off">
       </div>
+      <button class="btn btn-primary" onclick="saveKey()" style="align-self:flex-end">💾 Guardar key</button>
     </div>
-    <div class="page-actions">
-      <button class="btn btn-sm" onclick="clearAll()" title="Limpiar todo y empezar de nuevo">🗑 Limpiar todo</button>
-      <button id="btn-export" class="btn btn-green" onclick="openExportModal()" style="display:none">
-        📥 Revisar y exportar
-      </button>
+    <div id="key-status" style="margin-top:8px;font-size:11px"></div>
+    <div style="margin-top:16px">
+      <div class="form-label" style="margin-bottom:8px">Modelo de IA</div>
+      <!-- IMPORTANT: custom pills — NOT <select> (global CSS appearance:none breaks selects) -->
+      <div class="model-pills" id="model-pills"></div>
     </div>
   </div>
 
-  <!-- API Key banner -->
-  <div id="key-banner">
-    <div class="key-banner-icon">🔑</div>
-    <div class="key-banner-text" style="flex:1">
-      <strong>Clave API de Gemini requerida</strong>
-      <span>Obtén tu clave gratuita en <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> · Se guarda solo en esta sesión</span>
-      <div class="key-input-row">
-        <input type="password" id="key-input" placeholder="AIza…" autocomplete="off" spellcheck="false">
-        <button class="btn btn-primary btn-sm" onclick="saveKey()">Guardar clave</button>
-      </div>
-    </div>
-    <div class="key-ok-badge" id="key-ok">✓ Clave activa <button style="background:none;border:none;cursor:pointer;color:var(--muted2);font-size:10px;padding:0 0 0 6px;font-family:var(--mono)" onclick="resetKey()">cambiar</button></div>
-  </div>
+  <!-- UPLOAD ZONE -->
+  <div class="upload-zone" id="drop-zone"
+       ondragover="onDragOver(event)" ondragleave="onDragLeave()" ondrop="onDrop(event)">
+    <div class="upload-icon">🧾</div>
+    <div class="upload-title">Subir facturas o boletas</div>
+    <div class="upload-sub">Arrastra imágenes aquí, o haz clic para seleccionar · JPG, PNG, WEBP</div>
 
-  <!-- Model selector bar — botones pill, sin <select> -->
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:10px 16px;flex-wrap:wrap">
-    <span style="font-size:12px;color:var(--muted2);font-weight:600;white-space:nowrap;margin-right:4px">🤖 Modelo:</span>
-    <div id="model-pills" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-  </div>
-
-  <!-- Upload zone -->
-  <div class="upload-section">
-    <!-- file input fuera del zone para evitar conflictos de eventos -->
+    <!-- IMPORTANT: <label for="..."> — NOT .click() JS (Brave blocks programmatic file clicks) -->
     <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" multiple
            onchange="onFilesSelected(event)"
            style="position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px">
-    <div class="upload-zone" id="upload-zone"
-         ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
-      <div class="upload-icon">📁</div>
-      <div class="upload-title">Arrastra imágenes aquí</div>
-      <div class="upload-sub" style="margin-bottom:14px">JPG, PNG o WebP · Puedes subir varias a la vez</div>
-      <label for="file-input" class="btn btn-primary btn-sm" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px">📂 Seleccionar archivos</label>
-    </div>
-    <div id="file-queue"></div>
-    <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button id="btn-procesar" class="btn btn-primary" onclick="procesarTodo()" style="display:none">
-        ⚡ Procesar con Gemini
-      </button>
-      <span id="queue-count" style="font-size:12px;color:var(--muted2)"></span>
-    </div>
+    <label for="file-input" class="btn btn-primary" style="cursor:pointer">
+      📂 Seleccionar archivos
+    </label>
+
+    <div class="thumb-grid" id="thumb-grid"></div>
   </div>
 
-  <!-- Progress bar -->
-  <div id="proc-bar">
-    <div class="spinner spinner-dark"></div>
-    <div class="proc-track"><div class="proc-fill" id="proc-fill"></div></div>
-    <div class="proc-label" id="proc-label">0 / 0</div>
+  <!-- ANALYZE BAR -->
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
+    <button class="btn btn-primary" id="btn-analyze" onclick="analyzeAll()"
+            style="font-size:13px;padding:10px 22px" disabled>
+      🔍 Analizar con IA
+    </button>
+    <span id="analyze-status" style="font-size:12px;color:var(--muted2)"></span>
   </div>
 
-  <!-- Stats -->
-  <div class="stats-row" id="stats-row" style="display:none"></div>
-
-  <!-- Results table -->
-  <div id="results-section">
+  <!-- RESULTS TABLE -->
+  <div class="card" id="results-section" style="display:none">
     <div class="results-header">
-      <div>
-        <div class="results-title">Comprobantes procesados</div>
-        <div class="results-hint">Revisa y edita los datos · El campo <strong style="color:var(--orange-dark)">DESCRIPCIÓN</strong> es obligatorio antes de exportar</div>
+      <h3>📋 Comprobantes detectados</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="addRow()">＋ Agregar fila</button>
+        <button class="btn btn-sm btn-green" onclick="exportExcel()">⬇ Exportar Excel</button>
+        <button class="btn btn-sm btn-red" onclick="clearAll()">🗑 Limpiar todo</button>
       </div>
     </div>
-    <div class="table-wrap">
+    <div class="table-scroll">
       <table>
         <thead>
           <tr>
-            <th style="width:32px">#</th>
-            <th style="width:44px">IMG</th>
-            <th>FECHA</th>
-            <th>COMP</th>
-            <th>NÚMERO</th>
-            <th>RUC</th>
-            <th>PROVEEDOR</th>
-            <th class="req">DESCRIPCIÓN ★</th>
-            <th>MONTO</th>
-            <th>ESTADO</th>
-            <th style="width:36px"></th>
+            <th class="col-fecha">Fecha</th>
+            <th class="col-comp">Comp</th>
+            <th class="col-num">Número</th>
+            <th class="col-ruc">RUC / DNI</th>
+            <th class="col-prov">Proveedor</th>
+            <th class="col-desc">Descripción <span style="color:var(--orange)">*</span></th>
+            <th class="col-monto">Monto</th>
+            <th class="col-acc"></th>
           </tr>
         </thead>
-        <tbody id="results-tbody"></tbody>
+        <tbody id="results-body">
+          <tr><td colspan="8" class="empty-msg">Sin comprobantes. Sube imágenes y presiona Analizar.</td></tr>
+        </tbody>
       </table>
     </div>
+    <p style="font-size:10px;color:var(--muted2);margin-top:6px">
+      <span style="color:var(--orange)">*</span> Descripción es obligatoria y se completa manualmente. Todos los campos son editables en la tabla.
+    </p>
   </div>
 
-</div><!-- /page -->
+</div><!-- /.page -->
 
-<!-- ───── EXPORT MODAL ───── -->
-<div class="modal-bg" id="modal-export">
-  <div class="modal">
-    <div class="modal-title">📥 Confirmar exportación</div>
-    <div class="modal-sub">Revisa el resumen antes de descargar el archivo Excel.</div>
-    <div class="modal-summary" id="modal-summary"></div>
-    <div class="modal-warn" id="modal-warn">
-      ⚠️ <span id="modal-warn-text"></span>
-    </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="closeExportModal()">Cancelar</button>
-      <button class="btn btn-green" id="btn-confirm-export" onclick="doExport()">📥 Descargar Excel</button>
-    </div>
-  </div>
-</div>
-
-<!-- ───── TOAST ───── -->
-<div id="toast"></div>
-
-<!-- ───── FOOTER ───── -->
 <footer>
-  <span class="footer-logo">MultiAire © 2026</span>
-  <span class="footer-logo" style="opacity:.5">·</span>
-  <span class="footer-logo">ComprobaScan · Gemini 1.5 Flash</span>
+  <span class="footer-txt">MultiAire © 2026</span>
+  <span class="footer-txt" style="opacity:.4">·</span>
+  <span class="footer-txt">ComprobaScan</span>
   <span class="footer-time" id="clock">—</span>
 </footer>
 
-<!-- ───── SCRIPTS ───── -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<div class="toast" id="toast"></div>
+
 <script src="firebase-config.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-'use strict';
+// ── CLOCK ─────────────────────────────────────────────────────────────────────
+(function tickClock(){
+  document.getElementById('clock').textContent = new Date().toLocaleString('es-PE',{
+    weekday:'short',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'
+  });
+  setTimeout(tickClock, 1000);
+})();
 
-// ── Firebase init ──────────────────────────────────────────────
-const _fbApp = firebase.initializeApp(window.__firebaseConfig);
-const db = firebase.firestore();
+// ── FIREBASE / AUTH ───────────────────────────────────────────────────────────
+const MA_ADM  = 'marchenaangulojoseluis@gmail.com';
+const _fbApp  = firebase.initializeApp(window.__firebaseConfig);
+const db      = firebase.firestore();
+window.__auth = firebase.auth();
+window.__prov = new firebase.auth.GoogleAuthProvider();
+window.__fb   = {
+  onAuthStateChanged: (auth, cb) => firebase.auth().onAuthStateChanged(cb),
+  signInWithPopup:    (auth, prov) => firebase.auth().signInWithPopup(prov),
+  signOut:            () => firebase.auth().signOut(),
+};
+
 let maUser = null;
 
-// ── Clock ──────────────────────────────────────────────────────
-function tick(){
-  const el = document.getElementById('clock');
-  if(el) el.textContent = new Date().toLocaleString('es-PE',{weekday:'short',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+(function(){
+  function waitForFirebase(){
+    if(window.__auth && window.__fb){
+      window.__fb.onAuthStateChanged(window.__auth, function(user){
+        if(user && !window._maInitDone){
+          window._maInitDone = true;
+          maVerify({email:user.email, name:user.displayName, picture:user.photoURL}, true);
+        } else if(!user && !window._maInitDone){
+          window._maInitDone = true;
+          maShowLogin();
+        }
+      });
+    } else { setTimeout(waitForFirebase, 50); }
+  }
+  waitForFirebase();
+})();
+
+function maShowLogin(){
+  var ov = document.getElementById('auth-overlay');
+  if(ov){ ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+  var btn = document.getElementById('g-btn');
+  if(btn){ btn.innerHTML = '<button onclick="maFirebaseSignIn()" style="display:flex;align-items:center;gap:10px;padding:10px 20px;border:1.5px solid #d0daf0;border-radius:8px;background:#fff;font-family:IBM Plex Sans,sans-serif;font-size:14px;cursor:pointer;font-weight:500"><img src=\'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg\' width=18>Continuar con Google</button>'; }
 }
-tick(); setInterval(tick, 1000);
 
-// ── Auth ────────────────────────────────────────────────────────
-firebase.auth().onAuthStateChanged(async user => {
-  if(!user){
-    showAuthOverlay();
-    return;
-  }
-  const cached = sessionStorage.getItem('ma_user');
-  if(cached){
-    try{
-      maUser = JSON.parse(cached);
-      hideAuthOverlay();
-      renderUserUI();
-      return;
-    }catch(e){}
-  }
-  showAuthLoading(true);
+async function maFirebaseSignIn(){
   try{
-    const email = user.email;
-    const SUPER = 'marchenaangulojoseluis@gmail.com';
-    const snap = await db.collection('usuarios').doc(email).get();
-    maUser = { email, nombre: user.displayName||email, foto: user.photoURL||null, rol:'SUPERVISOR' };
-    if(email === SUPER){
-      maUser.rol = 'SUPER_ADMIN';
-    } else if(snap.exists && snap.data().rol){
-      maUser.rol = snap.data().rol;
-    } else {
-      showAuthError('Tu cuenta no tiene acceso al sistema. Contacta al administrador.');
-      firebase.auth().signOut();
-      return;
-    }
-    if(!['SUPER_ADMIN','ADMIN','SUPERVISOR'].includes(maUser.rol)){
-      showAuthError('No tienes permiso para acceder a esta aplicación.');
-      firebase.auth().signOut();
-      return;
-    }
-    sessionStorage.setItem('ma_user', JSON.stringify(maUser));
-    hideAuthOverlay();
-    renderUserUI();
+    const result = await window.__fb.signInWithPopup(window.__auth, window.__prov);
+    maVerify({email:result.user.email, name:result.user.displayName, picture:result.user.photoURL}, true);
   }catch(e){
-    showAuthError('Error al verificar acceso: ' + e.message);
+    var errEl = document.getElementById('auth-err');
+    if(errEl){ errEl.textContent = 'Error al iniciar sesión: ' + e.message; errEl.classList.add('show'); }
   }
-});
+}
 
-function doLogin(){
-  const prov = new firebase.auth.GoogleAuthProvider();
-  firebase.auth().signInWithPopup(prov).catch(e => showAuthError(e.message));
+async function maVerify(payload, save){
+  var email = (payload.email || '').toLowerCase();
+  var errEl = document.getElementById('auth-err');
+  var ldEl  = document.getElementById('auth-loading');
+  if(ldEl){ ldEl.textContent = 'Verificando acceso...'; ldEl.classList.add('show'); }
+  if(errEl) errEl.classList.remove('show');
+  try{
+    const snap = await db.collection('usuarios').doc(email).get();
+    if(!snap.exists){
+      if(ldEl) ldEl.classList.remove('show');
+      if(errEl){ errEl.textContent = 'Acceso denegado para ' + email + '. Contacta al administrador.'; errEl.classList.add('show'); }
+      return;
+    }
+    const fsData = snap.data();
+    maUser = {
+      email,
+      name:    payload.name    || fsData.nombre || fsData.name || email,
+      picture: payload.picture || fsData.picture || '',
+      ...fsData,
+      name: payload.name || fsData.nombre || fsData.name || email,
+    };
+    if(maUser.email === MA_ADM) maUser.rol = 'SUPER_ADMIN';
+    if(save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
+    if(ldEl) ldEl.classList.remove('show');
+    document.getElementById('auth-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    document.getElementById('main-page').style.display = 'block';
+    document.getElementById('conn-pill').textContent = '✓ Conectado';
+    document.getElementById('conn-pill').className   = 'hpill ok';
+    renderUserPill();
+    initApp();
+  }catch(e){
+    if(ldEl) ldEl.classList.remove('show');
+    if(errEl){ errEl.textContent = 'Error: ' + e.message; errEl.classList.add('show'); }
+  }
+}
+
+function renderUserPill(){
+  const pill = document.getElementById('user-pill');
+  if(!pill || !maUser) return;
+  const n    = maUser.nombre || maUser.name || maUser.email;
+  const init = n.split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase();
+  const avatar   = maUser.picture
+    ? `<img class="user-avatar-img" src="${maUser.picture}">`
+    : `<div class="user-avatar-init">${init}</div>`;
+  const rol      = maUser.rol || 'ADMIN';
+  const rolBadge = `<span class="role-badge role-${rol}">${rol.replace('_',' ')}</span>`;
+  pill.innerHTML = avatar
+    + `<span class="user-pname">${n}</span>`
+    + `<div class="user-menu" id="user-menu">`
+    + `<div class="user-menu-head">${maUser.email} ${rolBadge}</div>`
+    + `<div class="user-menu-div"></div>`
+    + `<button class="user-menu-item danger" onclick="maSignOut()">→ Cerrar sesión</button>`
+    + `</div>`;
+  pill.style.display = 'flex';
+}
+function toggleUserMenu(){
+  const m = document.getElementById('user-menu');
+  if(m) m.classList.toggle('open');
 }
 function maSignOut(){
-  firebase.auth().signOut().then(()=>{ sessionStorage.removeItem('ma_user'); location.href='index.html'; });
+  firebase.auth().signOut().then(() => { sessionStorage.removeItem('ma_user'); location.href = 'index.html'; });
 }
-function showAuthOverlay(){ document.getElementById('auth-overlay').style.display='flex'; }
-function hideAuthOverlay(){ document.getElementById('auth-overlay').style.display='none'; }
-function showAuthError(msg){ const el=document.getElementById('auth-err'); el.textContent=msg; el.classList.add('show'); showAuthLoading(false); }
-function showAuthLoading(v){ const el=document.getElementById('auth-loading'); el.classList.toggle('show',v); }
-function renderUserUI(){
-  if(!maUser) return;
-  const init = (maUser.nombre||maUser.email||'?')[0].toUpperCase();
-  document.getElementById('user-avatar').textContent = init;
-  document.getElementById('user-name').textContent = (maUser.nombre||maUser.email||'').split(' ')[0];
-  document.getElementById('user-menu-email').textContent = maUser.email||'';
-  document.getElementById('user-menu-role-wrap').innerHTML =
-    `<div style="padding:4px 14px 8px"><span class="role-badge role-${maUser.rol}">${maUser.rol}</span></div>`;
-}
-
-// ── User menu ───────────────────────────────────────────────────
-function toggleUserMenu(){ document.getElementById('user-menu').classList.toggle('open'); }
 document.addEventListener('click', e => {
-  if(!document.getElementById('user-pill').contains(e.target))
-    document.getElementById('user-menu').classList.remove('open');
+  const pill = document.getElementById('user-pill');
+  const menu = document.getElementById('user-menu');
+  if(menu && pill && !pill.contains(e.target)) menu.classList.remove('open');
 });
 
-// ── API Key ─────────────────────────────────────────────────────
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+let _toastT = null;
+function toast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = 'toast' + (type ? ' ' + type : '');
+  t.classList.add('show');
+  clearTimeout(_toastT);
+  _toastT = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── GEMINI CONFIG ─────────────────────────────────────────────────────────────
+const GEMINI_MODELS = [
+  { id:'gemini-2.5-flash',        label:'Gemini 2.5 Flash'  },
+  { id:'gemini-2.0-flash',        label:'Gemini 2.0 Flash'  },
+  { id:'gemini-1.5-flash-latest', label:'1.5 Flash Latest'  },
+  { id:'gemini-1.5-pro-latest',   label:'1.5 Pro Latest'    },
+];
+const VALID_IDS = GEMINI_MODELS.map(m => m.id);
+
+let geminiModelId = (VALID_IDS.includes(sessionStorage.getItem('cs_gemini_model'))
+  ? sessionStorage.getItem('cs_gemini_model') : null) || 'gemini-2.5-flash';
 let geminiKey = sessionStorage.getItem('cs_gemini_key') || '';
 
-// Inicializa selector de modelos como pills
-(function initModelSelect(){
-  const container = document.getElementById('model-pills');
-  function syncHeader(){
-    const label = GEMINI_MODELS.find(m=>m.id===geminiModelId)?.label || geminiModelId;
-    const pill = document.querySelector('header .hpill');
-    if(pill) pill.textContent = label;
-  }
-  GEMINI_MODELS.forEach(m => {
-    const btn = document.createElement('button');
-    btn.textContent = m.label;
-    btn.dataset.id = m.id;
-    btn.style.cssText = 'font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:20px;border:1.5px solid;cursor:pointer;font-weight:600;transition:all .15s;white-space:nowrap';
-    const setActive = (active) => {
-      btn.style.background = active ? 'var(--blue)' : 'var(--surface2)';
-      btn.style.color = active ? '#fff' : 'var(--muted2)';
-      btn.style.borderColor = active ? 'var(--blue)' : 'var(--border)';
-    };
-    setActive(m.id === geminiModelId);
-    btn.onclick = () => {
-      geminiModelId = m.id;
-      sessionStorage.setItem('cs_gemini_model', m.id);
-      container.querySelectorAll('button').forEach(b => {
-        const isActive = b.dataset.id === m.id;
-        b.style.background = isActive ? 'var(--blue)' : 'var(--surface2)';
-        b.style.color = isActive ? '#fff' : 'var(--muted2)';
-        b.style.borderColor = isActive ? 'var(--blue)' : 'var(--border)';
-      });
-      syncHeader();
-      toast(`Modelo: ${m.label}`);
-    };
-    container.appendChild(btn);
-  });
-  syncHeader();
-})();
+function geminiUrl(model){
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+}
 
-(function initKey(){
-  if(geminiKey){ showKeyOk(); } else { showKeyForm(); }
-})();
+// ── APP INIT ──────────────────────────────────────────────────────────────────
+function initApp(){
+  // Build model pills
+  const container = document.getElementById('model-pills');
+  container.innerHTML = GEMINI_MODELS.map(m =>
+    `<div class="mpill${m.id === geminiModelId ? ' active' : ''}"
+          data-id="${m.id}" onclick="selectModel('${m.id}')">${m.label}</div>`
+  ).join('');
+
+  if(geminiKey){
+    document.getElementById('api-key-input').placeholder = '(key guardada en esta sesión)';
+    setKeyStatus(true);
+  } else {
+    setKeyStatus(false);
+  }
+  updateAnalyzeBtn();
+}
+
+function setKeyStatus(ok){
+  const el = document.getElementById('key-status');
+  if(ok){
+    el.innerHTML = `<span style="color:var(--green)">✓ API key activa en esta sesión</span>`;
+  } else {
+    el.innerHTML = `<span style="color:var(--muted2)">Sin API key. Obtén una gratis en <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">Google AI Studio →</a></span>`;
+  }
+}
+
+function selectModel(id){
+  if(!VALID_IDS.includes(id)) return;
+  geminiModelId = id;
+  sessionStorage.setItem('cs_gemini_model', id);
+  document.querySelectorAll('.mpill').forEach(p => p.classList.toggle('active', p.dataset.id === id));
+}
 
 function saveKey(){
-  const val = document.getElementById('key-input').value.trim();
-  if(!val){ toast('Ingresa una clave válida','warn'); return; }
-  geminiKey = val;
-  sessionStorage.setItem('cs_gemini_key', val);
-  showKeyOk();
-  toast('Clave guardada ✓');
+  const raw = document.getElementById('api-key-input').value.trim();
+  if(!raw){ toast('Pega tu API key primero', 'err'); return; }
+  geminiKey = raw;
+  sessionStorage.setItem('cs_gemini_key', raw);
+  document.getElementById('api-key-input').value       = '';
+  document.getElementById('api-key-input').placeholder = '(key guardada en esta sesión)';
+  setKeyStatus(true);
+  toast('API key guardada ✓', 'ok');
+  updateAnalyzeBtn();
 }
-function resetKey(){
-  geminiKey = '';
-  sessionStorage.removeItem('cs_gemini_key');
-  document.getElementById('key-input').value = '';
-  showKeyForm();
-}
-function showKeyOk(){
-  document.getElementById('key-ok').classList.add('show');
-  document.getElementById('key-input').closest('.key-input-row').style.display='none';
-  document.querySelector('#key-banner .key-banner-text strong').style.display='none';
-}
-function showKeyForm(){
-  document.getElementById('key-ok').classList.remove('show');
-  document.getElementById('key-input').closest('.key-input-row').style.display='flex';
-  document.querySelector('#key-banner .key-banner-text strong').style.display='block';
-}
-document.getElementById('key-input').addEventListener('keydown', e => { if(e.key==='Enter') saveKey(); });
 
-// ── File handling ────────────────────────────────────────────────
-let files = []; // [{id, file, thumb, status, data}]
+// ── FILE HANDLING ─────────────────────────────────────────────────────────────
+let pendingFiles = [];
 
-function onDragOver(e){ e.preventDefault(); document.getElementById('upload-zone').classList.add('dragover'); }
-function onDragLeave(){ document.getElementById('upload-zone').classList.remove('dragover'); }
-function onDrop(e){
-  e.preventDefault();
-  document.getElementById('upload-zone').classList.remove('dragover');
-  addFiles(Array.from(e.dataTransfer.files));
-}
 function onFilesSelected(e){
   addFiles(Array.from(e.target.files));
   e.target.value = '';
 }
+function onDragOver(e){
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.add('dragover');
+}
+function onDragLeave(){
+  document.getElementById('drop-zone').classList.remove('dragover');
+}
+function onDrop(e){
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('dragover');
+  const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+  if(files.length) addFiles(files);
+  else toast('Solo se aceptan imágenes', 'err');
+}
 
-function addFiles(newFiles){
-  const valid = newFiles.filter(f => ['image/jpeg','image/png','image/webp'].includes(f.type));
-  if(valid.length < newFiles.length) toast(`${newFiles.length-valid.length} archivo(s) ignorado(s) (solo JPG/PNG/WebP)`,'warn');
-  valid.forEach(f => {
-    const id = 'f_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-    const entry = { id, file: f, thumb: null, status: 'pending', data: null };
-    files.push(entry);
-    const reader = new FileReader();
-    reader.onload = ev => { entry.thumb = ev.target.result; renderQueue(); };
-    reader.readAsDataURL(f);
+function addFiles(files){
+  files.forEach(f => {
+    if(!f.type.startsWith('image/')){ toast('Solo imágenes JPG / PNG / WEBP', 'err'); return; }
+    pendingFiles.push({ file:f, objectUrl:URL.createObjectURL(f), status:'pending', result:null });
   });
-  renderQueue();
+  renderThumbs();
+  updateAnalyzeBtn();
 }
 
-function removeFile(id){
-  files = files.filter(f => f.id !== id);
-  renderQueue();
-  // Also remove from results table if already processed
-  const row = document.getElementById('row_'+id);
-  if(row) row.remove();
-  updateResultsVisibility();
+function renderThumbs(){
+  const grid = document.getElementById('thumb-grid');
+  if(!pendingFiles.length){ grid.innerHTML = ''; return; }
+  grid.innerHTML = pendingFiles.map((pf, i) => {
+    const cls = pf.status === 'ok'         ? ' st-ok'
+              : pf.status === 'processing' ? ' st-processing'
+              : pf.status === 'error'      ? ' st-error' : '';
+    const overlay = pf.status === 'ok'         ? '<div class="thumb-overlay">✅</div>'
+                  : pf.status === 'processing' ? '<div class="thumb-overlay">⏳</div>'
+                  : pf.status === 'error'      ? '<div class="thumb-overlay">❌</div>' : '';
+    const removeBtn = pf.status !== 'processing'
+      ? `<div class="thumb-remove" onclick="removeFile(${i})" title="Quitar">✕</div>` : '';
+    const shortName = pf.file.name.length > 12
+      ? pf.file.name.substring(0, 10) + '…' : pf.file.name;
+    return `<div class="thumb-wrap">
+      <img class="thumb-img${cls}" src="${pf.objectUrl}" alt="${pf.file.name}">
+      ${overlay}
+      ${removeBtn}
+      <div class="thumb-name">${shortName}</div>
+    </div>`;
+  }).join('');
 }
 
-function renderQueue(){
-  const container = document.getElementById('file-queue');
-  container.innerHTML = '';
-  files.filter(f => f.status === 'pending' || f.status === 'error').forEach(entry => {
-    const chip = document.createElement('div');
-    chip.className = 'file-chip' + (entry.status==='error'?' error':'');
-    chip.id = 'chip_'+entry.id;
-    chip.innerHTML = `
-      ${entry.thumb
-        ? `<img class="file-chip-thumb" src="${entry.thumb}" alt="">`
-        : `<div class="file-chip-thumb" style="display:flex;align-items:center;justify-content:center;font-size:18px">📄</div>`}
-      <span class="file-chip-name" title="${entry.file.name}">${entry.file.name}</span>
-      <span class="file-chip-status">${entry.status==='error'?'Error':'Pendiente'}</span>
-      <button class="file-chip-remove" onclick="removeFile('${entry.id}')" title="Quitar">✕</button>
-    `;
-    container.appendChild(chip);
-  });
-
-  const pending = files.filter(f => f.status==='pending'||f.status==='error').length;
-  const btn = document.getElementById('btn-procesar');
-  const counter = document.getElementById('queue-count');
-  if(pending > 0){
-    btn.style.display = '';
-    btn.textContent = `⚡ Procesar ${pending} imagen${pending>1?'es':''}`;
-    counter.textContent = `${pending} imagen${pending>1?'es':''} en cola`;
-  } else {
-    btn.style.display = 'none';
-    counter.textContent = '';
-    if(files.length === 0) container.innerHTML = '';
-  }
+function removeFile(i){
+  if(pendingFiles[i]){ URL.revokeObjectURL(pendingFiles[i].objectUrl); pendingFiles.splice(i, 1); }
+  renderThumbs();
+  updateAnalyzeBtn();
 }
 
-// ── Gemini API call ─────────────────────────────────────────────
-// Modelos disponibles (en orden de preferencia)
-const GEMINI_MODELS = [
-  { id: 'gemini-2.5-flash',        label: 'Gemini 2.5 Flash'        },
-  { id: 'gemini-2.0-flash',        label: 'Gemini 2.0 Flash'        },
-  { id: 'gemini-1.5-flash-latest', label: 'Gemini 1.5 Flash Latest' },
-  { id: 'gemini-1.5-pro-latest',   label: 'Gemini 1.5 Pro Latest'   },
-];
-// Si el modelo guardado ya no existe en la lista, resetearlo
-const _savedModel = sessionStorage.getItem('cs_gemini_model');
-const VALID_IDS = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash-latest','gemini-1.5-pro-latest'];
-let geminiModelId = (VALID_IDS.includes(_savedModel) ? _savedModel : null) || 'gemini-2.5-flash';
-function geminiUrl(modelId){ return `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`; }
-const GEMINI_PROMPT = `Analiza este comprobante de pago (factura, boleta u otro).
-Responde SOLO con JSON válido sin markdown ni texto adicional:
-{
-  "fecha": "DD/MM/YYYY",
-  "comp": "Factura o Boleta de Venta o Nota de Crédito o Nota de Débito o Recibo por Honorarios o Ticket o el tipo que corresponda",
-  "numero": "número o serie-correlativo del comprobante",
-  "ruc": "RUC del emisor, solo dígitos, sin puntos ni guiones",
-  "proveedor": "razón social del emisor",
-  "monto": número_decimal_sin_formato_sin_símbolo_de_moneda
-}
-Si un campo no es legible escribe null.`;
-
-async function callGemini(base64Data, mimeType){
-  if(!geminiKey) throw new Error('No hay clave API configurada');
-  const res = await fetch(geminiUrl(geminiModelId), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { inline_data: { mime_type: mimeType, data: base64Data } },
-          { text: GEMINI_PROMPT }
-        ]
-      }],
-      generationConfig: { temperature: 0, maxOutputTokens: 512 }
-    })
-  });
-  if(!res.ok){
-    const err = await res.json().catch(()=>({}));
-    const msg = err?.error?.message || `HTTP ${res.status}`;
-    const status = res.status;
-    if(status===400 && msg.toLowerCase().includes('api_key')) throw new Error('Clave API inválida — verifica que la copiaste correctamente');
-    if(status===400 && msg.toLowerCase().includes('api key')) throw new Error('Clave API inválida — verifica que la copiaste correctamente');
-    if(status===403) throw new Error(`Sin permisos (403): ${msg}`);
-    if(status===429) throw new Error(`Cuota excedida (429): ${msg}`);
-    throw new Error(`Error ${status}: ${msg}`);
-  }
-  const data = await res.json();
-  const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-  const m = text.match(/\{[\s\S]*\}/);
-  if(!m) throw new Error('Respuesta inesperada de Gemini');
-  return JSON.parse(m[0]);
+function updateAnalyzeBtn(){
+  const hasPending = pendingFiles.some(f => f.status === 'pending');
+  document.getElementById('btn-analyze').disabled = !geminiKey || !hasPending;
 }
 
-// Comprime la imagen a máx 1600px y calidad 0.85 antes de enviar a Gemini
+// ── IMAGE COMPRESSION ─────────────────────────────────────────────────────────
 function fileToBase64(file){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = reject;
-    reader.onload = e => {
+    reader.onload  = e => {
       const img = new Image();
       img.onerror = reject;
-      img.onload = () => {
+      img.onload  = () => {
         const MAX = 1600;
         let w = img.width, h = img.height;
         if(w > MAX || h > MAX){
-          if(w >= h){ h = Math.round(h * MAX/w); w = MAX; }
-          else { w = Math.round(w * MAX/h); h = MAX; }
+          if(w >= h){ h = Math.round(h * MAX / w); w = MAX; }
+          else       { w = Math.round(w * MAX / h); h = MAX; }
         }
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
@@ -688,299 +564,217 @@ function fileToBase64(file){
   });
 }
 
-// ── Process all ─────────────────────────────────────────────────
-async function procesarTodo(){
-  if(!geminiKey){
-    toast('Primero ingresa tu clave API de Gemini','warn');
-    document.getElementById('key-input').focus();
-    return;
-  }
-  const queue = files.filter(f => f.status==='pending'||f.status==='error');
-  if(queue.length === 0) return;
+// ── GEMINI PROMPT ─────────────────────────────────────────────────────────────
+const GEMINI_PROMPT = `Analiza esta imagen de un comprobante de pago peruano.
+Responde SOLO con este JSON exacto (sin markdown, sin texto adicional):
+{"fecha":"DD/MM/YYYY","tipo":"F","numero":"","ruc":"","proveedor":"","monto":0.00}
 
-  document.getElementById('btn-procesar').disabled = true;
-  const procBar = document.getElementById('proc-bar');
-  procBar.classList.add('show');
-  const fill = document.getElementById('proc-fill');
-  const label = document.getElementById('proc-label');
+Reglas:
+- fecha: formato DD/MM/YYYY. Si no se lee claramente usa "".
+- tipo: "F"=Factura, "B"=Boleta, "T"=Ticket, "O"=Otro.
+- numero: número completo incluyendo serie (ej: "F001-00012345").
+- ruc: RUC o DNI del EMISOR, solo dígitos.
+- proveedor: nombre del emisor/empresa en MAYÚSCULAS.
+- monto: total numérico con decimales, sin símbolo de moneda.
+Responde ÚNICAMENTE el JSON.`;
 
-  let done = 0;
-  for(const entry of queue){
-    label.textContent = `${done} / ${queue.length}`;
-    fill.style.width = `${Math.round(done/queue.length*100)}%`;
-    entry.status = 'processing';
-    updateChipStatus(entry);
-    addOrUpdateResultRow(entry);
+// ── ANALYZE ───────────────────────────────────────────────────────────────────
+async function analyzeAll(){
+  if(!geminiKey){ toast('Configura tu API key primero', 'err'); return; }
+  const toProcess = pendingFiles.filter(f => f.status === 'pending');
+  if(!toProcess.length){ toast('No hay imágenes pendientes', 'err'); return; }
+
+  const btn = document.getElementById('btn-analyze');
+  const statusEl = document.getElementById('analyze-status');
+  btn.disabled = true;
+
+  let done = 0, errors = 0;
+  for(let i = 0; i < pendingFiles.length; i++){
+    if(pendingFiles[i].status !== 'pending') continue;
+
+    pendingFiles[i].status = 'processing';
+    renderThumbs();
+    statusEl.textContent = `Analizando ${done + 1} de ${toProcess.length}…`;
 
     try{
-      const { b64, mime } = await fileToBase64(entry.file);
-      const parsed = await callGemini(b64, mime);
-      entry.data = parsed;
-      entry.status = 'done';
-    } catch(e){
-      entry.data = null;
-      entry.status = 'error';
-      entry.errorMsg = e.message;
-      toast(`Error en "${entry.file.name}": ${e.message}`,'error');
+      const { b64, mime } = await fileToBase64(pendingFiles[i].file);
+      const res = await fetch(geminiUrl(geminiModelId), {
+        method:  'POST',
+        // Auth via header — NOT ?key= query param
+        headers: { 'Content-Type':'application/json', 'x-goog-api-key': geminiKey },
+        body:    JSON.stringify({
+          contents: [{ parts: [
+            { inline_data: { mime_type: mime, data: b64 } },
+            { text: GEMINI_PROMPT }
+          ]}],
+          generationConfig: { temperature: 0, maxOutputTokens: 512 }
+        })
+      });
+
+      if(!res.ok){
+        const errJson = await res.json().catch(() => ({}));
+        const errMsg  = errJson?.error?.message || `HTTP ${res.status}`;
+        pendingFiles[i].status = 'error';
+        errors++;
+        toast(`Imagen ${i+1}: ${errMsg}`, 'err');
+      } else {
+        const data    = await res.json();
+        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+        let parsed = {};
+        try{
+          const clean = rawText.replace(/```(?:json)?/gi,'').replace(/```/g,'').trim();
+          parsed = JSON.parse(clean);
+        }catch(_){
+          toast(`Imagen ${i+1}: respuesta inesperada de la IA`, 'err');
+        }
+        pendingFiles[i].status = 'ok';
+        pendingFiles[i].result = parsed;
+        appendRow(parsed, pendingFiles[i].file.name);
+        done++;
+      }
+    }catch(e){
+      pendingFiles[i].status = 'error';
+      errors++;
+      toast(`Error: ${e.message}`, 'err');
     }
-    done++;
-    addOrUpdateResultRow(entry);
-    updateChipStatus(entry);
-    renderQueue();
-    updateStats();
-    fill.style.width = `${Math.round(done/queue.length*100)}%`;
-    label.textContent = `${done} / ${queue.length}`;
-    // Small delay to avoid rate limit on free tier
-    if(done < queue.length) await sleep(400);
+    renderThumbs();
   }
 
-  procBar.classList.remove('show');
-  document.getElementById('btn-procesar').disabled = false;
-  updateResultsVisibility();
-  updateStats();
-  renderQueue();
-  const doneCount = files.filter(f=>f.status==='done').length;
-  if(doneCount>0) toast(`✓ ${doneCount} comprobante${doneCount>1?'s':''} procesado${doneCount>1?'s':''}`);
-}
+  statusEl.textContent = errors
+    ? `${done} analizados, ${errors} con error`
+    : `✓ ${done} comprobante${done !== 1 ? 's' : ''} detectado${done !== 1 ? 's' : ''}`;
 
-function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  btn.disabled = false;
+  updateAnalyzeBtn();
 
-function updateChipStatus(entry){
-  const chip = document.getElementById('chip_'+entry.id);
-  if(!chip) return;
-  if(entry.status==='done'||entry.status==='processing') { chip.style.display='none'; return; }
-  chip.className = 'file-chip' + (entry.status==='error'?' error':'');
-  const statusEl = chip.querySelector('.file-chip-status');
-  if(statusEl) statusEl.textContent = entry.status==='error'?'Error':'Pendiente';
-}
-
-// ── Results table ────────────────────────────────────────────────
-function addOrUpdateResultRow(entry){
-  const tbody = document.getElementById('results-tbody');
-  let row = document.getElementById('row_'+entry.id);
-  const idx = files.filter(f=>f.status==='done'||f.status==='processing'||f.status==='error').indexOf(entry) + 1;
-
-  if(!row){
-    row = document.createElement('tr');
-    row.id = 'row_'+entry.id;
-    tbody.appendChild(row);
+  const sec = document.getElementById('results-section');
+  if(rows.length && sec.style.display === 'none'){
+    sec.style.display = 'block';
+    sec.scrollIntoView({ behavior:'smooth', block:'start' });
   }
+}
 
-  if(entry.status === 'processing'){
-    row.innerHTML = `
-      <td class="td-num">${idx}</td>
-      <td class="td-thumb"><div class="thumb-placeholder">⏳</div></td>
-      <td colspan="7"><div style="display:flex;align-items:center;gap:8px;padding:4px 0;color:var(--muted2);font-size:12px"><div class="spinner spinner-dark"></div> Analizando con Gemini…</div></td>
-      <td class="td-status"><span class="status-badge status-proc">Procesando</span></td>
-      <td></td>
-    `;
+// ── RESULTS TABLE ─────────────────────────────────────────────────────────────
+let rows  = [];
+let rowId = 0;
+
+function appendRow(data, filename){
+  rows.push({
+    _id:         rowId++,
+    fecha:       data.fecha     || '',
+    tipo:        data.tipo      || 'F',
+    numero:      data.numero    || '',
+    ruc:         data.ruc       || '',
+    proveedor:   data.proveedor || '',
+    descripcion: '',               // always manual
+    monto:       data.monto != null ? String(data.monto) : '',
+    _file:       filename || ''
+  });
+  renderTable();
+  document.getElementById('results-section').style.display = 'block';
+}
+
+function addRow(){
+  rows.push({ _id:rowId++, fecha:'', tipo:'F', numero:'', ruc:'', proveedor:'', descripcion:'', monto:'', _file:'' });
+  renderTable();
+  document.getElementById('results-section').style.display = 'block';
+}
+
+function deleteRow(id){
+  rows = rows.filter(r => r._id !== id);
+  renderTable();
+  if(!rows.length) document.getElementById('results-section').style.display = 'none';
+}
+
+function setField(id, field, val){
+  const r = rows.find(r => r._id === id);
+  if(r) r[field] = val;
+}
+
+function renderTable(){
+  const tbody = document.getElementById('results-body');
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-msg">Sin comprobantes. Sube imágenes y presiona Analizar.</td></tr>';
     return;
   }
-
-  const d = entry.data || {};
-  const thumbHTML = entry.thumb
-    ? `<img src="${entry.thumb}" alt="" onclick="previewImg('${entry.thumb}')" style="cursor:zoom-in">`
-    : `<div class="thumb-placeholder">📄</div>`;
-
-  const statusHTML = entry.status === 'done'
-    ? `<span class="status-badge status-ok">✓ IA</span>`
-    : `<span class="status-badge status-err" title="${escHtml(entry.errorMsg||'')}">Error</span>`;
-
-  row.innerHTML = `
-    <td class="td-num">${idx}</td>
-    <td class="td-thumb">${thumbHTML}</td>
-    <td><input type="text" value="${escHtml(d.fecha||'')}" placeholder="DD/MM/YYYY" data-field="fecha" data-id="${entry.id}"></td>
-    <td><input type="text" value="${escHtml(d.comp||'')}" placeholder="Tipo" data-field="comp" data-id="${entry.id}"></td>
-    <td><input type="text" value="${escHtml(d.numero||'')}" placeholder="F001-001" data-field="numero" data-id="${entry.id}" style="min-width:100px"></td>
-    <td><input type="text" value="${escHtml(d.ruc||'')}" placeholder="20xxxxxxxxx" data-field="ruc" data-id="${entry.id}" style="font-family:var(--mono);min-width:90px"></td>
-    <td><input type="text" value="${escHtml(d.proveedor||'')}" placeholder="Razón social" data-field="proveedor" data-id="${entry.id}" style="min-width:140px"></td>
-    <td><input type="text" value="" placeholder="★ Ingresa descripción…" data-field="descripcion" data-id="${entry.id}" class="required-empty" style="min-width:160px"></td>
-    <td class="td-monto"><input type="text" value="${escHtml(d.monto!=null?String(d.monto):'')}" placeholder="0.00" data-field="monto" data-id="${entry.id}" style="min-width:80px;text-align:right"></td>
-    <td class="td-status">${statusHTML}</td>
-    <td class="td-actions"><button class="btn-row-del" onclick="removeRow('${entry.id}')" title="Eliminar fila">✕</button></td>
-  `;
-
-  // Update entry data on input change
-  row.querySelectorAll('input[data-field]').forEach(inp => {
-    inp.addEventListener('input', () => {
-      const f = inp.dataset.field;
-      const id = inp.dataset.id;
-      const ent = files.find(x=>x.id===id);
-      if(ent){ if(!ent.data) ent.data={}; ent.data[f]=inp.value; }
-      if(f==='descripcion') inp.classList.toggle('required-empty', !inp.value.trim());
-      updateStats();
-    });
-  });
-
-  document.getElementById('results-section').classList.add('show');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="col-fecha">
+        <input class="td-inp" value="${esc(r.fecha)}" placeholder="DD/MM/YYYY"
+               oninput="setField(${r._id},'fecha',this.value)">
+      </td>
+      <td class="col-comp">
+        <select class="td-sel" onchange="setField(${r._id},'tipo',this.value)">
+          ${['F','B','T','O'].map(t => `<option value="${t}"${r.tipo===t?' selected':''}>${t}</option>`).join('')}
+        </select>
+      </td>
+      <td class="col-num">
+        <input class="td-inp" value="${esc(r.numero)}" placeholder="Serie-Número"
+               oninput="setField(${r._id},'numero',this.value)">
+      </td>
+      <td class="col-ruc">
+        <input class="td-inp" value="${esc(r.ruc)}" placeholder="RUC / DNI"
+               oninput="setField(${r._id},'ruc',this.value)">
+      </td>
+      <td class="col-prov">
+        <input class="td-inp" value="${esc(r.proveedor)}" placeholder="Proveedor..."
+               oninput="setField(${r._id},'proveedor',this.value)">
+      </td>
+      <td class="col-desc">
+        <input class="td-inp td-req" value="${esc(r.descripcion)}"
+               placeholder="Descripción (obligatoria)"
+               oninput="setField(${r._id},'descripcion',this.value)">
+      </td>
+      <td class="col-monto">
+        <input class="td-inp" value="${esc(r.monto)}" placeholder="0.00"
+               style="text-align:right"
+               oninput="setField(${r._id},'monto',this.value)">
+      </td>
+      <td class="col-acc">
+        <button class="btn btn-sm btn-red" onclick="deleteRow(${r._id})"
+                style="padding:3px 8px" title="Eliminar fila">✕</button>
+      </td>
+    </tr>
+  `).join('');
 }
 
-function removeRow(id){
-  const row = document.getElementById('row_'+id);
-  if(row) row.remove();
-  files = files.filter(f=>f.id!==id);
-  updateResultsVisibility();
-  updateStats();
-  renderQueue();
+function esc(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-function updateResultsVisibility(){
-  const hasRows = document.querySelectorAll('#results-tbody tr').length > 0;
-  document.getElementById('results-section').classList.toggle('show', hasRows);
-  document.getElementById('btn-export').style.display = hasRows ? '' : 'none';
-}
-
-function updateStats(){
-  const done = files.filter(f=>f.status==='done');
-  const row = document.getElementById('stats-row');
-  if(done.length === 0){ row.style.display='none'; document.getElementById('btn-export').style.display='none'; return; }
-
-  let totalMonto = 0;
-  const tipos = {};
-  done.forEach(f=>{
-    const d=f.data||{};
-    const m = parseFloat(String(d.monto||'').replace(',','.'));
-    if(!isNaN(m)) totalMonto += m;
-    const t = (d.comp||'Otro').trim();
-    tipos[t] = (tipos[t]||0)+1;
-  });
-
-  const tipoStr = Object.entries(tipos).map(([k,v])=>`${k}: ${v}`).join(' · ');
-  row.style.display = 'flex';
-  row.innerHTML = `
-    <div class="stat-chip"><span class="stat-chip-val">${done.length}</span><span class="stat-chip-key">Procesados</span></div>
-    <div class="stat-chip"><span class="stat-chip-val">S/ ${totalMonto.toFixed(2)}</span><span class="stat-chip-key">Monto total</span></div>
-    <div class="stat-chip" style="flex:1;min-width:200px"><span class="stat-chip-val" style="font-size:13px;word-break:break-word;line-height:1.4">${tipoStr||'—'}</span><span class="stat-chip-key">Tipos</span></div>
-  `;
-  document.getElementById('btn-export').style.display = '';
-}
-
-// ── Export modal ─────────────────────────────────────────────────
-function openExportModal(){
-  const done = files.filter(f=>f.status==='done');
-  if(done.length===0){ toast('No hay comprobantes procesados para exportar','warn'); return; }
-
-  let totalMonto=0, sinDesc=0;
-  const tipos={};
-  done.forEach(f=>{
-    const d=f.data||{};
-    const m=parseFloat(String(d.monto||'').replace(',','.'));
-    if(!isNaN(m)) totalMonto+=m;
-    const t=(d.comp||'Otro').trim();
-    tipos[t]=(tipos[t]||0)+1;
-    // Also check live values from table inputs
-    const inp = document.querySelector(`input[data-field="descripcion"][data-id="${f.id}"]`);
-    if(!inp||!inp.value.trim()) sinDesc++;
-  });
-
-  const tipoRows = Object.entries(tipos).map(([k,v])=>
-    `<div class="modal-row"><span class="modal-row-key">${k}</span><span class="modal-row-val">${v}</span></div>`
-  ).join('');
-
-  document.getElementById('modal-summary').innerHTML = `
-    <div class="modal-row"><span class="modal-row-key">Total comprobantes</span><span class="modal-row-val">${done.length}</span></div>
-    ${tipoRows}
-    <div class="modal-row"><span class="modal-row-key">Monto total</span><span class="modal-row-val">S/ ${totalMonto.toFixed(2)}</span></div>
-    <div class="modal-row"><span class="modal-row-key">Fecha de exportación</span><span class="modal-row-val">${new Date().toLocaleDateString('es-PE')}</span></div>
-  `;
-
-  const warnEl = document.getElementById('modal-warn');
-  const warnTxt = document.getElementById('modal-warn-text');
-  if(sinDesc>0){
-    warnTxt.textContent = `${sinDesc} comprobante${sinDesc>1?'s':''} sin descripción. Se exportarán con ese campo vacío.`;
-    warnEl.classList.remove('hidden');
-  } else {
-    warnEl.classList.add('hidden');
-  }
-
-  document.getElementById('modal-export').classList.add('open');
-}
-function closeExportModal(){ document.getElementById('modal-export').classList.remove('open'); }
-
-// ── Excel export ─────────────────────────────────────────────────
-function doExport(){
-  const done = files.filter(f=>f.status==='done');
-  if(!window.XLSX){ toast('SheetJS no cargó. Revisa tu conexión.','error'); return; }
-
-  const rows = done.map(f=>{
-    const d = f.data||{};
-    const inp = document.querySelector(`input[data-field="descripcion"][data-id="${f.id}"]`);
-    const descripcion = inp ? inp.value.trim() : (d.descripcion||'');
-    // Read live values from table
-    const liveVal = (field) => {
-      const el = document.querySelector(`input[data-field="${field}"][data-id="${f.id}"]`);
-      return el ? el.value.trim() : (d[field]!=null?String(d[field]):'');
-    };
-    const montoRaw = liveVal('monto');
-    const monto = montoRaw ? parseFloat(montoRaw.replace(',','.')) : null;
-    return {
-      'FECHA': liveVal('fecha'),
-      'COMP':  liveVal('comp'),
-      'NUMERO': liveVal('numero'),
-      'RUC':   liveVal('ruc'),
-      'PROVEEDOR': liveVal('proveedor'),
-      'DESCRIPCION': descripcion,
-      'MONTO': isNaN(monto) ? montoRaw : monto
-    };
-  });
-
-  const ws = XLSX.utils.json_to_sheet(rows);
-  // Column widths
-  ws['!cols'] = [{wch:12},{wch:22},{wch:18},{wch:13},{wch:30},{wch:32},{wch:12}];
+// ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
+function exportExcel(){
+  if(!rows.length){ toast('Sin datos para exportar', 'err'); return; }
+  const data = [
+    ['FECHA','COMP','NUMERO','RUC','PROVEEDOR','DESCRIPCION','MONTO'],
+    ...rows.map(r => [
+      r.fecha, r.tipo, r.numero, r.ruc, r.proveedor, r.descripcion,
+      r.monto !== '' ? (parseFloat(r.monto) || r.monto) : ''
+    ])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:13},{wch:7},{wch:20},{wch:13},{wch:32},{wch:38},{wch:11}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Comprobantes');
-
-  const fecha = new Date().toISOString().slice(0,10);
-  XLSX.writeFile(wb, `comprobantes_${fecha}.xlsx`);
-
-  closeExportModal();
-  toast('✓ Archivo descargado correctamente');
+  const d  = new Date();
+  const ts = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb, `comprobantes_${ts}.xlsx`);
+  toast('Excel exportado ✓', 'ok');
 }
 
-// ── Clear all ────────────────────────────────────────────────────
+// ── CLEAR ALL ─────────────────────────────────────────────────────────────────
 function clearAll(){
-  if(files.length===0) return;
-  if(!confirm('¿Limpiar todos los comprobantes y empezar de nuevo?')) return;
-  files = [];
-  document.getElementById('file-queue').innerHTML='';
-  document.getElementById('results-tbody').innerHTML='';
-  document.getElementById('results-section').classList.remove('show');
-  document.getElementById('stats-row').style.display='none';
-  document.getElementById('btn-export').style.display='none';
-  document.getElementById('btn-procesar').style.display='none';
-  document.getElementById('queue-count').textContent='';
-  document.getElementById('proc-bar').classList.remove('show');
+  if(!confirm('¿Borrar todos los comprobantes y las imágenes cargadas?')) return;
+  pendingFiles.forEach(f => URL.revokeObjectURL(f.objectUrl));
+  pendingFiles = [];
+  rows = [];
+  renderThumbs();
+  renderTable();
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('analyze-status').textContent    = '';
+  updateAnalyzeBtn();
+  toast('Limpiado ✓', 'ok');
 }
-
-// ── Image preview ────────────────────────────────────────────────
-function previewImg(src){
-  const overlay = document.createElement('div');
-  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9998;display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:20px';
-  overlay.innerHTML=`<img src="${src}" style="max-width:90vw;max-height:90vh;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6)">`;
-  overlay.onclick=()=>overlay.remove();
-  document.body.appendChild(overlay);
-}
-
-// ── Toast ────────────────────────────────────────────────────────
-let _toastTimer;
-function toast(msg, type='ok'){
-  const el=document.getElementById('toast');
-  el.textContent=msg;
-  el.style.background = type==='error'?'#d63344':type==='warn'?'#d48a00':'#1a2540';
-  el.classList.add('show');
-  clearTimeout(_toastTimer);
-  _toastTimer=setTimeout(()=>el.classList.remove('show'), 3200);
-}
-
-// ── Utils ────────────────────────────────────────────────────────
-function escHtml(str){
-  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// Close modal on background click
-document.getElementById('modal-export').addEventListener('click', function(e){
-  if(e.target===this) closeExportModal();
-});
 </script>
 </body>
 </html>
