@@ -570,14 +570,14 @@ Analiza la imagen y extrae los datos. Responde ÚNICAMENTE con JSON válido, sin
 
 Claves requeridas:
 - "fecha": string DD/MM/YYYY (ejemplo: "27/05/2026"). Si no se lee usa "".
-- "tipo": "F" para Factura, "B" para Boleta, "T" para Ticket, "O" para Otro.
+- "tipo": "FA"=Factura, "BO"=Boleta, "TK"=Ticket, "NC"=Nota de Crédito, "OT"=Otro.
 - "numero": número completo con serie (ejemplo: "F001-00001234"). Si no se lee usa "".
 - "ruc": RUC o DNI del emisor, solo dígitos (ejemplo: "20512345678"). Si no se lee usa "".
 - "proveedor": razón social del emisor en MAYÚSCULAS (ejemplo: "FERREYROS S.A."). Si no se lee usa "".
 - "monto": número decimal con el total a pagar (ejemplo: 150.00). Si no se lee usa 0.
 
 Responde SOLO el JSON. Ejemplo de respuesta válida:
-{"fecha":"27/05/2026","tipo":"F","numero":"F001-00001234","ruc":"20512345678","proveedor":"FERREYROS S.A.","monto":150.00}`;
+{"fecha":"27/05/2026","tipo":"FA","numero":"F001-00001234","ruc":"20512345678","proveedor":"FERREYROS S.A.","monto":150.00}`;
 
 // ── ANALYZE ───────────────────────────────────────────────────────────────────
 async function analyzeAll(){
@@ -616,7 +616,7 @@ async function analyzeAll(){
               type: 'object',
               properties: {
                 fecha:     { type: 'string' },
-                tipo:      { type: 'string', enum: ['F','B','T','O'] },
+                tipo:      { type: 'string', enum: ['FA','BO','TK','NC','OT'] },
                 numero:    { type: 'string' },
                 ruc:       { type: 'string' },
                 proveedor: { type: 'string' },
@@ -705,7 +705,7 @@ function appendRow(data, filename){
   rows.push({
     _id:         rowId++,
     fecha:       data.fecha     || '',
-    tipo:        data.tipo      || 'F',
+    tipo:        data.tipo      || 'FA',
     numero:      data.numero    || '',
     ruc:         data.ruc       || '',
     proveedor:   data.proveedor || '',
@@ -718,7 +718,7 @@ function appendRow(data, filename){
 }
 
 function addRow(){
-  rows.push({ _id:rowId++, fecha:'', tipo:'F', numero:'', ruc:'', proveedor:'', descripcion:'', monto:'', _file:'' });
+  rows.push({ _id:rowId++, fecha:'', tipo:'FA', numero:'', ruc:'', proveedor:'', descripcion:'', monto:'', _file:'' });
   renderTable();
   document.getElementById('results-section').style.display = 'block';
 }
@@ -748,7 +748,7 @@ function renderTable(){
       </td>
       <td class="col-comp">
         <select class="td-sel" onchange="setField(${r._id},'tipo',this.value)">
-          ${['F','B','T','O'].map(t => `<option value="${t}"${r.tipo===t?' selected':''}>${t}</option>`).join('')}
+          ${[['FA','Factura'],['BO','Boleta'],['TK','Ticket'],['NC','N. Crédito'],['OT','Otro']].map(([v,l]) => `<option value="${v}"${r.tipo===v?' selected':''}>${v}</option>`).join('')}
         </select>
       </td>
       <td class="col-num">
