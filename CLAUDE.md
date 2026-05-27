@@ -11,7 +11,8 @@ No hay servidor — todo corre en el browser con Firebase Auth + Firestore direc
 - `firebase-config.js` — config pública de Firebase (project: `multiaire-fee43`)
 - `wsp_import/importar_asistencia.py` — script Python para importar asistencia desde ZIP de WhatsApp
 
-## ComprobaScan (`comprobantes.html`)
+## FacturasIA (`comprobantes.html`)
+> Antes llamada "ComprobaScan" — renombrada 2026-05-27
 App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 - **IA**: Google Gemini REST API directo desde el browser
 - **Auth API**: header `x-goog-api-key: <key>` (NO query param `?key=`)
@@ -92,6 +93,10 @@ function calcHorasExtra(entrada, salida, fecha) {
 ## Horarios decimales
 - `8.5` = 08:30, `18.0` = 18:00, `19.5` = 19:30
 - Redondeo a media hora: `round(h * 2) / 2`
+
+## Orden de cards en index.html
+**Configuración es siempre la última card del panel de apps.** Cualquier app nueva se inserta antes de Configuración.
+Orden actual: Inv. Equipos → Mantenimiento → Itinerario → Insumos → Asistencia → FacturasIA → Configuración
 
 ## Tabs de la app
 1. **Hoy** — registro del día, entrada/salida por colaborador
@@ -221,3 +226,5 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-27 | ComprobaScan: API key y modelo pasan de sessionStorage a localStorage — persisten entre sesiones; botón 🗑 Borrar |
 | 2026-05-27 | ComprobaScan: rate limiter free tier — 6.5s entre llamadas Gemini con cuenta regresiva visible en status |
 | 2026-05-27 | ComprobaScan: actualiza lista de modelos — retira gemini-2.0-flash (deprecated jun-2026) y 1.5-flash/pro; agrega gemini-2.5-flash-lite y gemini-3.5-flash |
+| 2026-05-27 | FacturasIA: renombrada desde ComprobaScan — card movida antes de Configuración en index.html |
+| 2026-05-27 | index.html: regla permanente — Configuración siempre es la última card del panel |

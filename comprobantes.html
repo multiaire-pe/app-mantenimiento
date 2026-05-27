@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <link rel="icon" type="image/png" href="favicon.png">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>MultiAire – ComprobaScan</title>
+<title>MultiAire – FacturasIA</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 :root{
@@ -167,7 +167,7 @@ tr:hover td{background:var(--surface2)}
 
 <header>
   <div class="logo-dot"></div>
-  <div class="logo">MultiAire <span>/ ComprobaScan</span></div>
+  <div class="logo">MultiAire <span>/ FacturasIA</span></div>
   <div class="hpill loading" id="conn-pill">⟳ Conectando...</div>
   <div class="hactions">
     <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
@@ -178,7 +178,7 @@ tr:hover td{background:var(--surface2)}
 <div id="auth-overlay" style="display:none">
   <div class="auth-card">
     <div class="auth-logo"><div class="auth-logo-dot"></div><div class="auth-logo-text">MultiAire</div></div>
-    <div class="auth-title">ComprobaScan</div>
+    <div class="auth-title">FacturasIA</div>
     <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada.</div>
     <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
     <div class="auth-err" id="auth-err"></div>
@@ -275,7 +275,7 @@ tr:hover td{background:var(--surface2)}
 <footer>
   <span class="footer-txt">MultiAire © 2026</span>
   <span class="footer-txt" style="opacity:.4">·</span>
-  <span class="footer-txt">ComprobaScan</span>
+  <span class="footer-txt">FacturasIA</span>
   <span class="footer-time" id="clock">—</span>
 </footer>
 
@@ -738,18 +738,18 @@ async function callGeminiForImage(b64, mime){
     throw new Error(`Gemini no pudo procesar (${finishReason})`);
   }
   const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  console.log('[ComprobaScan] Gemini raw:', rawText);
+  console.log('[FacturasIA] Gemini raw:', rawText);
   if(!rawText){
-    console.warn('[ComprobaScan] Empty response. Full payload:', JSON.stringify(data));
+    console.warn('[FacturasIA] Empty response. Full payload:', JSON.stringify(data));
     throw new Error('Gemini no devolvió texto');
   }
   const clean = rawText.replace(/```(?:json)?/gi,'').replace(/```/g,'').trim();
   let parsed = {};
   try{ parsed = JSON.parse(clean); }
   catch(parseErr){
-    console.warn('[ComprobaScan] JSON parse failed, raw:', rawText);
+    console.warn('[FacturasIA] JSON parse failed, raw:', rawText);
     const match = rawText.match(/\{[\s\S]*\}/);
-    if(match){ try{ parsed = JSON.parse(match[0]); }catch(e2){ console.error('[ComprobaScan] Fallback parse also failed'); } }
+    if(match){ try{ parsed = JSON.parse(match[0]); }catch(e2){ console.error('[FacturasIA] Fallback parse also failed'); } }
     if(!Object.keys(parsed).length) throw new Error(`Respuesta inesperada: "${rawText.substring(0,80)}"`);
   }
   return parsed;
