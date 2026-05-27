@@ -225,7 +225,7 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 <header>
   <div class="logo-dot"></div>
   <div class="logo">MultiAire <span>/ ComprobaScan</span></div>
-  <span class="hpill">Gemini 2.0 Flash</span>
+  <span class="hpill">Gemini 1.5 Flash</span>
   <div class="hactions">
     <a href="index.html" class="btn btn-sm" style="color:rgba(255,255,255,.75);border-color:rgba(255,255,255,.2);background:transparent;font-size:11px">← Panel</a>
     <div class="user-pill" id="user-pill" onclick="toggleUserMenu()">
@@ -358,7 +358,7 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 <footer>
   <span class="footer-logo">MultiAire © 2026</span>
   <span class="footer-logo" style="opacity:.5">·</span>
-  <span class="footer-logo">ComprobaScan · Gemini 2.0 Flash</span>
+  <span class="footer-logo">ComprobaScan · Gemini 1.5 Flash</span>
   <span class="footer-time" id="clock">—</span>
 </footer>
 
@@ -557,7 +557,8 @@ function renderQueue(){
 }
 
 // ── Gemini API call ─────────────────────────────────────────────
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_MODEL = 'gemini-1.5-flash';
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 const GEMINI_PROMPT = `Analiza este comprobante de pago (factura, boleta u otro).
 Responde SOLO con JSON válido sin markdown ni texto adicional:
 {
@@ -588,9 +589,12 @@ async function callGemini(base64Data, mimeType){
   if(!res.ok){
     const err = await res.json().catch(()=>({}));
     const msg = err?.error?.message || `HTTP ${res.status}`;
-    if(res.status===400 && msg.includes('API_KEY')) throw new Error('Clave API inválida');
-    if(res.status===429) throw new Error('Límite de solicitudes alcanzado, espera un momento');
-    throw new Error(msg);
+    const status = res.status;
+    if(status===400 && msg.toLowerCase().includes('api_key')) throw new Error('Clave API inválida — verifica que la copiaste correctamente');
+    if(status===400 && msg.toLowerCase().includes('api key')) throw new Error('Clave API inválida — verifica que la copiaste correctamente');
+    if(status===403) throw new Error(`Sin permisos (403): ${msg}`);
+    if(status===429) throw new Error(`Cuota excedida (429): ${msg}`);
+    throw new Error(`Error ${status}: ${msg}`);
   }
   const data = await res.json();
   const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
@@ -599,14 +603,29 @@ async function callGemini(base64Data, mimeType){
   return JSON.parse(m[0]);
 }
 
+// Comprime la imagen a máx 1600px y calidad 0.85 antes de enviar a Gemini
 function fileToBase64(file){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = e => {
-      const b64 = e.target.result.split(',')[1];
-      resolve(b64);
-    };
     reader.onerror = reject;
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const MAX = 1600;
+        let w = img.width, h = img.height;
+        if(w > MAX || h > MAX){
+          if(w >= h){ h = Math.round(h * MAX/w); w = MAX; }
+          else { w = Math.round(w * MAX/h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        resolve({ b64: dataUrl.split(',')[1], mime: 'image/jpeg' });
+      };
+      img.src = e.target.result;
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -636,8 +655,8 @@ async function procesarTodo(){
     addOrUpdateResultRow(entry);
 
     try{
-      const b64 = await fileToBase64(entry.file);
-      const parsed = await callGemini(b64, entry.file.type);
+      const { b64, mime } = await fileToBase64(entry.file);
+      const parsed = await callGemini(b64, mime);
       entry.data = parsed;
       entry.status = 'done';
     } catch(e){
