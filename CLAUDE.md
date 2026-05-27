@@ -16,7 +16,7 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 - **IA**: Google Gemini REST API directo desde el browser
 - **Auth API**: header `x-goog-api-key: <key>` (NO query param `?key=`)
 - **Endpoint**: `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`
-- **Modelo default**: `gemini-2.5-flash` | Lista: `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-3.5-flash`
+- **Modelo default**: `gemini-2.5-flash-lite` (1000 RPD free) | Alternativa: `gemini-2.5-flash` (250 RPD free, más capaz)
 - **Modelos retirados**: `gemini-2.0-flash` (deprecated, shutdown jun-2026), `gemini-1.5-flash-latest`, `gemini-1.5-pro-latest` (discontinuados)
 - **Selector de modelo**: pills custom (NO `<select>` — el CSS global `appearance:none` lo rompe)
 - **File input**: `<label for="file-input">` (NO `.click()` JS — Brave lo bloquea)
