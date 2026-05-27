@@ -137,6 +137,12 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
       <div class="card-desc">Gestiona tareas de mantenimiento por equipo, tiempos, pesos y permisos del sistema.</div>
       <div class="card-footer"><span class="card-meta">configuracion.html</span><span class="card-arrow">→</span></div>
     </a>
+    <a id="card-comprobantes" class="card active-blue" href="comprobantes.html">
+      <div class="card-icon-wrap icon-blue">🧾</div>
+      <div class="card-title">ComprobaScan <span class="card-tag tag-blue">ACTIVA</span></div>
+      <div class="card-desc">Fotografía facturas y boletas, extrae los datos automáticamente con IA (Gemini) y exporta a Excel.</div>
+      <div class="card-footer"><span class="card-meta">comprobantes.html</span><span class="card-arrow">→</span></div>
+    </a>
   </div>
   <div class="section-label">Información del sistema</div>
   <div class="infobar">
@@ -160,7 +166,7 @@ tick();setInterval(tick,1000);
 var isDev=location.hostname.includes('develop')||location.hostname==='localhost';
 if(isDev){document.getElementById('info-version').textContent='3.3.0-dev';document.getElementById('info-entorno').textContent=location.hostname==='localhost'?'Local':'Develop';}
 if(!isDev){
-  ['card-insumos'].forEach(function(id){
+  ['card-insumos','card-comprobantes'].forEach(function(id){
     var el=document.getElementById(id);
     el.removeAttribute('href');
     el.classList.remove('active-blue','active-orange');

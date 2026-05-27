@@ -182,4 +182,5 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-21 | Mantenimiento: guarda y muestra `updatedBy` (correo del usuario) junto con `updatedAt` en sidebar, Firestore y sessionStorage |
 | 2026-05-21 | Mantenimiento PDF: header muestra recuadro de última actualización (fecha/hora + correo); footer muestra línea de última actualización; nombre del archivo incluye fecha/hora de actualización |
 | 2026-05-21 | Mantenimiento PDF: se elimina "Generado: [hora]" del header — solo queda en footer |
+| 2026-05-27 | Nueva app ComprobaScan (`comprobantes.html`): escáner de facturas/boletas con Gemini 2.0 Flash, tabla editable y exportación a Excel (SheetJS) — activa en develop, deshabilitada en producción |
 | 2026-05-21 | Mantenimiento WSP: mensaje incluye fecha/hora de última actualización en cursiva (_Actualizado: ..._); confirmación de copiado cambia a banner verde centrado en pantalla |
