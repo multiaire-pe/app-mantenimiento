@@ -40,6 +40,7 @@ Modelo de 3 niveles:
 - **Instancia** (`insumos_instancias`) — cada *unidad física* del tipo, con su propio id/código, sede, estado y opcional `paqueteId`. Estados: `DISPONIBLE`, `EN_USO`, `MANTENIMIENTO`, `DETERIORADO`, `BAJA`.
 - **Paquete** (`insumos_paquetes`) — contenedor que agrupa instancias. Relación **bidireccional**: `paquete.instancias[]` ↔ `instancia.paqueteId`. Tipos: MOCHILA, CAJA, CAJON, **ANAQUEL**, MALETÍN, OTRO.
 - Pestañas: Catálogo · Instancias · Movimientos · Por Sede · Paquetes · Por Técnico.
+- **Etiquetas**: cada ítem/instancia genera etiqueta descargable (PNG individual o ZIP). Formato seleccionable **QR** (qrcodejs) o **código de barras Code128** (JsBarcode) vía selector `setLabelFmt()`/`labelFmt`; ambos codifican el `id`. Generadores: `generateQRCanvas`/`generateInstQRCanvas`/`generateBarcodeCanvas`, despachados por `genLabelCanvas()`.
 - **Ubicación física en almacén** = paquete tipo ANAQUEL (no hay campos `anaquel`/`sitio` en instancia; se modela como contenedor).
 
 ### Carga inicial de inventario (2026-06-06)
@@ -269,3 +270,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-06-06 | Insumos: documentado el modelo de 3 niveles (catálogo/instancias/paquetes) en CLAUDE.md |
 | 2026-06-06 | Insumos: carga inicial desde Excel Hoja2 — 46 tipos + 52 instancias + 5 paquetes-anaquel en sede OFICINA (Chinchón). Script migrar_db/import_hoja2.js |
 | 2026-06-06 | Insumos: ubicación física del almacén = un único paquete tipo ANAQUEL (`ANAQUEL 02`); el plano (PLANO 0X) es solo un detalle de la instancia (campo `plano` + notas), no un contenedor |
+| 2026-06-06 | Insumos: etiquetas con formato seleccionable QR o código de barras Code128 (JsBarcode). Selector QR/Barras en modal de etiqueta y en exportación ZIP (catálogo e instancias) |
