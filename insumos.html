@@ -371,7 +371,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
       </button>
       <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <input type="search" id="q-search" placeholder="Buscar por nombre, código, marca..." oninput="applyFilters()" style="max-width:340px;font-size:12px">
-        <div id="qr-selection-bar" style="display:none;align-items:center;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
+        <div id="qr-selection-bar" style="display:none;align-items:center;flex-wrap:wrap;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
           <span id="qr-selected-count" style="font-size:11px;color:var(--blue);font-weight:600">0 seleccionados</span>
           <div class="lblfmt-toggle">
             <button class="lblfmt-pill active" data-fmt="QR" onclick="setLabelFmt('QR')">▣ QR</button>
@@ -397,7 +397,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 
       </div>
       <div style="margin-bottom:10px">
-        <div id="inst-qr-selection-bar" style="display:none;align-items:center;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
+        <div id="inst-qr-selection-bar" style="display:none;align-items:center;flex-wrap:wrap;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
           <span id="inst-qr-selected-count" style="font-size:11px;color:var(--blue);font-weight:600">0 seleccionados</span>
           <div class="lblfmt-toggle">
             <button class="lblfmt-pill active" data-fmt="QR" onclick="setLabelFmt('QR')">▣ QR</button>
@@ -974,7 +974,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 <div class="modal-overlay" id="modal-scanner">
   <div class="modal" style="max-width:420px">
     <div class="modal-header">
-      <div class="modal-title">📷 Escanear QR</div>
+      <div class="modal-title">📷 Escanear QR / Barras</div>
       <div onclick="closeScanner()" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
     </div>
     <div id="qr-reader" style="width:100%"></div>
@@ -2058,7 +2058,7 @@ async function openScanner() {
 
   // Limpiar UI
   document.getElementById('qr-reader').innerHTML = '';
-  document.getElementById('qr-result-box').textContent = 'Apunta la cámara al código QR...';
+  document.getElementById('qr-result-box').textContent = 'Apunta la cámara al código QR o de barras...';
   document.getElementById('scan-item-info').style.display = 'none';
   document.getElementById('modal-scanner').classList.add('open');
 
@@ -2070,7 +2070,12 @@ async function openScanner() {
     scannerRunning = true;
     await html5QrScanner.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 220, height: 220 } },
+      { fps: 10, qrbox: (vw, vh) => {
+          // Recuadro horizontal: encuadra bien las barras 1D y el QR sigue cabiendo.
+          const width = Math.floor(Math.min(vw, 340) * 0.9);
+          const height = Math.max(120, Math.floor(Math.min(vh, width, 240) * 0.7));
+          return { width, height };
+        } },
       (code) => { onQRScanned(code); },
       () => {}
     );
@@ -2106,7 +2111,7 @@ function onQRScanned(code) {
     infoBox.innerHTML = `<strong>${pkg.nombre}</strong> · <span style="font-family:var(--mono)">${pkg.id}</span><br>
       📍 Sede: <strong>${pkg.sede||'—'}</strong> · 👤 Resp: <strong>${pkg.responsable||'—'}</strong> · ${insts.length} instancia(s)
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${pkg.id}')">▣ Ver QR</button>
+        <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${pkg.id}')">▣ Ver etiqueta</button>
         <button class="btn btn-sm btn-orange" onclick="closeScanner();openModalPaquete('${pkg.id}')">✏️ Editar</button>
         <button class="btn btn-sm" onclick="closeScanner();openModalTransfPaquete('${pkg.id}')">🔄 Transferir</button>
       </div>`;
@@ -2115,7 +2120,7 @@ function onQRScanned(code) {
     infoBox.innerHTML = `<strong>${inst.nombre}</strong> · <span style="font-family:var(--mono)">${inst.id}</span><br>
       📍 Sede: <strong>${inst.sede||'—'}</strong> · Estado: <strong>${inst.estado||'DISPONIBLE'}</strong>
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${inst.id}')">▣ Ver QR</button>
+        <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${inst.id}')">▣ Ver etiqueta</button>
         <button class="btn btn-sm btn-orange" onclick="closeScanner();openEditInstancia('${inst.id}')">✏️ Editar</button>
         <button class="btn btn-sm" onclick="closeScanner();openModalSalidaDesdeScanner('${inst.id}')">⬆ Salida</button>
         <button class="btn btn-sm" style="color:var(--red)" onclick="closeScanner();openModalBajaDesdeScanner('${inst.id}')">⚠️ Dar de baja</button>

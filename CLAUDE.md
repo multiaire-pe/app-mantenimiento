@@ -271,3 +271,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-06-06 | Insumos: carga inicial desde Excel Hoja2 — 46 tipos + 52 instancias + 5 paquetes-anaquel en sede OFICINA (Chinchón). Script migrar_db/import_hoja2.js |
 | 2026-06-06 | Insumos: ubicación física del almacén = un único paquete tipo ANAQUEL (`ANAQUEL 02`); el plano (PLANO 0X) es solo un detalle de la instancia (campo `plano` + notas), no un contenedor |
 | 2026-06-06 | Insumos: etiquetas con formato seleccionable QR o código de barras Code128 (JsBarcode). Selector QR/Barras en modal de etiqueta y en exportación ZIP (catálogo e instancias) |
+| 2026-06-06 | Insumos: escáner renombrado "Escanear QR / Barras" (html5-qrcode ya leía ambos); qrbox horizontal adaptable (mejor encuadre de barras 1D en móvil); botones de resultado "Ver QR"→"Ver etiqueta"; flex-wrap en barras de selección para móvil |
