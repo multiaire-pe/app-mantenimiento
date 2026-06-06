@@ -41,7 +41,7 @@ Modelo de 3 niveles:
 - **Paquete** (`insumos_paquetes`) — contenedor que agrupa instancias. Relación **bidireccional**: `paquete.instancias[]` ↔ `instancia.paqueteId`. Tipos: MOCHILA, CAJA, CAJON, **ANAQUEL**, MALETÍN, OTRO.
 - Pestañas: Catálogo · Instancias · Movimientos · Por Sede · Paquetes · Por Técnico.
 - **Etiquetas**: cada ítem/instancia genera etiqueta descargable (PNG individual o ZIP). Formato seleccionable **QR** (qrcodejs) o **código de barras Code128** (JsBarcode) vía selector `setLabelFmt()`/`labelFmt`; ambos codifican el `id`. Generadores: `generateQRCanvas`/`generateInstQRCanvas`/`generateBarcodeCanvas`, despachados por `genLabelCanvas()`.
-- **Etiqueta de barras = media hoja**: `generateBarcodeCanvas` produce una etiqueta de proporción **400×150 mm** (8:3, mitad de un papel 400×300) donde el código de barras domina (~76% del alto) y el código va en texto chiquito debajo, **sin nombre**. Se descarga individual o en ZIP; el usuario acomoda 2 por hoja al imprimir.
+- **Etiqueta de barras = media hoja**: `generateBarcodeCanvas` produce una etiqueta de proporción **400×150 mm** (8:3, mitad de un papel 400×300). El código de barras va **alargado** (estirado a ~92% del ancho × ~55% del alto; `imageSmoothingEnabled=false` para bordes nítidos) y el código en texto chiquito debajo, **sin nombre**. Se descarga individual o en ZIP; el usuario acomoda 2 por hoja al imprimir.
 - **Ubicación física en almacén** = paquete tipo ANAQUEL (no hay campos `anaquel`/`sitio` en instancia; se modela como contenedor).
 
 ### Carga inicial de inventario (2026-06-06)
