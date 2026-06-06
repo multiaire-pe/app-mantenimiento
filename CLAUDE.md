@@ -50,7 +50,8 @@ Modelo de 3 niveles:
 - Mapeo estado: BUENO→DISPONIBLE, MALO/INCOMPLETO→DETERIORADO, vacío→DISPONIBLE. Docs marcados con `origen:'IMPORT_HOJA2'`.
 - Script de importación: `~/Documents/migrar_db/import_hoja2.js` (firebase-admin + serviceAccount).
 - Las otras hojas del Excel (HERR. ROT., CONTROL EQUIPOS, HERR FIJAS por técnico) **NO se importan** — fuera de alcance. La carga del Excel queda completa con el almacén central (Hoja2).
-- **PENDIENTE**: agregar las colecciones `insumos_*` al backup/importación de `configuracion.html` (regla del proyecto). Opcional: recategorizar los 4 ítems sin categoría (manómetros) que el Excel dejó en blanco.
+- **Backup**: las 4 colecciones `insumos_*` se exportan/importan en `configuracion.html` (catálogo/instancias en columnas; paquetes con `instancias[]` unidas por `|`; movimientos como doc JSON por su esquema variable). El `parseCSV` se reescribió como parser correcto (maneja `""` y saltos de línea citados) para soportar las celdas JSON.
+- Opcional pendiente: recategorizar los 4 ítems sin categoría (manómetros) que el Excel dejó en blanco.
 
 ## Firestore — colecciones
 | Colección | Descripción |
@@ -275,3 +276,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-06-06 | Insumos: escáner renombrado "Escanear QR / Barras" (html5-qrcode ya leía ambos); qrbox horizontal adaptable (mejor encuadre de barras 1D en móvil); botones de resultado "Ver QR"→"Ver etiqueta"; flex-wrap en barras de selección para móvil |
 | 2026-06-06 | Insumos: scroll horizontal en tablas en TODAS las pantallas — `.table-wrap` base pasa de `overflow:hidden` a `overflow-x:auto` (antes solo en móvil; en desktop con muchas columnas se cortaban) |
 | 2026-06-06 | Insumos: columnas fijas (checkbox + Código/ID) al hacer scroll horizontal en tablas Catálogo e Instancias — `position:sticky` con fondo sólido, hover consistente y separador; checkbox ancho fijo 44px |
+| 2026-06-06 | Backup (`configuracion.html`): agrega export+import de las 4 colecciones `insumos_*` (catálogo/instancias en columnas, paquetes con instancias por `\|`, movimientos en JSON). `parseCSV` reescrito como parser CSV correcto (comillas escapadas + saltos de línea citados). Verificado round-trip con datos reales |

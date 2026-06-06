@@ -277,6 +277,10 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>mantenimiento.csv</div>
             <div class="backup-file"><span></span>usuarios.csv</div>
             <div class="backup-file"><span></span>tareas_config.csv</div>
+            <div class="backup-file"><span></span>insumos_catalogo.csv</div>
+            <div class="backup-file"><span></span>insumos_instancias.csv</div>
+            <div class="backup-file"><span></span>insumos_paquetes.csv</div>
+            <div class="backup-file"><span></span>insumos_movimientos.csv</div>
           </div>
           <button class="btn btn-primary" onclick="exportBackup()" id="export-btn" style="width:100%">
             ⬇ Descargar ZIP
@@ -878,7 +882,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap] = await Promise.all([
+    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('maestros_tiendas').get(),
@@ -890,6 +894,10 @@ async function exportBackup() {
       window.__db.collection('mantenimiento').get(),
       window.__db.collection('usuarios').get(),
       window.__db.collection('tareas_config').get(),
+      window.__db.collection('insumos_catalogo').get(),
+      window.__db.collection('insumos_instancias').get(),
+      window.__db.collection('insumos_paquetes').get(),
+      window.__db.collection('insumos_movimientos').get(),
     ]);
 
     const zip = new JSZip();
@@ -986,6 +994,39 @@ async function exportBackup() {
     });
     zip.file('tareas_config.csv', [tareasHeaders.join(','), ...tareasRows].join('\n'));
 
+    // 9. Insumos — catálogo (tipos)
+    const insCatHeaders = ['ID','NOMBRE','CATEGORIA','UNIDAD','CODIGO','MARCA','MODELO','STOCK_MIN','TIPO_CANTIDAD','ORIGEN'];
+    const insCatRows = insCatSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.nombre||'', r.categoria||'', r.unidad||'', r.codigo||'', r.marca||'', r.modelo||'', r.stockMin??'', r.tipoCantidad||'UNIDAD', r.origen||''].map(escapeCSV).join(',');
+    });
+    zip.file('insumos_catalogo.csv', [insCatHeaders.join(','), ...insCatRows].join('\n'));
+
+    // 10. Insumos — instancias (unidades físicas)
+    const insInstHeaders = ['ID','ITEM_ID','NOMBRE','SEDE','ESTADO','PAQUETE_ID','RESPONSABLE','NOTAS','PLANO','NIVEL','ORIGEN'];
+    const insInstRows = insInstSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.itemId||'', r.nombre||'', r.sede||'', r.estado||'', r.paqueteId||'', r.responsable||'', r.notas||'', r.plano||'', r.nivel??'', r.origen||''].map(escapeCSV).join(',');
+    });
+    zip.file('insumos_instancias.csv', [insInstHeaders.join(','), ...insInstRows].join('\n'));
+
+    // 11. Insumos — paquetes/contenedores (instancias separadas por |)
+    const insPkgHeaders = ['ID','NOMBRE','TIPO','ESTADO','SEDE','RESPONSABLE','NOTAS','INSTANCIAS'];
+    const insPkgRows = insPkgSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.nombre||'', r.tipo||'', r.estado||'', r.sede||'', r.responsable||'', r.notas||'', (r.instancias||[]).join('|')].map(escapeCSV).join(',');
+    });
+    zip.file('insumos_paquetes.csv', [insPkgHeaders.join(','), ...insPkgRows].join('\n'));
+
+    // 12. Insumos — movimientos (historial; esquema variable → doc completo en JSON)
+    const insMovHeaders = ['ID','DATA'];
+    const insMovRows = insMovSnap.docs.map(d => {
+      const r = {...d.data()};
+      if (r.fecha && typeof r.fecha.toDate === 'function') r.fecha = r.fecha.toDate().toISOString();
+      return [escapeCSV(d.id), escapeCSV(JSON.stringify(r))].join(',');
+    });
+    zip.file('insumos_movimientos.csv', [insMovHeaders.join(','), ...insMovRows].join('\n'));
+
     // Generate and download
     const blob = await zip.generateAsync({type:'blob'});
     const url = URL.createObjectURL(blob);
@@ -1051,7 +1092,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv'];
+    const expected = ['inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1096,21 +1137,32 @@ async function confirmImport() {
   }
 
   function parseCSV(text) {
-    const lines = text.trim().split('\n');
-    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim());
-    return lines.slice(1).map(line => {
-      const vals = [];
-      let cur = '', inQ = false;
-      for (let c of line) {
-        if (c === '"') inQ = !inQ;
-        else if (c === ',' && !inQ) { vals.push(cur); cur = ''; }
-        else cur += c;
+    // Parser CSV a nivel de carácter: respeta comillas, comillas escapadas ("")
+    // y comas/saltos de línea dentro de campos citados (necesario para celdas JSON).
+    const records = [];
+    let row = [], cur = '', inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"') {
+          if (text[i+1] === '"') { cur += '"'; i++; }
+          else inQ = false;
+        } else cur += c;
+      } else {
+        if (c === '"') inQ = true;
+        else if (c === ',') { row.push(cur); cur = ''; }
+        else if (c === '\n' || c === '\r') {
+          if (c === '\r' && text[i+1] === '\n') i++;
+          row.push(cur); records.push(row); row = []; cur = '';
+        } else cur += c;
       }
-      vals.push(cur);
-      const obj = {};
-      headers.forEach((h, i) => obj[h] = (vals[i] || '').trim());
-      return obj;
-    });
+    }
+    if (cur !== '' || row.length) { row.push(cur); records.push(row); }
+    if (!records.length) return [];
+    const headers = records[0].map(h => h.trim());
+    return records.slice(1)
+      .filter(r => r.some(v => v !== ''))
+      .map(r => { const o = {}; headers.forEach((h, i) => o[h] = (r[i] || '').trim()); return o; });
   }
 
   async function batchWrite(col, rows, mapFn) {
@@ -1255,6 +1307,38 @@ async function confirmImport() {
       rows.forEach(r=>{if(r.CLAVE)_b5.set(_doc5(window.__db,'mantenimiento',r.CLAVE),{clave:r.CLAVE,seleccionados:r.SELECCIONADOS||{},tareaStatus:r.TAREA_STATUS||{}});});
       await _b5.commit();
       addLog('✓ Mantenimiento importado (' + rows.length + ' registros)', 'ok');
+    }
+
+    // 9. Insumos — catálogo
+    if (pendingImport.files['insumos_catalogo.csv']) {
+      addLog('🧰 Importando catálogo de insumos...', 'info');
+      const rows = parseCSV(pendingImport.files['insumos_catalogo.csv']);
+      await batchWrite('insumos_catalogo', rows, r => { const o={_docId:r.ID, nombre:r.NOMBRE, categoria:r.CATEGORIA, unidad:r.UNIDAD||'UND', codigo:r.CODIGO, marca:r.MARCA||'', modelo:r.MODELO||'', stockMin:r.STOCK_MIN!==''?+r.STOCK_MIN:0, tipoCantidad:r.TIPO_CANTIDAD||'UNIDAD'}; if(r.ORIGEN)o.origen=r.ORIGEN; return o; });
+      addLog('✓ Catálogo de insumos importado (' + rows.length + ' tipos)', 'ok');
+    }
+
+    // 10. Insumos — instancias
+    if (pendingImport.files['insumos_instancias.csv']) {
+      addLog('🏷 Importando instancias de insumos...', 'info');
+      const rows = parseCSV(pendingImport.files['insumos_instancias.csv']);
+      await batchWrite('insumos_instancias', rows, r => { const o={_docId:r.ID, itemId:r.ITEM_ID, nombre:r.NOMBRE, sede:r.SEDE, estado:r.ESTADO||'DISPONIBLE', notas:r.NOTAS||'', plano:r.PLANO||''}; if(r.PAQUETE_ID)o.paqueteId=r.PAQUETE_ID; if(r.RESPONSABLE)o.responsable=r.RESPONSABLE; if(r.NIVEL!=='')o.nivel=+r.NIVEL; if(r.ORIGEN)o.origen=r.ORIGEN; return o; });
+      addLog('✓ Instancias de insumos importadas (' + rows.length + ' unidades)', 'ok');
+    }
+
+    // 11. Insumos — paquetes / contenedores
+    if (pendingImport.files['insumos_paquetes.csv']) {
+      addLog('🎒 Importando paquetes de insumos...', 'info');
+      const rows = parseCSV(pendingImport.files['insumos_paquetes.csv']);
+      await batchWrite('insumos_paquetes', rows, r => ({_docId:r.ID, nombre:r.NOMBRE, tipo:r.TIPO||'OTRO', estado:r.ESTADO||'ACTIVO', sede:r.SEDE, responsable:r.RESPONSABLE||'', notas:r.NOTAS||'', instancias:r.INSTANCIAS?r.INSTANCIAS.split('|'):[]}));
+      addLog('✓ Paquetes de insumos importados (' + rows.length + ' contenedores)', 'ok');
+    }
+
+    // 12. Insumos — movimientos (historial)
+    if (pendingImport.files['insumos_movimientos.csv']) {
+      addLog('📋 Importando movimientos de insumos...', 'info');
+      const rows = parseCSV(pendingImport.files['insumos_movimientos.csv']);
+      await batchWrite('insumos_movimientos', rows, r => { const data=JSON.parse(r.DATA||'{}'); if(data.fecha&&typeof data.fecha==='string')data.fecha=new Date(data.fecha); delete data.id; return {_docId:r.ID, ...data}; });
+      addLog('✓ Movimientos de insumos importados (' + rows.length + ' registros)', 'ok');
     }
 
     addLog('✅ Importación completada', 'ok');
