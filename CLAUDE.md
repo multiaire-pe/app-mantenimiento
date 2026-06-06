@@ -33,6 +33,23 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 - **← Inicio**: usa clase `.back-link` (pill semi-transparente) igual que mantenimiento/asistencia
 - **Estado en develop**: activa | **Estado en producción**: activa
 
+## Insumos (`insumos.html`)
+Gestión de inventario de herramientas/insumos. **Estado**: activa en develop, EN DESARROLLO en producción.
+Modelo de 3 niveles:
+- **Catálogo** (`insumos_catalogo`) — el *tipo* de ítem. Código único obligatorio. id = código.
+- **Instancia** (`insumos_instancias`) — cada *unidad física* del tipo, con su propio id/código, sede, estado y opcional `paqueteId`. Estados: `DISPONIBLE`, `EN_USO`, `MANTENIMIENTO`, `DETERIORADO`, `BAJA`.
+- **Paquete** (`insumos_paquetes`) — contenedor que agrupa instancias. Relación **bidireccional**: `paquete.instancias[]` ↔ `instancia.paqueteId`. Tipos: MOCHILA, CAJA, CAJON, **ANAQUEL**, MALETÍN, OTRO.
+- Pestañas: Catálogo · Instancias · Movimientos · Por Sede · Paquetes · Por Técnico.
+- **Ubicación física en almacén** = paquete tipo ANAQUEL (no hay campos `anaquel`/`sitio` en instancia; se modela como contenedor).
+
+### Carga inicial de inventario (2026-06-06)
+- Origen: Excel "CONTROL DE INVENTARIO DE HERRAMIENTAS POR TECNICO" → Hoja2 (CONTROL INVENTARIO).
+- "ALMACÉN CENTRAL" del Excel = sede **OFICINA** (Chinchón Oficina, `TIE013`).
+- Importadas 46 tipos de catálogo + 52 instancias + 5 paquetes-anaquel (`ANAQUEL 02 · PLANO 01–04` + GENERAL).
+- Mapeo estado: BUENO→DISPONIBLE, MALO/INCOMPLETO→DETERIORADO, vacío→DISPONIBLE. Docs marcados con `origen:'IMPORT_HOJA2'`.
+- Script de importación: `~/Documents/migrar_db/import_hoja2.js` (firebase-admin + serviceAccount).
+- **PENDIENTE**: las 3 hojas restantes (HERR. ROT., CONTROL EQUIPOS, HERR FIJAS por técnico) y agregar las colecciones `insumos_*` al backup de `configuracion.html`.
+
 ## Firestore — colecciones
 | Colección | Descripción |
 |---|---|
@@ -40,6 +57,10 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 | `asistencia_registros` | Registros de asistencia diaria |
 | `maestros_feriados` | Feriados (campo `fecha`: YYYY-MM-DD) |
 | `usuarios` | Usuarios del sistema con roles |
+| `insumos_catalogo` | Tipos de ítem/herramienta (nombre, categoria, marca, codigo único, unidad, stockMin, tipoCantidad) |
+| `insumos_instancias` | Unidades físicas individuales (itemId→catalogo, sede, estado, paqueteId, responsable, notas) |
+| `insumos_movimientos` | Entradas/salidas/transferencias/actualizaciones de instancias |
+| `insumos_paquetes` | Contenedores (MOCHILA/CAJA/CAJON/ANAQUEL/MALETÍN) que agrupan instancias vía array `instancias[]` |
 
 ### Schema `asistencia_registros`
 ```js
@@ -245,3 +266,6 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-27 | Rendición de Caja: col-ruc min-width 130px, col-prov 200px en móvil |
 | 2026-05-27 | Rendición de Caja: botón 📷 Tomar foto oculto en desktop, visible solo en móvil |
 | 2026-05-27 | Rendición de Caja: habilitada en producción — probada en celular ✓ |
+| 2026-06-06 | Insumos: documentado el modelo de 3 niveles (catálogo/instancias/paquetes) en CLAUDE.md |
+| 2026-06-06 | Insumos: carga inicial desde Excel Hoja2 — 46 tipos + 52 instancias + 5 paquetes-anaquel en sede OFICINA (Chinchón). Script migrar_db/import_hoja2.js |
+| 2026-06-06 | Insumos: ubicación física del almacén modelada como paquete tipo ANAQUEL (ANAQUEL 02 · PLANO 01–04 + GENERAL) |
