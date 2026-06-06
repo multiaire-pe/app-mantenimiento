@@ -389,7 +389,6 @@ tbody td{padding:9px 12px;vertical-align:middle}
             <button class="lblfmt-pill" data-fmt="BARCODE" onclick="setLabelFmt('BARCODE')">▥ Barras</button>
           </div>
           <button class="btn btn-sm btn-primary" onclick="exportSelectedQRZip()">⬇ Exportar etiquetas ZIP</button>
-          <button class="btn btn-sm" onclick="printSelectedCatalogo()">🖨 Imprimir 2/hoja</button>
           <button class="btn btn-sm" onclick="clearQRSelection()">✕ Limpiar</button>
         </div>
       </div>
@@ -416,7 +415,6 @@ tbody td{padding:9px 12px;vertical-align:middle}
             <button class="lblfmt-pill" data-fmt="BARCODE" onclick="setLabelFmt('BARCODE')">▥ Barras</button>
           </div>
           <button class="btn btn-sm btn-primary" onclick="exportInstQRZip()">⬇ Exportar etiquetas ZIP</button>
-          <button class="btn btn-sm" onclick="printSelectedInst()">🖨 Imprimir 2/hoja</button>
           <button class="btn btn-sm" onclick="clearInstQRSelection()">✕ Limpiar</button>
         </div>
       </div>
@@ -2809,35 +2807,29 @@ let labelFmt = 'QR';   // 'QR' | 'BARCODE'
 async function generateBarcodeCanvas(id) {
   const inst = instanciasData.find(x => x.id === id);
   const item = inst ? catalogoData.find(x => x.id === inst.itemId) : catalogoData.find(x => x.id === id);
-  const nombre = inst ? inst.nombre : (item ? item.nombre : id);
   const codigo = inst ? id : (item ? (item.codigo || id) : id);
-  const sede = inst && inst.sede ? ` · ${inst.sede}` : '';
+  // Etiqueta = mitad de una hoja de 400×300 mm → 400×150 mm (proporción 8:3).
+  // El código de barras domina el espacio; el código en texto va chiquito debajo. Sin nombre.
+  const W = 2000, H = 750;
   const canvas = document.createElement('canvas');
-  canvas.width = 319; canvas.height = inst ? 200 : 180;
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  // Barras en canvas temporal
+  ctx.fillRect(0, 0, W, H);
+  // Barras en canvas temporal (alta resolución para impresión nítida)
   const bc = document.createElement('canvas');
   try {
-    JsBarcode(bc, String(id), { format: 'CODE128', width: 2, height: 90, displayValue: false, margin: 0 });
+    JsBarcode(bc, String(id), { format: 'CODE128', width: 4, height: 520, displayValue: false, margin: 0 });
   } catch (e) { return null; }
-  // Centrar/escalar las barras al ancho de la etiqueta (máx 295px)
-  const maxW = 295;
-  const w = Math.min(bc.width, maxW);
-  const x = (319 - w) / 2;
-  ctx.drawImage(bc, x, 14, w, 90);
-  // Código (legible)
+  // Escalar para que ocupe la mayoría: ancho ≤92%, alto ≤76%
+  const scale = Math.min((W * 0.92) / bc.width, (H * 0.76) / bc.height);
+  const w = bc.width * scale, h = bc.height * scale;
+  ctx.drawImage(bc, (W - w) / 2, H * 0.05, w, h);
+  // Código en texto, chiquito, centrado debajo
   ctx.fillStyle = '#000000';
-  ctx.font = 'bold 15px monospace';
+  ctx.font = `bold ${Math.round(H * 0.11)}px monospace`;
   ctx.textAlign = 'center';
-  ctx.fillText(codigo, 159, 128);
-  // Nombre (auto-shrink) + sede
-  let fontSize = 15;
-  ctx.font = `bold ${fontSize}px sans-serif`;
-  const txt = (nombre + sede).toUpperCase();
-  while (ctx.measureText(txt).width > 300 && fontSize > 9) { fontSize--; ctx.font = `bold ${fontSize}px sans-serif`; }
-  ctx.fillText(txt, 159, 152);
+  ctx.fillText(codigo, W / 2, H * 0.95);
   return canvas;
 }
 
@@ -2874,63 +2866,6 @@ function setLabelFmt(fmt) {
   });
   if (document.getElementById('modal-qr').classList.contains('open')) renderLabelPreview();
 }
-
-// Imprime una hoja de 400×300 mm con 2 etiquetas apiladas (a todo el ancho) por página.
-// Usa el formato actual (labelFmt): código de barras Code128 (SVG vectorial) o QR.
-async function printLabelSheet(ids) {
-  if (!ids || !ids.length) { toast('Selecciona al menos un ítem', 'warn'); return; }
-  const fmt = labelFmt;
-  const labels = [];
-  for (const id of ids) {
-    const inst = instanciasData.find(x => x.id === id);
-    const item = inst ? catalogoData.find(x => x.id === inst.itemId) : catalogoData.find(x => x.id === id);
-    const nombre = inst ? inst.nombre : (item ? item.nombre : id);
-    const codigo = inst ? id : (item ? (item.codigo || id) : id);
-    let media = '';
-    if (fmt === 'BARCODE') {
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      try { JsBarcode(svg, String(id), { format: 'CODE128', width: 3, height: 160, displayValue: false, margin: 0 }); }
-      catch (e) { continue; }
-      media = svg.outerHTML;
-    } else {
-      const div = document.createElement('div');
-      new QRCode(div, { text: String(id), width: 380, height: 380, correctLevel: QRCode.CorrectLevel.H });
-      await new Promise(r => setTimeout(r, 60));
-      const cv = div.querySelector('canvas');
-      media = cv ? `<img src="${cv.toDataURL('image/png')}">` : '';
-    }
-    labels.push({ media, codigo, nombre: (nombre || '').toUpperCase() });
-  }
-  if (!labels.length) { toast('No se pudo generar ninguna etiqueta', 'err'); return; }
-  let pages = '';
-  for (let i = 0; i < labels.length; i += 2) {
-    pages += '<div class="sheet">' + labels.slice(i, i + 2).map(l =>
-      `<div class="lbl">${l.media}<div class="code">${l.codigo}</div><div class="name">${l.nombre}</div></div>`
-    ).join('') + '</div>';
-  }
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquetas</title><style>
-    @page{size:400mm 300mm;margin:0}
-    *{box-sizing:border-box}
-    html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif}
-    .sheet{width:400mm;height:300mm;page-break-after:always;display:flex;flex-direction:column}
-    .lbl{height:150mm;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8mm 14mm;overflow:hidden}
-    .lbl svg,.lbl img{max-width:360mm;max-height:92mm;width:auto;height:auto}
-    .code{font-family:'Courier New',monospace;font-weight:bold;font-size:38pt;letter-spacing:3px;margin-top:5mm}
-    .name{font-size:19pt;font-weight:bold;margin-top:2mm;text-align:center;max-width:360mm}
-  </style></head><body>${pages}</body></html>`;
-  const ifr = document.createElement('iframe');
-  ifr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
-  document.body.appendChild(ifr);
-  const doc = ifr.contentWindow.document;
-  doc.open(); doc.write(html); doc.close();
-  setTimeout(() => {
-    ifr.contentWindow.focus();
-    ifr.contentWindow.print();
-    setTimeout(() => ifr.remove(), 1500);
-  }, 350);
-}
-function printSelectedCatalogo() { printLabelSheet([...selectedQRIds]); }
-function printSelectedInst() { printLabelSheet([...selectedInstQRIds]); }
 
 async function exportSelectedQRZip() {
   if (selectedQRIds.size === 0) { toast('Selecciona al menos un ítem', 'warn'); return; }

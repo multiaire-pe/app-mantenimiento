@@ -41,7 +41,7 @@ Modelo de 3 niveles:
 - **Paquete** (`insumos_paquetes`) — contenedor que agrupa instancias. Relación **bidireccional**: `paquete.instancias[]` ↔ `instancia.paqueteId`. Tipos: MOCHILA, CAJA, CAJON, **ANAQUEL**, MALETÍN, OTRO.
 - Pestañas: Catálogo · Instancias · Movimientos · Por Sede · Paquetes · Por Técnico.
 - **Etiquetas**: cada ítem/instancia genera etiqueta descargable (PNG individual o ZIP). Formato seleccionable **QR** (qrcodejs) o **código de barras Code128** (JsBarcode) vía selector `setLabelFmt()`/`labelFmt`; ambos codifican el `id`. Generadores: `generateQRCanvas`/`generateInstQRCanvas`/`generateBarcodeCanvas`, despachados por `genLabelCanvas()`.
-- **Impresión 2/hoja**: `printLabelSheet(ids)` genera hoja de **400×300 mm** con 2 etiquetas apiladas a todo el ancho (barras como SVG vectorial, QR como PNG); `@page{size:400mm 300mm}` + iframe + `window.print()`. Botón "🖨 Imprimir 2/hoja" en las barras de selección de Catálogo e Instancias.
+- **Etiqueta de barras = media hoja**: `generateBarcodeCanvas` produce una etiqueta de proporción **400×150 mm** (8:3, mitad de un papel 400×300) donde el código de barras domina (~76% del alto) y el código va en texto chiquito debajo, **sin nombre**. Se descarga individual o en ZIP; el usuario acomoda 2 por hoja al imprimir.
 - **Ubicación física en almacén** = paquete tipo ANAQUEL (no hay campos `anaquel`/`sitio` en instancia; se modela como contenedor).
 
 ### Carga inicial de inventario (2026-06-06)
@@ -279,4 +279,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-06-06 | Insumos: columnas fijas (checkbox + Código/ID) al hacer scroll horizontal en tablas Catálogo e Instancias — `position:sticky` con fondo sólido, hover consistente y separador; checkbox ancho fijo 44px |
 | 2026-06-06 | Backup (`configuracion.html`): agrega export+import de las 4 colecciones `insumos_*` (catálogo/instancias en columnas, paquetes con instancias por `\|`, movimientos en JSON). `parseCSV` reescrito como parser CSV correcto (comillas escapadas + saltos de línea citados). Verificado round-trip con datos reales |
 | 2026-06-06 | Backup: fix — la importación solo cargaba 4 de los 15 CSV (`expected` incompleto), así que asistencia/maestros_*/bd_* se exportaban pero NO se restauraban. Ahora `expected` lista los 15; el backup/restore es completo |
-| 2026-06-06 | Insumos: impresión de etiquetas 2 por hoja en papel 400×300 mm — `printLabelSheet()` apila 2 códigos a todo el ancho (barras Code128 en SVG vectorial / QR en PNG) vía `@page` + iframe + `window.print()`. Botón "🖨 Imprimir 2/hoja" en Catálogo e Instancias |
+| 2026-06-06 | Insumos: etiqueta de código de barras rediseñada a media hoja (400×150 mm, prop. 8:3) — barra dominante + código chiquito, sin nombre; alta resolución (2000×750) para impresión nítida. Se descarga individual/ZIP y el usuario acomoda 2 por hoja. Se retira la impresión "2/hoja" previa |
