@@ -34,7 +34,7 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 - **Estado en develop**: activa | **Estado en producción**: activa
 
 ## Insumos (`insumos.html`)
-Gestión de inventario de herramientas/insumos. **Estado**: activa en develop, EN DESARROLLO en producción.
+Gestión de inventario de herramientas/insumos. **Estado**: activa en develop y producción (activada 2026-06-06).
 Modelo de 3 niveles:
 - **Catálogo** (`insumos_catalogo`) — el *tipo* de ítem. Código único obligatorio. id = código.
 - **Instancia** (`insumos_instancias`) — cada *unidad física* del tipo, con su propio id/código, sede, estado y opcional `paqueteId`. Estados: `DISPONIBLE`, `EN_USO`, `MANTENIMIENTO`, `DETERIORADO`, `BAJA`.
@@ -191,7 +191,7 @@ Patrones obligatorios:
 
 ## index.html — lógica por entorno
 
-- **Producción**: card Insumos en gris, no clickeable, tag "EN DESARROLLO". Asistencia y Rendición de Caja activas.
+- **Producción**: todas las cards activas (Insumos activado 2026-06-06; el bloque `if(!isDev)` itera un array vacío).
 - **Develop / Localhost**: todas las cards activas
 - Versión y entorno se muestran dinámicamente según hostname:
   - Producción → `3.3.0` / `Producción`
@@ -280,3 +280,5 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-06-06 | Backup (`configuracion.html`): agrega export+import de las 4 colecciones `insumos_*` (catálogo/instancias en columnas, paquetes con instancias por `\|`, movimientos en JSON). `parseCSV` reescrito como parser CSV correcto (comillas escapadas + saltos de línea citados). Verificado round-trip con datos reales |
 | 2026-06-06 | Backup: fix — la importación solo cargaba 4 de los 15 CSV (`expected` incompleto), así que asistencia/maestros_*/bd_* se exportaban pero NO se restauraban. Ahora `expected` lista los 15; el backup/restore es completo |
 | 2026-06-06 | Insumos: etiqueta de código de barras rediseñada a media hoja (400×150 mm, prop. 8:3) — barra dominante + código chiquito, sin nombre; alta resolución (2000×750) para impresión nítida. Se descarga individual/ZIP y el usuario acomoda 2 por hoja. Se retira la impresión "2/hoja" previa |
+| 2026-06-06 | Insumos: barra estirada para llenar la etiqueta (~94% ancho × ~66% alto, márgenes mínimos, `imageSmoothingEnabled=false`) |
+| 2026-06-06 | Insumos: **activado en producción** — `index.html` deja de marcarlo "EN DESARROLLO" (array vacío); todas las cards activas en prod. Merge develop→main |
