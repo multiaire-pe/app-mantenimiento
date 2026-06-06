@@ -49,7 +49,8 @@ Modelo de 3 niveles:
 - Importadas 46 tipos de catálogo + 52 instancias + 1 paquete-anaquel (`ANAQUEL 02`). El plano físico (PLANO 0X) NO es contenedor: queda como detalle en la instancia (campo `plano` + reflejado en `notas`).
 - Mapeo estado: BUENO→DISPONIBLE, MALO/INCOMPLETO→DETERIORADO, vacío→DISPONIBLE. Docs marcados con `origen:'IMPORT_HOJA2'`.
 - Script de importación: `~/Documents/migrar_db/import_hoja2.js` (firebase-admin + serviceAccount).
-- **PENDIENTE**: las 3 hojas restantes (HERR. ROT., CONTROL EQUIPOS, HERR FIJAS por técnico) y agregar las colecciones `insumos_*` al backup de `configuracion.html`.
+- Las otras hojas del Excel (HERR. ROT., CONTROL EQUIPOS, HERR FIJAS por técnico) **NO se importan** — fuera de alcance. La carga del Excel queda completa con el almacén central (Hoja2).
+- **PENDIENTE**: agregar las colecciones `insumos_*` al backup/importación de `configuracion.html` (regla del proyecto). Opcional: recategorizar los 4 ítems sin categoría (manómetros) que el Excel dejó en blanco.
 
 ## Firestore — colecciones
 | Colección | Descripción |
