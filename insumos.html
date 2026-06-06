@@ -7,6 +7,7 @@
 <title>MultiAire – Insumos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
@@ -165,7 +166,7 @@ optgroup{font-style:normal;font-weight:700;color:var(--muted2)}
 .stat-val{font-family:var(--mono);font-size:24px;font-weight:700;line-height:1}
 .stat-val.blue{color:#1B3F8B}.stat-val.green{color:var(--green)}.stat-val.yellow{color:var(--yellow)}.stat-val.red{color:var(--red)}
 .stat-lbl{font-size:10px;color:var(--muted2);margin-top:3px;text-transform:uppercase;letter-spacing:.07em}
-.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;font-size:12px}
 thead th{background:var(--surface2);padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);border-bottom:1px solid var(--border);white-space:nowrap}
 tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
@@ -173,6 +174,17 @@ tbody tr:last-child{border-bottom:none}
 tbody tr:hover{background:var(--surface2)}
 tbody td{padding:9px 12px;vertical-align:middle}
 .td-code{font-family:var(--mono);font-size:10px;color:var(--muted2)}
+/* Columnas fijas (checkbox + código) al hacer scroll horizontal — Catálogo e Instancias */
+#catalogo-table th:nth-child(1),#catalogo-table td:nth-child(1),
+#instancias-table th:nth-child(1),#instancias-table td:nth-child(1){position:sticky;left:0;z-index:2;width:44px;min-width:44px;max-width:44px}
+#catalogo-table th:nth-child(2),#catalogo-table td:nth-child(2),
+#instancias-table th:nth-child(2),#instancias-table td:nth-child(2){position:sticky;left:44px;z-index:2;box-shadow:1px 0 0 var(--border)}
+#catalogo-table td:nth-child(1),#catalogo-table td:nth-child(2),
+#instancias-table td:nth-child(1),#instancias-table td:nth-child(2){background:var(--surface)}
+#catalogo-table th:nth-child(1),#catalogo-table th:nth-child(2),
+#instancias-table th:nth-child(1),#instancias-table th:nth-child(2){background:var(--surface2);z-index:3}
+#catalogo-table tr:hover td:nth-child(1),#catalogo-table tr:hover td:nth-child(2),
+#instancias-table tr:hover td:nth-child(1),#instancias-table tr:hover td:nth-child(2){background:var(--surface2)}
 /* MODAL HEADER & CLOSE */
 .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .modal-title{font-size:15px;font-weight:700;color:#1B3F8B}
@@ -181,6 +193,10 @@ tbody td{padding:9px 12px;vertical-align:middle}
 /* QR STYLES */
 .qr-btn{font-size:14px;cursor:pointer;padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);transition:all .15s}
 .qr-btn:hover{background:var(--surface3)}
+.lblfmt-toggle{display:inline-flex;border:1.5px solid var(--border);border-radius:6px;overflow:hidden}
+.lblfmt-pill{padding:5px 12px;font-size:11px;font-weight:600;color:var(--muted2);background:var(--surface2);border:none;cursor:pointer;font-family:var(--font);transition:all .15s}
+.lblfmt-pill+.lblfmt-pill{border-left:1.5px solid var(--border)}
+.lblfmt-pill.active{background:#1B3F8B;color:#fff}
 .modal-qr-wrap{display:flex;flex-direction:column;align-items:center;gap:16px;padding:8px 0}
 .qr-label-preview{width:320px;height:240px;border:2px solid var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#fff;padding:16px}
 .qr-label-id{font-family:var(--mono);font-size:13px;color:var(--muted2);letter-spacing:.08em}
@@ -366,8 +382,12 @@ tbody td{padding:9px 12px;vertical-align:middle}
       </button>
       <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <input type="search" id="q-search" placeholder="Buscar por nombre, código, marca..." oninput="applyFilters()" style="max-width:340px;font-size:12px">
-        <div id="qr-selection-bar" style="display:none;align-items:center;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
+        <div id="qr-selection-bar" style="display:none;align-items:center;flex-wrap:wrap;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
           <span id="qr-selected-count" style="font-size:11px;color:var(--blue);font-weight:600">0 seleccionados</span>
+          <div class="lblfmt-toggle">
+            <button class="lblfmt-pill active" data-fmt="QR" onclick="setLabelFmt('QR')">▣ QR</button>
+            <button class="lblfmt-pill" data-fmt="BARCODE" onclick="setLabelFmt('BARCODE')">▥ Barras</button>
+          </div>
           <button class="btn btn-sm btn-primary" onclick="exportSelectedQRZip()">⬇ Exportar etiquetas ZIP</button>
           <button class="btn btn-sm" onclick="clearQRSelection()">✕ Limpiar</button>
         </div>
@@ -388,8 +408,12 @@ tbody td{padding:9px 12px;vertical-align:middle}
 
       </div>
       <div style="margin-bottom:10px">
-        <div id="inst-qr-selection-bar" style="display:none;align-items:center;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
+        <div id="inst-qr-selection-bar" style="display:none;align-items:center;flex-wrap:wrap;gap:8px;background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:6px;padding:5px 10px">
           <span id="inst-qr-selected-count" style="font-size:11px;color:var(--blue);font-weight:600">0 seleccionados</span>
+          <div class="lblfmt-toggle">
+            <button class="lblfmt-pill active" data-fmt="QR" onclick="setLabelFmt('QR')">▣ QR</button>
+            <button class="lblfmt-pill" data-fmt="BARCODE" onclick="setLabelFmt('BARCODE')">▥ Barras</button>
+          </div>
           <button class="btn btn-sm btn-primary" onclick="exportInstQRZip()">⬇ Exportar etiquetas ZIP</button>
           <button class="btn btn-sm" onclick="clearInstQRSelection()">✕ Limpiar</button>
         </div>
@@ -943,6 +967,10 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <div onclick="closeModal('modal-qr')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
     </div>
     <div class="modal-qr-wrap">
+      <div class="lblfmt-toggle">
+        <button class="lblfmt-pill active" data-fmt="QR" onclick="setLabelFmt('QR')">▣ QR</button>
+        <button class="lblfmt-pill" data-fmt="BARCODE" onclick="setLabelFmt('BARCODE')">▥ Barras</button>
+      </div>
       <div id="qr-canvas-wrap"></div>
       <div style="text-align:center">
         <div id="qr-label-id" style="font-family:var(--mono);font-weight:700;font-size:14px"></div>
@@ -957,7 +985,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 <div class="modal-overlay" id="modal-scanner">
   <div class="modal" style="max-width:420px">
     <div class="modal-header">
-      <div class="modal-title">📷 Escanear QR</div>
+      <div class="modal-title">📷 Escanear QR / Barras</div>
       <div onclick="closeScanner()" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
     </div>
     <div id="qr-reader" style="width:100%"></div>
@@ -1443,7 +1471,7 @@ function renderInstancias() {
   const estadoLabel = {DISPONIBLE:'✅ Disponible', EN_USO:'🔧 En uso', MANTENIMIENTO:'⚠️ Mantenimiento', DETERIORADO:'🔴 Deteriorado', BAJA:'❌ Baja'};
 
   wrap.innerHTML = `<table><thead><tr>
-    <th style='width:32px'><input type='checkbox' id='inst-chk-all' onchange='toggleAllInstQR(this.checked)' title='Seleccionar todos'></th>
+    <th><input type='checkbox' id='inst-chk-all' onchange='toggleAllInstQR(this.checked)' title='Seleccionar todos'></th>
     <th>ID / QR</th><th>Tipo</th><th>Sede</th><th>Nivel</th><th>Estado</th><th>Notas</th><th></th>
   </tr></thead><tbody>
   ${list.map(inst => {
@@ -1540,7 +1568,7 @@ function renderCatalogo(){
   const wrap=document.getElementById('catalogo-table');
   if(!filteredCatalogo.length){wrap.innerHTML='<div class="empty"><div class="empty-icon">📭</div>Sin ítems</div>';return;}
   const isEd=can('editarItem'),isReset=can('eliminarMov');
-  wrap.innerHTML=`<table><thead><tr><th style='width:32px'><input type='checkbox' id='chk-all' onchange='toggleAllQR(this.checked)' title='Seleccionar todos'></th><th>Código</th><th>Nombre</th><th>Cat.</th><th>Marca/Modelo</th><th>Unidad</th><th>Stock total</th>${isEd?'<th></th>':''}</tr></thead><tbody>
+  wrap.innerHTML=`<table><thead><tr><th><input type='checkbox' id='chk-all' onchange='toggleAllQR(this.checked)' title='Seleccionar todos'></th><th>Código</th><th>Nombre</th><th>Cat.</th><th>Marca/Modelo</th><th>Unidad</th><th>Stock total</th>${isEd?'<th></th>':''}</tr></thead><tbody>
   ${filteredCatalogo.map(item=>{
     const n=sNivel(item),t=totalS(item.id);
     const pC=n==='ok'?'stock-ok':n==='low'?'stock-low':'stock-out';
@@ -1946,13 +1974,11 @@ function openQRModal(id) {
   const codigo = item ? (item.codigo || id) : id;
   if (!item && !inst && !pkg) return;
   currentQRItemId = id;
-  const wrap = document.getElementById('qr-canvas-wrap');
-  wrap.innerHTML = '';
-  new QRCode(wrap, { text: id, width: 160, height: 160, correctLevel: QRCode.CorrectLevel.H });
   document.getElementById('qr-label-id').textContent = codigo;
   document.getElementById('qr-label-name').textContent = nombre + (inst ? ` · ${inst.sede||''}` : '');
-  document.getElementById('qr-modal-title').textContent = inst ? `QR — ${id}` : `QR — ${nombre}`;
+  document.getElementById('qr-modal-title').textContent = inst ? `Etiqueta — ${id}` : `Etiqueta — ${nombre}`;
   document.getElementById('modal-qr').classList.add('open');
+  renderLabelPreview();
 }
 
 async function exportQRLabel() {
@@ -1961,10 +1987,11 @@ async function exportQRLabel() {
   const item = inst ? catalogoData.find(x => x.id === inst.itemId) : catalogoData.find(x => x.id === id);
   const nombre = inst ? inst.nombre : (item ? item.nombre : id);
   const codigo = inst ? id : (item ? (item.codigo || id) : id);
-  const canvas = await generateQRCanvas(id, nombre, codigo);
+  const canvas = await genLabelCanvas(id);
   if (!canvas) return;
+  const pref = labelFmt === 'BARCODE' ? 'COD' : 'QR';
   const link = document.createElement('a');
-  link.download = `QR_${codigo.replace(/[\s/]/g,'_')}_${nombre.replace(/[\s/]/g,'_')}.png`;
+  link.download = `${pref}_${codigo.replace(/[\s/]/g,'_')}_${nombre.replace(/[\s/]/g,'_')}.png`;
   link.href = canvas.toDataURL('image/png', 1.0);
   link.click();
 }
@@ -2042,7 +2069,7 @@ async function openScanner() {
 
   // Limpiar UI
   document.getElementById('qr-reader').innerHTML = '';
-  document.getElementById('qr-result-box').textContent = 'Apunta la cámara al código QR...';
+  document.getElementById('qr-result-box').textContent = 'Apunta la cámara al código QR o de barras...';
   document.getElementById('scan-item-info').style.display = 'none';
   document.getElementById('modal-scanner').classList.add('open');
 
@@ -2054,7 +2081,12 @@ async function openScanner() {
     scannerRunning = true;
     await html5QrScanner.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 220, height: 220 } },
+      { fps: 10, qrbox: (vw, vh) => {
+          // Recuadro horizontal: encuadra bien las barras 1D y el QR sigue cabiendo.
+          const width = Math.floor(Math.min(vw, 340) * 0.9);
+          const height = Math.max(120, Math.floor(Math.min(vh, width, 240) * 0.7));
+          return { width, height };
+        } },
       (code) => { onQRScanned(code); },
       () => {}
     );
@@ -2090,7 +2122,7 @@ function onQRScanned(code) {
     infoBox.innerHTML = `<strong>${pkg.nombre}</strong> · <span style="font-family:var(--mono)">${pkg.id}</span><br>
       📍 Sede: <strong>${pkg.sede||'—'}</strong> · 👤 Resp: <strong>${pkg.responsable||'—'}</strong> · ${insts.length} instancia(s)
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${pkg.id}')">▣ Ver QR</button>
+        <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${pkg.id}')">▣ Ver etiqueta</button>
         <button class="btn btn-sm btn-orange" onclick="closeScanner();openModalPaquete('${pkg.id}')">✏️ Editar</button>
         <button class="btn btn-sm" onclick="closeScanner();openModalTransfPaquete('${pkg.id}')">🔄 Transferir</button>
       </div>`;
@@ -2099,7 +2131,7 @@ function onQRScanned(code) {
     infoBox.innerHTML = `<strong>${inst.nombre}</strong> · <span style="font-family:var(--mono)">${inst.id}</span><br>
       📍 Sede: <strong>${inst.sede||'—'}</strong> · Estado: <strong>${inst.estado||'DISPONIBLE'}</strong>
       <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${inst.id}')">▣ Ver QR</button>
+        <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${inst.id}')">▣ Ver etiqueta</button>
         <button class="btn btn-sm btn-orange" onclick="closeScanner();openEditInstancia('${inst.id}')">✏️ Editar</button>
         <button class="btn btn-sm" onclick="closeScanner();openModalSalidaDesdeScanner('${inst.id}')">⬆ Salida</button>
         <button class="btn btn-sm" style="color:var(--red)" onclick="closeScanner();openModalBajaDesdeScanner('${inst.id}')">⚠️ Dar de baja</button>
@@ -2607,7 +2639,7 @@ async function exportInstQRZip() {
   for (const id of selectedInstQRIds) {
     const inst = instanciasData.find(x => x.id === id);
     if (!inst) continue;
-    const canvas = await generateInstQRCanvas(id);
+    const canvas = await genLabelCanvas(id);
     if (!canvas) continue;
     const blob = await new Promise(r => canvas.toBlob(r, 'image/png', 1.0));
     zip.file(`${id.replace(/[^a-zA-Z0-9]/g, '_')}_${(inst.nombre||'').replace(/[^a-zA-Z0-9]/g, '_')}.png`, blob);
@@ -2767,6 +2799,75 @@ async function generateQRCanvas(id, nombre, codigo) {
   return canvas;
 }
 
+// ── ETIQUETAS: formato seleccionable QR | Código de barras (Code128) ──
+let labelFmt = 'QR';   // 'QR' | 'BARCODE'
+
+// Genera la etiqueta de código de barras (Code128) para catálogo o instancia.
+// Codifica el mismo dato que el QR: el id (= código de la herramienta).
+async function generateBarcodeCanvas(id) {
+  const inst = instanciasData.find(x => x.id === id);
+  const item = inst ? catalogoData.find(x => x.id === inst.itemId) : catalogoData.find(x => x.id === id);
+  const codigo = inst ? id : (item ? (item.codigo || id) : id);
+  // Etiqueta = mitad de una hoja de 400×300 mm → 400×150 mm (proporción 8:3).
+  // El código de barras domina el espacio; el código en texto va chiquito debajo. Sin nombre.
+  const W = 2000, H = 750;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+  // Barra alargada (1D): se estira para llenar la etiqueta (ancho ~94%, alto ~66%) con márgenes
+  // mínimos. La altura de las barras no codifica información, así que estirarla es válido.
+  const targetW = Math.round(W * 0.94);
+  const targetH = Math.round(H * 0.66);
+  const bc = document.createElement('canvas');
+  try {
+    JsBarcode(bc, String(id), { format: 'CODE128', width: 6, height: targetH, displayValue: false, margin: 0 });
+  } catch (e) { return null; }
+  ctx.imageSmoothingEnabled = false;   // bordes nítidos al estirar
+  ctx.drawImage(bc, Math.round((W - targetW) / 2), Math.round(H * 0.08), targetW, targetH);
+  // Código en texto, chiquito, centrado debajo
+  ctx.fillStyle = '#000000';
+  ctx.font = `bold ${Math.round(H * 0.12)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText(codigo, W / 2, Math.round(H * 0.93));
+  return canvas;
+}
+
+// Despacha al generador según el formato elegido (id = catálogo o instancia).
+async function genLabelCanvas(id) {
+  if (labelFmt === 'BARCODE') return generateBarcodeCanvas(id);
+  const inst = instanciasData.find(x => x.id === id);
+  return inst ? generateInstQRCanvas(id) : generateQRCanvas(id);
+}
+
+// Redibuja el preview del modal según el formato elegido.
+function renderLabelPreview() {
+  const id = currentQRItemId;
+  if (!id) return;
+  const wrap = document.getElementById('qr-canvas-wrap');
+  wrap.innerHTML = '';
+  if (labelFmt === 'BARCODE') {
+    const c = document.createElement('canvas');
+    try {
+      JsBarcode(c, String(id), { format: 'CODE128', width: 2, height: 90, displayValue: false, margin: 6 });
+    } catch (e) {}
+    c.style.maxWidth = '100%';
+    wrap.appendChild(c);
+  } else {
+    new QRCode(wrap, { text: id, width: 160, height: 160, correctLevel: QRCode.CorrectLevel.H });
+  }
+}
+
+// Cambia el formato de etiqueta y sincroniza todos los selectores + el preview.
+function setLabelFmt(fmt) {
+  labelFmt = fmt;
+  document.querySelectorAll('.lblfmt-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.fmt === fmt);
+  });
+  if (document.getElementById('modal-qr').classList.contains('open')) renderLabelPreview();
+}
+
 async function exportSelectedQRZip() {
   if (selectedQRIds.size === 0) { toast('Selecciona al menos un ítem', 'warn'); return; }
   toast('Generando etiquetas...', '');
@@ -2774,7 +2875,7 @@ async function exportSelectedQRZip() {
   for (const id of selectedQRIds) {
     const item = catalogoData.find(x => x.id === id);
     if (!item) continue;
-    const canvas = await generateQRCanvas(id);
+    const canvas = await genLabelCanvas(id);
     if (!canvas) continue;
     const blob = await new Promise(r => canvas.toBlob(r, 'image/png', 1.0));
     zip.file(`${(item.codigo || id).replace(/[^a-zA-Z0-9]/g, '_')}_${item.nombre.replace(/[^a-zA-Z0-9]/g, '_')}.png`, blob);

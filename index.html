@@ -166,7 +166,8 @@ tick();setInterval(tick,1000);
 var isDev=location.hostname.includes('develop')||location.hostname==='localhost';
 if(isDev){document.getElementById('info-version').textContent='3.3.0-dev';document.getElementById('info-entorno').textContent=location.hostname==='localhost'?'Local':'Develop';}
 if(!isDev){
-  ['card-insumos'].forEach(function(id){
+  // Cards deshabilitadas en producción (vacío = todas activas). Insumos activado 2026-06-06.
+  [].forEach(function(id){
     var el=document.getElementById(id);
     el.removeAttribute('href');
     el.classList.remove('active-blue','active-orange');

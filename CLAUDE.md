@@ -33,6 +33,27 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 - **← Inicio**: usa clase `.back-link` (pill semi-transparente) igual que mantenimiento/asistencia
 - **Estado en develop**: activa | **Estado en producción**: activa
 
+## Insumos (`insumos.html`)
+Gestión de inventario de herramientas/insumos. **Estado**: activa en develop y producción (activada 2026-06-06).
+Modelo de 3 niveles:
+- **Catálogo** (`insumos_catalogo`) — el *tipo* de ítem. Código único obligatorio. id = código.
+- **Instancia** (`insumos_instancias`) — cada *unidad física* del tipo, con su propio id/código, sede, estado y opcional `paqueteId`. Estados: `DISPONIBLE`, `EN_USO`, `MANTENIMIENTO`, `DETERIORADO`, `BAJA`.
+- **Paquete** (`insumos_paquetes`) — contenedor que agrupa instancias. Relación **bidireccional**: `paquete.instancias[]` ↔ `instancia.paqueteId`. Tipos: MOCHILA, CAJA, CAJON, **ANAQUEL**, MALETÍN, OTRO.
+- Pestañas: Catálogo · Instancias · Movimientos · Por Sede · Paquetes · Por Técnico.
+- **Etiquetas**: cada ítem/instancia genera etiqueta descargable (PNG individual o ZIP). Formato seleccionable **QR** (qrcodejs) o **código de barras Code128** (JsBarcode) vía selector `setLabelFmt()`/`labelFmt`; ambos codifican el `id`. Generadores: `generateQRCanvas`/`generateInstQRCanvas`/`generateBarcodeCanvas`, despachados por `genLabelCanvas()`.
+- **Etiqueta de barras = media hoja**: `generateBarcodeCanvas` produce una etiqueta de proporción **400×150 mm** (8:3, mitad de un papel 400×300). El código de barras va **alargado** y llena la etiqueta (estirado a ~94% del ancho × ~66% del alto, márgenes mínimos; `imageSmoothingEnabled=false` para bordes nítidos) y el código en texto chiquito debajo, **sin nombre**. Se descarga individual o en ZIP; el usuario acomoda 2 por hoja al imprimir.
+- **Ubicación física en almacén** = paquete tipo ANAQUEL (no hay campos `anaquel`/`sitio` en instancia; se modela como contenedor).
+
+### Carga inicial de inventario (2026-06-06)
+- Origen: Excel "CONTROL DE INVENTARIO DE HERRAMIENTAS POR TECNICO" → Hoja2 (CONTROL INVENTARIO).
+- "ALMACÉN CENTRAL" del Excel = sede **OFICINA** (Chinchón Oficina, `TIE013`).
+- Importadas 46 tipos de catálogo + 52 instancias + 1 paquete-anaquel (`ANAQUEL 02`). El plano físico (PLANO 0X) NO es contenedor: queda como detalle en la instancia (campo `plano` + reflejado en `notas`).
+- Mapeo estado: BUENO→DISPONIBLE, MALO/INCOMPLETO→DETERIORADO, vacío→DISPONIBLE. Docs marcados con `origen:'IMPORT_HOJA2'`.
+- Script de importación: `~/Documents/migrar_db/import_hoja2.js` (firebase-admin + serviceAccount).
+- Las otras hojas del Excel (HERR. ROT., CONTROL EQUIPOS, HERR FIJAS por técnico) **NO se importan** — fuera de alcance. La carga del Excel queda completa con el almacén central (Hoja2).
+- **Backup**: las 4 colecciones `insumos_*` se exportan/importan en `configuracion.html` (catálogo/instancias en columnas; paquetes con `instancias[]` unidas por `|`; movimientos como doc JSON por su esquema variable). El `parseCSV` se reescribió como parser correcto (maneja `""` y saltos de línea citados) para soportar las celdas JSON.
+- Opcional pendiente: recategorizar los 4 ítems sin categoría (manómetros) que el Excel dejó en blanco.
+
 ## Firestore — colecciones
 | Colección | Descripción |
 |---|---|
@@ -40,6 +61,10 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 | `asistencia_registros` | Registros de asistencia diaria |
 | `maestros_feriados` | Feriados (campo `fecha`: YYYY-MM-DD) |
 | `usuarios` | Usuarios del sistema con roles |
+| `insumos_catalogo` | Tipos de ítem/herramienta (nombre, categoria, marca, codigo único, unidad, stockMin, tipoCantidad) |
+| `insumos_instancias` | Unidades físicas individuales (itemId→catalogo, sede, estado, paqueteId, responsable, notas) |
+| `insumos_movimientos` | Entradas/salidas/transferencias/actualizaciones de instancias |
+| `insumos_paquetes` | Contenedores (MOCHILA/CAJA/CAJON/ANAQUEL/MALETÍN) que agrupan instancias vía array `instancias[]` |
 
 ### Schema `asistencia_registros`
 ```js
@@ -166,7 +191,7 @@ Patrones obligatorios:
 
 ## index.html — lógica por entorno
 
-- **Producción**: card Insumos en gris, no clickeable, tag "EN DESARROLLO". Asistencia y Rendición de Caja activas.
+- **Producción**: todas las cards activas (Insumos activado 2026-06-06; el bloque `if(!isDev)` itera un array vacío).
 - **Develop / Localhost**: todas las cards activas
 - Versión y entorno se muestran dinámicamente según hostname:
   - Producción → `3.3.0` / `Producción`
@@ -245,3 +270,15 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-05-27 | Rendición de Caja: col-ruc min-width 130px, col-prov 200px en móvil |
 | 2026-05-27 | Rendición de Caja: botón 📷 Tomar foto oculto en desktop, visible solo en móvil |
 | 2026-05-27 | Rendición de Caja: habilitada en producción — probada en celular ✓ |
+| 2026-06-06 | Insumos: documentado el modelo de 3 niveles (catálogo/instancias/paquetes) en CLAUDE.md |
+| 2026-06-06 | Insumos: carga inicial desde Excel Hoja2 — 46 tipos + 52 instancias + 5 paquetes-anaquel en sede OFICINA (Chinchón). Script migrar_db/import_hoja2.js |
+| 2026-06-06 | Insumos: ubicación física del almacén = un único paquete tipo ANAQUEL (`ANAQUEL 02`); el plano (PLANO 0X) es solo un detalle de la instancia (campo `plano` + notas), no un contenedor |
+| 2026-06-06 | Insumos: etiquetas con formato seleccionable QR o código de barras Code128 (JsBarcode). Selector QR/Barras en modal de etiqueta y en exportación ZIP (catálogo e instancias) |
+| 2026-06-06 | Insumos: escáner renombrado "Escanear QR / Barras" (html5-qrcode ya leía ambos); qrbox horizontal adaptable (mejor encuadre de barras 1D en móvil); botones de resultado "Ver QR"→"Ver etiqueta"; flex-wrap en barras de selección para móvil |
+| 2026-06-06 | Insumos: scroll horizontal en tablas en TODAS las pantallas — `.table-wrap` base pasa de `overflow:hidden` a `overflow-x:auto` (antes solo en móvil; en desktop con muchas columnas se cortaban) |
+| 2026-06-06 | Insumos: columnas fijas (checkbox + Código/ID) al hacer scroll horizontal en tablas Catálogo e Instancias — `position:sticky` con fondo sólido, hover consistente y separador; checkbox ancho fijo 44px |
+| 2026-06-06 | Backup (`configuracion.html`): agrega export+import de las 4 colecciones `insumos_*` (catálogo/instancias en columnas, paquetes con instancias por `\|`, movimientos en JSON). `parseCSV` reescrito como parser CSV correcto (comillas escapadas + saltos de línea citados). Verificado round-trip con datos reales |
+| 2026-06-06 | Backup: fix — la importación solo cargaba 4 de los 15 CSV (`expected` incompleto), así que asistencia/maestros_*/bd_* se exportaban pero NO se restauraban. Ahora `expected` lista los 15; el backup/restore es completo |
+| 2026-06-06 | Insumos: etiqueta de código de barras rediseñada a media hoja (400×150 mm, prop. 8:3) — barra dominante + código chiquito, sin nombre; alta resolución (2000×750) para impresión nítida. Se descarga individual/ZIP y el usuario acomoda 2 por hoja. Se retira la impresión "2/hoja" previa |
+| 2026-06-06 | Insumos: barra estirada para llenar la etiqueta (~94% ancho × ~66% alto, márgenes mínimos, `imageSmoothingEnabled=false`) |
+| 2026-06-06 | Insumos: **activado en producción** — `index.html` deja de marcarlo "EN DESARROLLO" (array vacío); todas las cards activas en prod. Merge develop→main |
