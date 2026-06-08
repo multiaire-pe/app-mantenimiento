@@ -52,6 +52,7 @@ Modelo de 3 niveles:
 - Script de importación: `~/Documents/migrar_db/import_hoja2.js` (firebase-admin + serviceAccount).
 - Las otras hojas del Excel (HERR. ROT., CONTROL EQUIPOS, HERR FIJAS por técnico) **NO se importan** — fuera de alcance. La carga del Excel queda completa con el almacén central (Hoja2).
 - **Backup**: las 4 colecciones `insumos_*` se exportan/importan en `configuracion.html` (catálogo/instancias en columnas; paquetes con `instancias[]` unidas por `|`; movimientos como doc JSON por su esquema variable). El `parseCSV` se reescribió como parser correcto (maneja `""` y saltos de línea citados) para soportar las celdas JSON.
+- **CSV Phomemo**: `exportInstCSVPhomemo()` exporta un CSV (`CODIGO,NOMBRE`, con BOM UTF-8) de las instancias seleccionadas (o todas) para impresión por lotes en impresoras térmicas Phomemo (etiquetas 40×30 mm) vía Print Master/Labelife, donde el barcode lo genera la app desde la columna `CODIGO`. Botón "📄 CSV (Phomemo)" en la barra de selección de Instancias.
 - Opcional pendiente: recategorizar los 4 ítems sin categoría (manómetros) que el Excel dejó en blanco.
 
 ## Firestore — colecciones
@@ -282,3 +283,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-06-06 | Insumos: etiqueta de código de barras rediseñada a media hoja (400×150 mm, prop. 8:3) — barra dominante + código chiquito, sin nombre; alta resolución (2000×750) para impresión nítida. Se descarga individual/ZIP y el usuario acomoda 2 por hoja. Se retira la impresión "2/hoja" previa |
 | 2026-06-06 | Insumos: barra estirada para llenar la etiqueta (~94% ancho × ~66% alto, márgenes mínimos, `imageSmoothingEnabled=false`) |
 | 2026-06-06 | Insumos: **activado en producción** — `index.html` deja de marcarlo "EN DESARROLLO" (array vacío); todas las cards activas en prod. Merge develop→main |
+| 2026-06-06 | Insumos: export "📄 CSV (Phomemo)" en barra de selección de Instancias — CSV `CODIGO,NOMBRE` (BOM UTF-8) para impresión por lotes en impresoras térmicas Phomemo 40×30 mm (la app dibuja el barcode desde la columna CODIGO) |
