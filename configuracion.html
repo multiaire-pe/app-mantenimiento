@@ -192,6 +192,10 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 .maestro-toggle:hover{background:var(--surface3)}
 .maestro-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;transition:all .15s}
 .maestro-del:hover{color:var(--red);background:var(--red-bg)}
+.per-avatar{width:34px;height:34px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--blue-pale);color:var(--blue);font-size:13px;font-weight:700;border:1.5px solid var(--border)}
+.per-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.maestro-foto-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:2px 6px;border-radius:4px;transition:all .15s;line-height:1}
+.maestro-foto-btn:hover{background:var(--surface3)}
 .add-maestro-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .add-maestro-row input{background:var(--surface2);border:1.5px solid var(--border);color:var(--accent);font-family:var(--font);font-size:13px;padding:8px 12px;border-radius:8px;outline:none;flex:1;min-width:120px}
 .add-maestro-row input:focus{border-color:var(--blue)}
@@ -203,10 +207,12 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <script>
   // Initialize Firebase using config from firebase-config.js
   const _fbApp = firebase.initializeApp(window.__firebaseConfig);
   window.__db = firebase.firestore();
+  window.__storage = firebase.storage();
   window.__auth = firebase.auth();
   window.__prov = new firebase.auth.GoogleAuthProvider();
   window.__fb = {
@@ -911,10 +917,10 @@ async function exportBackup() {
     zip.file('asistencia.csv', [asistHeaders.join(','), ...asistRows].join('\n'));
 
     // 2. Maestros personal CSV
-    const persHeaders = ['ID','NOMBRE','CARGO','TELEFONO','ACTIVO'];
+    const persHeaders = ['ID','NOMBRE','CARGO','TELEFONO','ACTIVO','FOTO'];
     const persRows = persSnap.docs.map(d => {
       const r = d.data();
-      return [r.id||d.id, r.nombre||'', r.cargo||'', r.telefono||'', r.activo||'SI'].map(escapeCSV).join(',');
+      return [r.id||d.id, r.nombre||'', r.cargo||'', r.telefono||'', r.activo||'SI', r.foto||''].map(escapeCSV).join(',');
     });
     zip.file('maestros_personal.csv', [persHeaders.join(','), ...persRows].join('\n'));
 
@@ -1197,7 +1203,7 @@ async function confirmImport() {
     if (pendingImport.files['maestros_personal.csv']) {
       addLog('👤 Importando personal...', 'info');
       const rows = parseCSV(pendingImport.files['maestros_personal.csv']);
-      await batchWrite('maestros_personal', rows, r => ({id:r.ID, nombre:r.NOMBRE, cargo:r.CARGO, telefono:r.TELEFONO||'', activo:r.ACTIVO||'SI', obs:''}));
+      await batchWrite('maestros_personal', rows, r => ({id:r.ID, nombre:r.NOMBRE, cargo:r.CARGO, telefono:r.TELEFONO||'', activo:r.ACTIVO||'SI', foto:r.FOTO||'', obs:''}));
       addLog('✓ Personal importado (' + rows.length + ' colaboradores)', 'ok');
     }
 
@@ -1396,6 +1402,7 @@ async function loadMaestros() {
       nombre: String(p.nombre || '').trim(),
       cargo: String(p.cargo || 'TÉCNICO').trim(),
       telefono: String(p.telefono || '').trim(),
+      foto: String(p.foto || '').trim(),
       activo: String(p.activo || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI'
     })).filter(p => p.nombre);
     maestrosData.tiendas = (d.tiendas || []).map((t, i) => ({
@@ -1468,13 +1475,61 @@ function renderPersonal() {
   if (!maestrosData.personal.length) { list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Sin personal registrado</div>'; return; }
   list.innerHTML = maestrosData.personal.map((p, i) => `
     <div class="maestro-item ${p.activo==='NO'?'inactive':''}">
+      <div class="per-avatar" title="${p.foto?'Foto cargada':'Sin foto'}">${p.foto?`<img src="${p.foto}" alt="">`:`<span>${(p.nombre||'?').trim().charAt(0).toUpperCase()}</span>`}</div>
       <input class="maestro-input" type="text" value="${p.nombre}" onchange="updatePersonal(${i},'nombre',this.value)" placeholder="Nombre completo">
       <input class="maestro-cargo" type="text" value="${p.cargo}" onchange="updatePersonal(${i},'cargo',this.value)" placeholder="Cargo" title="Cargo del trabajador">
       <input class="maestro-cargo" type="text" inputmode="numeric" value="${(p.telefono||'').replace(/^51/,'')}" onchange="updatePersonal(${i},'telefono',this.value)" placeholder="—" title="Solo 9 dígitos — se agrega prefijo 51 automáticamente" style="width:130px" autocomplete="off">
       ${cargoBadgeHtml(p.cargo)}
+      <label class="maestro-foto-btn" for="per-foto-${i}" title="Subir / cambiar foto">📷</label>
+      <input type="file" id="per-foto-${i}" accept="image/*" style="display:none" onchange="uploadPersonalFoto(${i}, this.files[0]); this.value='';">
       <button class="maestro-toggle" onclick="togglePersonal(${i})" title="${p.activo==='SI'?'Desactivar':'Activar'}">${p.activo==='SI'?'✅':'⭕'}</button>
       <button class="maestro-del" onclick="deletePersonal(${i})" title="Eliminar">✕</button>
     </div>`).join('');
+}
+
+// Comprime una imagen a un cuadrado de `size`px (recorte centrado) → Blob JPEG
+function compressSquare(file, size, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2;
+        const sy = (img.height - side) / 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error('No se pudo procesar la imagen')), 'image/jpeg', quality);
+      };
+      img.onerror = () => reject(new Error('Imagen inválida'));
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadPersonalFoto(i, file) {
+  if (!file) return;
+  if (!maUser || ['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol) === -1) { toast('Solo admins pueden subir fotos', 'err'); return; }
+  const p = maestrosData.personal[i];
+  if (!p) return;
+  if (!/^image\//.test(file.type)) { toast('El archivo no es una imagen', 'err'); return; }
+  try {
+    toast('Procesando foto...');
+    const blob = await compressSquare(file, 200, 0.82);
+    const ref = window.__storage.ref('personal/' + p.id);
+    const snap = await ref.put(blob, { contentType: 'image/jpeg' });
+    const url = await snap.ref.getDownloadURL();
+    maestrosData.personal[i].foto = url;
+    maestrosChanged = true;
+    renderPersonal();
+    toast('Foto subida — recuerda Guardar cambios', 'ok');
+  } catch(e) {
+    toast('Error subiendo foto: ' + (e.message || e), 'err');
+  }
 }
 
 function normalizeTel(v) {
@@ -1508,7 +1563,7 @@ function addPersonal() {
   const telefono = normalizeTel(document.getElementById('new-per-telefono').value);
   if (!nombre) { toast('Ingresa un nombre', 'err'); return; }
   const newId = 'PER' + String(Date.now()).slice(-6);
-  maestrosData.personal.push({ id: newId, nombre, cargo, telefono, activo: 'SI' });
+  maestrosData.personal.push({ id: newId, nombre, cargo, telefono, foto: '', activo: 'SI' });
   maestrosChanged = true;
   document.getElementById('new-per-nombre').value = '';
   document.getElementById('new-per-cargo').value = '';
@@ -1638,7 +1693,7 @@ async function saveMaestros() {
     const b1 = writeBatch(window.__db);
     const ex1 = await getDocs(collection(window.__db,'maestros_personal'));
     ex1.docs.forEach(d=>b1.delete(d.ref));
-    maestrosData.personal.forEach(p=>{b1.set(doc(window.__db,'maestros_personal',p.id),{id:p.id,nombre:p.nombre,cargo:p.cargo,telefono:p.telefono||'',activo:p.activo,obs:''});});
+    maestrosData.personal.forEach(p=>{b1.set(doc(window.__db,'maestros_personal',p.id),{id:p.id,nombre:p.nombre,cargo:p.cargo,telefono:p.telefono||'',foto:p.foto||'',activo:p.activo,obs:''});});
     await b1.commit();
     // Save tiendas
     const b2 = writeBatch(window.__db);
