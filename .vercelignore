@@ -5,3 +5,4 @@ README.md
 *.py
 *.json
 !firebase-config.js
+!vercel.json
