@@ -44,7 +44,7 @@ Directorio CRUD de proveedores. Construida sobre el scaffold de `comprobantes.ht
 - **Validación**: RUC obligatorio y `^\d{8,11}$`; razón social obligatoria (se guarda en MAYÚSCULAS); RUC duplicado bloqueado al crear.
 - **Excel** (`exportProveedores`, SheetJS): RUC, RAZÓN SOCIAL, NOMBRE COMERCIAL, RUBRO, TELÉFONO, EMAIL, CONTACTO, DIRECCIÓN, CONDICIONES DE PAGO, BANCO, CUENTA/CCI, ACTIVO.
 - **Backup**: incluida en export/import de `configuracion.html` (`proveedores.csv`).
-- **Estado en develop**: activa | **Estado en producción**: pendiente de merge a main.
+- **Estado en develop**: activa | **Estado en producción**: activa (merge a main 2026-06-10).
 
 ## Insumos (`insumos.html`)
 Gestión de inventario de herramientas/insumos. **Estado**: activa en develop y producción (activada 2026-06-06).
@@ -313,3 +313,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-06-10 | **Nueva app Proveedores (`proveedores.html`)**: directorio CRUD sobre la colección `proveedores`. Construida sobre el scaffold de `comprobantes.html` (header/auth/accesos/footer/toast), retirado todo Gemini/scanner/pdf.js. Toolbar con búsqueda en vivo + Exportar Excel + "Nuevo proveedor" (solo admin) + tabla; modal de alta/edición; SUPERVISOR solo lectura (`isProvAdmin`). Validación de RUC (`^\d{8,11}$`), razón social en MAYÚSCULAS, RUC duplicado bloqueado al crear |
 | 2026-06-10 | Proveedores: card 🏢 en `index.html` antes de Configuración; `{id:'proveedores'}` agregado a `ALL_APPS` del panel de accesos; backup export/import de `proveedores.csv` en `configuracion.html` (14ª colección). Activa en develop, pendiente de merge a main |
 | 2026-06-10 | Proveedores: campo **`notas`** (texto libre multilínea) — `<textarea>` en el modal, columna "Notas" en la tabla (truncada con `title` completo), incluida en búsqueda, export Excel y backup CSV (`proveedores.csv`). Para observaciones internas (horarios, vendedor, descuentos, plazos, incidencias, links) |
+| 2026-06-10 | Proveedores: **merge develop→main → activa en producción**. Probado con un proveedor piloto (FRIO COMPONENTES DEL PERU S.A.C.) creado vía firebase-admin y luego eliminado; la colección `proveedores` queda vacía para datos reales |
