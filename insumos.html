@@ -379,7 +379,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <button class="tab-btn" onclick="switchTab('movimientos',this)">📋 Movimientos</button>
       <button class="tab-btn" onclick="switchTab('stock',this)">🏢 Por Sede</button>
       <button class="tab-btn" onclick="switchTab('paquetes',this)">🎒 Paquetes</button>
-      <button class="tab-btn" onclick="switchTab('tecnicos',this)">👤 Por Técnico</button>
+      <button class="tab-btn" onclick="switchTab('tecnicos',this)">👥 Por Persona</button>
     </div>
 
     <div class="tab-view active" id="tab-catalogo">
@@ -479,9 +479,9 @@ tbody td{padding:9px 12px;vertical-align:middle}
     <!-- TAB POR TÉCNICO -->
     <div class="tab-view" id="tab-tecnicos">
       <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
-        <select id="f-tec-persona" onchange="renderPorTecnico()" style="max-width:240px;font-size:12px"><option value="">Seleccionar técnico...</option></select>
+        <select id="f-tec-persona" onchange="renderPorTecnico()" style="max-width:240px;font-size:12px"><option value="">Seleccionar...</option></select>
       </div>
-      <div id="tecnico-content"><div class="empty"><div class="empty-icon">👤</div>Selecciona un técnico para ver su inventario</div></div>
+      <div id="tecnico-content"><div class="empty"><div class="empty-icon">👥</div>Selecciona una persona o "Todos" para ver su inventario</div></div>
     </div>
   </div>
 </div>
