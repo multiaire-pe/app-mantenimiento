@@ -8,6 +8,7 @@ No hay servidor — todo corre en el browser con Firebase Auth + Firestore direc
 ## Archivos principales
 - `asistencia_multiaire.html` — gestión de asistencia del personal
 - `comprobantes.html` — Rendición de Caja: escáner de facturas/boletas con Gemini IA
+- `proveedores.html` — Proveedores: directorio CRUD (colección `proveedores`)
 - `firebase-config.js` — config pública de Firebase (project: `multiaire-fee43`)
 - `wsp_import/importar_asistencia.py` — script Python para importar asistencia desde ZIP de WhatsApp
 
@@ -32,6 +33,17 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 - **Footer**: body `display:flex flex-direction:column` + wrapper `flex:1` siempre visible — footer nunca salta al header durante carga
 - **← Inicio**: usa clase `.back-link` (pill semi-transparente) igual que mantenimiento/asistencia
 - **Estado en develop**: activa | **Estado en producción**: activa
+
+## Proveedores (`proveedores.html`)
+Directorio CRUD de proveedores. Construida sobre el scaffold de `comprobantes.html` (header/auth Google contra `usuarios`, panel "Gestión de accesos", footer, toast) — **sin** nada de Gemini/scanner/pdf.js.
+- **Colección**: `proveedores` (ver tabla de colecciones). Doc id auto-generado.
+- **Roles**: ADMIN/SUPER_ADMIN editan (botón "＋ Nuevo proveedor", lápiz ✎, eliminar); SUPERVISOR solo lectura (sin botón nuevo; el ojo 👁 abre el modal en modo readonly — inputs `disabled`, sin botón Guardar/Eliminar). Gate central: `isProvAdmin()`.
+- **UI**: toolbar (búsqueda en vivo + Exportar Excel + Nuevo proveedor) + tabla (estado·RUC·razón social·nombre comercial·rubro·teléfono·contacto·cond. pago·acción). Doble clic en fila abre el detalle. Modal de alta/edición con todos los campos (`PROV_FIELDS`).
+- **Búsqueda** (`provFilter`): filtra por ruc, razón social, nombre comercial, rubro, contacto, teléfono, email.
+- **Validación**: RUC obligatorio y `^\d{8,11}$`; razón social obligatoria (se guarda en MAYÚSCULAS); RUC duplicado bloqueado al crear.
+- **Excel** (`exportProveedores`, SheetJS): RUC, RAZÓN SOCIAL, NOMBRE COMERCIAL, RUBRO, TELÉFONO, EMAIL, CONTACTO, DIRECCIÓN, CONDICIONES DE PAGO, BANCO, CUENTA/CCI, ACTIVO.
+- **Backup**: incluida en export/import de `configuracion.html` (`proveedores.csv`).
+- **Estado en develop**: activa | **Estado en producción**: pendiente de merge a main.
 
 ## Insumos (`insumos.html`)
 Gestión de inventario de herramientas/insumos. **Estado**: activa en develop y producción (activada 2026-06-06).
@@ -67,6 +79,7 @@ Modelo de 3 niveles:
 | `insumos_movimientos` | Entradas/salidas/transferencias/actualizaciones de instancias |
 | `insumos_paquetes` | Contenedores (MOCHILA/CAJA/CAJON/ANAQUEL/MALETÍN) que agrupan instancias vía array `instancias[]` |
 | `insumos_instancias_fotos` | Foto (identificación) de cada instancia. Doc id = id de instancia. Campo `foto` = base64 (dataURL JPEG 320×320). **Colección aparte** (no dentro del doc de instancia) para no inflar las lecturas/exportaciones de `insumos_instancias`; se carga junto al resto en `loadAll` |
+| `proveedores` | Directorio de proveedores (`proveedores.html`). Campos: `ruc`, `razonSocial` (MAYÚSCULAS), `nombreComercial`, `rubro`, `telefono`, `email`, `contacto`, `direccion`, `condicionesPago`, `banco`, `cuenta`, `activo` (`SI`/`NO`), + `createdAt/By`, `updatedAt/By`. Doc id = auto-generado (no el RUC, para permitir corregir el RUC sin orfandato; se evita RUC duplicado al crear). ADMIN/SUPER_ADMIN editan; SUPERVISOR solo lectura |
 
 ### Schema `asistencia_registros`
 ```js
@@ -123,7 +136,7 @@ function calcHorasExtra(entrada, salida, fecha) {
 
 ## Orden de cards en index.html
 **Configuración es siempre la última card del panel de apps.** Cualquier app nueva se inserta antes de Configuración.
-Orden actual: Inv. Equipos → Mantenimiento → Itinerario → Insumos → Asistencia → Rendición de Caja → Configuración
+Orden actual: Inv. Equipos → Mantenimiento → Itinerario → Insumos → Asistencia → Rendición de Caja → Proveedores → Configuración
 
 ## Tabs de la app
 1. **Hoy** — registro del día, entrada/salida por colaborador
@@ -296,3 +309,5 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-06-10 | Insumos: **foto por instancia** (identificación). Nueva colección `insumos_instancias_fotos` (base64, colección aparte). Subida desde el modal de edición de instancia (botón 📷, `setInstanciaFoto`/`removeInstanciaFoto`); miniatura en la celda ID/QR de la tabla (`instThumb`). Añadida al backup/import de `configuracion.html` |
 | 2026-06-10 | Insumos foto de instancia: **lightbox** para ampliar (clic en preview del modal o en miniatura de la tabla → visor `foto-lightbox` a pantalla completa), botón **📸 Tomar foto** (`capture=environment`, clase `.cam-only-mobile` visible solo en móvil) además del de subir, y resolución de captura subida a **480×480** para que ampliar se vea bien. Responsive verificado (modal tipo sheet en móvil, lightbox en vw/vh) |
 | 2026-06-10 | Deploy: **eliminado el deploy duplicado**. Cada push generaba 2 deployments (el GitHub Action `vercel deploy` + el auto-deploy de la integración Git de Vercel), duplicando el consumo del plan gratuito. Se añade `vercel.json` con `"git":{"deploymentEnabled":false}` (y excepción en `.vercelignore` para no excluirlo) → los GitHub Actions quedan como **único** mecanismo de deploy (conservan el alias a las URLs fijas) |
+| 2026-06-10 | **Nueva app Proveedores (`proveedores.html`)**: directorio CRUD sobre la colección `proveedores`. Construida sobre el scaffold de `comprobantes.html` (header/auth/accesos/footer/toast), retirado todo Gemini/scanner/pdf.js. Toolbar con búsqueda en vivo + Exportar Excel + "Nuevo proveedor" (solo admin) + tabla; modal de alta/edición; SUPERVISOR solo lectura (`isProvAdmin`). Validación de RUC (`^\d{8,11}$`), razón social en MAYÚSCULAS, RUC duplicado bloqueado al crear |
+| 2026-06-10 | Proveedores: card 🏢 en `index.html` antes de Configuración; `{id:'proveedores'}` agregado a `ALL_APPS` del panel de accesos; backup export/import de `proveedores.csv` en `configuracion.html` (14ª colección). Activa en develop, pendiente de merge a main |

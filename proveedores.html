@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MultiAire – Proveedores</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+:root{
+  --bg:#f0f4fa;--surface:#fff;--surface2:#f5f8ff;--surface3:#e8eef8;
+  --border:#d0daf0;--border2:#b8cce8;
+  --accent:#1a2540;--muted:#8a9ab8;--muted2:#6a7a9a;
+  --blue:#1B3F8B;--blue-light:#2a52b0;--blue-pale:#e8eef8;
+  --orange:#F47920;--orange-dark:#d4621a;--orange-pale:#fff3eb;
+  --green:#1a9e5a;--green-bg:#f0faf5;--green-border:#b0e0c8;
+  --yellow:#d48a00;--yellow-bg:#fff8ee;--yellow-border:#f5d080;
+  --red:#d63344;--red-bg:#fdf0f2;--red-border:#f0c0c8;
+  --purple:#6b3fa0;--purple-bg:#f3eeff;--purple-border:#d0b0f0;
+  --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow:0 2px 12px rgba(27,63,139,.10);--shadow-lg:0 8px 32px rgba(27,63,139,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height:100vh;font-size:14px;display:flex;flex-direction:column}
+
+/* ── HEADER ───────────────────────────────────────────────────────────────── */
+header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0;animation:blink 2.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.logo{font-weight:700;font-size:16px;letter-spacing:.03em;color:#fff;display:flex;align-items:center;gap:8px}
+.logo span{color:rgba(255,255,255,.5);font-weight:300}
+.hpill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
+.hpill.ok{color:#4ddd88;border-color:rgba(77,221,136,.4)}
+.hpill.loading{color:#ffd866;border-color:rgba(255,216,102,.4)}
+.hactions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.role-badge{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700}
+.role-SUPER_ADMIN{background:#fff3eb;color:var(--orange-dark)}
+.role-ADMIN{background:#e8eef8;color:var(--blue)}
+.role-SUPERVISOR{background:var(--purple-bg);color:var(--purple)}
+
+/* ── USER PILL ────────────────────────────────────────────────────────────── */
+.user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative}
+.user-pill:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.1)}
+.user-avatar-init{width:26px;height:26px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.user-avatar-img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.user-pname{font-size:11px;color:rgba(255,255,255,.85);font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1.5px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);min-width:200px;overflow:hidden;z-index:999}
+.user-menu.open{display:block}
+.user-menu-head{padding:10px 14px 6px;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.user-menu-item{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;color:var(--accent);cursor:pointer;background:none;border:none;width:100%;text-align:left;font-family:var(--font);transition:background .15s}
+.user-menu-item:hover{background:var(--bg)}
+.user-menu-item.danger{color:var(--red)}
+.user-menu-item.danger:hover{background:var(--red-bg)}
+.user-menu-div{height:1px;background:var(--border);margin:4px 0}
+.back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:20px;white-space:nowrap;transition:all .15s}
+.back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
+
+/* ── AUTH OVERLAY ─────────────────────────────────────────────────────────── */
+#auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:36px 32px;max-width:380px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
+.auth-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px}
+.auth-logo-dot{width:10px;height:10px;border-radius:50%;background:var(--orange)}
+.auth-logo-text{font-weight:700;font-size:20px;color:var(--blue)}
+.auth-title{font-size:15px;font-weight:700;color:var(--accent);margin-bottom:6px}
+.auth-sub{font-size:12px;color:var(--muted2);margin-bottom:24px;line-height:1.5}
+.auth-err{margin-top:14px;padding:10px 14px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:8px;font-size:12px;color:var(--red);display:none;line-height:1.5;text-align:left}
+.auth-err.show{display:block}
+.auth-loading{font-size:12px;color:var(--muted2);margin-top:10px;display:none}
+.auth-loading.show{display:block}
+
+/* ── TOAST ────────────────────────────────────────────────────────────────── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a2540;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:all .25s;z-index:9998;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{background:#1a9e5a}.toast.err{background:#d63344}
+
+/* ── BUTTONS ──────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--accent);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--surface3);border-color:var(--border2)}
+.btn-primary{background:#1B3F8B;border-color:#1B3F8B;color:#fff;font-weight:600}.btn-primary:hover{opacity:.9}
+.btn-green{color:var(--green);border-color:var(--green-border)}.btn-green:hover{background:var(--green-bg)}
+.btn-red{color:var(--red);border-color:var(--red-border)}.btn-red:hover{background:var(--red-bg)}
+.btn-sm{padding:5px 10px;font-size:11px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── PAGE & FOOTER ────────────────────────────────────────────────────────── */
+.page{flex:1;padding:24px;max-width:1100px;width:100%;margin:0 auto}
+footer{background:var(--surface);border-top:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px}
+.footer-txt{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.footer-time{font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:auto}
+
+/* ── CARDS ────────────────────────────────────────────────────────────────── */
+.card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
+.card-title{font-size:13px;font-weight:700;color:var(--blue);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.form-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.form-group{display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px}
+.form-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2)}
+.form-input,.form-select{background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:12px;padding:8px 10px;border-radius:6px;outline:none;width:100%}
+.form-input:focus,.form-select:focus{border-color:var(--blue);background:#fff}
+.form-input:disabled,.form-select:disabled{opacity:.7;cursor:not-allowed;background:var(--surface3)}
+
+/* ── TOOLBAR ──────────────────────────────────────────────────────────────── */
+.prov-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.prov-search-wrap{flex:1;min-width:220px}
+.prov-toolbar-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ── TABLE ────────────────────────────────────────────────────────────────── */
+.results-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.results-header h3{font-size:13px;font-weight:700;color:var(--blue)}
+.table-scroll{overflow-x:auto;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:var(--surface3);color:var(--muted2);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:8px;text-align:left;border-bottom:2px solid var(--border);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:var(--surface2)}
+.col-estado{width:30px;text-align:center}
+.col-acc{width:48px;text-align:center}
+.estado-dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle}
+.estado-dot.on{background:var(--green)}
+.estado-dot.off{background:var(--muted)}
+.row-clickable{cursor:pointer}
+.empty-msg{text-align:center;color:var(--muted);padding:40px 20px;font-size:13px}
+
+/* ── MODAL ────────────────────────────────────────────────────────────────── */
+.modal-overlay{position:fixed;inset:0;background:rgba(10,20,50,.45);backdrop-filter:blur(2px);z-index:500;display:none;align-items:center;justify-content:center;padding:16px;cursor:pointer}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:12px;box-shadow:var(--shadow-lg);width:560px;max-width:100%;max-height:90vh;overflow-y:auto;padding:22px;cursor:default}
+.modal h2{font-size:15px;font-weight:700;margin-bottom:4px;color:var(--blue)}
+.modal-sub{font-size:11px;color:var(--muted2);margin-bottom:16px;line-height:1.6;padding:8px 10px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--blue)}
+.modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+
+/* ── MOBILE ───────────────────────────────────────────────────────────────── */
+@media(max-width:768px){
+  header{padding:0 12px;height:52px;gap:8px}
+  .logo{font-size:14px}
+  .logo span{display:none}
+  .hpill{display:none}
+  .hactions{gap:6px}
+  .user-pname{display:none}
+  .user-pill{padding:2px 4px;border-radius:50%}
+  .page{padding:14px 12px}
+  footer{padding:12px 16px;flex-wrap:wrap}
+  .card{padding:14px}
+  .form-row{flex-direction:column;align-items:stretch}
+  .prov-toolbar-actions{width:100%}
+  .prov-toolbar-actions .btn{flex:1;justify-content:center}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-dot"></div>
+  <div class="logo">MultiAire <span>/ Proveedores</span></div>
+  <div class="hpill loading" id="conn-pill">⟳ Conectando...</div>
+  <div class="hactions">
+    <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
+    <a href="index.html" class="back-link">← Inicio</a>
+  </div>
+</header>
+
+<div id="auth-overlay" style="display:none">
+  <div class="auth-card">
+    <div class="auth-logo"><div class="auth-logo-dot"></div><div class="auth-logo-text">MultiAire</div></div>
+    <div class="auth-title">Proveedores</div>
+    <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada.</div>
+    <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="auth-loading" id="auth-loading"></div>
+  </div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column">
+<div class="page" id="main-page" style="display:none">
+
+  <!-- TOOLBAR -->
+  <div class="card">
+    <div class="prov-toolbar">
+      <div class="prov-search-wrap">
+        <input type="text" id="prov-search" class="form-input"
+               placeholder="🔍 Buscar por RUC, razón social, nombre comercial, rubro o contacto…"
+               oninput="renderProvTable()" autocomplete="off">
+      </div>
+      <div class="prov-toolbar-actions">
+        <button class="btn btn-sm btn-green" onclick="exportProveedores()">⬇ Exportar Excel</button>
+        <button class="btn btn-sm btn-primary" id="btn-new-prov" onclick="openNewProv()" style="display:none">＋ Nuevo proveedor</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROVIDERS TABLE -->
+  <div class="card">
+    <div class="results-header">
+      <h3>🏢 Directorio de proveedores</h3>
+      <span id="prov-count" style="font-size:11px;color:var(--muted2)"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-estado" title="Estado"></th>
+            <th>RUC</th>
+            <th>Razón social</th>
+            <th>Nombre comercial</th>
+            <th>Rubro</th>
+            <th>Teléfono</th>
+            <th>Contacto</th>
+            <th>Cond. pago</th>
+            <th class="col-acc"></th>
+          </tr>
+        </thead>
+        <tbody id="prov-body">
+          <tr><td colspan="9" class="empty-msg">Cargando proveedores…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:10px;color:var(--muted2);margin-top:6px">
+      <span class="estado-dot on"></span> Activo &nbsp;·&nbsp;
+      <span class="estado-dot off"></span> Inactivo &nbsp;·&nbsp; doble clic en una fila para ver el detalle.
+    </p>
+  </div>
+
+</div><!-- /.page -->
+</div><!-- flex:1 wrapper -->
+
+<footer>
+  <span class="footer-txt">MultiAire © 2026</span>
+  <span class="footer-txt" style="opacity:.4">·</span>
+  <span class="footer-txt">Proveedores</span>
+  <span class="footer-time" id="clock">—</span>
+</footer>
+
+<!-- MODAL ALTA / EDICIÓN PROVEEDOR -->
+<div class="modal-overlay" id="modal-prov" onclick="if(event.target===this)closeModal('modal-prov')">
+  <div class="modal">
+    <h2 id="prov-modal-title">＋ Nuevo proveedor</h2>
+    <div class="modal-sub">
+      Los campos marcados con <span style="color:var(--orange)">*</span> son obligatorios.
+      La razón social se guarda en MAYÚSCULAS.
+    </div>
+    <input type="hidden" id="prov-id">
+    <div style="display:flex;flex-direction:column;gap:12px">
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">RUC / DNI <span style="color:var(--orange)">*</span></label>
+          <input type="text" id="prov-ruc" class="form-input" maxlength="11" inputmode="numeric"
+                 placeholder="20512345678" autocomplete="off">
+        </div>
+        <div class="form-group" style="flex:0 0 140px;min-width:120px">
+          <label class="form-label">Estado</label>
+          <select id="prov-activo" class="form-select">
+            <option value="SI">Activo</option>
+            <option value="NO">Inactivo</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Razón social <span style="color:var(--orange)">*</span></label>
+        <input type="text" id="prov-razonSocial" class="form-input" placeholder="FERREYROS S.A." autocomplete="off">
+      </div>
+
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Nombre comercial</label>
+        <input type="text" id="prov-nombreComercial" class="form-input" placeholder="Ferreyros" autocomplete="off">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Rubro / Categoría</label>
+          <input type="text" id="prov-rubro" class="form-input" placeholder="Repuestos / Ferretería…" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Teléfono</label>
+          <input type="text" id="prov-telefono" class="form-input" inputmode="tel" placeholder="01 234 5678 / 999 888 777" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" id="prov-email" class="form-input" placeholder="ventas@proveedor.com" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Persona de contacto</label>
+          <input type="text" id="prov-contacto" class="form-input" placeholder="Nombre del contacto" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Dirección</label>
+        <input type="text" id="prov-direccion" class="form-input" placeholder="Av. / Jr. …, distrito" autocomplete="off">
+      </div>
+
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Condiciones de pago</label>
+        <input type="text" id="prov-condicionesPago" class="form-input" placeholder="Contado / Crédito 30 días…" autocomplete="off">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Banco</label>
+          <input type="text" id="prov-banco" class="form-input" placeholder="BCP / BBVA / Interbank…" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">N° de cuenta / CCI</label>
+          <input type="text" id="prov-cuenta" class="form-input" placeholder="Cuenta o CCI" autocomplete="off">
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-red" id="btn-del-prov" onclick="deleteProv()" style="margin-right:auto;display:none">🗑 Eliminar</button>
+      <button class="btn" onclick="closeModal('modal-prov')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-prov" onclick="saveProv()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GESTIÓN DE ACCESOS -->
+<div class="modal-overlay" id="modal-access" onclick="if(event.target===this)closeModal('modal-access')">
+  <div class="modal">
+    <h2>⚙️ Gestión de accesos</h2>
+    <div class="modal-sub">
+      <strong>SUPERVISOR</strong> — solo lectura en todas las apps<br>
+      <strong>ADMIN</strong> — gestión completa<br>
+      <strong>SUPER_ADMIN</strong> — acceso total sin restricciones
+    </div>
+    <div id="access-list" style="max-height:340px;overflow-y:auto;margin-bottom:14px"></div>
+    <div style="display:flex;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+      <input type="text" class="form-input" id="new-user-email" placeholder="nuevo@email.com" style="flex:1;min-width:180px">
+      <select class="form-select" id="new-user-rol">
+        <option value="SUPERVISOR">SUPERVISOR</option>
+        <option value="ADMIN">ADMIN</option>
+        <option value="SUPER_ADMIN">SUPER ADMIN</option>
+      </select>
+      <button class="btn btn-primary" onclick="addAccessUser()">+ Agregar</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-access')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// ── CLOCK ─────────────────────────────────────────────────────────────────────
+(function tickClock(){
+  document.getElementById('clock').textContent = new Date().toLocaleString('es-PE',{
+    weekday:'short',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'
+  });
+  setTimeout(tickClock, 1000);
+})();
+
+// ── FIREBASE / AUTH ───────────────────────────────────────────────────────────
+const MA_ADM  = 'marchenaangulojoseluis@gmail.com';
+const _fbApp  = firebase.initializeApp(window.__firebaseConfig);
+const db      = firebase.firestore();
+window.__auth = firebase.auth();
+window.__prov = new firebase.auth.GoogleAuthProvider();
+window.__fb   = {
+  onAuthStateChanged: (auth, cb) => firebase.auth().onAuthStateChanged(cb),
+  signInWithPopup:    (auth, prov) => firebase.auth().signInWithPopup(prov),
+  signOut:            () => firebase.auth().signOut(),
+};
+
+let maUser = null;
+
+(function(){
+  function waitForFirebase(){
+    if(window.__auth && window.__fb){
+      window.__fb.onAuthStateChanged(window.__auth, function(user){
+        if(user && !window._maInitDone){
+          window._maInitDone = true;
+          maVerify({email:user.email, name:user.displayName, picture:user.photoURL}, true);
+        } else if(!user && !window._maInitDone){
+          window._maInitDone = true;
+          maShowLogin();
+        }
+      });
+    } else { setTimeout(waitForFirebase, 50); }
+  }
+  waitForFirebase();
+})();
+
+function maShowLogin(){
+  var ov = document.getElementById('auth-overlay');
+  if(ov){ ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+  var btn = document.getElementById('g-btn');
+  if(btn){ btn.innerHTML = '<button onclick="maFirebaseSignIn()" style="display:flex;align-items:center;gap:10px;padding:10px 20px;border:1.5px solid #d0daf0;border-radius:8px;background:#fff;font-family:IBM Plex Sans,sans-serif;font-size:14px;cursor:pointer;font-weight:500"><img src=\'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg\' width=18>Continuar con Google</button>'; }
+}
+
+async function maFirebaseSignIn(){
+  try{
+    const result = await window.__fb.signInWithPopup(window.__auth, window.__prov);
+    maVerify({email:result.user.email, name:result.user.displayName, picture:result.user.photoURL}, true);
+  }catch(e){
+    var errEl = document.getElementById('auth-err');
+    if(errEl){ errEl.textContent = 'Error al iniciar sesión: ' + e.message; errEl.classList.add('show'); }
+  }
+}
+
+async function maVerify(payload, save){
+  var email = (payload.email || '').toLowerCase();
+  var errEl = document.getElementById('auth-err');
+  var ldEl  = document.getElementById('auth-loading');
+  if(ldEl){ ldEl.textContent = 'Verificando acceso...'; ldEl.classList.add('show'); }
+  if(errEl) errEl.classList.remove('show');
+  try{
+    const snap = await db.collection('usuarios').doc(email).get();
+    if(!snap.exists){
+      if(ldEl) ldEl.classList.remove('show');
+      if(errEl){ errEl.textContent = 'Acceso denegado para ' + email + '. Contacta al administrador.'; errEl.classList.add('show'); }
+      return;
+    }
+    const fsData = snap.data();
+    maUser = {
+      email,
+      name:    payload.name    || fsData.nombre || fsData.name || email,
+      picture: payload.picture || fsData.picture || '',
+      ...fsData,
+      name: payload.name || fsData.nombre || fsData.name || email,
+    };
+    if(maUser.email === MA_ADM) maUser.rol = 'SUPER_ADMIN';
+    if(save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
+    if(ldEl) ldEl.classList.remove('show');
+    document.getElementById('auth-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    document.getElementById('main-page').style.display = 'block';
+    document.getElementById('conn-pill').textContent = '✓ Conectado';
+    document.getElementById('conn-pill').className   = 'hpill ok';
+    renderUserPill();
+    initApp();
+  }catch(e){
+    if(ldEl) ldEl.classList.remove('show');
+    if(errEl){ errEl.textContent = 'Error: ' + e.message; errEl.classList.add('show'); }
+  }
+}
+
+function renderUserPill(){
+  const pill = document.getElementById('user-pill');
+  if(!pill || !maUser) return;
+  const n    = maUser.nombre || maUser.name || maUser.email;
+  const init = n.split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase();
+  const avatar   = maUser.picture
+    ? `<img class="user-avatar-img" src="${maUser.picture}">`
+    : `<div class="user-avatar-init">${init}</div>`;
+  const rol      = maUser.rol || 'ADMIN';
+  const rolBadge = `<span class="role-badge role-${rol}">${rol.replace('_',' ')}</span>`;
+  const isAdmin = rol === 'ADMIN' || rol === 'SUPER_ADMIN';
+  const adminItem = isAdmin
+    ? `<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-div"></div>`
+    : '';
+  pill.innerHTML = avatar
+    + `<span class="user-pname">${n}</span>`
+    + `<div class="user-menu" id="user-menu">`
+    + `<div class="user-menu-head">${maUser.email} ${rolBadge}</div>`
+    + `<div class="user-menu-div"></div>`
+    + adminItem
+    + `<button class="user-menu-item danger" onclick="maSignOut()">→ Cerrar sesión</button>`
+    + `</div>`;
+  pill.style.display = 'flex';
+}
+function toggleUserMenu(){
+  const m = document.getElementById('user-menu');
+  if(m) m.classList.toggle('open');
+}
+function maSignOut(){
+  firebase.auth().signOut().then(() => { sessionStorage.removeItem('ma_user'); location.href = 'index.html'; });
+}
+document.addEventListener('click', e => {
+  const pill = document.getElementById('user-pill');
+  const menu = document.getElementById('user-menu');
+  if(menu && pill && !pill.contains(e.target)) menu.classList.remove('open');
+});
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+let _toastT = null;
+function toast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = 'toast' + (type ? ' ' + type : '');
+  t.classList.add('show');
+  clearTimeout(_toastT);
+  _toastT = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function esc(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── MODAL UTILS ────────────────────────────────────────────────────────────────
+function closeModal(id){ document.getElementById(id)?.classList.remove('open'); }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  PROVEEDORES — CRUD (colección Firestore `proveedores`)
+//  ADMIN / SUPER_ADMIN editan · SUPERVISOR solo lectura
+// ═══════════════════════════════════════════════════════════════════════════════
+let proveedores = [];
+const PROV_FIELDS = ['ruc','razonSocial','nombreComercial','rubro','telefono','email','contacto','direccion','condicionesPago','banco','cuenta'];
+
+function isProvAdmin(){
+  const rol = maUser?.rol || '';
+  return rol === 'ADMIN' || rol === 'SUPER_ADMIN';
+}
+
+// ── APP INIT ──────────────────────────────────────────────────────────────────
+function initApp(){
+  if(isProvAdmin()){
+    const b = document.getElementById('btn-new-prov');
+    if(b) b.style.display = 'inline-flex';
+  }
+  loadProveedores();
+}
+
+// ── LOAD ──────────────────────────────────────────────────────────────────────
+async function loadProveedores(){
+  const body = document.getElementById('prov-body');
+  try{
+    const snap = await db.collection('proveedores').get();
+    proveedores = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    proveedores.sort((a,b) => (a.razonSocial||'').localeCompare(b.razonSocial||'','es'));
+  }catch(e){
+    proveedores = [];
+    if(body) body.innerHTML = '<tr><td colspan="9" class="empty-msg">Error al cargar proveedores.</td></tr>';
+    toast('Error al cargar proveedores: ' + e.message, 'err');
+    return;
+  }
+  renderProvTable();
+}
+
+// ── FILTER + RENDER ─────────────────────────────────────────────────────────────
+function provFilter(){
+  const q = (document.getElementById('prov-search').value || '').trim().toLowerCase();
+  if(!q) return proveedores;
+  return proveedores.filter(p =>
+    [p.ruc,p.razonSocial,p.nombreComercial,p.rubro,p.contacto,p.telefono,p.email]
+      .some(v => String(v||'').toLowerCase().includes(q))
+  );
+}
+
+function renderProvTable(){
+  const body  = document.getElementById('prov-body');
+  const list  = provFilter();
+  const admin = isProvAdmin();
+  document.getElementById('prov-count').textContent =
+    `${list.length} de ${proveedores.length} proveedor${proveedores.length!==1?'es':''}`;
+  if(!list.length){
+    body.innerHTML = `<tr><td colspan="9" class="empty-msg">${proveedores.length ? 'Sin coincidencias.' : 'Sin proveedores registrados.'}</td></tr>`;
+    return;
+  }
+  body.innerHTML = list.map(p => {
+    const activo  = (p.activo || 'SI') === 'SI';
+    const dot     = `<span class="estado-dot ${activo?'on':'off'}" title="${activo?'Activo':'Inactivo'}"></span>`;
+    const actIcon = admin ? '✎' : '👁';
+    const idAttr  = esc(p.id);
+    return `<tr class="row-clickable" ondblclick="openEditProv('${idAttr}')">
+      <td class="col-estado">${dot}</td>
+      <td style="font-family:var(--mono)">${esc(p.ruc)}</td>
+      <td><strong>${esc(p.razonSocial)}</strong></td>
+      <td>${esc(p.nombreComercial)}</td>
+      <td>${esc(p.rubro)}</td>
+      <td style="font-family:var(--mono)">${esc(p.telefono)}</td>
+      <td>${esc(p.contacto)}</td>
+      <td>${esc(p.condicionesPago)}</td>
+      <td class="col-acc"><button class="btn btn-sm" onclick="openEditProv('${idAttr}')" title="${admin?'Editar':'Ver'}" style="padding:3px 9px">${actIcon}</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── MODAL ALTA / EDICIÓN ────────────────────────────────────────────────────────
+function setProvModalReadonly(ro){
+  PROV_FIELDS.forEach(f => { const el = document.getElementById('prov-'+f); if(el) el.disabled = ro; });
+  document.getElementById('prov-activo').disabled = ro;
+  document.getElementById('btn-save-prov').style.display = ro ? 'none' : 'inline-flex';
+}
+
+function openNewProv(){
+  if(!isProvAdmin()){ toast('Sin permisos para crear proveedores', 'err'); return; }
+  document.getElementById('prov-modal-title').textContent = '＋ Nuevo proveedor';
+  document.getElementById('prov-id').value = '';
+  PROV_FIELDS.forEach(f => { const el = document.getElementById('prov-'+f); if(el) el.value = ''; });
+  document.getElementById('prov-activo').value = 'SI';
+  setProvModalReadonly(false);
+  document.getElementById('btn-del-prov').style.display = 'none';
+  document.getElementById('modal-prov').classList.add('open');
+  setTimeout(() => document.getElementById('prov-ruc')?.focus(), 50);
+}
+
+function openEditProv(id){
+  const p = proveedores.find(x => x.id === id);
+  if(!p) return;
+  const admin = isProvAdmin();
+  document.getElementById('prov-modal-title').textContent = admin ? '✎ Editar proveedor' : '👁 Ver proveedor';
+  document.getElementById('prov-id').value = p.id;
+  PROV_FIELDS.forEach(f => { const el = document.getElementById('prov-'+f); if(el) el.value = p[f] || ''; });
+  document.getElementById('prov-activo').value = (p.activo || 'SI');
+  setProvModalReadonly(!admin);
+  document.getElementById('btn-del-prov').style.display = admin ? 'inline-flex' : 'none';
+  document.getElementById('modal-prov').classList.add('open');
+}
+
+// ── SAVE ──────────────────────────────────────────────────────────────────────
+async function saveProv(){
+  if(!isProvAdmin()){ toast('Sin permisos', 'err'); return; }
+  const ruc   = document.getElementById('prov-ruc').value.trim();
+  const razon = document.getElementById('prov-razonSocial').value.trim();
+  if(!ruc){ toast('El RUC es obligatorio', 'err'); document.getElementById('prov-ruc').focus(); return; }
+  if(!/^\d{8,11}$/.test(ruc)){ toast('RUC/DNI inválido (8 a 11 dígitos)', 'err'); document.getElementById('prov-ruc').focus(); return; }
+  if(!razon){ toast('La razón social es obligatoria', 'err'); document.getElementById('prov-razonSocial').focus(); return; }
+
+  const data = {};
+  PROV_FIELDS.forEach(f => { data[f] = (document.getElementById('prov-'+f).value || '').trim(); });
+  data.razonSocial = data.razonSocial.toUpperCase();
+  data.activo      = document.getElementById('prov-activo').value;
+  data.updatedAt   = new Date().toISOString();
+  data.updatedBy   = maUser?.email || '';
+
+  const id = document.getElementById('prov-id').value;
+  try{
+    if(id){
+      await db.collection('proveedores').doc(id).update(data);
+      const i = proveedores.findIndex(x => x.id === id);
+      if(i >= 0) proveedores[i] = {...proveedores[i], ...data};
+      toast('Proveedor actualizado ✓', 'ok');
+    } else {
+      if(proveedores.some(x => (x.ruc||'') === ruc)){ toast('Ya existe un proveedor con ese RUC', 'err'); return; }
+      data.createdAt = new Date().toISOString();
+      data.createdBy = maUser?.email || '';
+      const ref = await db.collection('proveedores').add(data);
+      proveedores.push({id:ref.id, ...data});
+      toast('Proveedor creado ✓', 'ok');
+    }
+    proveedores.sort((a,b) => (a.razonSocial||'').localeCompare(b.razonSocial||'','es'));
+    closeModal('modal-prov');
+    renderProvTable();
+  }catch(e){ toast('Error al guardar: ' + e.message, 'err'); }
+}
+
+// ── DELETE ────────────────────────────────────────────────────────────────────
+async function deleteProv(){
+  if(!isProvAdmin()){ toast('Sin permisos', 'err'); return; }
+  const id = document.getElementById('prov-id').value;
+  if(!id) return;
+  const p = proveedores.find(x => x.id === id);
+  if(!confirm(`¿Eliminar al proveedor "${p?.razonSocial || ''}"?\nEsta acción no se puede deshacer.`)) return;
+  try{
+    await db.collection('proveedores').doc(id).delete();
+    proveedores = proveedores.filter(x => x.id !== id);
+    closeModal('modal-prov');
+    renderProvTable();
+    toast('Proveedor eliminado', 'ok');
+  }catch(e){ toast('Error al eliminar: ' + e.message, 'err'); }
+}
+
+// ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
+function exportProveedores(){
+  if(!proveedores.length){ toast('Sin proveedores para exportar', 'err'); return; }
+  const data = [
+    ['RUC','RAZÓN SOCIAL','NOMBRE COMERCIAL','RUBRO','TELÉFONO','EMAIL','CONTACTO','DIRECCIÓN','CONDICIONES DE PAGO','BANCO','CUENTA / CCI','ACTIVO'],
+    ...[...proveedores]
+      .sort((a,b) => (a.razonSocial||'').localeCompare(b.razonSocial||'','es'))
+      .map(p => [
+        p.ruc||'', p.razonSocial||'', p.nombreComercial||'', p.rubro||'', p.telefono||'',
+        p.email||'', p.contacto||'', p.direccion||'', p.condicionesPago||'', p.banco||'', p.cuenta||'', p.activo||'SI'
+      ])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:13},{wch:32},{wch:24},{wch:18},{wch:16},{wch:26},{wch:22},{wch:32},{wch:22},{wch:14},{wch:24},{wch:8}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Proveedores');
+  const d  = new Date();
+  const ts = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb, `proveedores_${ts}.xlsx`);
+  toast('Excel exportado ✓', 'ok');
+}
+
+// ── PANEL DE ACCESOS ──────────────────────────────────────────────────────────
+let accessUsers = [];
+const ALL_APPS = [
+  {id:'inventario',    label:'📦 Inv'},
+  {id:'mantenimiento', label:'🔧 Mant'},
+  {id:'itinerario',    label:'🗓 Iti'},
+  {id:'insumos',       label:'🧰 Ins'},
+  {id:'asistencia',    label:'🕐 Asis'},
+  {id:'comprobantes',  label:'🧾 Comp'},
+  {id:'proveedores',   label:'🏢 Prov'},
+];
+const ROLES = ['SUPERVISOR','ADMIN','SUPER_ADMIN'];
+
+async function openAccessPanel(){
+  document.getElementById('user-menu')?.classList.remove('open');
+  try{
+    const snap = await db.collection('usuarios').get();
+    accessUsers = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    renderAccessPanel();
+    document.getElementById('modal-access').classList.add('open');
+  }catch(e){ toast('Error al cargar usuarios: '+e.message,'err'); }
+}
+
+function renderAccessPanel(){
+  const list = document.getElementById('access-list');
+  if(!accessUsers.length){
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Sin usuarios</div>';
+    return;
+  }
+  const iAmSuper = maUser?.rol === 'SUPER_ADMIN';
+  list.innerHTML = accessUsers.map(u => {
+    const isMe         = u.email === maUser.email;
+    const rol          = u.rol || 'SUPERVISOR';
+    const isSuperTgt   = rol === 'SUPER_ADMIN';
+    const isAdminOrSup = rol === 'ADMIN' || rol === 'SUPER_ADMIN';
+    const canEdit      = !isMe && (isSuperTgt ? iAmSuper : true);
+    const canDelete    = !isMe && (isSuperTgt ? iAmSuper : true);
+    const opts         = ROLES.map(r => `<option value="${r}"${rol===r?' selected':''}>${r.replace('_',' ')}</option>`).join('');
+    const userApps     = u.apps || [];
+    let appsHtml;
+    if(isAdminOrSup){
+      appsHtml = `<div style="font-size:10px;color:var(--orange-dark);padding:5px 0 2px;font-style:italic">✓ Acceso a todas las apps por rol</div>`;
+    } else {
+      appsHtml = `<div style="display:flex;gap:4px;flex-wrap:wrap;padding:5px 0 2px">`
+        + ALL_APPS.map(app => {
+          const checked = userApps.includes(app.id);
+          const dis = !canEdit;
+          return `<label style="display:flex;align-items:center;gap:3px;font-size:10px;padding:2px 7px;border-radius:10px;border:1px solid ${checked?'var(--blue)':'var(--border)'};background:${checked?'#e8eef8':'#fff'};color:${checked?'var(--blue)':'var(--muted)'};cursor:${dis?'not-allowed':'pointer'};${dis?'opacity:.5':''}">
+            <input type="checkbox" data-email="${u.email}" data-app="${app.id}"${checked?' checked':''}${dis?' disabled':''} onchange="toggleAppAccess(this)" style="margin:0;cursor:inherit">${app.label}</label>`;
+        }).join('') + `</div>`;
+    }
+    const meMark    = isMe ? ` <span style="font-size:9px;color:var(--blue);font-weight:700">(tú)</span>` : '';
+    const superMark = (isSuperTgt && !isMe) ? ` <span style="font-size:9px;color:var(--orange-dark);font-weight:700">★</span>` : '';
+    return `<div style="padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;font-family:var(--mono);font-size:11px">${u.email}${meMark}${superMark}</div>
+        <select style="font-size:11px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;outline:none;${canEdit?'':'opacity:.6;cursor:not-allowed'}" ${canEdit?'':'disabled'} onchange="changeUserRol('${u.email}',this.value)">
+          ${opts}
+        </select>
+        ${canDelete ? `<button class="btn btn-sm btn-red" onclick="deleteAccessUser('${u.email}')" style="padding:3px 8px">🗑</button>` : '<span style="width:36px"></span>'}
+      </div>
+      ${appsHtml}
+    </div>`;
+  }).join('');
+}
+
+async function toggleAppAccess(cb){
+  const email = cb.getAttribute('data-email');
+  const app   = cb.getAttribute('data-app');
+  const u     = accessUsers.find(x => x.email === email);
+  if(!u) return;
+  if(!u.apps) u.apps = [];
+  if(cb.checked){ if(!u.apps.includes(app)) u.apps.push(app); }
+  else           { u.apps = u.apps.filter(a => a !== app); }
+  try{
+    await db.collection('usuarios').doc(email).update({apps: u.apps});
+  }catch(e){
+    toast('Error: '+e.message, 'err');
+    cb.checked = !cb.checked;
+  }
+}
+
+async function changeUserRol(email, rol){
+  try{
+    await db.collection('usuarios').doc(email).update({rol});
+    const u = accessUsers.find(x => x.email === email);
+    if(u) u.rol = rol;
+    renderAccessPanel();
+    toast('Rol actualizado', 'ok');
+  }catch(e){ toast('Error: '+e.message, 'err'); }
+}
+
+async function deleteAccessUser(email){
+  if(!confirm(`¿Eliminar acceso de ${email}?`)) return;
+  try{
+    await db.collection('usuarios').doc(email).delete();
+    accessUsers = accessUsers.filter(x => x.email !== email);
+    renderAccessPanel();
+    toast('Usuario eliminado', 'ok');
+  }catch(e){ toast('Error: '+e.message, 'err'); }
+}
+
+async function addAccessUser(){
+  const email = document.getElementById('new-user-email').value.trim().toLowerCase();
+  const rol   = document.getElementById('new-user-rol').value;
+  if(!email || !email.includes('@')){ toast('Email inválido', 'err'); return; }
+  try{
+    await db.collection('usuarios').doc(email).set({email, rol}, {merge:true});
+    if(!accessUsers.find(x => x.email === email)) accessUsers.push({email, rol});
+    document.getElementById('new-user-email').value = '';
+    renderAccessPanel();
+    toast('Usuario agregado', 'ok');
+  }catch(e){ toast('Error: '+e.message, 'err'); }
+}
+</script>
+</body>
+</html>

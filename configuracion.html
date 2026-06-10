@@ -286,6 +286,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>insumos_paquetes.csv</div>
             <div class="backup-file"><span></span>insumos_movimientos.csv</div>
             <div class="backup-file"><span></span>insumos_instancias_fotos.csv</div>
+            <div class="backup-file"><span></span>proveedores.csv</div>
           </div>
           <button class="btn btn-primary" onclick="exportBackup()" id="export-btn" style="width:100%">
             ⬇ Descargar ZIP
@@ -887,7 +888,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap] = await Promise.all([
+    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, provSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('maestros_tiendas').get(),
@@ -904,6 +905,7 @@ async function exportBackup() {
       window.__db.collection('insumos_paquetes').get(),
       window.__db.collection('insumos_movimientos').get(),
       window.__db.collection('insumos_instancias_fotos').get(),
+      window.__db.collection('proveedores').get(),
     ]);
 
     const zip = new JSZip();
@@ -1041,6 +1043,14 @@ async function exportBackup() {
     });
     zip.file('insumos_instancias_fotos.csv', [insFotoHeaders.join(','), ...insFotoRows].join('\n'));
 
+    // 14. Proveedores (directorio)
+    const provHeaders = ['ID','RUC','RAZON_SOCIAL','NOMBRE_COMERCIAL','RUBRO','TELEFONO','EMAIL','CONTACTO','DIRECCION','CONDICIONES_PAGO','BANCO','CUENTA','ACTIVO'];
+    const provRows = provSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.ruc||'', r.razonSocial||'', r.nombreComercial||'', r.rubro||'', r.telefono||'', r.email||'', r.contacto||'', r.direccion||'', r.condicionesPago||'', r.banco||'', r.cuenta||'', r.activo||'SI'].map(escapeCSV).join(',');
+    });
+    zip.file('proveedores.csv', [provHeaders.join(','), ...provRows].join('\n'));
+
     // Generate and download
     const blob = await zip.generateAsync({type:'blob'});
     const url = URL.createObjectURL(blob);
@@ -1106,7 +1116,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','proveedores.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1361,6 +1371,14 @@ async function confirmImport() {
       const rows = parseCSV(pendingImport.files['insumos_instancias_fotos.csv']);
       await batchWrite('insumos_instancias_fotos', rows.filter(r=>r.FOTO), r => ({_docId:r.ID, instanciaId:r.ID, foto:r.FOTO}));
       addLog('✓ Fotos de instancias importadas (' + rows.filter(r=>r.FOTO).length + ')', 'ok');
+    }
+
+    // 14. Proveedores (directorio)
+    if (pendingImport.files['proveedores.csv']) {
+      addLog('🏢 Importando proveedores...', 'info');
+      const rows = parseCSV(pendingImport.files['proveedores.csv']);
+      await batchWrite('proveedores', rows, r => ({_docId:r.ID, ruc:r.RUC||'', razonSocial:r.RAZON_SOCIAL||'', nombreComercial:r.NOMBRE_COMERCIAL||'', rubro:r.RUBRO||'', telefono:r.TELEFONO||'', email:r.EMAIL||'', contacto:r.CONTACTO||'', direccion:r.DIRECCION||'', condicionesPago:r.CONDICIONES_PAGO||'', banco:r.BANCO||'', cuenta:r.CUENTA||'', activo:r.ACTIVO||'SI'}));
+      addLog('✓ Proveedores importados (' + rows.length + ' registros)', 'ok');
     }
 
     addLog('✅ Importación completada', 'ok');
