@@ -66,6 +66,7 @@ Modelo de 3 niveles:
 | `insumos_instancias` | Unidades físicas individuales (itemId→catalogo, sede, estado, paqueteId, responsable, notas) |
 | `insumos_movimientos` | Entradas/salidas/transferencias/actualizaciones de instancias |
 | `insumos_paquetes` | Contenedores (MOCHILA/CAJA/CAJON/ANAQUEL/MALETÍN) que agrupan instancias vía array `instancias[]` |
+| `insumos_instancias_fotos` | Foto (identificación) de cada instancia. Doc id = id de instancia. Campo `foto` = base64 (dataURL JPEG 320×320). **Colección aparte** (no dentro del doc de instancia) para no inflar las lecturas/exportaciones de `insumos_instancias`; se carga junto al resto en `loadAll` |
 
 ### Schema `asistencia_registros`
 ```js
@@ -291,3 +292,5 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-06-10 | Fotos del personal: avatar del tab "Por Técnico" agrandado de 56px → 96px (inicial 38px); captura de foto subida de 200×200 → 320×320 (sigue base64 en Firestore, ~40 KB). La miniatura del editor de personal se mantiene en 34px |
 | 2026-06-10 | Insumos tab "Por Técnico": opción **"👥 Todos"** en el selector (es el valor por defecto al abrir el tab) — muestra una grilla de tarjetas de todo el personal (avatar + cargo + nº paquetes/instancias sueltas); clic en una tarjeta abre su detalle. `renderPorTecnico` ahora es dispatcher (`renderTodosTecnicos`/`renderTecnicoDetalle`); helper `tecnicoResponsables()` unifica la lista (personal activo + responsables de paquetes/instancias) |
 | 2026-06-10 | Insumos: tab renombrado **"👤 Por Técnico" → "👥 Por Persona"** (textos visibles: botón, placeholder del selector y empty state). Los ids internos `tecnicos`/`tab-tecnicos`/`f-tec-persona` se mantienen |
+| 2026-06-10 | Personal: rellenadas 11 fotos faltantes desde "DATOS PARA FOTOCHECK.docx" (emparejadas por nombre, recorte cuadrado 320×320 base64). Scripts en `~/Documents/migrar_db/fotocheck/`. Sin foto: ENRIQUE YARANGA, JESÚS MARTÍNEZ, JOSE MARCHENA (no estaban en el docx) |
+| 2026-06-10 | Insumos: **foto por instancia** (identificación). Nueva colección `insumos_instancias_fotos` (base64 320×320, colección aparte). Subida desde el modal de edición de instancia (botón 📷, `setInstanciaFoto`/`removeInstanciaFoto`); miniatura en la celda ID/QR de la tabla (`instThumb`). Añadida al backup/import de `configuracion.html` |

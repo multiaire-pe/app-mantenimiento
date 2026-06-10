@@ -285,6 +285,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>insumos_instancias.csv</div>
             <div class="backup-file"><span></span>insumos_paquetes.csv</div>
             <div class="backup-file"><span></span>insumos_movimientos.csv</div>
+            <div class="backup-file"><span></span>insumos_instancias_fotos.csv</div>
           </div>
           <button class="btn btn-primary" onclick="exportBackup()" id="export-btn" style="width:100%">
             ⬇ Descargar ZIP
@@ -886,7 +887,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap] = await Promise.all([
+    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('maestros_tiendas').get(),
@@ -902,6 +903,7 @@ async function exportBackup() {
       window.__db.collection('insumos_instancias').get(),
       window.__db.collection('insumos_paquetes').get(),
       window.__db.collection('insumos_movimientos').get(),
+      window.__db.collection('insumos_instancias_fotos').get(),
     ]);
 
     const zip = new JSZip();
@@ -1031,6 +1033,14 @@ async function exportBackup() {
     });
     zip.file('insumos_movimientos.csv', [insMovHeaders.join(','), ...insMovRows].join('\n'));
 
+    // 13. Insumos — fotos de instancias (base64; colección aparte)
+    const insFotoHeaders = ['ID','FOTO'];
+    const insFotoRows = insFotoSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.foto||''].map(escapeCSV).join(',');
+    });
+    zip.file('insumos_instancias_fotos.csv', [insFotoHeaders.join(','), ...insFotoRows].join('\n'));
+
     // Generate and download
     const blob = await zip.generateAsync({type:'blob'});
     const url = URL.createObjectURL(blob);
@@ -1096,7 +1106,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1343,6 +1353,14 @@ async function confirmImport() {
       const rows = parseCSV(pendingImport.files['insumos_movimientos.csv']);
       await batchWrite('insumos_movimientos', rows, r => { const data=JSON.parse(r.DATA||'{}'); if(data.fecha&&typeof data.fecha==='string')data.fecha=new Date(data.fecha); delete data.id; return {_docId:r.ID, ...data}; });
       addLog('✓ Movimientos de insumos importados (' + rows.length + ' registros)', 'ok');
+    }
+
+    // 13. Insumos — fotos de instancias (base64)
+    if (pendingImport.files['insumos_instancias_fotos.csv']) {
+      addLog('📷 Importando fotos de instancias...', 'info');
+      const rows = parseCSV(pendingImport.files['insumos_instancias_fotos.csv']);
+      await batchWrite('insumos_instancias_fotos', rows.filter(r=>r.FOTO), r => ({_docId:r.ID, instanciaId:r.ID, foto:r.FOTO}));
+      addLog('✓ Fotos de instancias importadas (' + rows.filter(r=>r.FOTO).length + ')', 'ok');
     }
 
     addLog('✅ Importación completada', 'ok');
