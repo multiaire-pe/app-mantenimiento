@@ -38,8 +38,9 @@ App cliente puro — sin backend, sin Firestore para datos. Solo Firebase Auth.
 Directorio CRUD de proveedores. Construida sobre el scaffold de `comprobantes.html` (header/auth Google contra `usuarios`, panel "Gestión de accesos", footer, toast) — **sin** nada de Gemini/scanner/pdf.js.
 - **Colección**: `proveedores` (ver tabla de colecciones). Doc id auto-generado.
 - **Roles**: ADMIN/SUPER_ADMIN editan (botón "＋ Nuevo proveedor", lápiz ✎, eliminar); SUPERVISOR solo lectura (sin botón nuevo; el ojo 👁 abre el modal en modo readonly — inputs `disabled`, sin botón Guardar/Eliminar). Gate central: `isProvAdmin()`.
-- **UI**: toolbar (búsqueda en vivo + Exportar Excel + Nuevo proveedor) + tabla (estado·RUC·razón social·nombre comercial·rubro·teléfono·contacto·cond. pago·acción). Doble clic en fila abre el detalle. Modal de alta/edición con todos los campos (`PROV_FIELDS`).
-- **Búsqueda** (`provFilter`): filtra por ruc, razón social, nombre comercial, rubro, contacto, teléfono, email.
+- **UI**: toolbar (búsqueda en vivo + Exportar Excel + Nuevo proveedor) + tabla (estado·RUC·razón social·nombre comercial·rubro·teléfono·contacto·cond. pago·**notas**·acción). Doble clic en fila abre el detalle. Modal de alta/edición con todos los campos (`PROV_FIELDS`); `notas` es un `<textarea>` y en la tabla se muestra truncado con `title` completo.
+- **Notas**: texto libre para observaciones internas (horarios de atención, vendedor asignado, descuentos acordados, plazos de entrega, incidencias, web/catálogo, etc.).
+- **Búsqueda** (`provFilter`): filtra por ruc, razón social, nombre comercial, rubro, contacto, teléfono, email, notas.
 - **Validación**: RUC obligatorio y `^\d{8,11}$`; razón social obligatoria (se guarda en MAYÚSCULAS); RUC duplicado bloqueado al crear.
 - **Excel** (`exportProveedores`, SheetJS): RUC, RAZÓN SOCIAL, NOMBRE COMERCIAL, RUBRO, TELÉFONO, EMAIL, CONTACTO, DIRECCIÓN, CONDICIONES DE PAGO, BANCO, CUENTA/CCI, ACTIVO.
 - **Backup**: incluida en export/import de `configuracion.html` (`proveedores.csv`).
@@ -79,7 +80,7 @@ Modelo de 3 niveles:
 | `insumos_movimientos` | Entradas/salidas/transferencias/actualizaciones de instancias |
 | `insumos_paquetes` | Contenedores (MOCHILA/CAJA/CAJON/ANAQUEL/MALETÍN) que agrupan instancias vía array `instancias[]` |
 | `insumos_instancias_fotos` | Foto (identificación) de cada instancia. Doc id = id de instancia. Campo `foto` = base64 (dataURL JPEG 320×320). **Colección aparte** (no dentro del doc de instancia) para no inflar las lecturas/exportaciones de `insumos_instancias`; se carga junto al resto en `loadAll` |
-| `proveedores` | Directorio de proveedores (`proveedores.html`). Campos: `ruc`, `razonSocial` (MAYÚSCULAS), `nombreComercial`, `rubro`, `telefono`, `email`, `contacto`, `direccion`, `condicionesPago`, `banco`, `cuenta`, `activo` (`SI`/`NO`), + `createdAt/By`, `updatedAt/By`. Doc id = auto-generado (no el RUC, para permitir corregir el RUC sin orfandato; se evita RUC duplicado al crear). ADMIN/SUPER_ADMIN editan; SUPERVISOR solo lectura |
+| `proveedores` | Directorio de proveedores (`proveedores.html`). Campos: `ruc`, `razonSocial` (MAYÚSCULAS), `nombreComercial`, `rubro`, `telefono`, `email`, `contacto`, `direccion`, `condicionesPago`, `banco`, `cuenta`, `notas` (texto libre multilínea), `activo` (`SI`/`NO`), + `createdAt/By`, `updatedAt/By`. Doc id = auto-generado (no el RUC, para permitir corregir el RUC sin orfandato; se evita RUC duplicado al crear). ADMIN/SUPER_ADMIN editan; SUPERVISOR solo lectura |
 
 ### Schema `asistencia_registros`
 ```js
@@ -311,3 +312,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-06-10 | Deploy: **eliminado el deploy duplicado**. Cada push generaba 2 deployments (el GitHub Action `vercel deploy` + el auto-deploy de la integración Git de Vercel), duplicando el consumo del plan gratuito. Se añade `vercel.json` con `"git":{"deploymentEnabled":false}` (y excepción en `.vercelignore` para no excluirlo) → los GitHub Actions quedan como **único** mecanismo de deploy (conservan el alias a las URLs fijas) |
 | 2026-06-10 | **Nueva app Proveedores (`proveedores.html`)**: directorio CRUD sobre la colección `proveedores`. Construida sobre el scaffold de `comprobantes.html` (header/auth/accesos/footer/toast), retirado todo Gemini/scanner/pdf.js. Toolbar con búsqueda en vivo + Exportar Excel + "Nuevo proveedor" (solo admin) + tabla; modal de alta/edición; SUPERVISOR solo lectura (`isProvAdmin`). Validación de RUC (`^\d{8,11}$`), razón social en MAYÚSCULAS, RUC duplicado bloqueado al crear |
 | 2026-06-10 | Proveedores: card 🏢 en `index.html` antes de Configuración; `{id:'proveedores'}` agregado a `ALL_APPS` del panel de accesos; backup export/import de `proveedores.csv` en `configuracion.html` (14ª colección). Activa en develop, pendiente de merge a main |
+| 2026-06-10 | Proveedores: campo **`notas`** (texto libre multilínea) — `<textarea>` en el modal, columna "Notas" en la tabla (truncada con `title` completo), incluida en búsqueda, export Excel y backup CSV (`proveedores.csv`). Para observaciones internas (horarios, vendedor, descuentos, plazos, incidencias, links) |
