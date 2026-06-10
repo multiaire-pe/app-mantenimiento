@@ -84,6 +84,7 @@ optgroup{font-style:normal;font-weight:700;color:var(--muted2)}
 
 /* ── MOBILE RESPONSIVE ─────────────────────────────────── */
 @media(max-width:768px){
+  .cam-only-mobile{display:inline-flex}
   /* Header compacto */
   header{padding:0 12px;height:52px;gap:8px}
   .logo{font-size:14px}
@@ -287,6 +288,11 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .inst-foto-empty{width:64px;height:64px;border-radius:8px;border:1.5px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:22px;background:var(--surface2)}
 .inst-thumb{width:30px;height:30px;border-radius:6px;object-fit:cover;border:1px solid var(--border);cursor:pointer;display:block;flex-shrink:0}
 .inst-thumb-empty{width:30px;height:30px;border-radius:6px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;cursor:pointer;background:var(--surface2);flex-shrink:0}
+.cam-only-mobile{display:none}
+.foto-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:3000;padding:20px;cursor:zoom-out}
+.foto-lightbox.open{display:flex}
+.foto-lightbox img{max-width:92vw;max-height:86vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.5);cursor:default}
+.foto-lightbox-close{position:absolute;top:14px;right:18px;font-size:30px;color:#fff;cursor:pointer;line-height:1;background:none;border:none}
 .tip-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted2)}
 .pending-badge{background:var(--orange);color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 5px;margin-left:4px;font-family:var(--mono)}
 .modal-overlay{position:fixed;inset:0;background:rgba(10,20,50,.45);backdrop-filter:blur(2px);z-index:200;display:none;align-items:center;justify-content:center;padding:16px;cursor:pointer}.modal-overlay .modal{cursor:default}
@@ -957,6 +963,8 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <div id="fe-inst-foto-box" style="display:flex;align-items:center;gap:8px"></div>
           <label class="btn btn-sm" for="fe-inst-foto-input" style="cursor:pointer">📷 Subir / cambiar</label>
           <input type="file" id="fe-inst-foto-input" accept="image/*" style="display:none" onchange="setInstanciaFoto(this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="fe-inst-foto-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="fe-inst-foto-cam" accept="image/*" capture="environment" style="display:none" onchange="setInstanciaFoto(this.files[0]); this.value='';">
         </div>
       </div>
       <div class="form-group full"><div class="form-label">Sede *</div><select class="form-select" id="fe-inst-sede"></select></div>
@@ -982,6 +990,12 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <button class="btn btn-primary" onclick="updateInstancia()">💾 Guardar</button>
     </div>
   </div>
+</div>
+
+<!-- LIGHTBOX FOTO INSTANCIA -->
+<div class="foto-lightbox" id="foto-lightbox" onclick="closeInstFotoLightbox()">
+  <button class="foto-lightbox-close" onclick="closeInstFotoLightbox()" title="Cerrar">✕</button>
+  <img id="foto-lightbox-img" src="" alt="" onclick="event.stopPropagation()">
 </div>
 
 <!-- MODAL QR -->
@@ -1454,7 +1468,7 @@ function renderAll(){
 function instThumb(id){
   const f = instFotos[id];
   return f
-    ? `<img class="inst-thumb" src="${f}" onclick="openEditInstancia('${id}')" title="Ver / cambiar foto" alt="">`
+    ? `<img class="inst-thumb" src="${f}" onclick="event.stopPropagation();openInstFotoLightbox('${id}')" title="Ampliar foto" alt="">`
     : `<div class="inst-thumb-empty" onclick="openEditInstancia('${id}')" title="Sin foto — clic para agregar">📷</div>`;
 }
 
@@ -2733,8 +2747,20 @@ function refreshInstFotoPreview() {
   if (!box) return;
   const f = instFotos[editingInstanciaId];
   box.innerHTML = f
-    ? `<img src="${f}" class="inst-foto-preview" alt=""><button type="button" class="btn btn-sm" onclick="removeInstanciaFoto()" title="Quitar foto">🗑</button>`
+    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openInstFotoLightbox(editingInstanciaId)" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeInstanciaFoto()" title="Quitar foto">🗑</button>`
     : `<div class="inst-foto-empty">📷</div>`;
+}
+
+// Amplía la foto de una instancia en un visor a pantalla completa
+function openInstFotoLightbox(id){
+  const f = instFotos[id];
+  if(!f) return;
+  document.getElementById('foto-lightbox-img').src = f;
+  document.getElementById('foto-lightbox').classList.add('open');
+}
+function closeInstFotoLightbox(){
+  document.getElementById('foto-lightbox').classList.remove('open');
+  document.getElementById('foto-lightbox-img').src = '';
 }
 
 // Sube/reemplaza la foto de la instancia (colección aparte insumos_instancias_fotos)
@@ -2743,7 +2769,7 @@ async function setInstanciaFoto(file) {
   if (!/^image\//.test(file.type)) { toast('El archivo no es una imagen', 'err'); return; }
   try {
     toast('Procesando foto...');
-    const dataUrl = await compressSquare(file, 320, 0.8);
+    const dataUrl = await compressSquare(file, 480, 0.8);
     await db.collection('insumos_instancias_fotos').doc(editingInstanciaId).set({
       foto: dataUrl, instanciaId: editingInstanciaId,
       updatedAt: new Date().toISOString(), updatedBy: maUser ? maUser.email : ''
