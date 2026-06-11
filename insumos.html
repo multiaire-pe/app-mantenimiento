@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 :root{
@@ -1118,6 +1119,24 @@ tbody td{padding:9px 12px;vertical-align:middle}
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- MODAL: selector de formato para exportar material -->
+<div class="modal-overlay" id="modal-export-mat" onclick="if(event.target===this)closeModal('modal-export-mat')">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div class="modal-title">⬇ Exportar material</div>
+      <div onclick="closeModal('modal-export-mat')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div style="font-weight:700;font-size:14px;color:var(--accent);margin-bottom:2px" id="exmat-title"></div>
+    <div style="font-size:12px;color:var(--muted2);margin-bottom:16px" id="exmat-sub"></div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-primary" style="justify-content:flex-start;font-size:14px;padding:12px 14px" onclick="doExportMat('pdf')">📄 PDF&nbsp;<span style="opacity:.85;font-weight:400">— recomendado, para imprimir o compartir</span></button>
+      <button class="btn" style="justify-content:flex-start;font-size:14px;padding:12px 14px" onclick="doExportMat('png')">🖼️ Imagen PNG&nbsp;<span style="opacity:.7;font-weight:400">— para enviar por WhatsApp</span></button>
+      <button class="btn" style="justify-content:flex-start;font-size:13px;padding:10px 14px;opacity:.9" onclick="doExportMat('csv')">📊 Excel / CSV&nbsp;<span style="opacity:.7;font-weight:400">— para editar en planilla</span></button>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('modal-export-mat')">Cancelar</button></div>
+  </div>
+</div>
 
 <script src="firebase-config.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -2741,6 +2760,10 @@ function _descargarMaterial(insts, filename, etiqueta){
   toast('✓ ' + etiqueta + ' — ' + insts.length + ' ítem' + (insts.length!==1?'s':'') + ' exportado' + (insts.length!==1?'s':''), 'ok');
 }
 
+// Contexto pendiente de exportación (lo arma openExport* y lo consume doExportMat)
+let _exportMat = null;
+function _matFecha(){ return new Date().toISOString().slice(0,10); }
+
 // Material de una persona = instancias sueltas a su nombre + todas las de sus paquetes
 function exportMaterialPersona(tecArg){
   const tec = tecArg || document.getElementById('f-tec-persona')?.value || '';
@@ -2752,7 +2775,15 @@ function exportMaterialPersona(tecArg){
       (i.paqueteId && pkgIds.has(i.paqueteId))
     )
   ).sort((a,b) => (a.paqueteId||'~~').localeCompare(b.paqueteId||'~~') || String(a.id).localeCompare(String(b.id)));
-  _descargarMaterial(insts, 'material_' + _matSlug(tec) + '_' + new Date().toISOString().slice(0,10) + '.csv', 'Material de ' + tec);
+  if(!insts.length){ toast('Esta persona no tiene material asignado', 'warn'); return; }
+  const persona = personalData.find(p => p.nombre === tec);
+  _exportMat = {
+    insts, showPaquete: true,
+    titulo: 'Material asignado — ' + tec,
+    subtitulo: (persona && persona.cargo ? persona.cargo + ' · ' : '') + insts.length + ' ítem' + (insts.length!==1?'s':'') + ' · ' + _matFecha(),
+    baseName: 'material_' + _matSlug(tec)
+  };
+  _abrirSelectorExport();
 }
 
 // Material de un paquete = todas las instancias asignadas a ese paquete
@@ -2761,7 +2792,130 @@ function exportMaterialPaquete(pkgId){
   if(!pkg){ toast('Paquete no encontrado', 'err'); return; }
   const insts = instanciasData.filter(i => i.paqueteId === pkgId)
     .sort((a,b) => String(a.id).localeCompare(String(b.id)));
-  _descargarMaterial(insts, 'material_' + _matSlug(pkg.id) + '_' + new Date().toISOString().slice(0,10) + '.csv', 'Material de ' + pkg.id);
+  if(!insts.length){ toast('Este paquete no tiene instancias', 'warn'); return; }
+  _exportMat = {
+    insts, showPaquete: false,
+    titulo: 'Material del paquete — ' + pkg.id,
+    subtitulo: (pkg.nombre ? pkg.nombre + ' · ' : '') + (pkg.responsable ? '👤 ' + pkg.responsable + ' · ' : '') + (pkg.sede ? '📍 ' + pkg.sede + ' · ' : '') + insts.length + ' ítem' + (insts.length!==1?'s':'') + ' · ' + _matFecha(),
+    baseName: 'material_' + _matSlug(pkg.id)
+  };
+  _abrirSelectorExport();
+}
+
+// ── Selector de formato (PDF principal · PNG segunda · Excel/CSV última) ──
+function _abrirSelectorExport(){
+  document.getElementById('exmat-title').textContent = _exportMat.titulo;
+  document.getElementById('exmat-sub').textContent = _exportMat.subtitulo;
+  document.getElementById('modal-export-mat').classList.add('open');
+}
+function doExportMat(fmt){
+  if(!_exportMat) return;
+  closeModal('modal-export-mat');
+  if(fmt === 'csv') return _descargarMaterial(_exportMat.insts, _exportMat.baseName + '_' + _matFecha() + '.csv', _exportMat.titulo);
+  if(fmt === 'png') return _exportMatPNG();
+  return _exportMatPDF();
+}
+
+// Filas planas (un objeto por instancia) para los reportes visuales
+function _matRows(insts){
+  return insts.map(i => {
+    const cat = catalogoData.find(c => c.id === i.itemId) || {};
+    const pkg = i.paqueteId ? paquetesData.find(p => p.id === i.paqueteId) : null;
+    return { codigo:i.id, item:i.nombre||cat.nombre||'', categoria:cat.categoria||'', sede:i.sede||'', estado:i.estado||'DISPONIBLE', paquete: pkg ? (pkg.id + (pkg.nombre?' · '+pkg.nombre:'')) : '—' };
+  });
+}
+function _matCols(showPaquete){
+  const cols = [
+    {key:'codigo',    label:'CÓDIGO',    w:1.3, mono:true},
+    {key:'item',      label:'ÍTEM',      w:2.6},
+    {key:'categoria', label:'CATEGORÍA', w:1.6},
+    {key:'sede',      label:'SEDE',      w:1.2},
+    {key:'estado',    label:'ESTADO',    w:1.4}
+  ];
+  if(showPaquete) cols.push({key:'paquete', label:'PAQUETE', w:2.0});
+  return cols;
+}
+function _matFit(ctx, text, maxW){
+  if(ctx.measureText(text).width <= maxW) return text;
+  let t = text;
+  while(t.length>1 && ctx.measureText(t+'…').width > maxW) t = t.slice(0,-1);
+  return t + '…';
+}
+// Dibuja el reporte del material en un canvas de alta resolución (base de PNG y PDF)
+function _matReportCanvas(){
+  const rows = _matRows(_exportMat.insts);
+  const cols = _matCols(_exportMat.showPaquete);
+  const SC = 2, W = 900, padX = 32, innerW = W - padX*2;
+  const headH = 92, theadH = 30, rowH = 26, footH = 40;
+  const H = headH + theadH + rows.length*rowH + footH;
+  const canvas = document.createElement('canvas');
+  canvas.width = W*SC; canvas.height = H*SC;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(SC,SC);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#1B3F8B'; ctx.fillRect(0,0,W,6);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#1a2540'; ctx.font = '700 22px Arial';
+  ctx.fillText(_matFit(ctx, _exportMat.titulo, innerW), padX, 44);
+  ctx.fillStyle = '#6a7a9a'; ctx.font = '400 13px Arial';
+  ctx.fillText(_matFit(ctx, _exportMat.subtitulo, innerW), padX, 68);
+  const totalW = cols.reduce((s,c)=>s+c.w,0);
+  let x0 = padX;
+  cols.forEach(c => { c._x = x0; c._w = innerW * c.w/totalW; x0 += c._w; });
+  let y = headH;
+  ctx.fillStyle = '#e8eef8'; ctx.fillRect(padX, y, innerW, theadH);
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#1B3F8B'; ctx.font = '700 11px Arial';
+  cols.forEach(c => ctx.fillText(c.label, c._x + 6, y + theadH/2));
+  y += theadH;
+  const estColor = {DISPONIBLE:'#1a9e5a',EN_USO:'#2a52b0',MANTENIMIENTO:'#d48a00',DETERIORADO:'#d63344',BAJA:'#8a9ab8'};
+  rows.forEach((r,idx) => {
+    if(idx%2===1){ ctx.fillStyle='#f5f8ff'; ctx.fillRect(padX,y,innerW,rowH); }
+    cols.forEach(c => {
+      const val = String(r[c.key]==null?'':r[c.key]);
+      if(c.key==='estado'){ ctx.fillStyle = estColor[val]||'#1a2540'; ctx.font='700 11px Arial'; }
+      else { ctx.fillStyle = '#1a2540'; ctx.font = c.mono ? '600 11px monospace' : '400 12px Arial'; }
+      ctx.fillText(_matFit(ctx, val, c._w-12), c._x+6, y+rowH/2);
+    });
+    y += rowH;
+  });
+  ctx.strokeStyle = '#d0daf0'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padX, headH); ctx.lineTo(padX+innerW, headH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(padX+innerW, y); ctx.stroke();
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#8a9ab8'; ctx.font = '400 10px Arial';
+  ctx.fillText('MultiAire · Insumos · generado ' + new Date().toLocaleString('es-PE'), padX, y+22);
+  return canvas;
+}
+function _exportMatPNG(){
+  const canvas = _matReportCanvas();
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png', 1.0);
+  a.download = _exportMat.baseName + '_' + _matFecha() + '.png';
+  a.click();
+  toast('✓ PNG descargado (' + _exportMat.insts.length + ' ítems)', 'ok');
+}
+function _exportMatPDF(){
+  if(!(window.jspdf && window.jspdf.jsPDF)){ toast('PDF no disponible — usa PNG o CSV', 'err'); return; }
+  const canvas = _matReportCanvas();
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p','mm','a4');
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const imgData = canvas.toDataURL('image/png', 1.0);
+  const imgW = pageW;
+  const imgH = canvas.height * imgW / canvas.width;
+  let heightLeft = imgH, position = 0;
+  pdf.addImage(imgData,'PNG',0,position,imgW,imgH);
+  heightLeft -= pageH;
+  while(heightLeft > 0){
+    position -= pageH;
+    pdf.addPage();
+    pdf.addImage(imgData,'PNG',0,position,imgW,imgH);
+    heightLeft -= pageH;
+  }
+  pdf.save(_exportMat.baseName + '_' + _matFecha() + '.pdf');
+  toast('✓ PDF descargado (' + _exportMat.insts.length + ' ítems)', 'ok');
 }
 
 // ── INSTANCIAS CRUD ───────────────────────────────────────
