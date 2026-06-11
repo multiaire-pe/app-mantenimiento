@@ -2849,46 +2849,58 @@ function _matFit(ctx, text, maxW){
 // Carga una imagen (dataURL base64) y resuelve con el <img> listo (o null si falla)
 function _loadImg(src){ return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; }); }
 
-// Dibuja el reporte del material en un canvas de alta resolución (base de PNG y PDF)
-// Si _exportMat.conFotos: agrega una columna FOTO con la miniatura de cada instancia.
-async function _matReportCanvas(){
+const _MAT_EST_COLOR = {DISPONIBLE:'#1a9e5a',EN_USO:'#2a52b0',MANTENIMIENTO:'#d48a00',DETERIORADO:'#d63344',BAJA:'#8a9ab8'};
+const _MAT_HEAD_H = 92, _MAT_THEAD_H = 30, _MAT_FOOT_H = 40;
+
+// Prepara filas, columnas (con anchos ya calculados) e imágenes precargadas para el reporte
+async function _matPrepare(W, padX){
   const rows = _matRows(_exportMat.insts);
   const conFotos = !!_exportMat.conFotos;
   let cols = _matCols(_exportMat.showPaquete);
   if(conFotos) cols = [{key:'_foto', label:'FOTO', w:0.95, foto:true}, ...cols];
-  // Pre-cargar las fotos disponibles (base64 → rápido, pero asíncrono)
+  const innerW = W - padX*2;
+  const totalW = cols.reduce((s,c)=>s+c.w,0);
+  let x0 = padX;
+  cols.forEach(c => { c._x = x0; c._w = innerW * c.w/totalW; x0 += c._w; });
   const imgs = {};
   if(conFotos){
     const ids = rows.map(r => r.codigo).filter(id => instFotos[id]);
     const loaded = await Promise.all(ids.map(id => _loadImg(instFotos[id])));
     ids.forEach((id,k) => { if(loaded[k]) imgs[id] = loaded[k]; });
   }
-  const SC = 2, W = 900, padX = 32, innerW = W - padX*2;
-  const headH = 92, theadH = 30, rowH = conFotos ? 56 : 26, footH = 40;
-  const H = headH + theadH + rows.length*rowH + footH;
-  const canvas = document.createElement('canvas');
-  canvas.width = W*SC; canvas.height = H*SC;
-  const ctx = canvas.getContext('2d');
-  ctx.scale(SC,SC);
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
+  return { rows, cols, conFotos, innerW, imgs, rowH: conFotos ? 56 : 26 };
+}
+
+// Encabezado (título + subtítulo + nota opcional a la derecha). Devuelve la Y final.
+function _matDrawHeader(ctx, W, padX, innerW, extra){
   ctx.fillStyle = '#1B3F8B'; ctx.fillRect(0,0,W,6);
-  ctx.textBaseline = 'alphabetic';
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
   ctx.fillStyle = '#1a2540'; ctx.font = '700 22px Arial';
-  ctx.fillText(_matFit(ctx, _exportMat.titulo, innerW), padX, 44);
+  ctx.fillText(_matFit(ctx, _exportMat.titulo, innerW-90), padX, 44);
   ctx.fillStyle = '#6a7a9a'; ctx.font = '400 13px Arial';
   ctx.fillText(_matFit(ctx, _exportMat.subtitulo, innerW), padX, 68);
-  const totalW = cols.reduce((s,c)=>s+c.w,0);
-  let x0 = padX;
-  cols.forEach(c => { c._x = x0; c._w = innerW * c.w/totalW; x0 += c._w; });
-  let y = headH;
-  ctx.fillStyle = '#e8eef8'; ctx.fillRect(padX, y, innerW, theadH);
-  ctx.textBaseline = 'middle';
+  if(extra){
+    ctx.fillStyle = '#8a9ab8'; ctx.font = '400 12px Arial'; ctx.textAlign = 'right';
+    ctx.fillText(extra, padX+innerW, 40); ctx.textAlign = 'left';
+  }
+  return _MAT_HEAD_H;
+}
+
+// Encabezado de columnas. Devuelve la Y final.
+function _matDrawThead(ctx, cols, padX, innerW, y){
+  ctx.fillStyle = '#e8eef8'; ctx.fillRect(padX, y, innerW, _MAT_THEAD_H);
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
   ctx.fillStyle = '#1B3F8B'; ctx.font = '700 11px Arial';
-  cols.forEach(c => ctx.fillText(c.label, c._x + 6, y + theadH/2));
-  y += theadH;
-  const estColor = {DISPONIBLE:'#1a9e5a',EN_USO:'#2a52b0',MANTENIMIENTO:'#d48a00',DETERIORADO:'#d63344',BAJA:'#8a9ab8'};
-  rows.forEach((r,idx) => {
-    if(idx%2===1){ ctx.fillStyle='#f5f8ff'; ctx.fillRect(padX,y,innerW,rowH); }
+  cols.forEach(c => ctx.fillText(c.label, c._x + 6, y + _MAT_THEAD_H/2));
+  ctx.strokeStyle = '#d0daf0'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(padX+innerW, y); ctx.stroke();
+  return y + _MAT_THEAD_H;
+}
+
+// Dibuja un bloque de filas (idxBase = índice global de la 1ª, para el zebra). Devuelve la Y final.
+function _matDrawRows(ctx, rows, cols, imgs, padX, innerW, y, rowH, idxBase){
+  rows.forEach((r,i) => {
+    if(((idxBase||0)+i)%2===1){ ctx.fillStyle='#f5f8ff'; ctx.fillRect(padX,y,innerW,rowH); }
     cols.forEach(c => {
       if(c.foto){
         const sz = Math.min(rowH-10, c._w-12);
@@ -2902,55 +2914,76 @@ async function _matReportCanvas(){
         } else {
           ctx.fillStyle='#eef2f9'; ctx.fillRect(fx,fy,sz,sz);
           ctx.strokeStyle='#d0daf0'; ctx.lineWidth=1; ctx.strokeRect(fx,fy,sz,sz);
-          ctx.save(); ctx.fillStyle='#a8b4cc'; ctx.font='400 9px Arial'; ctx.textAlign='center';
+          ctx.save(); ctx.fillStyle='#a8b4cc'; ctx.font='400 9px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
           ctx.fillText('s/f', fx+sz/2, fy+sz/2); ctx.restore();
         }
         return;
       }
       const val = String(r[c.key]==null?'':r[c.key]);
-      if(c.key==='estado'){ ctx.fillStyle = estColor[val]||'#1a2540'; ctx.font='700 11px Arial'; }
+      ctx.textBaseline='middle'; ctx.textAlign='left';
+      if(c.key==='estado'){ ctx.fillStyle = _MAT_EST_COLOR[val]||'#1a2540'; ctx.font='700 11px Arial'; }
       else { ctx.fillStyle = '#1a2540'; ctx.font = c.mono ? '600 11px monospace' : '400 12px Arial'; }
       ctx.fillText(_matFit(ctx, val, c._w-12), c._x+6, y+rowH/2);
     });
     y += rowH;
   });
-  ctx.strokeStyle = '#d0daf0'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(padX, headH); ctx.lineTo(padX+innerW, headH); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(padX+innerW, y); ctx.stroke();
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = '#8a9ab8'; ctx.font = '400 10px Arial';
-  ctx.fillText('MultiAire · Insumos · generado ' + new Date().toLocaleString('es-PE'), padX, y+22);
-  return canvas;
+  return y;
 }
+
+// Línea separadora + pie en la posición Y dada.
+function _matDrawFoot(ctx, padX, innerW, y, texto){
+  ctx.strokeStyle = '#d0daf0'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(padX+innerW, y); ctx.stroke();
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#8a9ab8'; ctx.font = '400 10px Arial';
+  ctx.fillText(texto, padX, y+22);
+}
+// PNG: un único canvas largo con todas las filas (no se pagina)
 async function _exportMatPNG(){
-  const canvas = await _matReportCanvas();
+  const SC = 2, W = 900, padX = 32;
+  const { rows, cols, innerW, imgs, rowH } = await _matPrepare(W, padX);
+  const H = _MAT_HEAD_H + _MAT_THEAD_H + rows.length*rowH + _MAT_FOOT_H;
+  const canvas = document.createElement('canvas');
+  canvas.width = W*SC; canvas.height = H*SC;
+  const ctx = canvas.getContext('2d'); ctx.scale(SC,SC);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
+  let y = _matDrawHeader(ctx, W, padX, innerW, '');
+  y = _matDrawThead(ctx, cols, padX, innerW, y);
+  y = _matDrawRows(ctx, rows, cols, imgs, padX, innerW, y, rowH, 0);
+  _matDrawFoot(ctx, padX, innerW, y, 'MultiAire · Insumos · generado ' + new Date().toLocaleString('es-PE'));
   const a = document.createElement('a');
   a.href = canvas.toDataURL('image/png', 1.0);
   a.download = _exportMat.baseName + '_' + _matFecha() + '.png';
   a.click();
   toast('✓ PNG descargado (' + _exportMat.insts.length + ' ítems)', 'ok');
 }
+// PDF: una página A4 por bloque de filas enteras → los saltos caen ENTRE filas, no las parten
 async function _exportMatPDF(){
   if(!(window.jspdf && window.jspdf.jsPDF)){ toast('PDF no disponible — usa PNG o CSV', 'err'); return; }
-  const canvas = await _matReportCanvas();
+  const SC = 2, W = 900, padX = 32;
+  const pageH = Math.round(W * 297/210);   // alto proporcional A4 (vertical) para el ancho W
+  const { rows, cols, innerW, imgs, rowH } = await _matPrepare(W, padX);
+  const rowsPerPage = Math.max(1, Math.floor((pageH - _MAT_HEAD_H - _MAT_THEAD_H - _MAT_FOOT_H) / rowH));
+  const nPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF('p','mm','a4');
-  const pageW = pdf.internal.pageSize.getWidth();
-  const pageH = pdf.internal.pageSize.getHeight();
-  const imgData = canvas.toDataURL('image/png', 1.0);
-  const imgW = pageW;
-  const imgH = canvas.height * imgW / canvas.width;
-  let heightLeft = imgH, position = 0;
-  pdf.addImage(imgData,'PNG',0,position,imgW,imgH);
-  heightLeft -= pageH;
-  while(heightLeft > 0){
-    position -= pageH;
-    pdf.addPage();
-    pdf.addImage(imgData,'PNG',0,position,imgW,imgH);
-    heightLeft -= pageH;
+  const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+  const fechaTxt = new Date().toLocaleString('es-PE');
+  for(let p=0; p<nPages; p++){
+    const slice = rows.slice(p*rowsPerPage, (p+1)*rowsPerPage);
+    const canvas = document.createElement('canvas');
+    canvas.width = W*SC; canvas.height = pageH*SC;
+    const ctx = canvas.getContext('2d'); ctx.scale(SC,SC);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,pageH);
+    let y = _matDrawHeader(ctx, W, padX, innerW, 'pág. ' + (p+1) + '/' + nPages);
+    y = _matDrawThead(ctx, cols, padX, innerW, y);
+    _matDrawRows(ctx, slice, cols, imgs, padX, innerW, y, rowH, p*rowsPerPage);
+    _matDrawFoot(ctx, padX, innerW, pageH - _MAT_FOOT_H + 6, 'MultiAire · Insumos · ' + fechaTxt + ' · pág. ' + (p+1) + '/' + nPages);
+    if(p>0) pdf.addPage();
+    pdf.addImage(canvas.toDataURL('image/png',1.0), 'PNG', 0, 0, pw, ph);
   }
   pdf.save(_exportMat.baseName + '_' + _matFecha() + '.pdf');
-  toast('✓ PDF descargado (' + _exportMat.insts.length + ' ítems)', 'ok');
+  toast('✓ PDF descargado (' + _exportMat.insts.length + ' ítems, ' + nPages + ' pág.)', 'ok');
 }
 
 // ── INSTANCIAS CRUD ───────────────────────────────────────
