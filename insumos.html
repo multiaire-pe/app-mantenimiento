@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 :root{
@@ -1118,6 +1119,28 @@ tbody td{padding:9px 12px;vertical-align:middle}
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- MODAL: selector de formato para exportar material -->
+<div class="modal-overlay" id="modal-export-mat" onclick="if(event.target===this)closeModal('modal-export-mat')">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div class="modal-title">⬇ Exportar material</div>
+      <div onclick="closeModal('modal-export-mat')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div style="font-weight:700;font-size:14px;color:var(--accent);margin-bottom:2px" id="exmat-title"></div>
+    <div style="font-size:12px;color:var(--muted2);margin-bottom:12px" id="exmat-sub"></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:14px;padding:9px 11px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+      <input type="checkbox" id="exmat-fotos" style="width:16px;height:16px">
+      <span>Incluir foto de cada instancia <span style="color:var(--muted2);font-size:11px">(solo PDF/PNG)</span></span>
+    </label>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-primary" style="justify-content:flex-start;font-size:14px;padding:12px 14px" onclick="doExportMat('pdf')">📄 PDF&nbsp;<span style="opacity:.85;font-weight:400">— recomendado, para imprimir o compartir</span></button>
+      <button class="btn" style="justify-content:flex-start;font-size:14px;padding:12px 14px" onclick="doExportMat('png')">🖼️ Imagen PNG&nbsp;<span style="opacity:.7;font-weight:400">— para enviar por WhatsApp</span></button>
+      <button class="btn" style="justify-content:flex-start;font-size:13px;padding:10px 14px;opacity:.9" onclick="doExportMat('csv')">📊 Excel / CSV&nbsp;<span style="opacity:.7;font-weight:400">— para editar en planilla</span></button>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('modal-export-mat')">Cancelar</button></div>
+  </div>
+</div>
 
 <script src="firebase-config.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -2715,6 +2738,254 @@ function exportInstCSVPhomemo() {
   toast('✓ CSV con ' + ids.length + ' códigos descargado', 'ok');
 }
 
+// ── EXPORTAR MATERIAL (CSV Excel-compatible) ───────────────
+// Lista detallada de instancias (material) por persona o por paquete.
+// Mismo patrón que exportInstCSVPhomemo: BOM UTF-8 para que Excel lea acentos.
+function _matCsvEsc(v){ const s = String(v == null ? '' : v); return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function _matSlug(s){ return (String(s||'').trim().toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'')) || 'X'; }
+
+// Construye el CSV de material a partir de una lista de instancias y lo descarga
+function _descargarMaterial(insts, filename, etiqueta){
+  if(!insts.length){ toast('No hay material para exportar', 'warn'); return; }
+  const headers = ['CODIGO','ITEM','COD. CATALOGO','CATEGORIA','SEDE','ESTADO','PAQUETE','RESPONSABLE','FOTO'];
+  const rows = insts.map(i => {
+    const cat = catalogoData.find(c => c.id === i.itemId) || {};
+    const pkg = i.paqueteId ? paquetesData.find(p => p.id === i.paqueteId) : null;
+    const paqTxt = pkg ? (pkg.id + (pkg.nombre ? ' · ' + pkg.nombre : '')) : '—';
+    const resp = i.responsable || (pkg && pkg.responsable) || '';
+    return [i.id, i.nombre || cat.nombre || '', cat.codigo || '', cat.categoria || '', i.sede || '', i.estado || 'DISPONIBLE', paqTxt, resp, instFotos[i.id] ? 'SÍ' : 'NO'].map(_matCsvEsc).join(',');
+  });
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  toast('✓ ' + etiqueta + ' — ' + insts.length + ' ítem' + (insts.length!==1?'s':'') + ' exportado' + (insts.length!==1?'s':''), 'ok');
+}
+
+// Contexto pendiente de exportación (lo arma openExport* y lo consume doExportMat)
+let _exportMat = null;
+function _matFecha(){ return new Date().toISOString().slice(0,10); }
+
+// Material de una persona = instancias sueltas a su nombre + todas las de sus paquetes
+function exportMaterialPersona(tecArg){
+  const tec = tecArg || document.getElementById('f-tec-persona')?.value || '';
+  if(!tec || tec === '__ALL__'){ toast('Selecciona una persona primero', 'warn'); return; }
+  const pkgIds = new Set(paquetesData.filter(p => p.responsable === tec).map(p => p.id));
+  const insts = instanciasData.filter(i =>
+    i.estado !== 'BAJA' && (
+      (i.responsable === tec && !i.paqueteId) ||
+      (i.paqueteId && pkgIds.has(i.paqueteId))
+    )
+  ).sort((a,b) => (a.paqueteId||'~~').localeCompare(b.paqueteId||'~~') || String(a.id).localeCompare(String(b.id)));
+  if(!insts.length){ toast('Esta persona no tiene material asignado', 'warn'); return; }
+  const persona = personalData.find(p => p.nombre === tec);
+  _exportMat = {
+    insts, showPaquete: true,
+    titulo: 'Material asignado — ' + tec,
+    subtitulo: (persona && persona.cargo ? persona.cargo + ' · ' : '') + insts.length + ' ítem' + (insts.length!==1?'s':'') + ' · ' + _matFecha(),
+    baseName: 'material_' + _matSlug(tec)
+  };
+  _abrirSelectorExport();
+}
+
+// Material de un paquete = todas las instancias asignadas a ese paquete
+function exportMaterialPaquete(pkgId){
+  const pkg = paquetesData.find(p => p.id === pkgId);
+  if(!pkg){ toast('Paquete no encontrado', 'err'); return; }
+  const insts = instanciasData.filter(i => i.paqueteId === pkgId)
+    .sort((a,b) => String(a.id).localeCompare(String(b.id)));
+  if(!insts.length){ toast('Este paquete no tiene instancias', 'warn'); return; }
+  _exportMat = {
+    insts, showPaquete: false,
+    titulo: 'Material del paquete — ' + pkg.id,
+    subtitulo: (pkg.nombre ? pkg.nombre + ' · ' : '') + (pkg.responsable ? '👤 ' + pkg.responsable + ' · ' : '') + (pkg.sede ? '📍 ' + pkg.sede + ' · ' : '') + insts.length + ' ítem' + (insts.length!==1?'s':'') + ' · ' + _matFecha(),
+    baseName: 'material_' + _matSlug(pkg.id)
+  };
+  _abrirSelectorExport();
+}
+
+// ── Selector de formato (PDF principal · PNG segunda · Excel/CSV última) ──
+function _abrirSelectorExport(){
+  document.getElementById('exmat-title').textContent = _exportMat.titulo;
+  document.getElementById('exmat-sub').textContent = _exportMat.subtitulo;
+  document.getElementById('modal-export-mat').classList.add('open');
+}
+function doExportMat(fmt){
+  if(!_exportMat) return;
+  _exportMat.conFotos = !!document.getElementById('exmat-fotos')?.checked;
+  closeModal('modal-export-mat');
+  if(fmt === 'csv') return _descargarMaterial(_exportMat.insts, _exportMat.baseName + '_' + _matFecha() + '.csv', _exportMat.titulo);
+  if(fmt === 'png') return _exportMatPNG();
+  return _exportMatPDF();
+}
+
+// Filas planas (un objeto por instancia) para los reportes visuales
+function _matRows(insts){
+  return insts.map(i => {
+    const cat = catalogoData.find(c => c.id === i.itemId) || {};
+    const pkg = i.paqueteId ? paquetesData.find(p => p.id === i.paqueteId) : null;
+    return { codigo:i.id, item:i.nombre||cat.nombre||'', categoria:cat.categoria||'', sede:i.sede||'', estado:i.estado||'DISPONIBLE', paquete: pkg ? (pkg.id + (pkg.nombre?' · '+pkg.nombre:'')) : '—' };
+  });
+}
+function _matCols(showPaquete){
+  const cols = [
+    {key:'codigo',    label:'CÓDIGO',    w:1.3, mono:true},
+    {key:'item',      label:'ÍTEM',      w:2.6},
+    {key:'categoria', label:'CATEGORÍA', w:1.6},
+    {key:'sede',      label:'SEDE',      w:1.2},
+    {key:'estado',    label:'ESTADO',    w:1.4}
+  ];
+  if(showPaquete) cols.push({key:'paquete', label:'PAQUETE', w:2.0});
+  return cols;
+}
+function _matFit(ctx, text, maxW){
+  if(ctx.measureText(text).width <= maxW) return text;
+  let t = text;
+  while(t.length>1 && ctx.measureText(t+'…').width > maxW) t = t.slice(0,-1);
+  return t + '…';
+}
+// Carga una imagen (dataURL base64) y resuelve con el <img> listo (o null si falla)
+function _loadImg(src){ return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; }); }
+
+const _MAT_EST_COLOR = {DISPONIBLE:'#1a9e5a',EN_USO:'#2a52b0',MANTENIMIENTO:'#d48a00',DETERIORADO:'#d63344',BAJA:'#8a9ab8'};
+const _MAT_HEAD_H = 92, _MAT_THEAD_H = 30, _MAT_FOOT_H = 40;
+
+// Prepara filas, columnas (con anchos ya calculados) e imágenes precargadas para el reporte
+async function _matPrepare(W, padX){
+  const rows = _matRows(_exportMat.insts);
+  const conFotos = !!_exportMat.conFotos;
+  let cols = _matCols(_exportMat.showPaquete);
+  if(conFotos) cols = [{key:'_foto', label:'FOTO', w:0.95, foto:true}, ...cols];
+  const innerW = W - padX*2;
+  const totalW = cols.reduce((s,c)=>s+c.w,0);
+  let x0 = padX;
+  cols.forEach(c => { c._x = x0; c._w = innerW * c.w/totalW; x0 += c._w; });
+  const imgs = {};
+  if(conFotos){
+    const ids = rows.map(r => r.codigo).filter(id => instFotos[id]);
+    const loaded = await Promise.all(ids.map(id => _loadImg(instFotos[id])));
+    ids.forEach((id,k) => { if(loaded[k]) imgs[id] = loaded[k]; });
+  }
+  return { rows, cols, conFotos, innerW, imgs, rowH: conFotos ? 56 : 26 };
+}
+
+// Encabezado (título + subtítulo + nota opcional a la derecha). Devuelve la Y final.
+function _matDrawHeader(ctx, W, padX, innerW, extra){
+  ctx.fillStyle = '#1B3F8B'; ctx.fillRect(0,0,W,6);
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#1a2540'; ctx.font = '700 22px Arial';
+  ctx.fillText(_matFit(ctx, _exportMat.titulo, innerW-90), padX, 44);
+  ctx.fillStyle = '#6a7a9a'; ctx.font = '400 13px Arial';
+  ctx.fillText(_matFit(ctx, _exportMat.subtitulo, innerW), padX, 68);
+  if(extra){
+    ctx.fillStyle = '#8a9ab8'; ctx.font = '400 12px Arial'; ctx.textAlign = 'right';
+    ctx.fillText(extra, padX+innerW, 40); ctx.textAlign = 'left';
+  }
+  return _MAT_HEAD_H;
+}
+
+// Encabezado de columnas. Devuelve la Y final.
+function _matDrawThead(ctx, cols, padX, innerW, y){
+  ctx.fillStyle = '#e8eef8'; ctx.fillRect(padX, y, innerW, _MAT_THEAD_H);
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#1B3F8B'; ctx.font = '700 11px Arial';
+  cols.forEach(c => ctx.fillText(c.label, c._x + 6, y + _MAT_THEAD_H/2));
+  ctx.strokeStyle = '#d0daf0'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(padX+innerW, y); ctx.stroke();
+  return y + _MAT_THEAD_H;
+}
+
+// Dibuja un bloque de filas (idxBase = índice global de la 1ª, para el zebra). Devuelve la Y final.
+function _matDrawRows(ctx, rows, cols, imgs, padX, innerW, y, rowH, idxBase){
+  rows.forEach((r,i) => {
+    if(((idxBase||0)+i)%2===1){ ctx.fillStyle='#f5f8ff'; ctx.fillRect(padX,y,innerW,rowH); }
+    cols.forEach(c => {
+      if(c.foto){
+        const sz = Math.min(rowH-10, c._w-12);
+        const fx = c._x + 6, fy = y + (rowH-sz)/2;
+        const im = imgs[r.codigo];
+        if(im){
+          const s = Math.min(im.width, im.height), sx = (im.width-s)/2, sy = (im.height-s)/2;
+          ctx.save(); ctx.beginPath(); ctx.rect(fx,fy,sz,sz); ctx.clip();
+          ctx.drawImage(im, sx, sy, s, s, fx, fy, sz, sz); ctx.restore();
+          ctx.strokeStyle='#d0daf0'; ctx.lineWidth=1; ctx.strokeRect(fx,fy,sz,sz);
+        } else {
+          ctx.fillStyle='#eef2f9'; ctx.fillRect(fx,fy,sz,sz);
+          ctx.strokeStyle='#d0daf0'; ctx.lineWidth=1; ctx.strokeRect(fx,fy,sz,sz);
+          ctx.save(); ctx.fillStyle='#a8b4cc'; ctx.font='400 9px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.fillText('s/f', fx+sz/2, fy+sz/2); ctx.restore();
+        }
+        return;
+      }
+      const val = String(r[c.key]==null?'':r[c.key]);
+      ctx.textBaseline='middle'; ctx.textAlign='left';
+      if(c.key==='estado'){ ctx.fillStyle = _MAT_EST_COLOR[val]||'#1a2540'; ctx.font='700 11px Arial'; }
+      else { ctx.fillStyle = '#1a2540'; ctx.font = c.mono ? '600 11px monospace' : '400 12px Arial'; }
+      ctx.fillText(_matFit(ctx, val, c._w-12), c._x+6, y+rowH/2);
+    });
+    y += rowH;
+  });
+  return y;
+}
+
+// Línea separadora + pie en la posición Y dada.
+function _matDrawFoot(ctx, padX, innerW, y, texto){
+  ctx.strokeStyle = '#d0daf0'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(padX+innerW, y); ctx.stroke();
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#8a9ab8'; ctx.font = '400 10px Arial';
+  ctx.fillText(texto, padX, y+22);
+}
+// PNG: un único canvas largo con todas las filas (no se pagina)
+async function _exportMatPNG(){
+  const SC = 2, W = 900, padX = 32;
+  const { rows, cols, innerW, imgs, rowH } = await _matPrepare(W, padX);
+  const H = _MAT_HEAD_H + _MAT_THEAD_H + rows.length*rowH + _MAT_FOOT_H;
+  const canvas = document.createElement('canvas');
+  canvas.width = W*SC; canvas.height = H*SC;
+  const ctx = canvas.getContext('2d'); ctx.scale(SC,SC);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
+  let y = _matDrawHeader(ctx, W, padX, innerW, '');
+  y = _matDrawThead(ctx, cols, padX, innerW, y);
+  y = _matDrawRows(ctx, rows, cols, imgs, padX, innerW, y, rowH, 0);
+  _matDrawFoot(ctx, padX, innerW, y, 'MultiAire · Insumos · generado ' + new Date().toLocaleString('es-PE'));
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png', 1.0);
+  a.download = _exportMat.baseName + '_' + _matFecha() + '.png';
+  a.click();
+  toast('✓ PNG descargado (' + _exportMat.insts.length + ' ítems)', 'ok');
+}
+// PDF: una página A4 por bloque de filas enteras → los saltos caen ENTRE filas, no las parten
+async function _exportMatPDF(){
+  if(!(window.jspdf && window.jspdf.jsPDF)){ toast('PDF no disponible — usa PNG o CSV', 'err'); return; }
+  const SC = 2, W = 900, padX = 32;
+  const pageH = Math.round(W * 297/210);   // alto proporcional A4 (vertical) para el ancho W
+  const { rows, cols, innerW, imgs, rowH } = await _matPrepare(W, padX);
+  const rowsPerPage = Math.max(1, Math.floor((pageH - _MAT_HEAD_H - _MAT_THEAD_H - _MAT_FOOT_H) / rowH));
+  const nPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p','mm','a4');
+  const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+  const fechaTxt = new Date().toLocaleString('es-PE');
+  for(let p=0; p<nPages; p++){
+    const slice = rows.slice(p*rowsPerPage, (p+1)*rowsPerPage);
+    const canvas = document.createElement('canvas');
+    canvas.width = W*SC; canvas.height = pageH*SC;
+    const ctx = canvas.getContext('2d'); ctx.scale(SC,SC);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,pageH);
+    let y = _matDrawHeader(ctx, W, padX, innerW, 'pág. ' + (p+1) + '/' + nPages);
+    y = _matDrawThead(ctx, cols, padX, innerW, y);
+    _matDrawRows(ctx, slice, cols, imgs, padX, innerW, y, rowH, p*rowsPerPage);
+    _matDrawFoot(ctx, padX, innerW, pageH - _MAT_FOOT_H + 6, 'MultiAire · Insumos · ' + fechaTxt + ' · pág. ' + (p+1) + '/' + nPages);
+    if(p>0) pdf.addPage();
+    pdf.addImage(canvas.toDataURL('image/png',1.0), 'PNG', 0, 0, pw, ph);
+  }
+  pdf.save(_exportMat.baseName + '_' + _matFecha() + '.pdf');
+  toast('✓ PDF descargado (' + _exportMat.insts.length + ' ítems, ' + nPages + ' pág.)', 'ok');
+}
+
 // ── INSTANCIAS CRUD ───────────────────────────────────────
 let editingInstanciaId = null;
 
@@ -3774,6 +4045,7 @@ function renderPaquetes() {
         }).join('') : '<div style="font-size:11px;color:var(--muted2)">Sin instancias asignadas</div>'}
       </div>
       <div class="pkg-foot">
+        <button class="btn btn-sm" onclick="exportMaterialPaquete('${pkg.id}')" title="Exportar material del paquete (CSV)">⬇ Material</button>
         ${canEdit?`<button class="btn btn-sm" onclick="openModalPaquete('${pkg.id}')">✏️ Editar</button>`:''}
         <button class="btn btn-sm" onclick="openModalTransfPaquete('${pkg.id}')">🔄 Transferir</button>
         ${canEdit?`<button class="btn btn-sm btn-red" onclick="deletePaquete('${pkg.id}')">🗑</button>`:''}
@@ -4126,6 +4398,7 @@ function renderTecnicoDetalle(tec){
     ? `<img class="tec-head-avatar" src="${persona.foto}" alt="${tec}">`
     : `<div class="tec-head-init">${inicial}</div>`;
   h+=`<div class="tec-head">${avatarHtml}<div><div class="tec-head-name">${tec}</div>${persona&&persona.cargo?`<div class="tec-head-cargo">${persona.cargo}</div>`:''}</div></div>`;
+  h+=`<div style="margin:-4px 0 14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="exportMaterialPersona()" title="Descargar todo el material asignado (paquetes + instancias sueltas)">⬇ Exportar material</button></div>`;
   // Paquetes
   h+=`<div class="tec-section"><div class="tec-section-title">🎒 Paquetes asignados (${pkgs.length})</div>`;
   if(pkgs.length){
@@ -4137,7 +4410,10 @@ function renderTecnicoDetalle(tec){
       return `<div class="pkg-card ${pkg.estado==='ACTIVO'?'activo':'inactivo'}">
         <div class="pkg-header">
           <div><div class="pkg-id">${ico} ${pkg.id}</div><div class="pkg-nombre">${pkg.nombre}</div><div style="margin-top:4px">${estBadge}</div></div>
-          <button class="qr-btn" onclick="openQRModal('${pkg.id}')" title="Ver QR">▣</button>
+          <div style="display:flex;gap:4px">
+            <button class="qr-btn" onclick="exportMaterialPaquete('${pkg.id}')" title="Exportar material del paquete">⬇</button>
+            <button class="qr-btn" onclick="openQRModal('${pkg.id}')" title="Ver QR">▣</button>
+          </div>
         </div>
         <div class="pkg-meta"><span>📍 ${pkg.sede||'—'}</span></div>
         <div class="pkg-insts">
