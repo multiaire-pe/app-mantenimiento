@@ -288,6 +288,9 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>insumos_instancias_fotos.csv</div>
             <div class="backup-file"><span></span>insumos_movimientos_fotos.csv</div>
             <div class="backup-file"><span></span>proveedores.csv</div>
+            <div class="backup-file"><span></span>manta_equipos.csv</div>
+            <div class="backup-file"><span></span>manta_observaciones.csv</div>
+            <div class="backup-file"><span></span>manta_observaciones_fotos.csv</div>
           </div>
           <button class="btn btn-primary" onclick="exportBackup()" id="export-btn" style="width:100%">
             ⬇ Descargar ZIP
@@ -889,7 +892,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap] = await Promise.all([
+    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('maestros_tiendas').get(),
@@ -908,6 +911,9 @@ async function exportBackup() {
       window.__db.collection('insumos_instancias_fotos').get(),
       window.__db.collection('insumos_movimientos_fotos').get(),
       window.__db.collection('proveedores').get(),
+      window.__db.collection('manta_equipos').get(),
+      window.__db.collection('manta_observaciones').get(),
+      window.__db.collection('manta_observaciones_fotos').get(),
     ]);
 
     const zip = new JSZip();
@@ -1061,6 +1067,30 @@ async function exportBackup() {
     });
     zip.file('proveedores.csv', [provHeaders.join(','), ...provRows].join('\n'));
 
+    // 15. Manta — maestro de equipos por tienda (Ripley)
+    const mEquHeaders = ['ID','TIENDA','EQUIPO','ORDEN','ACTIVO','ORIGEN'];
+    const mEquRows = mEquSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.tienda||'', r.equipo||'', r.orden??'', (r.activo===false?'NO':'SI'), r.origen||''].map(escapeCSV).join(',');
+    });
+    zip.file('manta_equipos.csv', [mEquHeaders.join(','), ...mEquRows].join('\n'));
+
+    // 16. Manta — observaciones (log)
+    const mObsHeaders = ['ID','TIENDA','EQUIPO','OBSERVACION','ESTADO','FECHA','TECNICO_ID','ORIGEN','TIENE_FOTO','REGISTRADO_POR','CREADO_EN','CREADO_POR','ACTUALIZADO_EN','ACTUALIZADO_POR'];
+    const mObsRows = mObsSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.tienda||'', r.equipo||'', r.observacion||'', r.estado||'PENDIENTE', r.fecha||'', r.tecnicoId||'', r.origen||'APP', (r.tieneFoto?'SI':'NO'), r.registradoPor||'', r.createdAt||'', r.createdBy||'', r.updatedAt||'', r.updatedBy||''].map(escapeCSV).join(',');
+    });
+    zip.file('manta_observaciones.csv', [mObsHeaders.join(','), ...mObsRows].join('\n'));
+
+    // 17. Manta — fotos de observaciones (base64; colección aparte)
+    const mObsFotoHeaders = ['ID','FOTO'];
+    const mObsFotoRows = mObsFotoSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.foto||''].map(escapeCSV).join(',');
+    });
+    zip.file('manta_observaciones_fotos.csv', [mObsFotoHeaders.join(','), ...mObsFotoRows].join('\n'));
+
     // Generate and download
     const blob = await zip.generateAsync({type:'blob'});
     const url = URL.createObjectURL(blob);
@@ -1126,7 +1156,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1398,6 +1428,31 @@ async function confirmImport() {
       const rows = parseCSV(pendingImport.files['proveedores.csv']);
       await batchWrite('proveedores', rows, r => ({_docId:r.ID, ruc:r.RUC||'', razonSocial:r.RAZON_SOCIAL||'', nombreComercial:r.NOMBRE_COMERCIAL||'', rubro:r.RUBRO||'', telefono:r.TELEFONO||'', email:r.EMAIL||'', contacto:r.CONTACTO||'', direccion:r.DIRECCION||'', condicionesPago:r.CONDICIONES_PAGO||'', banco:r.BANCO||'', cuenta:r.CUENTA||'', notas:r.NOTAS||'', activo:r.ACTIVO||'SI'}));
       addLog('✓ Proveedores importados (' + rows.length + ' registros)', 'ok');
+    }
+
+    // 15. Manta — maestro de equipos
+    if (pendingImport.files['manta_equipos.csv']) {
+      addLog('📋 Importando maestro de equipos (manta)...', 'info');
+      const rows = parseCSV(pendingImport.files['manta_equipos.csv']);
+      await batchWrite('manta_equipos', rows, r => ({_docId:r.ID, tienda:r.TIENDA||'', equipo:r.EQUIPO||'', orden:r.ORDEN!==''?+r.ORDEN:0, activo:(r.ACTIVO||'SI').toUpperCase()!=='NO', origen:r.ORIGEN||''}));
+      addLog('✓ Equipos de la manta importados (' + rows.length + ')', 'ok');
+    }
+
+    // 16. Manta — observaciones (log)
+    if (pendingImport.files['manta_observaciones.csv']) {
+      addLog('📝 Importando observaciones (manta)...', 'info');
+      const rows = parseCSV(pendingImport.files['manta_observaciones.csv']);
+      await batchWrite('manta_observaciones', rows, r => { const o={_docId:r.ID, tienda:r.TIENDA||'', equipo:r.EQUIPO||'', observacion:r.OBSERVACION||'', estado:r.ESTADO||'PENDIENTE', fecha:r.FECHA||'', tecnicoId:r.TECNICO_ID||'', origen:r.ORIGEN||'APP', tieneFoto:(r.TIENE_FOTO||'NO').toUpperCase()==='SI'}; if(r.REGISTRADO_POR)o.registradoPor=r.REGISTRADO_POR; if(r.CREADO_EN)o.createdAt=r.CREADO_EN; if(r.CREADO_POR)o.createdBy=r.CREADO_POR; if(r.ACTUALIZADO_EN)o.updatedAt=r.ACTUALIZADO_EN; if(r.ACTUALIZADO_POR)o.updatedBy=r.ACTUALIZADO_POR; return o; });
+      addLog('✓ Observaciones importadas (' + rows.length + ')', 'ok');
+    }
+
+    // 17. Manta — fotos de observaciones (base64)
+    if (pendingImport.files['manta_observaciones_fotos.csv']) {
+      addLog('📷 Importando fotos de observaciones...', 'info');
+      const rows = parseCSV(pendingImport.files['manta_observaciones_fotos.csv']);
+      const conFoto = rows.filter(r => r.FOTO);
+      await batchWrite('manta_observaciones_fotos', conFoto, r => ({_docId:r.ID, observacionId:r.ID, foto:r.FOTO}));
+      addLog('✓ Fotos de observaciones importadas (' + conFoto.length + ')', 'ok');
     }
 
     addLog('✅ Importación completada', 'ok');
