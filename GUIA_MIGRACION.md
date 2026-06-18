@@ -8,6 +8,8 @@
 ## Decisiones tomadas
 
 - **Propiedad concentrada en una sola cuenta funcional:** `plataforma@multiaire.com.pe` (sin grupo).
+  El nombre es funcional (no `jose@`) a propósito → transferible a futuro sin rehacer nada, pero
+  **quien la administra es José desde Perú** (las credenciales se le entregan a él).
 - **Subdominio:** `app.multiaire.com.pe` (vía Vercel + DNS de Chile).
 - **Login:** se siguen permitiendo cuentas **Gmail** → NO se migra la colección `usuarios` ni se
   restringe el OAuth. Solo se agrega el dominio nuevo a *Authorized domains*.
@@ -32,29 +34,51 @@
 
 ---
 
-## 1) Lo que hay que PEDIR a Chile (gestiona el dominio/Workspace)
+## 1) Lo que hay que PEDIR a Chile (mensaje listo para reenviar a Jonathan)
 
-Texto listo para reenviar:
+> Chile solo hace **dos cosas**: crear la cuenta y el registro de DNS. Todo lo demás (poner
+> `plataforma@` como Owner del proyecto, transferir Vercel, conectar el dominio, etc.) lo hace
+> José desde Perú, porque su cuenta personal es hoy la dueña del proyecto.
 
-> *Para la plataforma de gestión interna de MultiAire Perú (`multiaire.com.pe`) necesitamos:*
-> 1. *Crear la **cuenta funcional** `plataforma@multiaire.com.pe` (Google Workspace). Las
->    credenciales las custodia la empresa (gestor de contraseñas + 2FA).*
-> 2. *En el **DNS** de `multiaire.com.pe` (lo gestiona **ChileCL**): agregar un **CNAME**
->    `app` → `cname.vercel-dns.com`. Es un cambio **puntual, una sola vez** (no requiere darnos
->    accesos). Si Vercel pide además un `TXT` de verificación, se los pasamos — también una sola vez.*
-> 3. *En **Google Cloud**: asignar el rol **Owner** del proyecto `multiaire-fee43` a la cuenta
->    `plataforma@multiaire.com.pe`. (Ideal: mover el proyecto a la **Organización** `multiaire.com.pe`
->    y dejar a `plataforma@` como Owner — requiere un admin de la Organización.)*
-> 4. *(Más adelante, para WhatsApp en producción) un registro **TXT** de verificación de dominio en Meta.*
+```
+Hola Jonathan 👋
+
+Como sabes, hoy toda la plataforma corre bajo mi cuenta personal de Google. Para
+migrarla a una cuenta corporativa, solo necesito dos cosas de Chile:
+
+1) CUENTA GOOGLE WORKSPACE
+Crear plataforma@multiaire.com.pe y entregarme las credenciales.
+
+2) DNS (un solo registro, una sola vez)
+Para publicar la app en app.multiaire.com.pe, agregar este registro en el DNS de
+multiaire.com.pe:
+  • Tipo: CNAME · Nombre: app · Valor: cname.vercel-dns.com
+
+Lo pueden hacer de la forma que les sea más cómoda:
+  • Lo agregan ustedes manualmente (es un solo registro), o
+  • Me dan acceso al panel de DNS para agregarlo yo (a coordinar con quien
+    administra el dominio, jmt.moraga@gmail.com).
+Si por privacidad prefieren manejarlo ustedes, perfecto — con que creen ese
+registro basta.
+
+(Dominio a nombre de Elizabeth Aedo · DNS en ChileCL.)
+
+Con esas dos cosas, todo lo demás lo hago yo. ¡Gracias! 🙏
+```
+
+> Nota (opcional, no incluida en el pedido): si quisieran el proyecto Google Cloud bajo la
+> **Organización** corporativa, eso sí requeriría a un admin de la Org. No es necesario para migrar.
+> Y más adelante, para el bot de WhatsApp en producción, Meta podría pedir un `TXT` de verificación
+> (puntual) — se solicitará en su momento.
 
 ---
 
 ## 2) Lo que hay que CREAR bajo multiaire.com.pe (para solicitar de una vez)
 
 1. Cuenta funcional `plataforma@multiaire.com.pe` *(Chile)*.
-2. Owner del proyecto Firebase/GCP `multiaire-fee43` → `plataforma@` *(Chile o el owner actual)*.
-3. Cuenta/Team **Vercel** con `plataforma@`.
-4. Subdominio `app.multiaire.com.pe` (CNAME en DNS) *(Chile)*.
+2. Owner del proyecto Firebase/GCP `multiaire-fee43` → `plataforma@` *(lo hace **José**: su cuenta personal es el Owner actual y puede invitar a `plataforma@`)*.
+3. Cuenta/Team **Vercel** con `plataforma@` *(José)*.
+4. Subdominio `app.multiaire.com.pe` (CNAME en DNS) *(Chile, o acceso a José — ver §1)*.
 5. **Organización GitHub** de la empresa + transferir el repo.
 6. **API key Gemini** desde el proyecto GCP corporativo.
 7. **Meta Business Manager** + app de WhatsApp + número de empresa registrado.
