@@ -2,6 +2,7 @@ wsp_import/
 _chat.txt
 CLAUDE.md
 README.md
+GUIA_MIGRACION.md
 *.py
 *.json
 !firebase-config.js
