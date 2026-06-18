@@ -443,8 +443,9 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <button class="btn btn-sm btn-primary" onclick="exportInstQRZip()">⬇ Exportar etiquetas ZIP</button>
           <button class="btn btn-sm" onclick="exportInstCSVPhomemo()" title="CSV de códigos para impresión por lotes en Phomemo">📄 CSV (Phomemo)</button>
           <span id="inst-lote-actions" style="display:none;gap:8px">
-            <button class="btn btn-sm" onclick="openModalSalidaLote('SALIDA')" title="Registrar salida de las instancias seleccionadas">⬆ Salida en lote</button>
-            <button class="btn btn-sm" onclick="openModalSalidaLote('BAJA')" style="color:var(--red)" title="Dar de baja las instancias seleccionadas">⚠️ Baja en lote</button>
+            <button id="btn-lote-salida" class="btn btn-sm" onclick="openModalSalidaLote('SALIDA')" title="Registrar salida de las instancias seleccionadas">⬆ Salida en lote</button>
+            <button id="btn-lote-baja" class="btn btn-sm" onclick="openModalSalidaLote('BAJA')" style="color:var(--red)" title="Dar de baja las instancias seleccionadas">⚠️ Baja en lote</button>
+            <button id="btn-lote-transf" class="btn btn-sm" onclick="openModalTransfLote()" title="Transferir las instancias seleccionadas (sede y/o responsable)">🔄 Transferir en lote</button>
           </span>
           <button class="btn btn-sm" onclick="clearInstQRSelection()">✕ Limpiar</button>
         </div>
@@ -1040,6 +1041,64 @@ tbody td{padding:9px 12px;vertical-align:middle}
     <div class="modal-foot" style="flex-shrink:0">
       <button class="btn" onclick="closeModal('modal-salida-lote')">Cancelar</button>
       <button class="btn btn-primary" id="btn-save-lote" onclick="saveSalidaLote()">⬆ Confirmar salida</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL TRANSFERENCIA EN LOTE -->
+<div class="modal-overlay" id="modal-transf-lote" onclick="if(event.target===this)closeModal('modal-transf-lote')">
+  <div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:90vh">
+    <div class="modal-header" style="flex-shrink:0">
+      <div class="modal-title">🔄 Transferir en lote</div>
+      <div onclick="closeModal('modal-transf-lote')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div class="modal-sub" style="margin-bottom:12px;flex-shrink:0">🔄 Traslada varios bienes entre sedes y/o cambia su responsable. Cada bien mantiene su ID y QR. Si alguno está en un paquete, saldrá de él.</div>
+    <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+      <div class="form-group full">
+        <div class="form-label">Instancias seleccionadas (<span id="tlote-inst-count">0</span>)</div>
+        <div id="tlote-inst-list" style="max-height:140px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:11px;display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">¿Qué deseas transferir? *</div>
+        <div style="display:flex;gap:16px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="ftl-chk-sede" onchange="onTransfLoteTipoChange()" checked style="width:16px;height:16px"> Sede
+          </label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="ftl-chk-resp" onchange="onTransfLoteTipoChange()" style="width:16px;height:16px"> Responsable
+          </label>
+        </div>
+      </div>
+      <div id="ftl-sede-wrap" class="form-group full"><div class="form-label">Sede destino *</div><select class="form-select" id="ftl-destino"></select></div>
+      <div id="ftl-resp-wrap" class="form-group full" style="display:none"><div class="form-label">Nuevo responsable *</div><select class="form-select" id="ftl-resp-destino"></select></div>
+      <div class="form-group full"><div class="form-label">Realizado por</div><select class="form-select" id="ftl-tecnico"></select></div>
+      <div class="form-group full"><div class="form-label">Observación</div><textarea class="form-textarea" id="ftl-obs" placeholder="Opcional..."></textarea></div>
+      <div class="form-group full">
+        <div class="form-label">N° de guía de remisión <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <input type="text" class="form-input" id="ftl-guia-num" placeholder="Ej. 001-000123">
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de la guía <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="ftl-guia-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="ftl-guia-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="ftl-guia-input" accept="image/*" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="ftl-guia-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="ftl-guia-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+        </div>
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de entrega <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="ftl-entrega-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="ftl-entrega-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="ftl-entrega-input" accept="image/*" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="ftl-entrega-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="ftl-entrega-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot" style="flex-shrink:0">
+      <button class="btn" onclick="closeModal('modal-transf-lote')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-transf-lote" onclick="saveTransfLote()">🔄 Confirmar transferencia</button>
     </div>
   </div>
 </div>
@@ -2552,6 +2611,7 @@ async function saveSalida() {
 // Crea UN movimiento con instancias[] y, opcionalmente, guarda guía + fotos en insumos_movimientos_fotos.
 let currentLoteTipo = 'SALIDA';
 let loteFotos = { guia: null, entrega: null };  // dataURLs temporales hasta confirmar
+let loteFotoPrefix = 'flote';  // prefijo de ids del modal de lote activo ('flote' salida/baja, 'ftl' transferencia)
 
 // Comprime manteniendo proporción (para documentos/escenas: guía, entrega). Distinto de compressSquare (recorte cuadrado, avatares).
 function compressFit(file, maxSide, quality) {
@@ -2585,6 +2645,7 @@ function openModalSalidaLote(tipo = 'SALIDA') {
   currentLoteTipo = tipo;
   const esBaja = tipo === 'BAJA';
   loteFotos = { guia: null, entrega: null };
+  loteFotoPrefix = 'flote';
   document.getElementById('modal-lote-title').textContent = esBaja ? '⚠️ Baja en lote' : '⬆ Salida en lote';
   document.getElementById('modal-lote-sub').innerHTML = esBaja
     ? '⚠️ <strong>Baja:</strong> los bienes ya no sirven por daño, pérdida o robo. El motivo es obligatorio. Se eliminan del inventario.'
@@ -2619,7 +2680,7 @@ function removeLoteFoto(tipo) {
 }
 
 function refreshLoteFotoPreview(tipo) {
-  const box = document.getElementById(tipo === 'guia' ? 'flote-guia-box' : 'flote-entrega-box');
+  const box = document.getElementById(`${loteFotoPrefix}-${tipo}-box`);
   if (!box) return;
   const f = loteFotos[tipo];
   box.innerHTML = f
@@ -2694,6 +2755,129 @@ async function saveSalidaLote() {
     renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '⬆ Confirmar'; } }
+}
+
+// ── TRANSFERENCIA EN LOTE ─────────────────────────────────
+// Reutiliza la selección múltiple + la infraestructura de fotos del lote (loteFotos, setLoteFoto...).
+// Un movimiento TRANSFERENCIA con instancias[] + instanciasSnapshot[] (valores previos para revertir cada una).
+function openModalTransfLote() {
+  if (can('transferencia') !== 1) { toast('No tienes permiso para transferir', 'err'); return; }
+  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
+  if (!ids.length) { toast('Selecciona al menos una instancia', 'warn'); return; }
+  loteFotos = { guia: null, entrega: null };
+  loteFotoPrefix = 'ftl';
+  document.getElementById('ftl-obs').value = '';
+  document.getElementById('ftl-guia-num').value = '';
+  document.getElementById('ftl-chk-sede').checked = true;
+  document.getElementById('ftl-chk-resp').checked = false;
+  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  document.getElementById('ftl-tecnico').innerHTML = `<option value="">—</option>${pOpts}`;
+  document.getElementById('ftl-resp-destino').innerHTML = `<option value="">—</option>${pOpts}`;
+  document.getElementById('ftl-destino').innerHTML = sedeOpts(false);
+  document.getElementById('tlote-inst-count').textContent = ids.length;
+  document.getElementById('tlote-inst-list').innerHTML = ids.map(id => {
+    const inst = instanciasData.find(x => x.id === id);
+    return `<div><span style="font-family:var(--mono)">${id}</span> — ${inst.nombre} <span style="color:var(--muted2)">(${inst.sede || 'sin sede'}${inst.responsable ? ' · ' + inst.responsable : ''})</span></div>`;
+  }).join('');
+  refreshLoteFotoPreview('guia');
+  refreshLoteFotoPreview('entrega');
+  onTransfLoteTipoChange();
+  document.getElementById('modal-transf-lote').classList.add('open');
+}
+
+function onTransfLoteTipoChange() {
+  const sede = document.getElementById('ftl-chk-sede').checked;
+  const resp = document.getElementById('ftl-chk-resp').checked;
+  if (!sede && !resp) { document.getElementById('ftl-chk-sede').checked = true; onTransfLoteTipoChange(); return; }
+  document.getElementById('ftl-sede-wrap').style.display = sede ? 'flex' : 'none';
+  document.getElementById('ftl-resp-wrap').style.display = resp ? 'flex' : 'none';
+}
+
+async function saveTransfLote() {
+  const btn = document.getElementById('btn-save-transf-lote');
+  if (btn && btn.disabled) return;
+  const transferSede = document.getElementById('ftl-chk-sede').checked;
+  const transferResp = document.getElementById('ftl-chk-resp').checked;
+  const obs = document.getElementById('ftl-obs').value.trim();
+  const tecnico = document.getElementById('ftl-tecnico').value;
+  const guiaNumero = document.getElementById('ftl-guia-num').value.trim();
+  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
+  if (!ids.length) { toast('No hay instancias válidas seleccionadas', 'err'); return; }
+  if (!transferSede && !transferResp) { toast('Selecciona qué deseas transferir', 'err'); return; }
+  const destino = transferSede ? document.getElementById('ftl-destino').value : null;
+  const respDestino = transferResp ? document.getElementById('ftl-resp-destino').value : null;
+  if (transferSede && !destino) { toast('Selecciona la sede destino', 'err'); return; }
+  if (transferResp && !respDestino) { toast('Selecciona el responsable destino', 'err'); return; }
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
+  try {
+    const insts = ids.map(id => instanciasData.find(x => x.id === id));
+    const camposTransferidos = [];
+    if (transferSede) camposTransferidos.push('sede');
+    if (transferResp) camposTransferidos.push('responsable');
+    // Snapshot de los valores PREVIOS de los campos transferidos (para revertir cada instancia a lo suyo)
+    const snapshot = insts.map(i => {
+      const s = { id: i.id };
+      if (transferSede) s.sede = i.sede || '';
+      if (transferResp) s.responsable = i.responsable || '';
+      return s;
+    });
+    // Aplicar a cada instancia + sacarla de su paquete si pertenece a uno
+    let nPaquete = 0;
+    const pkgTouched = {};  // pkgId -> [instIds a remover]
+    for (const inst of insts) {
+      const instUpdates = { updatedAt: new Date().toISOString(), updatedBy: maUser.email };
+      if (transferSede) instUpdates.sede = destino;
+      if (transferResp) instUpdates.responsable = respDestino;
+      if (inst.paqueteId) {
+        instUpdates.paqueteId = null;
+        (pkgTouched[inst.paqueteId] = pkgTouched[inst.paqueteId] || []).push(inst.id);
+        nPaquete++;
+      }
+      await db.collection('insumos_instancias').doc(inst.id).update(instUpdates);
+      const idx = instanciasData.findIndex(x => x.id === inst.id);
+      if (idx >= 0) Object.assign(instanciasData[idx], instUpdates);
+    }
+    // Quitar las instancias de los paquetes afectados
+    for (const [pkgId, removeIds] of Object.entries(pkgTouched)) {
+      const pkg = paquetesData.find(x => x.id === pkgId);
+      if (!pkg) continue;
+      const newInsts = (pkg.instancias || []).filter(i => !removeIds.includes(i));
+      await db.collection('insumos_paquetes').doc(pkgId).update({ instancias: newInsts, updatedAt: new Date().toISOString() });
+      const pIdx = paquetesData.findIndex(x => x.id === pkgId);
+      if (pIdx >= 0) paquetesData[pIdx].instancias = newInsts;
+    }
+    const labelParts = [];
+    if (transferSede) labelParts.push(`→ ${destino}`);
+    if (transferResp) labelParts.push(`Resp → ${respDestino}`);
+    const itemIds = [...new Set(insts.map(i => i.itemId))];
+    const itemNombre = itemIds.length === 1 ? (insts[0].nombre || '') : `${insts.length} ítems variados`;
+    const itemId = itemIds.length === 1 ? insts[0].itemId : '';
+    const movData = {
+      tipo: 'TRANSFERENCIA', itemId, itemNombre,
+      instancias: ids, instanciasSnapshot: snapshot, camposTransferidos,
+      sedeDestino: destino || '', respDestino: respDestino || '',
+      cantidad: ids.length, cambios: labelParts.join(' | '),
+      motivo: obs, responsable: tecnico, usuario: maUser.email,
+      estado: 'CONFIRMADO', fecha: new Date()
+    };
+    if (guiaNumero) movData.guiaNumero = guiaNumero;
+    if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
+    const movRef = await db.collection('insumos_movimientos').add(movData);
+    if (loteFotos.guia || loteFotos.entrega) {
+      const fotoDoc = { movimientoId: movRef.id, createdAt: new Date().toISOString(), createdBy: maUser.email };
+      if (guiaNumero) fotoDoc.guiaNumero = guiaNumero;
+      if (loteFotos.guia) fotoDoc.guiaFoto = loteFotos.guia;
+      if (loteFotos.entrega) fotoDoc.entregaFoto = loteFotos.entrega;
+      await db.collection('insumos_movimientos_fotos').doc(movRef.id).set(fotoDoc);
+      movFotos[movRef.id] = { guia: loteFotos.guia || null, entrega: loteFotos.entrega || null };
+    }
+    movimientosData.unshift({ id: movRef.id, ...movData });
+    toast(`✓ Transferencia en lote — ${ids.length} instancia(s)${nPaquete ? ` · ${nPaquete} salió(eron) de su paquete` : ''}`, 'ok');
+    closeModal('modal-transf-lote');
+    clearInstQRSelection();
+    renderAll();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '🔄 Confirmar transferencia'; } }
 }
 
 // ── TRANSFERENCIA ─────────────────────────────────────────
@@ -2876,9 +3060,15 @@ function updateInstQRSelectionBar() {
   if (selectedInstQRIds.size > 0) {
     bar.style.display = 'flex';
     count.textContent = selectedInstQRIds.size + ' seleccionado' + (selectedInstQRIds.size > 1 ? 's' : '');
-    // Acciones de salida/baja en lote: solo si el rol puede registrar salidas
+    // Acciones en lote, cada una según su permiso (salida/baja vs transferencia pueden diferir por rol)
     const lote = document.getElementById('inst-lote-actions');
-    if (lote) lote.style.display = can('salida') === 1 ? 'inline-flex' : 'none';
+    const puedeSalida = can('salida') === 1;
+    const puedeTransf = can('transferencia') === 1;
+    const bS = document.getElementById('btn-lote-salida'), bB = document.getElementById('btn-lote-baja'), bT = document.getElementById('btn-lote-transf');
+    if (bS) bS.style.display = puedeSalida ? 'inline-flex' : 'none';
+    if (bB) bB.style.display = puedeSalida ? 'inline-flex' : 'none';
+    if (bT) bT.style.display = puedeTransf ? 'inline-flex' : 'none';
+    if (lote) lote.style.display = (puedeSalida || puedeTransf) ? 'inline-flex' : 'none';
   } else {
     bar.style.display = 'none';
   }
@@ -3586,9 +3776,12 @@ async function revertirMovimiento(movId) {
     ));
     if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de ${ids.length > 1 ? 'estas instancias' : 'esta instancia'}.`;
   } else if (mov.tipo === 'TRANSFERENCIA') {
-    const instId = mov.instanciaId;
-    const movsPost = movimientosData.filter(m => m.id !== movId && m.instanciaId === instId);
-    if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de esta instancia (actualizaciones, transferencias).`;
+    const ids = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+    const movsPost = movimientosData.filter(m => m.id !== movId && (
+      (m.instanciaId && ids.includes(m.instanciaId)) ||
+      (m.instancias && m.instancias.some(id => ids.includes(id)))
+    ));
+    if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de ${ids.length > 1 ? 'estas instancias' : 'esta instancia'} (actualizaciones, transferencias).`;
   } else if (mov.tipo === 'TRANSFERENCIA_PAQUETE') {
     const movsDePkg = movimientosData.filter(m => m.origenPaquete === movId);
     const instIds = mov.instancias || [];
@@ -3644,22 +3837,43 @@ async function revertirMovimiento(movId) {
       toast(`✓ ${mov.tipo === 'BAJA' ? 'Baja' : 'Salida'} revertida — ${ids.length} instancia(s) restaurada(s)${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
 
     } else if (mov.tipo === 'TRANSFERENCIA') {
-      const instId = mov.instanciaId;
-      if (!instId) { toast('No se puede revertir: faltan datos', 'err'); return; }
-      // Cascada: eliminar movimientos posteriores de esta instancia
-      const nCascada = await eliminarMovsCascada([instId], movId);
-      // Revertir usando diffsData si existe, sino fallback a sedeOrigen
-      const revertUpdates = { updatedAt: new Date().toISOString() };
-      if (mov.diffsData && mov.diffsData.length) {
-        mov.diffsData.forEach(d => { revertUpdates[d.campo] = d.de; });
+      // Soporta lote (instancias[] + instanciasSnapshot con valores previos) y formato antiguo (instanciaId + diffsData)
+      const ids = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+      if (!ids.length) { toast('No se puede revertir: faltan datos', 'err'); return; }
+      const nCascada = await eliminarMovsCascada(ids, movId);
+      if (mov.instanciasSnapshot && mov.instanciasSnapshot.length) {
+        // Lote: cada instancia vuelve a su valor previo de los campos transferidos
+        const campos = mov.camposTransferidos || ['sede', 'responsable'];
+        for (const instId of ids) {
+          const snap = mov.instanciasSnapshot.find(s => s.id === instId);
+          if (!snap) continue;
+          const revertUpdates = { updatedAt: new Date().toISOString(), updatedBy: maUser.email };
+          campos.forEach(c => { if (snap[c] !== undefined) revertUpdates[c] = snap[c]; });
+          await db.collection('insumos_instancias').doc(instId).update(revertUpdates);
+          const idx = instanciasData.findIndex(x => x.id === instId);
+          if (idx >= 0) Object.assign(instanciasData[idx], revertUpdates);
+        }
+        // Nota: la reversión NO re-inserta las instancias en su paquete previo (igual que la transferencia individual)
       } else {
-        if (!mov.sedeOrigen) { toast('No se puede revertir: faltan datos', 'err'); return; }
-        revertUpdates.sede = mov.sedeOrigen;
+        // Individual (legacy): diffsData con {campo, de, a}, fallback a sedeOrigen
+        const instId = mov.instanciaId;
+        const revertUpdates = { updatedAt: new Date().toISOString() };
+        if (mov.diffsData && mov.diffsData.length) {
+          mov.diffsData.forEach(d => { revertUpdates[d.campo] = d.de; });
+        } else {
+          if (!mov.sedeOrigen) { toast('No se puede revertir: faltan datos', 'err'); return; }
+          revertUpdates.sede = mov.sedeOrigen;
+        }
+        await db.collection('insumos_instancias').doc(instId).update(revertUpdates);
+        const idx = instanciasData.findIndex(x => x.id === instId);
+        if (idx >= 0) Object.assign(instanciasData[idx], revertUpdates);
       }
-      await db.collection('insumos_instancias').doc(instId).update(revertUpdates);
-      const idx = instanciasData.findIndex(x => x.id === instId);
-      if (idx >= 0) Object.assign(instanciasData[idx], revertUpdates);
-      toast(`✓ Transferencia revertida — ${instId}${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
+      // Borrar fotos adjuntas (guía/entrega) si las hubiera
+      if (movFotos[movId] || mov.tieneFotos) {
+        await db.collection('insumos_movimientos_fotos').doc(movId).delete().catch(() => {});
+        delete movFotos[movId];
+      }
+      toast(`✓ Transferencia revertida — ${ids.length} instancia(s)${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
 
     } else if (mov.tipo === 'ACTUALIZACION') {
       const instId = mov.instanciaId;
@@ -3735,8 +3949,8 @@ async function editarMovimiento(movId) {
   const instWrap = document.getElementById('em-instancias-wrap');
   const instList = document.getElementById('em-instancias-list');
   const instIdsEdit = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
-  if ((mov.tipo === 'ENTRADA' || mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') && instIdsEdit.length) {
-    const esSalida = mov.tipo !== 'ENTRADA';
+  if ((mov.tipo === 'ENTRADA' || mov.tipo === 'SALIDA' || mov.tipo === 'BAJA' || mov.tipo === 'TRANSFERENCIA') && instIdsEdit.length) {
+    const esSalida = mov.tipo === 'SALIDA' || mov.tipo === 'BAJA';
     instList.innerHTML = instIdsEdit.map(id => {
       const inst = instanciasData.find(x => x.id === id);
       const estado = inst
