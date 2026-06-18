@@ -1119,7 +1119,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <button class="btn btn-sm" onclick="exportarBaseInsumos()">⬇ Exportar base actual</button>
       </div>
       <div style="font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:6px;padding:8px 10px;border-left:3px solid var(--blue);line-height:1.5">
-        💡 ¿Primera vez? Descarga el <strong>Manual (PDF)</strong> o abre la hoja <strong>"Instrucciones"</strong> dentro de la plantilla. Las filas de ejemplo (con ID = EJEMPLO) se ignoran al importar.
+        💡 ¿Primera vez? Descarga el <strong>Manual (PDF)</strong> o abre la hoja <strong>"Instrucciones"</strong> dentro de la plantilla. Muchas columnas traen <strong>menú desplegable</strong> (clic en la celda → elige de la lista). Las filas de ejemplo (con ID = EJEMPLO) se ignoran al importar.
       </div>
       <div style="border-top:1px solid var(--border);padding-top:12px">
         <div class="form-label">Importar archivo</div>
@@ -2964,6 +2964,7 @@ const CM_GUIA_INST = [
   ['NIVEL', 'opcional', 'Solo para ítems RANGO: 0 a 100 (%)'],
 ];
 const CM_REGLAS = [
+  'Varias columnas tienen MENÚ DESPLEGABLE (CATEGORIA, UNIDAD, TIPO_CANTIDAD, ESTADO, SEDE, ITEM_ID, RESPONSABLE): haz clic en la celda y elige de la lista.',
   'Las filas con ID = EJEMPLO son solo guía: el importador las IGNORA (puedes borrarlas o dejarlas).',
   'Al importar se hace UPSERT: si ya existe se ACTUALIZA, si no, se CREA. Catálogo por CODIGO, instancias por ID.',
   'El nombre de cada instancia SIEMPRE se toma del catálogo (mantiene todo consistente).',
@@ -3017,6 +3018,15 @@ function _cmValoresValidos() {
   return ws;
 }
 
+// Hoja oculta "_listas": columnas con los valores largos para los dropdowns (sedes, códigos de ítems, personal)
+function _cmListasSheet() {
+  const sed = sedes.map(s => s.sede), cod = catalogoData.map(c => c.codigo || c.id), per = personalData.map(p => p.nombre);
+  const max = Math.max(sed.length, cod.length, per.length);
+  const rows = [['SEDES', 'CODIGOS_ITEMS', 'PERSONAL']];
+  for (let i = 0; i < max; i++) rows.push([sed[i] || '', cod[i] || '', per[i] || '']);
+  return XLSX.utils.aoa_to_sheet(rows);
+}
+
 function _cmBuildWorkbook(catRows, instRows) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, _cmInstruccionesSheet(), 'Instrucciones');
@@ -3027,30 +3037,88 @@ function _cmBuildWorkbook(catRows, instRows) {
   XLSX.utils.book_append_sheet(wb, wsCat, 'Catalogo');
   XLSX.utils.book_append_sheet(wb, wsInst, 'Instancias');
   XLSX.utils.book_append_sheet(wb, _cmValoresValidos(), 'Valores validos');
+  XLSX.utils.book_append_sheet(wb, _cmListasSheet(), '_listas');
+  // Ocultar la hoja auxiliar de listas
+  wb.Workbook = { Sheets: wb.SheetNames.map(n => ({ Hidden: n === '_listas' ? 1 : 0 })) };
   return wb;
 }
 
-function descargarPlantillaInsumos() {
-  if (typeof XLSX === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
+// XML de <dataValidations> por hoja (SheetJS Community no lo escribe → se inyecta en post-proceso)
+function _cmValidacionesXml() {
+  const N = 1000;
+  const dv = (sqref, formula, block) => `<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="${block ? 1 : 0}" sqref="${sqref}"><formula1>${formula}</formula1></dataValidation>`;
+  const inline = arr => '"' + arr.join(',') + '"';  // lista corta embebida
+  const catDV = [dv(`C2:C${N}`, inline(CM_CATEGORIAS), true), dv(`D2:D${N}`, inline(CM_UNIDADES), true), dv(`I2:I${N}`, inline(CM_TIPOCANT), true)];
+  const nSed = sedes.length, nCod = catalogoData.length, nPer = personalData.length;
+  const instDV = [dv(`E2:E${N}`, inline(CM_ESTADOS), true)];
+  if (nSed) instDV.push(dv(`D2:D${N}`, `_listas!$A$2:$A$${1 + nSed}`, true));     // SEDE
+  if (nCod) instDV.push(dv(`B2:B${N}`, `_listas!$B$2:$B$${1 + nCod}`, false));    // ITEM_ID (sugerencia, no bloquea)
+  if (nPer) instDV.push(dv(`F2:F${N}`, `_listas!$C$2:$C$${1 + nPer}`, false));    // RESPONSABLE (sugerencia)
+  return {
+    'Catalogo': `<dataValidations count="${catDV.length}">${catDV.join('')}</dataValidations>`,
+    'Instancias': `<dataValidations count="${instDV.length}">${instDV.join('')}</dataValidations>`
+  };
+}
+
+// Mapea nombre de hoja → ruta del worksheet XML dentro del zip (robusto: vía workbook.xml + rels)
+function _cmSheetFile(wbXml, relsXml, nombre) {
+  const esc = nombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const tag = wbXml.match(new RegExp(`<sheet [^>]*name="${esc}"[^>]*/>`));
+  const rid = tag && tag[0].match(/r:id="(rId\d+)"/);
+  if (!rid) return null;
+  const rel = relsXml.match(new RegExp(`<Relationship[^>]*Id="${rid[1]}"[^>]*Target="([^"]+)"`));
+  if (!rel) return null;
+  return 'xl/' + rel[1].replace(/^\/?xl\//, '');
+}
+
+// Escribe el wb, inyecta los dataValidations y devuelve un Blob .xlsx
+async function _cmXlsxBlob(wb) {
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+  const zip = await JSZip.loadAsync(buf);
+  const wbXml = await zip.file('xl/workbook.xml').async('string');
+  const relsXml = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  const vals = _cmValidacionesXml();
+  for (const [hoja, dvXml] of Object.entries(vals)) {
+    const path = _cmSheetFile(wbXml, relsXml, hoja);
+    if (!path || !zip.file(path)) continue;
+    let xml = await zip.file(path).async('string');
+    xml = xml.includes('</sheetData>') ? xml.replace('</sheetData>', '</sheetData>' + dvXml) : xml.replace('</worksheet>', dvXml + '</worksheet>');
+    zip.file(path, xml);
+  }
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+function _cmDownloadBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+}
+
+async function descargarPlantillaInsumos() {
+  if (typeof XLSX === 'undefined' || typeof JSZip === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
   // Filas de ejemplo marcadas con ID=EJEMPLO → el importador las ignora aunque no se borren
   const catEj = [
     ['EJEMPLO', 'FILTRO DE AIRE G4 24X24', 'INSUMO', 'UND', 'FILT-G4', '3M', '', '5', 'UNIDAD'],
     ['EJEMPLO', 'TALADRO PERCUTOR', 'HERRAMIENTA', 'UND', 'TALA-01', 'BOSCH', 'GSB 13 RE', '1', 'UNIDAD'],
   ];
   const instEj = [
-    ['EJEMPLO', 'FILT-G4', '(se toma del catálogo)', 'CHINCHON OFICINA', 'DISPONIBLE', '', 'Sin ID = se autogenera', '', ''],
-    ['EJEMPLO', 'TALA-01', '(se toma del catálogo)', 'CHINCHON OFICINA', 'EN_USO', 'JOSE MARCHENA', '', 'ANAQUEL 02', ''],
+    ['EJEMPLO', 'FILT-G4', '(se toma del catálogo)', sedes[0] ? sedes[0].sede : 'CHINCHON OFICINA', 'DISPONIBLE', '', 'Sin ID = se autogenera', '', ''],
+    ['EJEMPLO', 'TALA-01', '(se toma del catálogo)', sedes[0] ? sedes[0].sede : 'CHINCHON OFICINA', 'EN_USO', '', '', '', ''],
   ];
-  XLSX.writeFile(_cmBuildWorkbook(catEj, instEj), `plantilla_insumos_${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('✓ Plantilla descargada — revisa la hoja "Instrucciones"', 'ok');
+  try {
+    _cmDownloadBlob(await _cmXlsxBlob(_cmBuildWorkbook(catEj, instEj)), `plantilla_insumos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast('✓ Plantilla descargada — celdas con menú desplegable', 'ok');
+  } catch(e) { toast('Error al generar la plantilla: ' + e.message, 'err'); }
 }
 
-function exportarBaseInsumos() {
-  if (typeof XLSX === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
+async function exportarBaseInsumos() {
+  if (typeof XLSX === 'undefined' || typeof JSZip === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
   const catRows = catalogoData.map(c => [c.id, c.nombre||'', c.categoria||'', c.unidad||'', c.codigo||'', c.marca||'', c.modelo||'', c.stockMin??0, c.tipoCantidad||'UNIDAD']);
   const instRows = instanciasData.map(i => [i.id, i.itemId||'', i.nombre||'', i.sede||'', i.estado||'DISPONIBLE', i.responsable||'', i.notas||'', i.plano||'', (i.nivel!==undefined?i.nivel:'')]);
-  XLSX.writeFile(_cmBuildWorkbook(catRows, instRows), `insumos_base_${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('✓ Base exportada', 'ok');
+  try {
+    _cmDownloadBlob(await _cmXlsxBlob(_cmBuildWorkbook(catRows, instRows)), `insumos_base_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast('✓ Base exportada — celdas con menú desplegable', 'ok');
+  } catch(e) { toast('Error al exportar: ' + e.message, 'err'); }
 }
 
 // Manual en PDF (jsPDF) — guía paso a paso para aprender/enseñar la carga masiva
