@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 :root{
@@ -1103,6 +1104,36 @@ tbody td{padding:9px 12px;vertical-align:middle}
   </div>
 </div>
 
+<!-- MODAL CARGA MASIVA (XLSX) -->
+<div class="modal-overlay" id="modal-carga-masiva" onclick="if(event.target===this)closeModal('modal-carga-masiva')">
+  <div class="modal" style="max-width:620px;display:flex;flex-direction:column;max-height:92vh">
+    <div class="modal-header" style="flex-shrink:0">
+      <div class="modal-title">📊 Carga masiva (Excel)</div>
+      <div onclick="closeModal('modal-carga-masiva')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:14px">
+      <div class="modal-sub">Importa o exporta el <strong>catálogo</strong> y las <strong>instancias</strong> en un solo archivo <strong>.xlsx</strong>. La importación es <strong>upsert</strong>: actualiza lo existente (catálogo por <code>CODIGO</code>, instancias por <code>ID</code>) y crea lo nuevo. Verás un resumen antes de escribir nada.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="descargarPlantillaInsumos()">⬇ Descargar plantilla</button>
+        <button class="btn btn-sm" onclick="exportarBaseInsumos()">⬇ Exportar base actual</button>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:12px">
+        <div class="form-label">Importar archivo</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+          <label class="btn btn-sm btn-primary" for="cm-file-input" style="cursor:pointer">📂 Elegir archivo .xlsx</label>
+          <input type="file" id="cm-file-input" accept=".xlsx,.xls" style="display:none" onchange="onCargaMasivaFile(this.files[0]); this.value='';">
+          <span id="cm-file-name" style="font-size:11px;color:var(--muted2)"></span>
+        </div>
+      </div>
+      <div id="cm-preview" style="display:none"></div>
+    </div>
+    <div class="modal-foot" style="flex-shrink:0">
+      <button class="btn" onclick="closeModal('modal-carga-masiva')">Cerrar</button>
+      <button class="btn btn-primary" id="cm-confirm-btn" onclick="confirmarImportInsumos()" style="display:none">✓ Confirmar importación</button>
+    </div>
+  </div>
+</div>
+
 <!-- LIGHTBOX FOTO INSTANCIA -->
 <div class="foto-lightbox" id="foto-lightbox" onclick="closeInstFotoLightbox()">
   <button class="foto-lightbox-close" onclick="closeInstFotoLightbox()" title="Cerrar">✕</button>
@@ -1495,6 +1526,7 @@ async function addUser(){
 function buildSidebar(){
   let h='';
   if(can('crearItem'))          h+=`<button class="btn btn-orange btn-block" onclick="openModalInsumo(null)">+ Nuevo ítem</button>`;
+  if(can('crearItem'))          h+=`<button class="btn btn-block" onclick="openModalCargaMasiva()" title="Importar/exportar catálogo e instancias en Excel">📊 Carga masiva</button>`;
   if(can('entrada')===1)        h+=`<button class="btn btn-block" onclick="openModalEntrada()">⬇ Registrar entrada</button>`;
   if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('SALIDA')">⬆ Registrar salida</button>`;
   if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('BAJA')" style="color:var(--red)">⚠️ Dar de baja</button>`;
@@ -2878,6 +2910,225 @@ async function saveTransfLote() {
     renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '🔄 Confirmar transferencia'; } }
+}
+
+// ── CARGA MASIVA (XLSX) ───────────────────────────────────
+// Importa/exporta catálogo + instancias en un .xlsx (SheetJS). Upsert: catálogo por CODIGO, instancias por ID.
+// Carga silenciosa (origen IMPORT_XLSX, sin movimientos). NO toca pertenencia a paquetes. Nombre de instancia = nombre del catálogo.
+const CM_CAT_COLS = ['ID','NOMBRE','CATEGORIA','UNIDAD','CODIGO','MARCA','MODELO','STOCK_MIN','TIPO_CANTIDAD'];
+const CM_INST_COLS = ['ID','ITEM_ID','NOMBRE','SEDE','ESTADO','RESPONSABLE','NOTAS','PLANO','NIVEL'];
+const CM_CATEGORIAS = ['INSUMO','HERRAMIENTA'];
+const CM_UNIDADES = ['UND','KG','LT','MT','ROLLO','CAJA','PAR','JGO'];
+const CM_TIPOCANT = ['UNIDAD','RANGO'];
+const CM_ESTADOS = ['DISPONIBLE','EN_USO','MANTENIMIENTO','DETERIORADO','BAJA'];
+let _cmImport = null;  // resultado de validación pendiente de confirmar
+const _cmStr = v => (v == null ? '' : String(v)).trim();
+const _cmNorm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
+
+function openModalCargaMasiva() {
+  if (!can('crearItem')) { toast('No tienes permiso para carga masiva', 'err'); return; }
+  _cmImport = null;
+  document.getElementById('cm-file-name').textContent = '';
+  document.getElementById('cm-preview').style.display = 'none';
+  document.getElementById('cm-preview').innerHTML = '';
+  document.getElementById('cm-confirm-btn').style.display = 'none';
+  document.getElementById('modal-carga-masiva').classList.add('open');
+}
+
+// Hoja "Valores validos" como array-of-arrays (referencia para el usuario)
+function _cmValoresValidos() {
+  return XLSX.utils.aoa_to_sheet([
+    ['VALORES VALIDOS — usa exactamente estos textos en las columnas correspondientes'],
+    [],
+    ['CATEGORIA (catalogo)', ...CM_CATEGORIAS],
+    ['UNIDAD (catalogo)', ...CM_UNIDADES],
+    ['TIPO_CANTIDAD (catalogo)', ...CM_TIPOCANT],
+    ['ESTADO (instancias)', ...CM_ESTADOS],
+    ['SEDE (instancias)', ...sedes.map(s => s.sede)],
+    [],
+    ['ITEMS DEL CATALOGO (para la columna ITEM_ID de Instancias — usa el ID o el CODIGO)'],
+    ['ID','CODIGO','NOMBRE'],
+    ...catalogoData.map(c => [c.id, c.codigo || '', c.nombre || ''])
+  ]);
+}
+
+function _cmBuildWorkbook(catRows, instRows) {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([CM_CAT_COLS, ...catRows]), 'Catalogo');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([CM_INST_COLS, ...instRows]), 'Instancias');
+  XLSX.utils.book_append_sheet(wb, _cmValoresValidos(), 'Valores validos');
+  return wb;
+}
+
+function descargarPlantillaInsumos() {
+  if (typeof XLSX === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
+  const catEj = [['', 'FILTRO DE AIRE G4 24X24', 'INSUMO', 'UND', 'FILT-G4', '3M', '', '5', 'UNIDAD']];
+  const instEj = [['', 'FILT-G4', '(se toma del catálogo)', 'CHINCHON OFICINA', 'DISPONIBLE', '', '', '', '']];
+  XLSX.writeFile(_cmBuildWorkbook(catEj, instEj), `plantilla_insumos_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Plantilla descargada', 'ok');
+}
+
+function exportarBaseInsumos() {
+  if (typeof XLSX === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
+  const catRows = catalogoData.map(c => [c.id, c.nombre||'', c.categoria||'', c.unidad||'', c.codigo||'', c.marca||'', c.modelo||'', c.stockMin??0, c.tipoCantidad||'UNIDAD']);
+  const instRows = instanciasData.map(i => [i.id, i.itemId||'', i.nombre||'', i.sede||'', i.estado||'DISPONIBLE', i.responsable||'', i.notas||'', i.plano||'', (i.nivel!==undefined?i.nivel:'')]);
+  XLSX.writeFile(_cmBuildWorkbook(catRows, instRows), `insumos_base_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✓ Base exportada', 'ok');
+}
+
+// Lee una hoja (por nombre flexible a acentos/mayúsculas) a objetos con claves normalizadas
+function _cmSheetRows(wb, nombreHoja) {
+  const target = _cmNorm(nombreHoja);
+  const name = wb.SheetNames.find(n => _cmNorm(n) === target);
+  if (!name) return [];
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' }).map(row => {
+    const o = {};
+    Object.keys(row).forEach(k => { o[_cmNorm(k).replace(/\s+/g,'_')] = row[k]; });
+    return o;
+  });
+}
+
+async function onCargaMasivaFile(file) {
+  if (!file) return;
+  if (typeof XLSX === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
+  document.getElementById('cm-file-name').textContent = file.name;
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    _cmImport = _cmValidar(_cmSheetRows(wb, 'Catalogo'), _cmSheetRows(wb, 'Instancias'));
+    _cmRenderPreview();
+  } catch(e) { toast('No se pudo leer el archivo: ' + e.message, 'err'); }
+}
+
+function _cmValidar(catRows, instRows) {
+  const out = { cat: { nuevos: [], upd: [], err: [] }, inst: { nuevos: [], upd: [], err: [] } };
+  // Catálogo efectivo (base + lo válido del archivo) por código y por id, para que las instancias puedan referenciarlo
+  const byCodigo = {}, byId = {};
+  catalogoData.forEach(c => { if (c.codigo) byCodigo[c.codigo.toUpperCase()] = c; byId[c.id] = c; });
+  const codigosArchivo = new Set();
+  catRows.forEach((r, idx) => {
+    const fila = idx + 2;
+    const nombre = _cmStr(r.NOMBRE).toUpperCase(), codigo = _cmStr(r.CODIGO).toUpperCase();
+    if (!nombre && !codigo && !_cmStr(r.ID)) return;  // fila vacía
+    if (!nombre) { out.cat.err.push({ fila, msg: 'NOMBRE vacío' }); return; }
+    if (!codigo) { out.cat.err.push({ fila, msg: 'CODIGO vacío' }); return; }
+    if (codigosArchivo.has(codigo)) { out.cat.err.push({ fila, msg: `CODIGO duplicado en el archivo: ${codigo}` }); return; }
+    codigosArchivo.add(codigo);
+    const categoria = _cmStr(r.CATEGORIA).toUpperCase() || 'INSUMO';
+    if (!CM_CATEGORIAS.includes(categoria)) { out.cat.err.push({ fila, msg: `CATEGORIA inválida: ${categoria}` }); return; }
+    const unidad = _cmStr(r.UNIDAD).toUpperCase() || 'UND';
+    if (!CM_UNIDADES.includes(unidad)) { out.cat.err.push({ fila, msg: `UNIDAD inválida: ${unidad}` }); return; }
+    const tipoCantidad = _cmStr(r.TIPO_CANTIDAD).toUpperCase() || 'UNIDAD';
+    if (!CM_TIPOCANT.includes(tipoCantidad)) { out.cat.err.push({ fila, msg: `TIPO_CANTIDAD inválido: ${tipoCantidad}` }); return; }
+    const item = { nombre, categoria, unidad, codigo, marca: _cmStr(r.MARCA), modelo: _cmStr(r.MODELO), stockMin: Number(_cmStr(r.STOCK_MIN)) || 0, tipoCantidad };
+    const existente = byCodigo[codigo];
+    let docId, esNuevo;
+    if (existente) { docId = existente.id; esNuevo = false; }
+    else { const idFila = _cmStr(r.ID); docId = (idFila && !byId[idFila]) ? idFila : ('INS-' + Date.now() + '-' + idx); esNuevo = true; }
+    const nombreCambiado = !!existente && existente.nombre !== nombre;
+    byCodigo[codigo] = { id: docId, ...item }; byId[docId] = { id: docId, ...item };
+    (esNuevo ? out.cat.nuevos : out.cat.upd).push({ docId, item, esNuevo, nombreCambiado });
+  });
+  // Instancias
+  const idsArchivo = new Set(), instById = {};
+  instanciasData.forEach(i => instById[i.id] = i);
+  const sedesValidas = new Set(sedes.map(s => s.sede));
+  const nextCorr = {};
+  const corrInicial = prefix => {
+    if (nextCorr[prefix] !== undefined) return;
+    const ex = instanciasData.filter(i => i.id.startsWith(prefix + '-')).map(i => parseInt(i.id.slice(prefix.length + 1)) || 0);
+    nextCorr[prefix] = (ex.length ? Math.max(...ex) : 0) + 1;
+  };
+  instRows.forEach((r, idx) => {
+    const fila = idx + 2;
+    const itemRef = _cmStr(r.ITEM_ID);
+    if (!itemRef && !_cmStr(r.ID) && !_cmStr(r.SEDE)) return;  // fila vacía
+    if (!itemRef) { out.inst.err.push({ fila, msg: 'ITEM_ID vacío' }); return; }
+    const item = byId[itemRef] || byCodigo[itemRef.toUpperCase()];
+    if (!item) { out.inst.err.push({ fila, msg: `ITEM_ID no existe en el catálogo: ${itemRef}` }); return; }
+    const estado = _cmStr(r.ESTADO).toUpperCase() || 'DISPONIBLE';
+    if (!CM_ESTADOS.includes(estado)) { out.inst.err.push({ fila, msg: `ESTADO inválido: ${estado}` }); return; }
+    const sede = _cmStr(r.SEDE).toUpperCase();
+    if (sede && !sedesValidas.has(sede)) { out.inst.err.push({ fila, msg: `SEDE no existe: ${sede}` }); return; }
+    let id = _cmStr(r.ID);
+    if (!id) {
+      const prefix = (item.codigo || item.nombre.replace(/[^A-Z0-9]/gi, '')).substring(0, 3).toUpperCase();
+      corrInicial(prefix);
+      id = `${prefix}-${String(nextCorr[prefix]++).padStart(3, '0')}`;
+    }
+    if (idsArchivo.has(id)) { out.inst.err.push({ fila, msg: `ID de instancia duplicado en el archivo: ${id}` }); return; }
+    idsArchivo.add(id);
+    // Nombre SIEMPRE del catálogo (mantiene la denormalización de la Etapa 1)
+    const inst = { itemId: item.id, nombre: item.nombre, sede, estado, responsable: _cmStr(r.RESPONSABLE), notas: _cmStr(r.NOTAS), plano: _cmStr(r.PLANO) };
+    if (item.tipoCantidad === 'RANGO' && _cmStr(r.NIVEL) !== '') { const nv = Number(_cmStr(r.NIVEL)); if (!isNaN(nv)) inst.nivel = Math.max(0, Math.min(100, nv)); }
+    const esNuevo = !instById[id];
+    (esNuevo ? out.inst.nuevos : out.inst.upd).push({ docId: id, inst, esNuevo });
+  });
+  return out;
+}
+
+function _cmRenderPreview() {
+  const r = _cmImport, box = document.getElementById('cm-preview');
+  box.style.display = 'block';
+  const nOk = r.cat.nuevos.length + r.cat.upd.length + r.inst.nuevos.length + r.inst.upd.length;
+  const linea = (lbl, s) => `<div style="display:flex;gap:10px;font-size:12px;padding:3px 0"><span style="width:78px;color:var(--muted2)">${lbl}</span>
+    <span style="color:var(--green)">＋${s.nuevos.length} nuevos</span> · <span style="color:var(--blue)">↻${s.upd.length} a actualizar</span> · <span style="color:${s.err.length?'var(--red)':'var(--muted)'}">⚠${s.err.length} con error</span></div>`;
+  let h = `<div style="border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--surface2)">
+    <div style="font-weight:600;margin-bottom:8px">Resumen de la importación</div>${linea('Catálogo', r.cat)}${linea('Instancias', r.inst)}`;
+  const errs = [...r.cat.err.map(e => ({ ...e, t: 'Catálogo' })), ...r.inst.err.map(e => ({ ...e, t: 'Instancias' }))];
+  if (errs.length) h += `<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px"><div style="font-size:11px;color:var(--red);font-weight:600;margin-bottom:4px">Filas omitidas por error:</div>
+    <div style="max-height:150px;overflow-y:auto;font-size:11px;display:flex;flex-direction:column;gap:2px">${errs.map(e => `<div>• ${e.t} fila ${e.fila}: ${e.msg}</div>`).join('')}</div></div>`;
+  h += `</div>`;
+  if (nOk === 0) h += `<div style="font-size:12px;color:var(--red);margin-top:8px">No hay filas válidas para importar.</div>`;
+  box.innerHTML = h;
+  document.getElementById('cm-confirm-btn').style.display = nOk > 0 ? 'inline-flex' : 'none';
+}
+
+async function confirmarImportInsumos() {
+  if (!_cmImport) return;
+  const r = _cmImport, btn = document.getElementById('cm-confirm-btn');
+  const totalCat = r.cat.nuevos.length + r.cat.upd.length, totalInst = r.inst.nuevos.length + r.inst.upd.length;
+  if (!confirm(`¿Confirmar la importación?\n\nCatálogo: ${totalCat} (${r.cat.nuevos.length} nuevos, ${r.cat.upd.length} actualizar)\nInstancias: ${totalInst} (${r.inst.nuevos.length} nuevos, ${r.inst.upd.length} actualizar)\n\nLas filas con error se omiten.`)) return;
+  if (btn) { btn.disabled = true; btn._t = btn.textContent; btn.textContent = '⏳ Importando...'; }
+  try {
+    const ts = new Date().toISOString();
+    // 1) Catálogo (batch troceado a 450)
+    const catOps = [...r.cat.nuevos, ...r.cat.upd];
+    for (let k = 0; k < catOps.length; k += 450) {
+      const batch = db.batch();
+      catOps.slice(k, k + 450).forEach(op => batch.set(db.collection('insumos_catalogo').doc(op.docId), { ...op.item, origen: 'IMPORT_XLSX', updatedAt: ts, updatedBy: maUser.email }, { merge: true }));
+      await batch.commit();
+    }
+    catOps.forEach(op => { const idx = catalogoData.findIndex(x => x.id === op.docId); if (idx >= 0) catalogoData[idx] = { ...catalogoData[idx], ...op.item }; else catalogoData.push({ id: op.docId, ...op.item }); });
+    // 2) Instancias (no toca paqueteId)
+    const instOps = [...r.inst.nuevos, ...r.inst.upd];
+    const idsImportadas = new Set(instOps.map(op => op.docId));
+    for (let k = 0; k < instOps.length; k += 450) {
+      const batch = db.batch();
+      instOps.slice(k, k + 450).forEach(op => {
+        const data = { ...op.inst, updatedAt: ts, updatedBy: maUser.email };
+        if (op.esNuevo) { data.creadoEn = ts; data.creadoPor = maUser.email; data.origen = 'IMPORT_XLSX'; }
+        batch.set(db.collection('insumos_instancias').doc(op.docId), data, { merge: true });
+      });
+      await batch.commit();
+    }
+    instOps.forEach(op => { const idx = instanciasData.findIndex(x => x.id === op.docId); if (idx >= 0) instanciasData[idx] = { ...instanciasData[idx], ...op.inst }; else instanciasData.push({ id: op.docId, ...op.inst }); });
+    // 3) Propagar nombre del catálogo a instancias hijas existentes NO incluidas en el archivo (invariante Etapa 1)
+    let propBatch = db.batch(), propCount = 0;
+    for (const op of r.cat.upd.filter(o => o.nombreCambiado)) {
+      const hijas = instanciasData.filter(i => i.itemId === op.docId && !idsImportadas.has(i.id) && i.nombre !== op.item.nombre);
+      for (const h of hijas) {
+        propBatch.update(db.collection('insumos_instancias').doc(h.id), { nombre: op.item.nombre, updatedAt: ts, updatedBy: maUser.email });
+        h.nombre = op.item.nombre;
+        if (++propCount % 450 === 0) { await propBatch.commit(); propBatch = db.batch(); }
+      }
+    }
+    if (propCount % 450 !== 0) await propBatch.commit();
+    toast(`✓ Importación completa — catálogo ${totalCat}, instancias ${totalInst}`, 'ok');
+    _cmImport = null;
+    closeModal('modal-carga-masiva');
+    renderAll();
+  } catch(e) { toast('Error al importar: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._t || '✓ Confirmar importación'; } }
 }
 
 // ── TRANSFERENCIA ─────────────────────────────────────────
