@@ -2970,6 +2970,22 @@ const CM_REGLAS = [
   'Una fila con un valor inválido (categoría mal escrita, sede inexistente, etc.) se OMITE; el resto se importa igual.',
   'Antes de escribir verás un resumen: cuántos son nuevos, cuántos se actualizan y cuántos tienen error.',
 ];
+// Ejemplo guiado (mismo texto en la hoja Instrucciones y en el manual PDF)
+const CM_EJEMPLO = [
+  'EJEMPLO — agregar un TALADRO y 2 unidades',
+  '',
+  'Paso 1) En la hoja "Catalogo", agrega 1 fila con el item:',
+  'NOMBRE = TALADRO PERCUTOR  |  CATEGORIA = HERRAMIENTA  |  UNIDAD = UND  |  CODIGO = TALA-01  |  STOCK_MIN = 1  |  TIPO_CANTIDAD = UNIDAD',
+  '',
+  'Paso 2) En la hoja "Instancias", agrega 1 fila por cada unidad fisica (todas con el mismo ITEM_ID):',
+  'Unidad 1:   ITEM_ID = TALA-01  |  SEDE = CHINCHON OFICINA  |  ESTADO = DISPONIBLE  |  RESPONSABLE = JOSE MARCHENA',
+  'Unidad 2:   ITEM_ID = TALA-01  |  SEDE = CHINCHON OFICINA  |  ESTADO = DISPONIBLE',
+  '',
+  'CLAVE: ITEM_ID = el CODIGO del item (TALA-01). Es lo que une cada unidad con su item del catalogo.',
+  'El NOMBRE de la instancia se deja vacio: se toma del catalogo. Las 2 unidades quedaran como TAL-001 y TAL-002.',
+  'Cada unidad puede ir en una sede distinta (elige del menu desplegable). Para 5 taladros, pon 5 filas.',
+  'Si el item ya existe en el sistema, no toques la hoja Catalogo: ve directo a la hoja Instancias.',
+];
 
 function _cmInstruccionesSheet() {
   const A = [
@@ -2990,9 +3006,7 @@ function _cmInstruccionesSheet() {
     ['Columna', 'Obligatoriedad', 'Detalle'],
     ...CM_GUIA_INST,
     [],
-    ['EJEMPLOS'],
-    ['Catalogo:', 'FILTRO DE AIRE G4 24X24', 'INSUMO', 'UND', 'FILT-G4', '3M', '', '5', 'UNIDAD'],
-    ['Instancias:', '(ITEM_ID) FILT-G4', '(SEDE) CHINCHON OFICINA', '(ESTADO) DISPONIBLE'],
+    ...CM_EJEMPLO.map(l => [l]),
     [],
     ['REGLAS IMPORTANTES'],
     ...CM_REGLAS.map(r => ['• ' + r]),
@@ -3169,6 +3183,9 @@ function descargarManualCargaMasiva() {
   p('Tipo de cantidad:  ' + CM_TIPOCANT.join('  ·  '));
   p('Estado:  ' + CM_ESTADOS.join('  ·  '));
   p('Sedes válidas:  ' + (sedes.length ? sedes.map(s => s.sede).join('  ·  ') : '(ninguna registrada)'));
+  y += 2;
+  h2('Ejemplo paso a paso');
+  CM_EJEMPLO.slice(1).forEach(l => { if (l) p(l, 2); else y += 2; });
   y += 2;
   h2('Reglas importantes');
   CM_REGLAS.forEach(r => p('•  ' + r, 2));
