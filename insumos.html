@@ -1114,8 +1114,12 @@ tbody td{padding:9px 12px;vertical-align:middle}
     <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:14px">
       <div class="modal-sub">Importa o exporta el <strong>catálogo</strong> y las <strong>instancias</strong> en un solo archivo <strong>.xlsx</strong>. La importación es <strong>upsert</strong>: actualiza lo existente (catálogo por <code>CODIGO</code>, instancias por <code>ID</code>) y crea lo nuevo. Verás un resumen antes de escribir nada.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="descargarManualCargaMasiva()" title="Guía paso a paso en PDF">📖 Manual (PDF)</button>
         <button class="btn btn-sm" onclick="descargarPlantillaInsumos()">⬇ Descargar plantilla</button>
         <button class="btn btn-sm" onclick="exportarBaseInsumos()">⬇ Exportar base actual</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:6px;padding:8px 10px;border-left:3px solid var(--blue);line-height:1.5">
+        💡 ¿Primera vez? Descarga el <strong>Manual (PDF)</strong> o abre la hoja <strong>"Instrucciones"</strong> dentro de la plantilla. Las filas de ejemplo (con ID = EJEMPLO) se ignoran al importar.
       </div>
       <div style="border-top:1px solid var(--border);padding-top:12px">
         <div class="form-label">Importar archivo</div>
@@ -2936,8 +2940,67 @@ function openModalCargaMasiva() {
 }
 
 // Hoja "Valores validos" como array-of-arrays (referencia para el usuario)
+// Texto guía de cada columna (reutilizado por la hoja Instrucciones y el manual PDF)
+const CM_GUIA_CAT = [
+  ['ID', 'opcional', 'Vacío en ítems nuevos (se autogenera). En existentes, NO lo cambies.'],
+  ['NOMBRE', 'OBLIGATORIO', 'Nombre del ítem. Ej: FILTRO DE AIRE G4 24X24'],
+  ['CATEGORIA', 'OBLIGATORIO', 'INSUMO o HERRAMIENTA'],
+  ['UNIDAD', 'OBLIGATORIO', 'UND, KG, LT, MT, ROLLO, CAJA, PAR o JGO'],
+  ['CODIGO', 'OBLIGATORIO', 'Código único del ítem (es la llave del upsert). Ej: FILT-G4'],
+  ['MARCA', 'opcional', 'Ej: 3M'],
+  ['MODELO', 'opcional', ''],
+  ['STOCK_MIN', 'opcional', 'Número para alertar stock bajo (0 = sin alerta)'],
+  ['TIPO_CANTIDAD', 'opcional', 'UNIDAD (por defecto) o RANGO (líquidos medidos por %)'],
+];
+const CM_GUIA_INST = [
+  ['ID', 'opcional', 'Vacío para crear (se autogenera PREFIJO-001). Indícalo para actualizar una existente.'],
+  ['ITEM_ID', 'OBLIGATORIO', 'A qué ítem del catálogo pertenece. Pon su CODIGO (ej: FILT-G4) o su ID.'],
+  ['NOMBRE', 'automático', 'Se toma del catálogo. Puedes dejarlo vacío.'],
+  ['SEDE', 'recomendado', 'Debe ser una sede existente (ver hoja Valores validos).'],
+  ['ESTADO', 'opcional', 'DISPONIBLE (por defecto), EN_USO, MANTENIMIENTO, DETERIORADO o BAJA'],
+  ['RESPONSABLE', 'opcional', 'Persona a cargo'],
+  ['NOTAS', 'opcional', ''],
+  ['PLANO', 'opcional', 'Ubicación/plano físico, si aplica'],
+  ['NIVEL', 'opcional', 'Solo para ítems RANGO: 0 a 100 (%)'],
+];
+const CM_REGLAS = [
+  'Las filas con ID = EJEMPLO son solo guía: el importador las IGNORA (puedes borrarlas o dejarlas).',
+  'Al importar se hace UPSERT: si ya existe se ACTUALIZA, si no, se CREA. Catálogo por CODIGO, instancias por ID.',
+  'El nombre de cada instancia SIEMPRE se toma del catálogo (mantiene todo consistente).',
+  'La importación NO cambia la pertenencia a paquetes (eso se hace en la pestaña Paquetes).',
+  'Una fila con un valor inválido (categoría mal escrita, sede inexistente, etc.) se OMITE; el resto se importa igual.',
+  'Antes de escribir verás un resumen: cuántos son nuevos, cuántos se actualizan y cuántos tienen error.',
+];
+
+function _cmInstruccionesSheet() {
+  const A = [
+    ['📖 CARGA MASIVA DE INSUMOS — INSTRUCCIONES'],
+    [],
+    ['Sirve para crear o actualizar el inventario en bloque desde Excel.'],
+    [],
+    ['FLUJO RECOMENDADO'],
+    ['1) Pulsa "Exportar base actual" para partir de tus datos reales (o usa esta plantilla).'],
+    ['2) Edita las hojas "Catalogo" e "Instancias".'],
+    ['3) Pulsa "Importar", revisa el resumen (nuevos / a actualizar / con error) y confirma.'],
+    [],
+    ['HOJA "Catalogo" — el TIPO de ítem (un filtro, un taladro...)'],
+    ['Columna', 'Obligatoriedad', 'Detalle'],
+    ...CM_GUIA_CAT,
+    [],
+    ['HOJA "Instancias" — cada UNIDAD FÍSICA de un ítem del catálogo'],
+    ['Columna', 'Obligatoriedad', 'Detalle'],
+    ...CM_GUIA_INST,
+    [],
+    ['REGLAS IMPORTANTES'],
+    ...CM_REGLAS.map(r => ['• ' + r]),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(A);
+  ws['!cols'] = [{ wch: 16 }, { wch: 15 }, { wch: 92 }];
+  return ws;
+}
+
 function _cmValoresValidos() {
-  return XLSX.utils.aoa_to_sheet([
+  const ws = XLSX.utils.aoa_to_sheet([
     ['VALORES VALIDOS — usa exactamente estos textos en las columnas correspondientes'],
     [],
     ['CATEGORIA (catalogo)', ...CM_CATEGORIAS],
@@ -2947,25 +3010,39 @@ function _cmValoresValidos() {
     ['SEDE (instancias)', ...sedes.map(s => s.sede)],
     [],
     ['ITEMS DEL CATALOGO (para la columna ITEM_ID de Instancias — usa el ID o el CODIGO)'],
-    ['ID','CODIGO','NOMBRE'],
+    ['ID', 'CODIGO', 'NOMBRE'],
     ...catalogoData.map(c => [c.id, c.codigo || '', c.nombre || ''])
   ]);
+  ws['!cols'] = [{ wch: 26 }, { wch: 16 }, { wch: 40 }];
+  return ws;
 }
 
 function _cmBuildWorkbook(catRows, instRows) {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([CM_CAT_COLS, ...catRows]), 'Catalogo');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([CM_INST_COLS, ...instRows]), 'Instancias');
+  XLSX.utils.book_append_sheet(wb, _cmInstruccionesSheet(), 'Instrucciones');
+  const wsCat = XLSX.utils.aoa_to_sheet([CM_CAT_COLS, ...catRows]);
+  wsCat['!cols'] = [{ wch: 14 }, { wch: 30 }, { wch: 13 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 14 }];
+  const wsInst = XLSX.utils.aoa_to_sheet([CM_INST_COLS, ...instRows]);
+  wsInst['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 22 }, { wch: 14 }, { wch: 7 }];
+  XLSX.utils.book_append_sheet(wb, wsCat, 'Catalogo');
+  XLSX.utils.book_append_sheet(wb, wsInst, 'Instancias');
   XLSX.utils.book_append_sheet(wb, _cmValoresValidos(), 'Valores validos');
   return wb;
 }
 
 function descargarPlantillaInsumos() {
   if (typeof XLSX === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
-  const catEj = [['', 'FILTRO DE AIRE G4 24X24', 'INSUMO', 'UND', 'FILT-G4', '3M', '', '5', 'UNIDAD']];
-  const instEj = [['', 'FILT-G4', '(se toma del catálogo)', 'CHINCHON OFICINA', 'DISPONIBLE', '', '', '', '']];
+  // Filas de ejemplo marcadas con ID=EJEMPLO → el importador las ignora aunque no se borren
+  const catEj = [
+    ['EJEMPLO', 'FILTRO DE AIRE G4 24X24', 'INSUMO', 'UND', 'FILT-G4', '3M', '', '5', 'UNIDAD'],
+    ['EJEMPLO', 'TALADRO PERCUTOR', 'HERRAMIENTA', 'UND', 'TALA-01', 'BOSCH', 'GSB 13 RE', '1', 'UNIDAD'],
+  ];
+  const instEj = [
+    ['EJEMPLO', 'FILT-G4', '(se toma del catálogo)', 'CHINCHON OFICINA', 'DISPONIBLE', '', 'Sin ID = se autogenera', '', ''],
+    ['EJEMPLO', 'TALA-01', '(se toma del catálogo)', 'CHINCHON OFICINA', 'EN_USO', 'JOSE MARCHENA', '', 'ANAQUEL 02', ''],
+  ];
   XLSX.writeFile(_cmBuildWorkbook(catEj, instEj), `plantilla_insumos_${new Date().toISOString().slice(0,10)}.xlsx`);
-  toast('✓ Plantilla descargada', 'ok');
+  toast('✓ Plantilla descargada — revisa la hoja "Instrucciones"', 'ok');
 }
 
 function exportarBaseInsumos() {
@@ -2974,6 +3051,64 @@ function exportarBaseInsumos() {
   const instRows = instanciasData.map(i => [i.id, i.itemId||'', i.nombre||'', i.sede||'', i.estado||'DISPONIBLE', i.responsable||'', i.notas||'', i.plano||'', (i.nivel!==undefined?i.nivel:'')]);
   XLSX.writeFile(_cmBuildWorkbook(catRows, instRows), `insumos_base_${new Date().toISOString().slice(0,10)}.xlsx`);
   toast('✓ Base exportada', 'ok');
+}
+
+// Manual en PDF (jsPDF) — guía paso a paso para aprender/enseñar la carga masiva
+function descargarManualCargaMasiva() {
+  if (!(window.jspdf && window.jspdf.jsPDF)) { toast('PDF no disponible — reintenta', 'err'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const PW = 210, PH = 297, M = 14, maxW = PW - M * 2;
+  let y = 0;
+  const ensure = need => { if (y + need > PH - 14) { doc.addPage(); y = 18; } };
+  const h2 = t => { ensure(12); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(37, 99, 175); doc.text(t, M, y); y += 6; doc.setTextColor(40); };
+  const p = (t, indent = 0) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(55); doc.splitTextToSize(t, maxW - indent).forEach(ln => { ensure(6); doc.text(ln, M + indent, y); y += 5; }); };
+  const tableRow = (c1, c2, c3) => {
+    doc.setFontSize(9);
+    const x1 = M, x2 = M + 34, x3 = M + 62;
+    const l3 = doc.splitTextToSize(c3 || '', PW - M - x3);
+    const rows = Math.max(1, l3.length);
+    ensure(rows * 4.6 + 2);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(40); doc.text(c1, x1, y);
+    doc.setFont('helvetica', 'normal');
+    const oblig = /OBLIG/i.test(c2);
+    doc.setTextColor(oblig ? 185 : 120, oblig ? 40 : 120, oblig ? 40 : 120); doc.text(c2, x2, y);
+    doc.setTextColor(60); l3.forEach((ln, i) => doc.text(ln, x3, y + i * 4.6));
+    y += rows * 4.6 + 1.6; doc.setTextColor(40);
+  };
+  // Cabecera
+  doc.setFillColor(37, 99, 175); doc.rect(0, 0, PW, 22, 'F');
+  doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+  doc.text('Carga masiva de Insumos — Manual', M, 13);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+  doc.text('MultiAire · app Insumos', M, 18.5);
+  y = 30; doc.setTextColor(40);
+
+  p('Permite crear o actualizar el inventario en bloque usando un archivo Excel (.xlsx). Al importar se hace UPSERT: si el registro ya existe se actualiza, si no, se crea.');
+  y += 1;
+  h2('Flujo recomendado');
+  p('1)  Pulsa "Exportar base actual" para partir de tus datos reales (o usa la plantilla).', 2);
+  p('2)  Edita las hojas "Catalogo" e "Instancias".', 2);
+  p('3)  Pulsa "Importar", revisa el resumen (nuevos / a actualizar / con error) y confirma.', 2);
+  y += 2;
+  h2('Hoja "Catalogo" — el tipo de ítem (un filtro, un taladro...)');
+  CM_GUIA_CAT.forEach(r => tableRow(r[0], r[1], r[2]));
+  y += 2;
+  h2('Hoja "Instancias" — cada unidad física de un ítem');
+  CM_GUIA_INST.forEach(r => tableRow(r[0], r[1], r[2]));
+  y += 2;
+  h2('Valores válidos');
+  p('Categoría:  ' + CM_CATEGORIAS.join('  ·  '));
+  p('Unidad:  ' + CM_UNIDADES.join('  ·  '));
+  p('Tipo de cantidad:  ' + CM_TIPOCANT.join('  ·  '));
+  p('Estado:  ' + CM_ESTADOS.join('  ·  '));
+  p('Sedes válidas:  ' + (sedes.length ? sedes.map(s => s.sede).join('  ·  ') : '(ninguna registrada)'));
+  y += 2;
+  h2('Reglas importantes');
+  CM_REGLAS.forEach(r => p('•  ' + r, 2));
+
+  doc.save('manual_carga_masiva_insumos.pdf');
+  toast('✓ Manual descargado', 'ok');
 }
 
 // Lee una hoja (por nombre flexible a acentos/mayúsculas) a objetos con claves normalizadas
@@ -3007,6 +3142,7 @@ function _cmValidar(catRows, instRows) {
   const codigosArchivo = new Set();
   catRows.forEach((r, idx) => {
     const fila = idx + 2;
+    if (_cmStr(r.ID).toUpperCase().startsWith('EJEMPLO')) return;  // fila guía de la plantilla — se ignora
     const nombre = _cmStr(r.NOMBRE).toUpperCase(), codigo = _cmStr(r.CODIGO).toUpperCase();
     if (!nombre && !codigo && !_cmStr(r.ID)) return;  // fila vacía
     if (!nombre) { out.cat.err.push({ fila, msg: 'NOMBRE vacío' }); return; }
@@ -3040,6 +3176,7 @@ function _cmValidar(catRows, instRows) {
   };
   instRows.forEach((r, idx) => {
     const fila = idx + 2;
+    if (_cmStr(r.ID).toUpperCase().startsWith('EJEMPLO')) return;  // fila guía de la plantilla — se ignora
     const itemRef = _cmStr(r.ITEM_ID);
     if (!itemRef && !_cmStr(r.ID) && !_cmStr(r.SEDE)) return;  // fila vacía
     if (!itemRef) { out.inst.err.push({ fila, msg: 'ITEM_ID vacío' }); return; }
