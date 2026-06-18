@@ -287,6 +287,8 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .tec-card-stats{font-size:11px;color:var(--muted2);margin-top:2px}
 .inst-foto-preview{width:64px;height:64px;border-radius:8px;object-fit:cover;border:1.5px solid var(--border);display:block}
 .inst-foto-empty{width:64px;height:64px;border-radius:8px;border:1.5px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:22px;background:var(--surface2)}
+.mov-fotos{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.mov-foto-thumb{width:40px;height:40px;border-radius:6px;object-fit:cover;border:1px solid var(--border);cursor:zoom-in;display:block}
 .inst-thumb{width:30px;height:30px;border-radius:6px;object-fit:cover;border:1px solid var(--border);cursor:pointer;display:block;flex-shrink:0}
 .inst-thumb-empty{width:30px;height:30px;border-radius:6px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;cursor:pointer;background:var(--surface2);flex-shrink:0}
 .cam-only-mobile{display:none}
@@ -440,6 +442,10 @@ tbody td{padding:9px 12px;vertical-align:middle}
           </div>
           <button class="btn btn-sm btn-primary" onclick="exportInstQRZip()">⬇ Exportar etiquetas ZIP</button>
           <button class="btn btn-sm" onclick="exportInstCSVPhomemo()" title="CSV de códigos para impresión por lotes en Phomemo">📄 CSV (Phomemo)</button>
+          <span id="inst-lote-actions" style="display:none;gap:8px">
+            <button class="btn btn-sm" onclick="openModalSalidaLote('SALIDA')" title="Registrar salida de las instancias seleccionadas">⬆ Salida en lote</button>
+            <button class="btn btn-sm" onclick="openModalSalidaLote('BAJA')" style="color:var(--red)" title="Dar de baja las instancias seleccionadas">⚠️ Baja en lote</button>
+          </span>
           <button class="btn btn-sm" onclick="clearInstQRSelection()">✕ Limpiar</button>
         </div>
       </div>
@@ -993,6 +999,51 @@ tbody td{padding:9px 12px;vertical-align:middle}
   </div>
 </div>
 
+<!-- MODAL SALIDA / BAJA EN LOTE -->
+<div class="modal-overlay" id="modal-salida-lote" onclick="if(event.target===this)closeModal('modal-salida-lote')">
+  <div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:90vh">
+    <div class="modal-header" style="flex-shrink:0">
+      <div class="modal-title" id="modal-lote-title">⬆ Salida en lote</div>
+      <div onclick="closeModal('modal-salida-lote')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div id="modal-lote-sub" class="modal-sub" style="margin-bottom:12px;flex-shrink:0"></div>
+    <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+      <div class="form-group full">
+        <div class="form-label">Instancias seleccionadas (<span id="lote-inst-count">0</span>)</div>
+        <div id="lote-inst-list" style="max-height:160px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:11px;display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+      <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="flote-personal"></select></div>
+      <div class="form-group full"><div class="form-label" id="flote-motivo-label">Observación</div><textarea class="form-textarea" id="flote-motivo" placeholder="Describe el motivo..."></textarea></div>
+      <div class="form-group full">
+        <div class="form-label">N° de guía de remisión <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <input type="text" class="form-input" id="flote-guia-num" placeholder="Ej. 001-000123">
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de la guía <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="flote-guia-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="flote-guia-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="flote-guia-input" accept="image/*" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="flote-guia-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="flote-guia-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+        </div>
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de entrega <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="flote-entrega-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="flote-entrega-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="flote-entrega-input" accept="image/*" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="flote-entrega-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="flote-entrega-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot" style="flex-shrink:0">
+      <button class="btn" onclick="closeModal('modal-salida-lote')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-lote" onclick="saveSalidaLote()">⬆ Confirmar salida</button>
+    </div>
+  </div>
+</div>
+
 <!-- LIGHTBOX FOTO INSTANCIA -->
 <div class="foto-lightbox" id="foto-lightbox" onclick="closeInstFotoLightbox()">
   <button class="foto-lightbox-close" onclick="closeInstFotoLightbox()" title="Cerrar">✕</button>
@@ -1172,7 +1223,7 @@ const PERMS = {
 };
 function can(p){ return (PERMS[maUser?.rol]||PERMS.TECNICO)[p]||0; }
 
-let maUser=null, catalogoData=[], movimientosData=[], stockData={}, sedes=[], personalData=[], paquetesData=[], instanciasData=[], instFotos={};
+let maUser=null, catalogoData=[], movimientosData=[], stockData={}, sedes=[], personalData=[], paquetesData=[], instanciasData=[], instFotos={}, movFotos={};
 let filteredCatalogo=[], currentMovTipo='SALIDA', editingInsumoId=null, editingPaqId=null, applyingPaqId=null, paqRowIdx=0;
 
 // ── AUTH — mismo sistema que otras apps ──────────────────────────────────────
@@ -1423,7 +1474,7 @@ function buildSidebar(){
 
 async function loadAll(){
   try{
-    const [catS,movS,tiendasS,persS,paqS,instS,instFotoS]=await Promise.all([
+    const [catS,movS,tiendasS,persS,paqS,instS,instFotoS,movFotoS]=await Promise.all([
       db.collection('insumos_catalogo').get(),
       db.collection('insumos_movimientos').orderBy('fecha','desc').limit(200).get(),
       db.collection('maestros_tiendas').get(),
@@ -1431,8 +1482,11 @@ async function loadAll(){
       db.collection('insumos_paquetes').get(),
       db.collection('insumos_instancias').get(),
       db.collection('insumos_instancias_fotos').get(),
+      db.collection('insumos_movimientos_fotos').get(),
     ]);
     instFotos={}; instFotoS.docs.forEach(d=>{const f=d.data().foto; if(f) instFotos[d.id]=f;});
+    // Fotos adjuntas a movimientos (guía de remisión + foto de entrega). Doc id = id del movimiento.
+    movFotos={}; movFotoS.docs.forEach(d=>{const x=d.data(); if(x.guiaFoto||x.entregaFoto) movFotos[d.id]={guia:x.guiaFoto||null,entrega:x.entregaFoto||null};});
     catalogoData=catS.docs.map(d=>({id:d.id,...d.data()}));
     movimientosData=movS.docs.map(d=>({id:d.id,...d.data()}));
     stockData={};
@@ -1695,11 +1749,16 @@ function renderMovimientos(){
     const delBtn=canMod?`<button class="btn btn-sm btn-red" title="Revertir acción" onclick="revertirMovimiento('${m.id}')">↩ Revertir</button>`:'';
     const editBtn=canMod&&can('editarMov')?`<button class="btn btn-sm" title="Editar" onclick="editarMovimiento('${m.id}')">✏️</button>`:'';
     const aprobarBtn=isPend&&can('aprobar')===1?`<button class="btn btn-sm btn-green" onclick="aprobarSolicitud('${m.id}')">✓ Aprobar</button><button class="btn btn-sm btn-red" onclick="rechazarSolicitud('${m.id}')">✗ Rechazar</button>`:'';
+    // Adjuntos: N° de guía de remisión + miniaturas de fotos (guía/entrega), clicables → lightbox
+    const guiaTxt = m.guiaNumero ? `<span style="font-size:10px;color:var(--blue)"> · 📎 Guía ${m.guiaNumero}</span>` : '';
+    const mf = movFotos[m.id];
+    const fotosThumbs = mf ? `<div class="mov-fotos">${mf.guia?`<img src="${mf.guia}" class="mov-foto-thumb" title="Foto de guía — ampliar" onclick="openMovFoto('${m.id}','guia')">`:''}${mf.entrega?`<img src="${mf.entrega}" class="mov-foto-thumb" title="Foto de entrega — ampliar" onclick="openMovFoto('${m.id}','entrega')">`:''}</div>` : '';
     return `<div class="mov-item ${isPend?'pendiente':''}">
       <div class="mov-icon ${tCls}">${icons[m.tipo]||'📦'}</div>
       <div class="mov-body">
         <div class="mov-title">${m.tipo==='TRANSFERENCIA_PAQUETE'?'🎒 '+(m.paqueteNombre||m.paqueteId||'Paquete'):m.itemNombre||'—'} <span class="tipo-badge tipo-${tCls.replace('solicitud_','')}">${(m.tipo||'').replace('SOLICITUD_','')}</span> ${badge}${pkgBadge}</div>
-        <div class="mov-meta">${fs} · ${m.responsable||m.usuario||'—'}${sedeStr?' · '+sedeStr:''}${m.motivo?' · '+m.motivo:''}${instInfo}${cambiosInfo}</div>
+        <div class="mov-meta">${fs} · ${m.responsable||m.usuario||'—'}${sedeStr?' · '+sedeStr:''}${m.motivo?' · '+m.motivo:''}${instInfo}${cambiosInfo}${guiaTxt}</div>
+        ${fotosThumbs}
       </div>
       <div class="mov-qty ${tCls}">${cantInfo} ${m.unidad||'UND'}</div>
       ${(delBtn||editBtn||aprobarBtn)?`<div class="mov-actions">${aprobarBtn}${editBtn}${delBtn}</div>`:''}
@@ -2488,6 +2547,155 @@ async function saveSalida() {
   finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '⬆ Confirmar'; } }
 }
 
+// ── SALIDA / BAJA EN LOTE ─────────────────────────────────
+// Reutiliza la selección múltiple del tab Instancias (selectedInstQRIds).
+// Crea UN movimiento con instancias[] y, opcionalmente, guarda guía + fotos en insumos_movimientos_fotos.
+let currentLoteTipo = 'SALIDA';
+let loteFotos = { guia: null, entrega: null };  // dataURLs temporales hasta confirmar
+
+// Comprime manteniendo proporción (para documentos/escenas: guía, entrega). Distinto de compressSquare (recorte cuadrado, avatares).
+function compressFit(file, maxSide, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxSide || h > maxSide) {
+          if (w >= h) { h = Math.round(h * maxSide / w); w = maxSide; }
+          else { w = Math.round(w * maxSide / h); h = maxSide; }
+        }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => reject(new Error('Imagen inválida'));
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function openModalSalidaLote(tipo = 'SALIDA') {
+  if (can('salida') !== 1) { toast('No tienes permiso para registrar salidas', 'err'); return; }
+  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
+  if (!ids.length) { toast('Selecciona al menos una instancia', 'warn'); return; }
+  currentLoteTipo = tipo;
+  const esBaja = tipo === 'BAJA';
+  loteFotos = { guia: null, entrega: null };
+  document.getElementById('modal-lote-title').textContent = esBaja ? '⚠️ Baja en lote' : '⬆ Salida en lote';
+  document.getElementById('modal-lote-sub').innerHTML = esBaja
+    ? '⚠️ <strong>Baja:</strong> los bienes ya no sirven por daño, pérdida o robo. El motivo es obligatorio. Se eliminan del inventario.'
+    : '📤 <strong>Salida:</strong> los bienes fueron consumidos o entregados definitivamente. Se eliminan del inventario.';
+  document.getElementById('flote-motivo-label').textContent = esBaja ? 'Motivo * (obligatorio)' : 'Observación';
+  document.getElementById('btn-save-lote').textContent = esBaja ? '⚠️ Confirmar baja' : '⬆ Confirmar salida';
+  document.getElementById('flote-motivo').value = '';
+  document.getElementById('flote-guia-num').value = '';
+  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  document.getElementById('flote-personal').innerHTML = `<option value="">—</option>${pOpts}`;
+  document.getElementById('lote-inst-count').textContent = ids.length;
+  document.getElementById('lote-inst-list').innerHTML = ids.map(id => {
+    const inst = instanciasData.find(x => x.id === id);
+    return `<div><span style="font-family:var(--mono)">${id}</span> — ${inst.nombre} <span style="color:var(--muted2)">(${inst.sede || 'sin sede'} · ${inst.estado || 'DISPONIBLE'})</span></div>`;
+  }).join('') || '<div style="color:var(--muted)">Sin instancias válidas</div>';
+  refreshLoteFotoPreview('guia');
+  refreshLoteFotoPreview('entrega');
+  document.getElementById('modal-salida-lote').classList.add('open');
+}
+
+async function setLoteFoto(tipo, file) {
+  if (!file) return;
+  try {
+    loteFotos[tipo] = await compressFit(file, 1100, 0.7);
+    refreshLoteFotoPreview(tipo);
+  } catch(e) { toast('Error con la imagen: ' + e.message, 'err'); }
+}
+
+function removeLoteFoto(tipo) {
+  loteFotos[tipo] = null;
+  refreshLoteFotoPreview(tipo);
+}
+
+function refreshLoteFotoPreview(tipo) {
+  const box = document.getElementById(tipo === 'guia' ? 'flote-guia-box' : 'flote-entrega-box');
+  if (!box) return;
+  const f = loteFotos[tipo];
+  box.innerHTML = f
+    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openFotoSrc(loteFotos['${tipo}'])" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeLoteFoto('${tipo}')" title="Quitar foto">🗑</button>`
+    : `<div class="inst-foto-empty">📷</div>`;
+}
+
+// Lightbox genérico (reutiliza el visor de fotos de instancia) — recibe el dataURL directamente
+function openFotoSrc(src) {
+  if (!src) return;
+  document.getElementById('foto-lightbox-img').src = src;
+  document.getElementById('foto-lightbox').classList.add('open');
+}
+
+// Abre una foto adjunta a un movimiento (guía / entrega) desde la lista de movimientos
+function openMovFoto(movId, tipo) {
+  const f = movFotos[movId];
+  if (f && f[tipo]) openFotoSrc(f[tipo]);
+}
+
+async function saveSalidaLote() {
+  const btn = document.getElementById('btn-save-lote');
+  if (btn && btn.disabled) return;
+  const esBaja = currentLoteTipo === 'BAJA';
+  const motivo = document.getElementById('flote-motivo').value.trim();
+  const resp = document.getElementById('flote-personal').value;
+  const guiaNumero = document.getElementById('flote-guia-num').value.trim();
+  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
+  if (!ids.length) { toast('No hay instancias válidas seleccionadas', 'err'); return; }
+  if (esBaja && !motivo) { toast('El motivo es obligatorio para dar de baja', 'err'); return; }
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
+  try {
+    const insts = ids.map(id => instanciasData.find(x => x.id === id));
+    const itemIds = [...new Set(insts.map(i => i.itemId))];
+    const itemNombre = itemIds.length === 1 ? (insts[0].nombre || '') : `${insts.length} ítems variados`;
+    const itemId = itemIds.length === 1 ? insts[0].itemId : '';
+    const sedesUnq = [...new Set(insts.map(i => i.sede || ''))];
+    const sede = sedesUnq.length === 1 ? sedesUnq[0] : '';
+    // 1) Crear el movimiento (uno solo, con instancias[])
+    // instanciasSnapshot guarda los datos de cada instancia borrada para poder revertir fielmente
+    // (el lote puede ser mixto en ítem/sede; sin snapshot no se podría reconstruir cada unidad)
+    const movData = {
+      tipo: currentLoteTipo, itemId, itemNombre,
+      instancias: ids, instanciasSnapshot: insts.map(i => ({ ...i })),
+      sede, cantidad: ids.length, unidad: 'UND',
+      motivo, responsable: resp, usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
+    };
+    if (guiaNumero) movData.guiaNumero = guiaNumero;
+    if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
+    const movRef = await db.collection('insumos_movimientos').add(movData);
+    // 2) Fotos (guía / entrega) en colección aparte, doc id = id del movimiento
+    if (loteFotos.guia || loteFotos.entrega) {
+      const fotoDoc = { movimientoId: movRef.id, createdAt: new Date().toISOString(), createdBy: maUser.email };
+      if (guiaNumero) fotoDoc.guiaNumero = guiaNumero;
+      if (loteFotos.guia) fotoDoc.guiaFoto = loteFotos.guia;
+      if (loteFotos.entrega) fotoDoc.entregaFoto = loteFotos.entrega;
+      await db.collection('insumos_movimientos_fotos').doc(movRef.id).set(fotoDoc);
+      movFotos[movRef.id] = { guia: loteFotos.guia || null, entrega: loteFotos.entrega || null };
+    }
+    // 3) Eliminar las instancias (batch troceado a 450 por el límite de 500 de Firestore)
+    for (let k = 0; k < ids.length; k += 450) {
+      const lote = ids.slice(k, k + 450);
+      const batch = db.batch();
+      lote.forEach(id => batch.delete(db.collection('insumos_instancias').doc(id)));
+      await batch.commit();
+    }
+    instanciasData = instanciasData.filter(x => !ids.includes(x.id));
+    movimientosData.unshift({ id: movRef.id, ...movData });
+    toast(`✓ ${esBaja ? 'Baja' : 'Salida'} en lote — ${ids.length} instancia(s)`, 'ok');
+    closeModal('modal-salida-lote');
+    clearInstQRSelection();
+    renderAll();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '⬆ Confirmar'; } }
+}
+
 // ── TRANSFERENCIA ─────────────────────────────────────────
 function openModalTransferencia() {
   document.getElementById('ft-sede-origen').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s => `<option value="${s.sede}">${s.sede}</option>`).join('');
@@ -2668,6 +2876,9 @@ function updateInstQRSelectionBar() {
   if (selectedInstQRIds.size > 0) {
     bar.style.display = 'flex';
     count.textContent = selectedInstQRIds.size + ' seleccionado' + (selectedInstQRIds.size > 1 ? 's' : '');
+    // Acciones de salida/baja en lote: solo si el rol puede registrar salidas
+    const lote = document.getElementById('inst-lote-actions');
+    if (lote) lote.style.display = can('salida') === 1 ? 'inline-flex' : 'none';
   } else {
     bar.style.display = 'none';
   }
@@ -3340,6 +3551,11 @@ async function eliminarMovsCascada(instIds, excludeMovId, fromFecha=null) {
   });
   for (const m of movsACascada) {
     await db.collection('insumos_movimientos').doc(m.id).delete();
+    // Borrar fotos adjuntas (guía/entrega) para no dejar huérfanos
+    if (movFotos[m.id] || m.tieneFotos) {
+      await db.collection('insumos_movimientos_fotos').doc(m.id).delete().catch(() => {});
+      delete movFotos[m.id];
+    }
   }
   const cascadaIds = new Set(movsACascada.map(m => m.id));
   movimientosData = movimientosData.filter(m => !cascadaIds.has(m.id));
@@ -3363,9 +3579,12 @@ async function revertirMovimiento(movId) {
     );
     if (movsAfectados.length) cascadaMsg = `\n\nSe eliminarán también ${movsAfectados.length} movimiento(s) relacionado(s) (actualizaciones, transferencias, salidas de esas instancias).`;
   } else if (mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') {
-    const instId = mov.instanciaId;
-    const movsPost = movimientosData.filter(m => m.id !== movId && m.instanciaId === instId);
-    if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de esta instancia.`;
+    const ids = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+    const movsPost = movimientosData.filter(m => m.id !== movId && (
+      (m.instanciaId && ids.includes(m.instanciaId)) ||
+      (m.instancias && m.instancias.some(id => ids.includes(id)))
+    ));
+    if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de ${ids.length > 1 ? 'estas instancias' : 'esta instancia'}.`;
   } else if (mov.tipo === 'TRANSFERENCIA') {
     const instId = mov.instanciaId;
     const movsPost = movimientosData.filter(m => m.id !== movId && m.instanciaId === instId);
@@ -3391,21 +3610,38 @@ async function revertirMovimiento(movId) {
       toast(`✓ Entrada revertida — ${ids.length} instancia(s) eliminada(s)${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
 
     } else if (mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') {
-      const instId = mov.instanciaId;
-      if (!instId) { toast('No se puede revertir: sin ID de instancia', 'err'); return; }
-      // Cascada: eliminar movimientos posteriores de esta instancia (no tienen sentido si la instancia "no salió")
-      const nCascada = await eliminarMovsCascada([instId], movId);
-      // Recrear la instancia
-      const item = catalogoData.find(x => x.id === mov.itemId);
-      const inst = {
-        itemId: mov.itemId, nombre: mov.itemNombre || (item ? item.nombre : ''),
-        sede: mov.sede || '', estado: 'DISPONIBLE',
-        creadoEn: new Date().toISOString(), creadoPor: maUser.email,
-        notas: `Restaurado el ${new Date().toLocaleDateString('es-PE')} (revertido desde historial)`
-      };
-      await db.collection('insumos_instancias').doc(instId).set(inst);
-      instanciasData.push({ id: instId, ...inst });
-      toast(`✓ ${mov.tipo === 'BAJA' ? 'Baja' : 'Salida'} revertida — ${instId} restaurado${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
+      // Soporta lote (instancias[] + instanciasSnapshot) y formato antiguo (instanciaId singular)
+      const ids = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+      if (!ids.length) { toast('No se puede revertir: sin ID de instancia', 'err'); return; }
+      // Cascada: eliminar movimientos posteriores de estas instancias (no tienen sentido si "no salieron")
+      const nCascada = await eliminarMovsCascada(ids, movId);
+      const fecha = new Date().toLocaleDateString('es-PE');
+      for (const instId of ids) {
+        // Restaurar desde el snapshot si existe (lote mixto) — fielmente; si no, reconstruir con los datos del movimiento
+        const snap = (mov.instanciasSnapshot || []).find(s => s.id === instId);
+        let inst;
+        if (snap) {
+          const { id, ...rest } = snap;
+          inst = { ...rest, estado: rest.estado && rest.estado !== 'BAJA' ? rest.estado : 'DISPONIBLE',
+            updatedAt: new Date().toISOString(), updatedBy: maUser.email };
+        } else {
+          const item = catalogoData.find(x => x.id === mov.itemId);
+          inst = {
+            itemId: mov.itemId, nombre: mov.itemNombre || (item ? item.nombre : ''),
+            sede: mov.sede || '', estado: 'DISPONIBLE',
+            creadoEn: new Date().toISOString(), creadoPor: maUser.email,
+            notas: `Restaurado el ${fecha} (revertido desde historial)`
+          };
+        }
+        await db.collection('insumos_instancias').doc(instId).set(inst);
+        instanciasData.push({ id: instId, ...inst });
+      }
+      // Eliminar fotos adjuntas al movimiento (guía/entrega), si las hubiera
+      if (movFotos[movId] || mov.tieneFotos) {
+        await db.collection('insumos_movimientos_fotos').doc(movId).delete().catch(() => {});
+        delete movFotos[movId];
+      }
+      toast(`✓ ${mov.tipo === 'BAJA' ? 'Baja' : 'Salida'} revertida — ${ids.length} instancia(s) restaurada(s)${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
 
     } else if (mov.tipo === 'TRANSFERENCIA') {
       const instId = mov.instanciaId;
@@ -3498,18 +3734,16 @@ async function editarMovimiento(movId) {
   // Instancias afectadas para ENTRADA / SALIDA / BAJA
   const instWrap = document.getElementById('em-instancias-wrap');
   const instList = document.getElementById('em-instancias-list');
-  if (mov.tipo === 'ENTRADA' && (mov.instancias?.length || mov.instanciaId)) {
-    const ids = mov.instancias || [mov.instanciaId];
-    instList.innerHTML = ids.map(id => {
+  const instIdsEdit = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+  if ((mov.tipo === 'ENTRADA' || mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') && instIdsEdit.length) {
+    const esSalida = mov.tipo !== 'ENTRADA';
+    instList.innerHTML = instIdsEdit.map(id => {
       const inst = instanciasData.find(x => x.id === id);
-      const estado = inst ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'}</span>` : `<span style="color:var(--red)"> · eliminada</span>`;
+      const estado = inst
+        ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'}${inst.sede?' · '+inst.sede:''}</span>`
+        : `<span style="color:var(--red)"> · ${esSalida ? 'ya no existe en inventario' : 'eliminada'}</span>`;
       return `<div>${id}${estado}</div>`;
     }).join('');
-    instWrap.style.display = 'block';
-  } else if ((mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') && mov.instanciaId) {
-    const inst = instanciasData.find(x => x.id === mov.instanciaId);
-    const estado = inst ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'} · ${inst.sede||'—'}</span>` : `<span style="color:var(--red)"> · ya no existe en inventario</span>`;
-    instList.innerHTML = `<div>${mov.instanciaId}${estado}</div>`;
     instWrap.style.display = 'block';
   } else {
     instWrap.style.display = 'none';
@@ -3552,27 +3786,7 @@ async function guardarEdicionMovimiento() {
     const movUpdates = { responsable, motivo };
 
     // Si es ACTUALIZACION, aplicar cambios editados a la instancia
-    // Instancias afectadas para ENTRADA / SALIDA / BAJA
-  const instWrap = document.getElementById('em-instancias-wrap');
-  const instList = document.getElementById('em-instancias-list');
-  if (mov.tipo === 'ENTRADA' && (mov.instancias?.length || mov.instanciaId)) {
-    const ids = mov.instancias || [mov.instanciaId];
-    instList.innerHTML = ids.map(id => {
-      const inst = instanciasData.find(x => x.id === id);
-      const estado = inst ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'}</span>` : `<span style="color:var(--red)"> · eliminada</span>`;
-      return `<div>${id}${estado}</div>`;
-    }).join('');
-    instWrap.style.display = 'block';
-  } else if ((mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') && mov.instanciaId) {
-    const inst = instanciasData.find(x => x.id === mov.instanciaId);
-    const estado = inst ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'} · ${inst.sede||'—'}</span>` : `<span style="color:var(--red)"> · ya no existe en inventario</span>`;
-    instList.innerHTML = `<div>${mov.instanciaId}${estado}</div>`;
-    instWrap.style.display = 'block';
-  } else {
-    instWrap.style.display = 'none';
-  }
-
-  if (mov.tipo === 'ACTUALIZACION' && mov.diffsData && mov.diffsData.length) {
+    if (mov.tipo === 'ACTUALIZACION' && mov.diffsData && mov.diffsData.length) {
       const instId = mov.instanciaId;
       const instUpdates = { updatedAt: new Date().toISOString(), updatedBy: maUser.email };
       const newDiffs = [];

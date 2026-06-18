@@ -286,6 +286,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>insumos_paquetes.csv</div>
             <div class="backup-file"><span></span>insumos_movimientos.csv</div>
             <div class="backup-file"><span></span>insumos_instancias_fotos.csv</div>
+            <div class="backup-file"><span></span>insumos_movimientos_fotos.csv</div>
             <div class="backup-file"><span></span>proveedores.csv</div>
           </div>
           <button class="btn btn-primary" onclick="exportBackup()" id="export-btn" style="width:100%">
@@ -888,7 +889,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, provSnap] = await Promise.all([
+    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('maestros_tiendas').get(),
@@ -905,6 +906,7 @@ async function exportBackup() {
       window.__db.collection('insumos_paquetes').get(),
       window.__db.collection('insumos_movimientos').get(),
       window.__db.collection('insumos_instancias_fotos').get(),
+      window.__db.collection('insumos_movimientos_fotos').get(),
       window.__db.collection('proveedores').get(),
     ]);
 
@@ -1043,6 +1045,14 @@ async function exportBackup() {
     });
     zip.file('insumos_instancias_fotos.csv', [insFotoHeaders.join(','), ...insFotoRows].join('\n'));
 
+    // 13b. Insumos — fotos de movimientos (guía de remisión + entrega; base64; colección aparte)
+    const insMovFotoHeaders = ['ID','GUIA_NUMERO','GUIA_FOTO','ENTREGA_FOTO','CREATED_AT','CREATED_BY'];
+    const insMovFotoRows = insMovFotoSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.guiaNumero||'', r.guiaFoto||'', r.entregaFoto||'', r.createdAt||'', r.createdBy||''].map(escapeCSV).join(',');
+    });
+    zip.file('insumos_movimientos_fotos.csv', [insMovFotoHeaders.join(','), ...insMovFotoRows].join('\n'));
+
     // 14. Proveedores (directorio)
     const provHeaders = ['ID','RUC','RAZON_SOCIAL','NOMBRE_COMERCIAL','RUBRO','TELEFONO','EMAIL','CONTACTO','DIRECCION','CONDICIONES_PAGO','BANCO','CUENTA','NOTAS','ACTIVO'];
     const provRows = provSnap.docs.map(d => {
@@ -1116,7 +1126,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','proveedores.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1371,6 +1381,15 @@ async function confirmImport() {
       const rows = parseCSV(pendingImport.files['insumos_instancias_fotos.csv']);
       await batchWrite('insumos_instancias_fotos', rows.filter(r=>r.FOTO), r => ({_docId:r.ID, instanciaId:r.ID, foto:r.FOTO}));
       addLog('✓ Fotos de instancias importadas (' + rows.filter(r=>r.FOTO).length + ')', 'ok');
+    }
+
+    // 13b. Insumos — fotos de movimientos (guía + entrega; base64)
+    if (pendingImport.files['insumos_movimientos_fotos.csv']) {
+      addLog('📎 Importando fotos de movimientos...', 'info');
+      const rows = parseCSV(pendingImport.files['insumos_movimientos_fotos.csv']);
+      const conFoto = rows.filter(r => r.GUIA_FOTO || r.ENTREGA_FOTO);
+      await batchWrite('insumos_movimientos_fotos', conFoto, r => { const o={_docId:r.ID, movimientoId:r.ID}; if(r.GUIA_NUMERO)o.guiaNumero=r.GUIA_NUMERO; if(r.GUIA_FOTO)o.guiaFoto=r.GUIA_FOTO; if(r.ENTREGA_FOTO)o.entregaFoto=r.ENTREGA_FOTO; if(r.CREATED_AT)o.createdAt=r.CREATED_AT; if(r.CREATED_BY)o.createdBy=r.CREATED_BY; return o; });
+      addLog('✓ Fotos de movimientos importadas (' + conFoto.length + ')', 'ok');
     }
 
     // 14. Proveedores (directorio)
