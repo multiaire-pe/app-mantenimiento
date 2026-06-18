@@ -1870,10 +1870,30 @@ async function saveInsumo(){
     updatedAt:new Date().toISOString(),createdBy:maUser.email};
   try{
     const docId=editingInsumoId||'INS-'+Date.now();
+    // Detectar cambio de nombre para propagarlo a las instancias hijas (el nombre está denormalizado en cada instancia)
+    const prevItem=editingInsumoId?catalogoData.find(x=>x.id===docId):null;
+    const nombreCambiado=!!prevItem && prevItem.nombre!==nombre;
     await db.collection('insumos_catalogo').doc(docId).set(item,{merge:!!editingInsumoId});
     if(!editingInsumoId)catalogoData.push({id:docId,...item});
     else{const idx=catalogoData.findIndex(x=>x.id===docId);if(idx>=0)catalogoData[idx]={id:docId,...item};}
-    toast(editingInsumoId?'✓ Ítem actualizado':'✓ Ítem creado — registra el stock inicial como Entrada','ok');
+    // Propagar el nuevo nombre a las instancias hijas (itemId === docId) — antes quedaban con el nombre viejo
+    let nProp=0;
+    if(nombreCambiado){
+      const hijas=instanciasData.filter(i=>i.itemId===docId);
+      if(hijas.length){
+        const ts=new Date().toISOString();
+        // Firestore limita cada batch a 500 ops; se trocea por si un ítem tuviera muchas instancias
+        for(let k=0;k<hijas.length;k+=450){
+          const lote=hijas.slice(k,k+450);
+          const batch=db.batch();
+          lote.forEach(i=>batch.update(db.collection('insumos_instancias').doc(i.id),{nombre,updatedAt:ts,updatedBy:maUser.email}));
+          await batch.commit();
+        }
+        hijas.forEach(i=>{i.nombre=nombre;i.updatedAt=ts;i.updatedBy=maUser.email;});
+        nProp=hijas.length;
+      }
+    }
+    toast(editingInsumoId?('✓ Ítem actualizado'+(nProp?` · ${nProp} instancia(s) renombrada(s)`:'')):'✓ Ítem creado — registra el stock inicial como Entrada','ok');
     closeModal('modal-insumo');renderAll();
   }catch(e){toast('Error: '+e.message,'err');}
 }
