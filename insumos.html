@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 :root{
@@ -287,6 +288,8 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .tec-card-stats{font-size:11px;color:var(--muted2);margin-top:2px}
 .inst-foto-preview{width:64px;height:64px;border-radius:8px;object-fit:cover;border:1.5px solid var(--border);display:block}
 .inst-foto-empty{width:64px;height:64px;border-radius:8px;border:1.5px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:22px;background:var(--surface2)}
+.mov-fotos{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.mov-foto-thumb{width:40px;height:40px;border-radius:6px;object-fit:cover;border:1px solid var(--border);cursor:zoom-in;display:block}
 .inst-thumb{width:30px;height:30px;border-radius:6px;object-fit:cover;border:1px solid var(--border);cursor:pointer;display:block;flex-shrink:0}
 .inst-thumb-empty{width:30px;height:30px;border-radius:6px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;cursor:pointer;background:var(--surface2);flex-shrink:0}
 .cam-only-mobile{display:none}
@@ -440,6 +443,11 @@ tbody td{padding:9px 12px;vertical-align:middle}
           </div>
           <button class="btn btn-sm btn-primary" onclick="exportInstQRZip()">⬇ Exportar etiquetas ZIP</button>
           <button class="btn btn-sm" onclick="exportInstCSVPhomemo()" title="CSV de códigos para impresión por lotes en Phomemo">📄 CSV (Phomemo)</button>
+          <span id="inst-lote-actions" style="display:none;gap:8px">
+            <button id="btn-lote-salida" class="btn btn-sm" onclick="openModalSalidaLote('SALIDA')" title="Registrar salida de las instancias seleccionadas">⬆ Salida en lote</button>
+            <button id="btn-lote-baja" class="btn btn-sm" onclick="openModalSalidaLote('BAJA')" style="color:var(--red)" title="Dar de baja las instancias seleccionadas">⚠️ Baja en lote</button>
+            <button id="btn-lote-transf" class="btn btn-sm" onclick="openModalTransfLote()" title="Transferir las instancias seleccionadas (sede y/o responsable)">🔄 Transferir en lote</button>
+          </span>
           <button class="btn btn-sm" onclick="clearInstQRSelection()">✕ Limpiar</button>
         </div>
       </div>
@@ -993,6 +1001,143 @@ tbody td{padding:9px 12px;vertical-align:middle}
   </div>
 </div>
 
+<!-- MODAL SALIDA / BAJA EN LOTE -->
+<div class="modal-overlay" id="modal-salida-lote" onclick="if(event.target===this)closeModal('modal-salida-lote')">
+  <div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:90vh">
+    <div class="modal-header" style="flex-shrink:0">
+      <div class="modal-title" id="modal-lote-title">⬆ Salida en lote</div>
+      <div onclick="closeModal('modal-salida-lote')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div id="modal-lote-sub" class="modal-sub" style="margin-bottom:12px;flex-shrink:0"></div>
+    <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+      <div class="form-group full">
+        <div class="form-label">Instancias seleccionadas (<span id="lote-inst-count">0</span>)</div>
+        <div id="lote-inst-list" style="max-height:160px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:11px;display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+      <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="flote-personal"></select></div>
+      <div class="form-group full"><div class="form-label" id="flote-motivo-label">Observación</div><textarea class="form-textarea" id="flote-motivo" placeholder="Describe el motivo..."></textarea></div>
+      <div class="form-group full">
+        <div class="form-label">N° de guía de remisión <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <input type="text" class="form-input" id="flote-guia-num" placeholder="Ej. 001-000123">
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de la guía <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="flote-guia-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="flote-guia-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="flote-guia-input" accept="image/*" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="flote-guia-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="flote-guia-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+        </div>
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de entrega <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="flote-entrega-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="flote-entrega-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="flote-entrega-input" accept="image/*" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="flote-entrega-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="flote-entrega-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot" style="flex-shrink:0">
+      <button class="btn" onclick="closeModal('modal-salida-lote')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-lote" onclick="saveSalidaLote()">⬆ Confirmar salida</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL TRANSFERENCIA EN LOTE -->
+<div class="modal-overlay" id="modal-transf-lote" onclick="if(event.target===this)closeModal('modal-transf-lote')">
+  <div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:90vh">
+    <div class="modal-header" style="flex-shrink:0">
+      <div class="modal-title">🔄 Transferir en lote</div>
+      <div onclick="closeModal('modal-transf-lote')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div class="modal-sub" style="margin-bottom:12px;flex-shrink:0">🔄 Traslada varios bienes entre sedes y/o cambia su responsable. Cada bien mantiene su ID y QR. Si alguno está en un paquete, saldrá de él.</div>
+    <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+      <div class="form-group full">
+        <div class="form-label">Instancias seleccionadas (<span id="tlote-inst-count">0</span>)</div>
+        <div id="tlote-inst-list" style="max-height:140px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:11px;display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">¿Qué deseas transferir? *</div>
+        <div style="display:flex;gap:16px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="ftl-chk-sede" onchange="onTransfLoteTipoChange()" checked style="width:16px;height:16px"> Sede
+          </label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="ftl-chk-resp" onchange="onTransfLoteTipoChange()" style="width:16px;height:16px"> Responsable
+          </label>
+        </div>
+      </div>
+      <div id="ftl-sede-wrap" class="form-group full"><div class="form-label">Sede destino *</div><select class="form-select" id="ftl-destino"></select></div>
+      <div id="ftl-resp-wrap" class="form-group full" style="display:none"><div class="form-label">Nuevo responsable *</div><select class="form-select" id="ftl-resp-destino"></select></div>
+      <div class="form-group full"><div class="form-label">Realizado por</div><select class="form-select" id="ftl-tecnico"></select></div>
+      <div class="form-group full"><div class="form-label">Observación</div><textarea class="form-textarea" id="ftl-obs" placeholder="Opcional..."></textarea></div>
+      <div class="form-group full">
+        <div class="form-label">N° de guía de remisión <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <input type="text" class="form-input" id="ftl-guia-num" placeholder="Ej. 001-000123">
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de la guía <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="ftl-guia-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="ftl-guia-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="ftl-guia-input" accept="image/*" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="ftl-guia-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="ftl-guia-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+        </div>
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de entrega <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="ftl-entrega-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="ftl-entrega-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="ftl-entrega-input" accept="image/*" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="ftl-entrega-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="ftl-entrega-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot" style="flex-shrink:0">
+      <button class="btn" onclick="closeModal('modal-transf-lote')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-transf-lote" onclick="saveTransfLote()">🔄 Confirmar transferencia</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CARGA MASIVA (XLSX) -->
+<div class="modal-overlay" id="modal-carga-masiva" onclick="if(event.target===this)closeModal('modal-carga-masiva')">
+  <div class="modal" style="max-width:620px;display:flex;flex-direction:column;max-height:92vh">
+    <div class="modal-header" style="flex-shrink:0">
+      <div class="modal-title">📊 Carga masiva (Excel)</div>
+      <div onclick="closeModal('modal-carga-masiva')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:14px">
+      <div class="modal-sub">Importa o exporta el <strong>catálogo</strong> y las <strong>instancias</strong> en un solo archivo <strong>.xlsx</strong>. La importación es <strong>upsert</strong>: actualiza lo existente (catálogo por <code>CODIGO</code>, instancias por <code>ID</code>) y crea lo nuevo. Verás un resumen antes de escribir nada.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="descargarManualCargaMasiva()" title="Guía paso a paso en PDF">📖 Manual (PDF)</button>
+        <button class="btn btn-sm" onclick="descargarPlantillaInsumos()">⬇ Descargar plantilla</button>
+        <button class="btn btn-sm" onclick="exportarBaseInsumos()">⬇ Exportar base actual</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:6px;padding:8px 10px;border-left:3px solid var(--blue);line-height:1.5">
+        💡 ¿Primera vez? Descarga el <strong>Manual (PDF)</strong> o abre la hoja <strong>"Instrucciones"</strong> dentro de la plantilla. Muchas columnas traen <strong>menú desplegable</strong> (clic en la celda → elige de la lista). Para crear, añade filas y llénalas; para actualizar, edita las existentes.
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:12px">
+        <div class="form-label">Importar archivo</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+          <label class="btn btn-sm btn-primary" for="cm-file-input" style="cursor:pointer">📂 Elegir archivo .xlsx</label>
+          <input type="file" id="cm-file-input" accept=".xlsx,.xls" style="display:none" onchange="onCargaMasivaFile(this.files[0]); this.value='';">
+          <span id="cm-file-name" style="font-size:11px;color:var(--muted2)"></span>
+        </div>
+      </div>
+      <div id="cm-preview" style="display:none"></div>
+    </div>
+    <div class="modal-foot" style="flex-shrink:0">
+      <button class="btn" onclick="closeModal('modal-carga-masiva')">Cerrar</button>
+      <button class="btn btn-primary" id="cm-confirm-btn" onclick="confirmarImportInsumos()" style="display:none">✓ Confirmar importación</button>
+    </div>
+  </div>
+</div>
+
 <!-- LIGHTBOX FOTO INSTANCIA -->
 <div class="foto-lightbox" id="foto-lightbox" onclick="closeInstFotoLightbox()">
   <button class="foto-lightbox-close" onclick="closeInstFotoLightbox()" title="Cerrar">✕</button>
@@ -1172,7 +1317,7 @@ const PERMS = {
 };
 function can(p){ return (PERMS[maUser?.rol]||PERMS.TECNICO)[p]||0; }
 
-let maUser=null, catalogoData=[], movimientosData=[], stockData={}, sedes=[], personalData=[], paquetesData=[], instanciasData=[], instFotos={};
+let maUser=null, catalogoData=[], movimientosData=[], stockData={}, sedes=[], personalData=[], paquetesData=[], instanciasData=[], instFotos={}, movFotos={};
 let filteredCatalogo=[], currentMovTipo='SALIDA', editingInsumoId=null, editingPaqId=null, applyingPaqId=null, paqRowIdx=0;
 
 // ── AUTH — mismo sistema que otras apps ──────────────────────────────────────
@@ -1385,6 +1530,7 @@ async function addUser(){
 function buildSidebar(){
   let h='';
   if(can('crearItem'))          h+=`<button class="btn btn-orange btn-block" onclick="openModalInsumo(null)">+ Nuevo ítem</button>`;
+  if(can('crearItem'))          h+=`<button class="btn btn-block" onclick="openModalCargaMasiva()" title="Importar/exportar catálogo e instancias en Excel">📊 Carga masiva</button>`;
   if(can('entrada')===1)        h+=`<button class="btn btn-block" onclick="openModalEntrada()">⬇ Registrar entrada</button>`;
   if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('SALIDA')">⬆ Registrar salida</button>`;
   if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('BAJA')" style="color:var(--red)">⚠️ Dar de baja</button>`;
@@ -1423,7 +1569,7 @@ function buildSidebar(){
 
 async function loadAll(){
   try{
-    const [catS,movS,tiendasS,persS,paqS,instS,instFotoS]=await Promise.all([
+    const [catS,movS,tiendasS,persS,paqS,instS,instFotoS,movFotoS]=await Promise.all([
       db.collection('insumos_catalogo').get(),
       db.collection('insumos_movimientos').orderBy('fecha','desc').limit(200).get(),
       db.collection('maestros_tiendas').get(),
@@ -1431,8 +1577,11 @@ async function loadAll(){
       db.collection('insumos_paquetes').get(),
       db.collection('insumos_instancias').get(),
       db.collection('insumos_instancias_fotos').get(),
+      db.collection('insumos_movimientos_fotos').get(),
     ]);
     instFotos={}; instFotoS.docs.forEach(d=>{const f=d.data().foto; if(f) instFotos[d.id]=f;});
+    // Fotos adjuntas a movimientos (guía de remisión + foto de entrega). Doc id = id del movimiento.
+    movFotos={}; movFotoS.docs.forEach(d=>{const x=d.data(); if(x.guiaFoto||x.entregaFoto) movFotos[d.id]={guia:x.guiaFoto||null,entrega:x.entregaFoto||null};});
     catalogoData=catS.docs.map(d=>({id:d.id,...d.data()}));
     movimientosData=movS.docs.map(d=>({id:d.id,...d.data()}));
     stockData={};
@@ -1695,11 +1844,16 @@ function renderMovimientos(){
     const delBtn=canMod?`<button class="btn btn-sm btn-red" title="Revertir acción" onclick="revertirMovimiento('${m.id}')">↩ Revertir</button>`:'';
     const editBtn=canMod&&can('editarMov')?`<button class="btn btn-sm" title="Editar" onclick="editarMovimiento('${m.id}')">✏️</button>`:'';
     const aprobarBtn=isPend&&can('aprobar')===1?`<button class="btn btn-sm btn-green" onclick="aprobarSolicitud('${m.id}')">✓ Aprobar</button><button class="btn btn-sm btn-red" onclick="rechazarSolicitud('${m.id}')">✗ Rechazar</button>`:'';
+    // Adjuntos: N° de guía de remisión + miniaturas de fotos (guía/entrega), clicables → lightbox
+    const guiaTxt = m.guiaNumero ? `<span style="font-size:10px;color:var(--blue)"> · 📎 Guía ${m.guiaNumero}</span>` : '';
+    const mf = movFotos[m.id];
+    const fotosThumbs = mf ? `<div class="mov-fotos">${mf.guia?`<img src="${mf.guia}" class="mov-foto-thumb" title="Foto de guía — ampliar" onclick="openMovFoto('${m.id}','guia')">`:''}${mf.entrega?`<img src="${mf.entrega}" class="mov-foto-thumb" title="Foto de entrega — ampliar" onclick="openMovFoto('${m.id}','entrega')">`:''}</div>` : '';
     return `<div class="mov-item ${isPend?'pendiente':''}">
       <div class="mov-icon ${tCls}">${icons[m.tipo]||'📦'}</div>
       <div class="mov-body">
         <div class="mov-title">${m.tipo==='TRANSFERENCIA_PAQUETE'?'🎒 '+(m.paqueteNombre||m.paqueteId||'Paquete'):m.itemNombre||'—'} <span class="tipo-badge tipo-${tCls.replace('solicitud_','')}">${(m.tipo||'').replace('SOLICITUD_','')}</span> ${badge}${pkgBadge}</div>
-        <div class="mov-meta">${fs} · ${m.responsable||m.usuario||'—'}${sedeStr?' · '+sedeStr:''}${m.motivo?' · '+m.motivo:''}${instInfo}${cambiosInfo}</div>
+        <div class="mov-meta">${fs} · ${m.responsable||m.usuario||'—'}${sedeStr?' · '+sedeStr:''}${m.motivo?' · '+m.motivo:''}${instInfo}${cambiosInfo}${guiaTxt}</div>
+        ${fotosThumbs}
       </div>
       <div class="mov-qty ${tCls}">${cantInfo} ${m.unidad||'UND'}</div>
       ${(delBtn||editBtn||aprobarBtn)?`<div class="mov-actions">${aprobarBtn}${editBtn}${delBtn}</div>`:''}
@@ -1870,10 +2024,30 @@ async function saveInsumo(){
     updatedAt:new Date().toISOString(),createdBy:maUser.email};
   try{
     const docId=editingInsumoId||'INS-'+Date.now();
+    // Detectar cambio de nombre para propagarlo a las instancias hijas (el nombre está denormalizado en cada instancia)
+    const prevItem=editingInsumoId?catalogoData.find(x=>x.id===docId):null;
+    const nombreCambiado=!!prevItem && prevItem.nombre!==nombre;
     await db.collection('insumos_catalogo').doc(docId).set(item,{merge:!!editingInsumoId});
     if(!editingInsumoId)catalogoData.push({id:docId,...item});
     else{const idx=catalogoData.findIndex(x=>x.id===docId);if(idx>=0)catalogoData[idx]={id:docId,...item};}
-    toast(editingInsumoId?'✓ Ítem actualizado':'✓ Ítem creado — registra el stock inicial como Entrada','ok');
+    // Propagar el nuevo nombre a las instancias hijas (itemId === docId) — antes quedaban con el nombre viejo
+    let nProp=0;
+    if(nombreCambiado){
+      const hijas=instanciasData.filter(i=>i.itemId===docId);
+      if(hijas.length){
+        const ts=new Date().toISOString();
+        // Firestore limita cada batch a 500 ops; se trocea por si un ítem tuviera muchas instancias
+        for(let k=0;k<hijas.length;k+=450){
+          const lote=hijas.slice(k,k+450);
+          const batch=db.batch();
+          lote.forEach(i=>batch.update(db.collection('insumos_instancias').doc(i.id),{nombre,updatedAt:ts,updatedBy:maUser.email}));
+          await batch.commit();
+        }
+        hijas.forEach(i=>{i.nombre=nombre;i.updatedAt=ts;i.updatedBy=maUser.email;});
+        nProp=hijas.length;
+      }
+    }
+    toast(editingInsumoId?('✓ Ítem actualizado'+(nProp?` · ${nProp} instancia(s) renombrada(s)`:'')):'✓ Ítem creado — registra el stock inicial como Entrada','ok');
     closeModal('modal-insumo');renderAll();
   }catch(e){toast('Error: '+e.message,'err');}
 }
@@ -2468,6 +2642,714 @@ async function saveSalida() {
   finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '⬆ Confirmar'; } }
 }
 
+// ── SALIDA / BAJA EN LOTE ─────────────────────────────────
+// Reutiliza la selección múltiple del tab Instancias (selectedInstQRIds).
+// Crea UN movimiento con instancias[] y, opcionalmente, guarda guía + fotos en insumos_movimientos_fotos.
+let currentLoteTipo = 'SALIDA';
+let loteFotos = { guia: null, entrega: null };  // dataURLs temporales hasta confirmar
+let loteFotoPrefix = 'flote';  // prefijo de ids del modal de lote activo ('flote' salida/baja, 'ftl' transferencia)
+
+// Comprime manteniendo proporción (para documentos/escenas: guía, entrega). Distinto de compressSquare (recorte cuadrado, avatares).
+function compressFit(file, maxSide, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxSide || h > maxSide) {
+          if (w >= h) { h = Math.round(h * maxSide / w); w = maxSide; }
+          else { w = Math.round(w * maxSide / h); h = maxSide; }
+        }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => reject(new Error('Imagen inválida'));
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function openModalSalidaLote(tipo = 'SALIDA') {
+  if (can('salida') !== 1) { toast('No tienes permiso para registrar salidas', 'err'); return; }
+  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
+  if (!ids.length) { toast('Selecciona al menos una instancia', 'warn'); return; }
+  currentLoteTipo = tipo;
+  const esBaja = tipo === 'BAJA';
+  loteFotos = { guia: null, entrega: null };
+  loteFotoPrefix = 'flote';
+  document.getElementById('modal-lote-title').textContent = esBaja ? '⚠️ Baja en lote' : '⬆ Salida en lote';
+  document.getElementById('modal-lote-sub').innerHTML = esBaja
+    ? '⚠️ <strong>Baja:</strong> los bienes ya no sirven por daño, pérdida o robo. El motivo es obligatorio. Se eliminan del inventario.'
+    : '📤 <strong>Salida:</strong> los bienes fueron consumidos o entregados definitivamente. Se eliminan del inventario.';
+  document.getElementById('flote-motivo-label').textContent = esBaja ? 'Motivo * (obligatorio)' : 'Observación';
+  document.getElementById('btn-save-lote').textContent = esBaja ? '⚠️ Confirmar baja' : '⬆ Confirmar salida';
+  document.getElementById('flote-motivo').value = '';
+  document.getElementById('flote-guia-num').value = '';
+  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  document.getElementById('flote-personal').innerHTML = `<option value="">—</option>${pOpts}`;
+  document.getElementById('lote-inst-count').textContent = ids.length;
+  document.getElementById('lote-inst-list').innerHTML = ids.map(id => {
+    const inst = instanciasData.find(x => x.id === id);
+    return `<div><span style="font-family:var(--mono)">${id}</span> — ${inst.nombre} <span style="color:var(--muted2)">(${inst.sede || 'sin sede'} · ${inst.estado || 'DISPONIBLE'})</span></div>`;
+  }).join('') || '<div style="color:var(--muted)">Sin instancias válidas</div>';
+  refreshLoteFotoPreview('guia');
+  refreshLoteFotoPreview('entrega');
+  document.getElementById('modal-salida-lote').classList.add('open');
+}
+
+async function setLoteFoto(tipo, file) {
+  if (!file) return;
+  try {
+    loteFotos[tipo] = await compressFit(file, 1100, 0.7);
+    refreshLoteFotoPreview(tipo);
+  } catch(e) { toast('Error con la imagen: ' + e.message, 'err'); }
+}
+
+function removeLoteFoto(tipo) {
+  loteFotos[tipo] = null;
+  refreshLoteFotoPreview(tipo);
+}
+
+function refreshLoteFotoPreview(tipo) {
+  const box = document.getElementById(`${loteFotoPrefix}-${tipo}-box`);
+  if (!box) return;
+  const f = loteFotos[tipo];
+  box.innerHTML = f
+    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openFotoSrc(loteFotos['${tipo}'])" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeLoteFoto('${tipo}')" title="Quitar foto">🗑</button>`
+    : `<div class="inst-foto-empty">📷</div>`;
+}
+
+// Lightbox genérico (reutiliza el visor de fotos de instancia) — recibe el dataURL directamente
+function openFotoSrc(src) {
+  if (!src) return;
+  document.getElementById('foto-lightbox-img').src = src;
+  document.getElementById('foto-lightbox').classList.add('open');
+}
+
+// Abre una foto adjunta a un movimiento (guía / entrega) desde la lista de movimientos
+function openMovFoto(movId, tipo) {
+  const f = movFotos[movId];
+  if (f && f[tipo]) openFotoSrc(f[tipo]);
+}
+
+async function saveSalidaLote() {
+  const btn = document.getElementById('btn-save-lote');
+  if (btn && btn.disabled) return;
+  const esBaja = currentLoteTipo === 'BAJA';
+  const motivo = document.getElementById('flote-motivo').value.trim();
+  const resp = document.getElementById('flote-personal').value;
+  const guiaNumero = document.getElementById('flote-guia-num').value.trim();
+  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
+  if (!ids.length) { toast('No hay instancias válidas seleccionadas', 'err'); return; }
+  if (esBaja && !motivo) { toast('El motivo es obligatorio para dar de baja', 'err'); return; }
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
+  try {
+    const insts = ids.map(id => instanciasData.find(x => x.id === id));
+    const itemIds = [...new Set(insts.map(i => i.itemId))];
+    const itemNombre = itemIds.length === 1 ? (insts[0].nombre || '') : `${insts.length} ítems variados`;
+    const itemId = itemIds.length === 1 ? insts[0].itemId : '';
+    const sedesUnq = [...new Set(insts.map(i => i.sede || ''))];
+    const sede = sedesUnq.length === 1 ? sedesUnq[0] : '';
+    // 1) Crear el movimiento (uno solo, con instancias[])
+    // instanciasSnapshot guarda los datos de cada instancia borrada para poder revertir fielmente
+    // (el lote puede ser mixto en ítem/sede; sin snapshot no se podría reconstruir cada unidad)
+    const movData = {
+      tipo: currentLoteTipo, itemId, itemNombre,
+      instancias: ids, instanciasSnapshot: insts.map(i => ({ ...i })),
+      sede, cantidad: ids.length, unidad: 'UND',
+      motivo, responsable: resp, usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
+    };
+    if (guiaNumero) movData.guiaNumero = guiaNumero;
+    if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
+    const movRef = await db.collection('insumos_movimientos').add(movData);
+    // 2) Fotos (guía / entrega) en colección aparte, doc id = id del movimiento
+    if (loteFotos.guia || loteFotos.entrega) {
+      const fotoDoc = { movimientoId: movRef.id, createdAt: new Date().toISOString(), createdBy: maUser.email };
+      if (guiaNumero) fotoDoc.guiaNumero = guiaNumero;
+      if (loteFotos.guia) fotoDoc.guiaFoto = loteFotos.guia;
+      if (loteFotos.entrega) fotoDoc.entregaFoto = loteFotos.entrega;
+      await db.collection('insumos_movimientos_fotos').doc(movRef.id).set(fotoDoc);
+      movFotos[movRef.id] = { guia: loteFotos.guia || null, entrega: loteFotos.entrega || null };
+    }
+    // 3) Eliminar las instancias (batch troceado a 450 por el límite de 500 de Firestore)
+    for (let k = 0; k < ids.length; k += 450) {
+      const lote = ids.slice(k, k + 450);
+      const batch = db.batch();
+      lote.forEach(id => batch.delete(db.collection('insumos_instancias').doc(id)));
+      await batch.commit();
+    }
+    instanciasData = instanciasData.filter(x => !ids.includes(x.id));
+    movimientosData.unshift({ id: movRef.id, ...movData });
+    toast(`✓ ${esBaja ? 'Baja' : 'Salida'} en lote — ${ids.length} instancia(s)`, 'ok');
+    closeModal('modal-salida-lote');
+    clearInstQRSelection();
+    renderAll();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '⬆ Confirmar'; } }
+}
+
+// ── TRANSFERENCIA EN LOTE ─────────────────────────────────
+// Reutiliza la selección múltiple + la infraestructura de fotos del lote (loteFotos, setLoteFoto...).
+// Un movimiento TRANSFERENCIA con instancias[] + instanciasSnapshot[] (valores previos para revertir cada una).
+function openModalTransfLote() {
+  if (can('transferencia') !== 1) { toast('No tienes permiso para transferir', 'err'); return; }
+  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
+  if (!ids.length) { toast('Selecciona al menos una instancia', 'warn'); return; }
+  loteFotos = { guia: null, entrega: null };
+  loteFotoPrefix = 'ftl';
+  document.getElementById('ftl-obs').value = '';
+  document.getElementById('ftl-guia-num').value = '';
+  document.getElementById('ftl-chk-sede').checked = true;
+  document.getElementById('ftl-chk-resp').checked = false;
+  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  document.getElementById('ftl-tecnico').innerHTML = `<option value="">—</option>${pOpts}`;
+  document.getElementById('ftl-resp-destino').innerHTML = `<option value="">—</option>${pOpts}`;
+  document.getElementById('ftl-destino').innerHTML = sedeOpts(false);
+  document.getElementById('tlote-inst-count').textContent = ids.length;
+  document.getElementById('tlote-inst-list').innerHTML = ids.map(id => {
+    const inst = instanciasData.find(x => x.id === id);
+    return `<div><span style="font-family:var(--mono)">${id}</span> — ${inst.nombre} <span style="color:var(--muted2)">(${inst.sede || 'sin sede'}${inst.responsable ? ' · ' + inst.responsable : ''})</span></div>`;
+  }).join('');
+  refreshLoteFotoPreview('guia');
+  refreshLoteFotoPreview('entrega');
+  onTransfLoteTipoChange();
+  document.getElementById('modal-transf-lote').classList.add('open');
+}
+
+function onTransfLoteTipoChange() {
+  const sede = document.getElementById('ftl-chk-sede').checked;
+  const resp = document.getElementById('ftl-chk-resp').checked;
+  if (!sede && !resp) { document.getElementById('ftl-chk-sede').checked = true; onTransfLoteTipoChange(); return; }
+  document.getElementById('ftl-sede-wrap').style.display = sede ? 'flex' : 'none';
+  document.getElementById('ftl-resp-wrap').style.display = resp ? 'flex' : 'none';
+}
+
+async function saveTransfLote() {
+  const btn = document.getElementById('btn-save-transf-lote');
+  if (btn && btn.disabled) return;
+  const transferSede = document.getElementById('ftl-chk-sede').checked;
+  const transferResp = document.getElementById('ftl-chk-resp').checked;
+  const obs = document.getElementById('ftl-obs').value.trim();
+  const tecnico = document.getElementById('ftl-tecnico').value;
+  const guiaNumero = document.getElementById('ftl-guia-num').value.trim();
+  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
+  if (!ids.length) { toast('No hay instancias válidas seleccionadas', 'err'); return; }
+  if (!transferSede && !transferResp) { toast('Selecciona qué deseas transferir', 'err'); return; }
+  const destino = transferSede ? document.getElementById('ftl-destino').value : null;
+  const respDestino = transferResp ? document.getElementById('ftl-resp-destino').value : null;
+  if (transferSede && !destino) { toast('Selecciona la sede destino', 'err'); return; }
+  if (transferResp && !respDestino) { toast('Selecciona el responsable destino', 'err'); return; }
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
+  try {
+    const insts = ids.map(id => instanciasData.find(x => x.id === id));
+    const camposTransferidos = [];
+    if (transferSede) camposTransferidos.push('sede');
+    if (transferResp) camposTransferidos.push('responsable');
+    // Snapshot de los valores PREVIOS de los campos transferidos (para revertir cada instancia a lo suyo)
+    const snapshot = insts.map(i => {
+      const s = { id: i.id };
+      if (transferSede) s.sede = i.sede || '';
+      if (transferResp) s.responsable = i.responsable || '';
+      return s;
+    });
+    // Aplicar a cada instancia + sacarla de su paquete si pertenece a uno
+    let nPaquete = 0;
+    const pkgTouched = {};  // pkgId -> [instIds a remover]
+    for (const inst of insts) {
+      const instUpdates = { updatedAt: new Date().toISOString(), updatedBy: maUser.email };
+      if (transferSede) instUpdates.sede = destino;
+      if (transferResp) instUpdates.responsable = respDestino;
+      if (inst.paqueteId) {
+        instUpdates.paqueteId = null;
+        (pkgTouched[inst.paqueteId] = pkgTouched[inst.paqueteId] || []).push(inst.id);
+        nPaquete++;
+      }
+      await db.collection('insumos_instancias').doc(inst.id).update(instUpdates);
+      const idx = instanciasData.findIndex(x => x.id === inst.id);
+      if (idx >= 0) Object.assign(instanciasData[idx], instUpdates);
+    }
+    // Quitar las instancias de los paquetes afectados
+    for (const [pkgId, removeIds] of Object.entries(pkgTouched)) {
+      const pkg = paquetesData.find(x => x.id === pkgId);
+      if (!pkg) continue;
+      const newInsts = (pkg.instancias || []).filter(i => !removeIds.includes(i));
+      await db.collection('insumos_paquetes').doc(pkgId).update({ instancias: newInsts, updatedAt: new Date().toISOString() });
+      const pIdx = paquetesData.findIndex(x => x.id === pkgId);
+      if (pIdx >= 0) paquetesData[pIdx].instancias = newInsts;
+    }
+    const labelParts = [];
+    if (transferSede) labelParts.push(`→ ${destino}`);
+    if (transferResp) labelParts.push(`Resp → ${respDestino}`);
+    const itemIds = [...new Set(insts.map(i => i.itemId))];
+    const itemNombre = itemIds.length === 1 ? (insts[0].nombre || '') : `${insts.length} ítems variados`;
+    const itemId = itemIds.length === 1 ? insts[0].itemId : '';
+    const movData = {
+      tipo: 'TRANSFERENCIA', itemId, itemNombre,
+      instancias: ids, instanciasSnapshot: snapshot, camposTransferidos,
+      sedeDestino: destino || '', respDestino: respDestino || '',
+      cantidad: ids.length, cambios: labelParts.join(' | '),
+      motivo: obs, responsable: tecnico, usuario: maUser.email,
+      estado: 'CONFIRMADO', fecha: new Date()
+    };
+    if (guiaNumero) movData.guiaNumero = guiaNumero;
+    if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
+    const movRef = await db.collection('insumos_movimientos').add(movData);
+    if (loteFotos.guia || loteFotos.entrega) {
+      const fotoDoc = { movimientoId: movRef.id, createdAt: new Date().toISOString(), createdBy: maUser.email };
+      if (guiaNumero) fotoDoc.guiaNumero = guiaNumero;
+      if (loteFotos.guia) fotoDoc.guiaFoto = loteFotos.guia;
+      if (loteFotos.entrega) fotoDoc.entregaFoto = loteFotos.entrega;
+      await db.collection('insumos_movimientos_fotos').doc(movRef.id).set(fotoDoc);
+      movFotos[movRef.id] = { guia: loteFotos.guia || null, entrega: loteFotos.entrega || null };
+    }
+    movimientosData.unshift({ id: movRef.id, ...movData });
+    toast(`✓ Transferencia en lote — ${ids.length} instancia(s)${nPaquete ? ` · ${nPaquete} salió(eron) de su paquete` : ''}`, 'ok');
+    closeModal('modal-transf-lote');
+    clearInstQRSelection();
+    renderAll();
+  } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '🔄 Confirmar transferencia'; } }
+}
+
+// ── CARGA MASIVA (XLSX) ───────────────────────────────────
+// Importa/exporta catálogo + instancias en un .xlsx (SheetJS). Upsert: catálogo por CODIGO, instancias por ID.
+// Carga silenciosa (origen IMPORT_XLSX, sin movimientos). NO toca pertenencia a paquetes. Nombre de instancia = nombre del catálogo.
+// Catálogo: SIN columna ID (la llave es CODIGO). Instancias: la 1ª columna ID es interna del sistema y se OCULTA en el Excel.
+const CM_CAT_COLS = ['NOMBRE','CATEGORIA','UNIDAD','CODIGO','MARCA','MODELO','STOCK_MIN','TIPO_CANTIDAD'];
+const CM_INST_COLS = ['ID','ITEM_ID','NOMBRE','SEDE','ESTADO','RESPONSABLE','NOTAS','NIVEL'];
+const CM_CATEGORIAS = ['INSUMO','HERRAMIENTA'];
+const CM_UNIDADES = ['UND','KG','LT','MT','ROLLO','CAJA','PAR','JGO'];
+const CM_TIPOCANT = ['UNIDAD','RANGO'];
+const CM_ESTADOS = ['DISPONIBLE','EN_USO','MANTENIMIENTO','DETERIORADO','BAJA'];
+let _cmImport = null;  // resultado de validación pendiente de confirmar
+const _cmStr = v => (v == null ? '' : String(v)).trim();
+const _cmNorm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
+
+function openModalCargaMasiva() {
+  if (!can('crearItem')) { toast('No tienes permiso para carga masiva', 'err'); return; }
+  _cmImport = null;
+  document.getElementById('cm-file-name').textContent = '';
+  document.getElementById('cm-preview').style.display = 'none';
+  document.getElementById('cm-preview').innerHTML = '';
+  document.getElementById('cm-confirm-btn').style.display = 'none';
+  document.getElementById('modal-carga-masiva').classList.add('open');
+}
+
+// Hoja "Valores validos" como array-of-arrays (referencia para el usuario)
+// Texto guía de cada columna (reutilizado por la hoja Instrucciones y el manual PDF)
+const CM_GUIA_CAT = [
+  ['NOMBRE', 'OBLIGATORIO', 'Nombre del ítem. Ej: FILTRO DE AIRE G4 24X24'],
+  ['CATEGORIA', 'OBLIGATORIO', 'INSUMO o HERRAMIENTA'],
+  ['UNIDAD', 'OBLIGATORIO', 'UND, KG, LT, MT, ROLLO, CAJA, PAR o JGO'],
+  ['CODIGO', 'OBLIGATORIO', 'Código único del ítem (es la llave del upsert). Ej: FILT-G4'],
+  ['MARCA', 'opcional', 'Ej: 3M'],
+  ['MODELO', 'opcional', ''],
+  ['STOCK_MIN', 'opcional', 'Número para alertar stock bajo (0 = sin alerta)'],
+  ['TIPO_CANTIDAD', 'opcional', 'UNIDAD (por defecto) o RANGO (líquidos medidos por %)'],
+];
+const CM_GUIA_INST = [
+  ['ITEM_ID', 'OBLIGATORIO', 'A qué ítem del catálogo pertenece. Pon su CODIGO (ej: FILT-G4).'],
+  ['NOMBRE', 'automático', 'Se toma del catálogo. Puedes dejarlo vacío.'],
+  ['SEDE', 'recomendado', 'Debe ser una sede existente (elige del menú desplegable).'],
+  ['ESTADO', 'opcional', 'DISPONIBLE (por defecto), EN_USO, MANTENIMIENTO, DETERIORADO o BAJA'],
+  ['RESPONSABLE', 'opcional', 'Persona a cargo'],
+  ['NOTAS', 'opcional', ''],
+  ['NIVEL', 'opcional', 'Solo para ítems RANGO: 0 a 100 (%)'],
+];
+const CM_REGLAS = [
+  'Para crear ítems o unidades nuevas, simplemente añade filas y llénalas. Para actualizar, edita las filas existentes.',
+  'Varias columnas tienen MENÚ DESPLEGABLE (CATEGORIA, UNIDAD, TIPO_CANTIDAD, ESTADO, SEDE, ITEM_ID, RESPONSABLE): haz clic en la celda y elige de la lista.',
+  'Al importar se hace UPSERT: si ya existe se ACTUALIZA, si no, se CREA. Los ítems del catálogo se reconocen por su CODIGO.',
+  'El nombre de cada instancia SIEMPRE se toma del catálogo (mantiene todo consistente).',
+  'La importación NO cambia la pertenencia a paquetes (eso se hace en la pestaña Paquetes).',
+  'Una fila con un valor inválido (categoría mal escrita, sede inexistente, etc.) se OMITE; el resto se importa igual.',
+  'Antes de escribir verás un resumen: cuántos son nuevos, cuántos se actualizan y cuántos tienen error.',
+];
+// Ejemplo guiado (mismo texto en la hoja Instrucciones y en el manual PDF)
+const CM_EJEMPLO = [
+  'EJEMPLO — agregar un TALADRO y 2 unidades',
+  '',
+  'Paso 1) En la hoja "Catalogo", agrega 1 fila con el item:',
+  'NOMBRE = TALADRO PERCUTOR  |  CATEGORIA = HERRAMIENTA  |  UNIDAD = UND  |  CODIGO = TALA-01  |  STOCK_MIN = 1  |  TIPO_CANTIDAD = UNIDAD',
+  '',
+  'Paso 2) En la hoja "Instancias", agrega 1 fila por cada unidad fisica (todas con el mismo ITEM_ID):',
+  'Unidad 1:   ITEM_ID = TALA-01  |  SEDE = CHINCHON OFICINA  |  ESTADO = DISPONIBLE  |  RESPONSABLE = JOSE MARCHENA',
+  'Unidad 2:   ITEM_ID = TALA-01  |  SEDE = CHINCHON OFICINA  |  ESTADO = DISPONIBLE',
+  '',
+  'CLAVE: ITEM_ID = el CODIGO del item (TALA-01). Es lo que une cada unidad con su item del catalogo.',
+  'El NOMBRE de la instancia se deja vacio: se toma del catalogo. Las 2 unidades quedaran como TAL-001 y TAL-002.',
+  'Cada unidad puede ir en una sede distinta (elige del menu desplegable). Para 5 taladros, pon 5 filas.',
+  'Si el item ya existe en el sistema, no toques la hoja Catalogo: ve directo a la hoja Instancias.',
+];
+
+function _cmInstruccionesSheet() {
+  const A = [
+    ['📖 CARGA MASIVA DE INSUMOS — INSTRUCCIONES'],
+    [],
+    ['Sirve para crear o actualizar el inventario en bloque desde Excel.'],
+    [],
+    ['FLUJO RECOMENDADO'],
+    ['1) Pulsa "Exportar base actual" para partir de tus datos reales (o usa esta plantilla).'],
+    ['2) Edita las hojas "Catalogo" e "Instancias".'],
+    ['3) Pulsa "Importar", revisa el resumen (nuevos / a actualizar / con error) y confirma.'],
+    [],
+    ['HOJA "Catalogo" — el TIPO de ítem (un filtro, un taladro...)'],
+    ['Columna', 'Obligatoriedad', 'Detalle'],
+    ...CM_GUIA_CAT,
+    [],
+    ['HOJA "Instancias" — cada UNIDAD FÍSICA de un ítem del catálogo'],
+    ['Columna', 'Obligatoriedad', 'Detalle'],
+    ...CM_GUIA_INST,
+    [],
+    ...CM_EJEMPLO.map(l => [l]),
+    [],
+    ['REGLAS IMPORTANTES'],
+    ...CM_REGLAS.map(r => ['• ' + r]),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(A);
+  ws['!cols'] = [{ wch: 16 }, { wch: 15 }, { wch: 92 }];
+  return ws;
+}
+
+function _cmValoresValidos() {
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['VALORES VALIDOS — usa exactamente estos textos en las columnas correspondientes'],
+    [],
+    ['CATEGORIA (catalogo)', ...CM_CATEGORIAS],
+    ['UNIDAD (catalogo)', ...CM_UNIDADES],
+    ['TIPO_CANTIDAD (catalogo)', ...CM_TIPOCANT],
+    ['ESTADO (instancias)', ...CM_ESTADOS],
+    ['SEDE (instancias)', ...sedes.map(s => s.sede)],
+    [],
+    ['ITEMS DEL CATALOGO (usa el CODIGO en la columna ITEM_ID de Instancias)'],
+    ['CODIGO', 'NOMBRE'],
+    ...catalogoData.map(c => [c.codigo || '', c.nombre || ''])
+  ]);
+  ws['!cols'] = [{ wch: 16 }, { wch: 40 }];
+  return ws;
+}
+
+// Hoja oculta "_listas": columnas con los valores largos para los dropdowns (sedes, códigos de ítems, personal)
+function _cmListasSheet() {
+  const sed = sedes.map(s => s.sede), cod = catalogoData.map(c => c.codigo || c.id), per = personalData.map(p => p.nombre);
+  const max = Math.max(sed.length, cod.length, per.length);
+  const rows = [['SEDES', 'CODIGOS_ITEMS', 'PERSONAL']];
+  for (let i = 0; i < max; i++) rows.push([sed[i] || '', cod[i] || '', per[i] || '']);
+  return XLSX.utils.aoa_to_sheet(rows);
+}
+
+function _cmBuildWorkbook(catRows, instRows) {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, _cmInstruccionesSheet(), 'Instrucciones');
+  // Catálogo (8 cols, sin ID): NOMBRE CATEGORIA UNIDAD CODIGO MARCA MODELO STOCK_MIN TIPO_CANTIDAD
+  const wsCat = XLSX.utils.aoa_to_sheet([CM_CAT_COLS, ...catRows]);
+  wsCat['!cols'] = [{ wch: 30 }, { wch: 13 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 14 }];
+  // Instancias (8 cols): ID(oculta) ITEM_ID NOMBRE SEDE ESTADO RESPONSABLE NOTAS NIVEL
+  const wsInst = XLSX.utils.aoa_to_sheet([CM_INST_COLS, ...instRows]);
+  wsInst['!cols'] = [{ hidden: true }, { wch: 12 }, { wch: 28 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 22 }, { wch: 7 }];
+  XLSX.utils.book_append_sheet(wb, wsCat, 'Catalogo');
+  XLSX.utils.book_append_sheet(wb, wsInst, 'Instancias');
+  XLSX.utils.book_append_sheet(wb, _cmValoresValidos(), 'Valores validos');
+  XLSX.utils.book_append_sheet(wb, _cmListasSheet(), '_listas');
+  // Ocultar la hoja auxiliar de listas
+  wb.Workbook = { Sheets: wb.SheetNames.map(n => ({ Hidden: n === '_listas' ? 1 : 0 })) };
+  return wb;
+}
+
+// XML de <dataValidations> por hoja (SheetJS Community no lo escribe → se inyecta en post-proceso)
+function _cmValidacionesXml() {
+  const N = 1000;
+  const dv = (sqref, formula, block) => `<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="${block ? 1 : 0}" sqref="${sqref}"><formula1>${formula}</formula1></dataValidation>`;
+  const inline = arr => '"' + arr.join(',') + '"';  // lista corta embebida
+  // Catálogo: B=CATEGORIA, C=UNIDAD, H=TIPO_CANTIDAD
+  const catDV = [dv(`B2:B${N}`, inline(CM_CATEGORIAS), true), dv(`C2:C${N}`, inline(CM_UNIDADES), true), dv(`H2:H${N}`, inline(CM_TIPOCANT), true)];
+  const nSed = sedes.length, nCod = catalogoData.length, nPer = personalData.length;
+  // Instancias: E=ESTADO, D=SEDE, B=ITEM_ID, F=RESPONSABLE (A=ID oculta, sin validación)
+  const instDV = [dv(`E2:E${N}`, inline(CM_ESTADOS), true)];
+  if (nSed) instDV.push(dv(`D2:D${N}`, `_listas!$A$2:$A$${1 + nSed}`, true));     // SEDE
+  if (nCod) instDV.push(dv(`B2:B${N}`, `_listas!$B$2:$B$${1 + nCod}`, false));    // ITEM_ID (sugerencia, no bloquea)
+  if (nPer) instDV.push(dv(`F2:F${N}`, `_listas!$C$2:$C$${1 + nPer}`, false));    // RESPONSABLE (sugerencia)
+  return {
+    'Catalogo': `<dataValidations count="${catDV.length}">${catDV.join('')}</dataValidations>`,
+    'Instancias': `<dataValidations count="${instDV.length}">${instDV.join('')}</dataValidations>`
+  };
+}
+
+// Mapea nombre de hoja → ruta del worksheet XML dentro del zip (robusto: vía workbook.xml + rels)
+function _cmSheetFile(wbXml, relsXml, nombre) {
+  const esc = nombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const tag = wbXml.match(new RegExp(`<sheet [^>]*name="${esc}"[^>]*/>`));
+  const rid = tag && tag[0].match(/r:id="(rId\d+)"/);
+  if (!rid) return null;
+  const rel = relsXml.match(new RegExp(`<Relationship[^>]*Id="${rid[1]}"[^>]*Target="([^"]+)"`));
+  if (!rel) return null;
+  return 'xl/' + rel[1].replace(/^\/?xl\//, '');
+}
+
+// Escribe el wb, inyecta los dataValidations y devuelve un Blob .xlsx
+async function _cmXlsxBlob(wb) {
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+  const zip = await JSZip.loadAsync(buf);
+  const wbXml = await zip.file('xl/workbook.xml').async('string');
+  const relsXml = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  const vals = _cmValidacionesXml();
+  for (const [hoja, dvXml] of Object.entries(vals)) {
+    const path = _cmSheetFile(wbXml, relsXml, hoja);
+    if (!path || !zip.file(path)) continue;
+    let xml = await zip.file(path).async('string');
+    xml = xml.includes('</sheetData>') ? xml.replace('</sheetData>', '</sheetData>' + dvXml) : xml.replace('</worksheet>', dvXml + '</worksheet>');
+    zip.file(path, xml);
+  }
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+function _cmDownloadBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+}
+
+async function descargarPlantillaInsumos() {
+  if (typeof XLSX === 'undefined' || typeof JSZip === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
+  // Hojas vacías (solo encabezados + menús desplegables); los ejemplos van en la hoja Instrucciones
+  try {
+    _cmDownloadBlob(await _cmXlsxBlob(_cmBuildWorkbook([], [])), `plantilla_insumos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast('✓ Plantilla descargada — celdas con menú desplegable', 'ok');
+  } catch(e) { toast('Error al generar la plantilla: ' + e.message, 'err'); }
+}
+
+async function exportarBaseInsumos() {
+  if (typeof XLSX === 'undefined' || typeof JSZip === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
+  const catRows = catalogoData.map(c => [c.nombre||'', c.categoria||'', c.unidad||'', c.codigo||'', c.marca||'', c.modelo||'', c.stockMin??0, c.tipoCantidad||'UNIDAD']);
+  const instRows = instanciasData.map(i => [i.id, i.itemId||'', i.nombre||'', i.sede||'', i.estado||'DISPONIBLE', i.responsable||'', i.notas||'', (i.nivel!==undefined?i.nivel:'')]);
+  try {
+    _cmDownloadBlob(await _cmXlsxBlob(_cmBuildWorkbook(catRows, instRows)), `insumos_base_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast('✓ Base exportada — celdas con menú desplegable', 'ok');
+  } catch(e) { toast('Error al exportar: ' + e.message, 'err'); }
+}
+
+// Manual en PDF (jsPDF) — guía paso a paso para aprender/enseñar la carga masiva
+function descargarManualCargaMasiva() {
+  if (!(window.jspdf && window.jspdf.jsPDF)) { toast('PDF no disponible — reintenta', 'err'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const PW = 210, PH = 297, M = 14, maxW = PW - M * 2;
+  let y = 0;
+  const ensure = need => { if (y + need > PH - 14) { doc.addPage(); y = 18; } };
+  const h2 = t => { ensure(12); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(37, 99, 175); doc.text(t, M, y); y += 6; doc.setTextColor(40); };
+  const p = (t, indent = 0) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(55); doc.splitTextToSize(t, maxW - indent).forEach(ln => { ensure(6); doc.text(ln, M + indent, y); y += 5; }); };
+  const tableRow = (c1, c2, c3) => {
+    doc.setFontSize(9);
+    const x1 = M, x2 = M + 34, x3 = M + 62;
+    const l3 = doc.splitTextToSize(c3 || '', PW - M - x3);
+    const rows = Math.max(1, l3.length);
+    ensure(rows * 4.6 + 2);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(40); doc.text(c1, x1, y);
+    doc.setFont('helvetica', 'normal');
+    const oblig = /OBLIG/i.test(c2);
+    doc.setTextColor(oblig ? 185 : 120, oblig ? 40 : 120, oblig ? 40 : 120); doc.text(c2, x2, y);
+    doc.setTextColor(60); l3.forEach((ln, i) => doc.text(ln, x3, y + i * 4.6));
+    y += rows * 4.6 + 1.6; doc.setTextColor(40);
+  };
+  // Cabecera
+  doc.setFillColor(37, 99, 175); doc.rect(0, 0, PW, 22, 'F');
+  doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+  doc.text('Carga masiva de Insumos — Manual', M, 13);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+  doc.text('MultiAire · app Insumos', M, 18.5);
+  y = 30; doc.setTextColor(40);
+
+  p('Permite crear o actualizar el inventario en bloque usando un archivo Excel (.xlsx). Al importar se hace UPSERT: si el registro ya existe se actualiza, si no, se crea.');
+  y += 1;
+  h2('Flujo recomendado');
+  p('1)  Pulsa "Exportar base actual" para partir de tus datos reales (o usa la plantilla).', 2);
+  p('2)  Edita las hojas "Catalogo" e "Instancias".', 2);
+  p('3)  Pulsa "Importar", revisa el resumen (nuevos / a actualizar / con error) y confirma.', 2);
+  y += 2;
+  h2('Hoja "Catalogo" — el tipo de ítem (un filtro, un taladro...)');
+  CM_GUIA_CAT.forEach(r => tableRow(r[0], r[1], r[2]));
+  y += 2;
+  h2('Hoja "Instancias" — cada unidad física de un ítem');
+  CM_GUIA_INST.forEach(r => tableRow(r[0], r[1], r[2]));
+  y += 2;
+  h2('Valores válidos');
+  p('Categoría:  ' + CM_CATEGORIAS.join('  ·  '));
+  p('Unidad:  ' + CM_UNIDADES.join('  ·  '));
+  p('Tipo de cantidad:  ' + CM_TIPOCANT.join('  ·  '));
+  p('Estado:  ' + CM_ESTADOS.join('  ·  '));
+  p('Sedes válidas:  ' + (sedes.length ? sedes.map(s => s.sede).join('  ·  ') : '(ninguna registrada)'));
+  y += 2;
+  h2('Ejemplo paso a paso');
+  CM_EJEMPLO.slice(1).forEach(l => { if (l) p(l, 2); else y += 2; });
+  y += 2;
+  h2('Reglas importantes');
+  CM_REGLAS.forEach(r => p('•  ' + r, 2));
+
+  doc.save('manual_carga_masiva_insumos.pdf');
+  toast('✓ Manual descargado', 'ok');
+}
+
+// Lee una hoja (por nombre flexible a acentos/mayúsculas) a objetos con claves normalizadas
+function _cmSheetRows(wb, nombreHoja) {
+  const target = _cmNorm(nombreHoja);
+  const name = wb.SheetNames.find(n => _cmNorm(n) === target);
+  if (!name) return [];
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' }).map(row => {
+    const o = {};
+    Object.keys(row).forEach(k => { o[_cmNorm(k).replace(/\s+/g,'_')] = row[k]; });
+    return o;
+  });
+}
+
+async function onCargaMasivaFile(file) {
+  if (!file) return;
+  if (typeof XLSX === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
+  document.getElementById('cm-file-name').textContent = file.name;
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    _cmImport = _cmValidar(_cmSheetRows(wb, 'Catalogo'), _cmSheetRows(wb, 'Instancias'));
+    _cmRenderPreview();
+  } catch(e) { toast('No se pudo leer el archivo: ' + e.message, 'err'); }
+}
+
+function _cmValidar(catRows, instRows) {
+  const out = { cat: { nuevos: [], upd: [], err: [] }, inst: { nuevos: [], upd: [], err: [] } };
+  // Catálogo efectivo (base + lo válido del archivo) por código y por id, para que las instancias puedan referenciarlo
+  const byCodigo = {}, byId = {};
+  catalogoData.forEach(c => { if (c.codigo) byCodigo[c.codigo.toUpperCase()] = c; byId[c.id] = c; });
+  const codigosArchivo = new Set();
+  catRows.forEach((r, idx) => {
+    const fila = idx + 2;
+    const nombre = _cmStr(r.NOMBRE).toUpperCase(), codigo = _cmStr(r.CODIGO).toUpperCase();
+    if (!nombre && !codigo) return;  // fila vacía
+    if (!nombre) { out.cat.err.push({ fila, msg: 'NOMBRE vacío' }); return; }
+    if (!codigo) { out.cat.err.push({ fila, msg: 'CODIGO vacío' }); return; }
+    if (codigosArchivo.has(codigo)) { out.cat.err.push({ fila, msg: `CODIGO duplicado en el archivo: ${codigo}` }); return; }
+    codigosArchivo.add(codigo);
+    const categoria = _cmStr(r.CATEGORIA).toUpperCase() || 'INSUMO';
+    if (!CM_CATEGORIAS.includes(categoria)) { out.cat.err.push({ fila, msg: `CATEGORIA inválida: ${categoria}` }); return; }
+    const unidad = _cmStr(r.UNIDAD).toUpperCase() || 'UND';
+    if (!CM_UNIDADES.includes(unidad)) { out.cat.err.push({ fila, msg: `UNIDAD inválida: ${unidad}` }); return; }
+    const tipoCantidad = _cmStr(r.TIPO_CANTIDAD).toUpperCase() || 'UNIDAD';
+    if (!CM_TIPOCANT.includes(tipoCantidad)) { out.cat.err.push({ fila, msg: `TIPO_CANTIDAD inválido: ${tipoCantidad}` }); return; }
+    const item = { nombre, categoria, unidad, codigo, marca: _cmStr(r.MARCA), modelo: _cmStr(r.MODELO), stockMin: Number(_cmStr(r.STOCK_MIN)) || 0, tipoCantidad };
+    // Upsert por CODIGO: si existe usa su docId; si es nuevo, se autogenera (el usuario nunca toca el ID)
+    const existente = byCodigo[codigo];
+    let docId, esNuevo;
+    if (existente) { docId = existente.id; esNuevo = false; }
+    else { docId = 'INS-' + Date.now() + '-' + idx; esNuevo = true; }
+    const nombreCambiado = !!existente && existente.nombre !== nombre;
+    byCodigo[codigo] = { id: docId, ...item }; byId[docId] = { id: docId, ...item };
+    (esNuevo ? out.cat.nuevos : out.cat.upd).push({ docId, item, esNuevo, nombreCambiado });
+  });
+  // Instancias
+  const idsArchivo = new Set(), instById = {};
+  instanciasData.forEach(i => instById[i.id] = i);
+  const sedesValidas = new Set(sedes.map(s => s.sede));
+  const nextCorr = {};
+  const corrInicial = prefix => {
+    if (nextCorr[prefix] !== undefined) return;
+    const ex = instanciasData.filter(i => i.id.startsWith(prefix + '-')).map(i => parseInt(i.id.slice(prefix.length + 1)) || 0);
+    nextCorr[prefix] = (ex.length ? Math.max(...ex) : 0) + 1;
+  };
+  instRows.forEach((r, idx) => {
+    const fila = idx + 2;
+    const itemRef = _cmStr(r.ITEM_ID);
+    if (!itemRef && !_cmStr(r.ID) && !_cmStr(r.SEDE)) return;  // fila vacía
+    if (!itemRef) { out.inst.err.push({ fila, msg: 'ITEM_ID vacío' }); return; }
+    const item = byId[itemRef] || byCodigo[itemRef.toUpperCase()];
+    if (!item) { out.inst.err.push({ fila, msg: `ITEM_ID no existe en el catálogo: ${itemRef}` }); return; }
+    const estado = _cmStr(r.ESTADO).toUpperCase() || 'DISPONIBLE';
+    if (!CM_ESTADOS.includes(estado)) { out.inst.err.push({ fila, msg: `ESTADO inválido: ${estado}` }); return; }
+    const sede = _cmStr(r.SEDE).toUpperCase();
+    if (sede && !sedesValidas.has(sede)) { out.inst.err.push({ fila, msg: `SEDE no existe: ${sede}` }); return; }
+    let id = _cmStr(r.ID);
+    if (!id) {
+      const prefix = (item.codigo || item.nombre.replace(/[^A-Z0-9]/gi, '')).substring(0, 3).toUpperCase();
+      corrInicial(prefix);
+      id = `${prefix}-${String(nextCorr[prefix]++).padStart(3, '0')}`;
+    }
+    if (idsArchivo.has(id)) { out.inst.err.push({ fila, msg: `ID de instancia duplicado en el archivo: ${id}` }); return; }
+    idsArchivo.add(id);
+    // Nombre SIEMPRE del catálogo (mantiene la denormalización de la Etapa 1)
+    const inst = { itemId: item.id, nombre: item.nombre, sede, estado, responsable: _cmStr(r.RESPONSABLE), notas: _cmStr(r.NOTAS) };
+    if (item.tipoCantidad === 'RANGO' && _cmStr(r.NIVEL) !== '') { const nv = Number(_cmStr(r.NIVEL)); if (!isNaN(nv)) inst.nivel = Math.max(0, Math.min(100, nv)); }
+    const esNuevo = !instById[id];
+    (esNuevo ? out.inst.nuevos : out.inst.upd).push({ docId: id, inst, esNuevo });
+  });
+  return out;
+}
+
+function _cmRenderPreview() {
+  const r = _cmImport, box = document.getElementById('cm-preview');
+  box.style.display = 'block';
+  const nOk = r.cat.nuevos.length + r.cat.upd.length + r.inst.nuevos.length + r.inst.upd.length;
+  const linea = (lbl, s) => `<div style="display:flex;gap:10px;font-size:12px;padding:3px 0"><span style="width:78px;color:var(--muted2)">${lbl}</span>
+    <span style="color:var(--green)">＋${s.nuevos.length} nuevos</span> · <span style="color:var(--blue)">↻${s.upd.length} a actualizar</span> · <span style="color:${s.err.length?'var(--red)':'var(--muted)'}">⚠${s.err.length} con error</span></div>`;
+  let h = `<div style="border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--surface2)">
+    <div style="font-weight:600;margin-bottom:8px">Resumen de la importación</div>${linea('Catálogo', r.cat)}${linea('Instancias', r.inst)}`;
+  const errs = [...r.cat.err.map(e => ({ ...e, t: 'Catálogo' })), ...r.inst.err.map(e => ({ ...e, t: 'Instancias' }))];
+  if (errs.length) h += `<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px"><div style="font-size:11px;color:var(--red);font-weight:600;margin-bottom:4px">Filas omitidas por error:</div>
+    <div style="max-height:150px;overflow-y:auto;font-size:11px;display:flex;flex-direction:column;gap:2px">${errs.map(e => `<div>• ${e.t} fila ${e.fila}: ${e.msg}</div>`).join('')}</div></div>`;
+  h += `</div>`;
+  if (nOk === 0) h += `<div style="font-size:12px;color:var(--red);margin-top:8px">No hay filas válidas para importar.</div>`;
+  box.innerHTML = h;
+  document.getElementById('cm-confirm-btn').style.display = nOk > 0 ? 'inline-flex' : 'none';
+}
+
+async function confirmarImportInsumos() {
+  if (!_cmImport) return;
+  const r = _cmImport, btn = document.getElementById('cm-confirm-btn');
+  const totalCat = r.cat.nuevos.length + r.cat.upd.length, totalInst = r.inst.nuevos.length + r.inst.upd.length;
+  if (!confirm(`¿Confirmar la importación?\n\nCatálogo: ${totalCat} (${r.cat.nuevos.length} nuevos, ${r.cat.upd.length} actualizar)\nInstancias: ${totalInst} (${r.inst.nuevos.length} nuevos, ${r.inst.upd.length} actualizar)\n\nLas filas con error se omiten.`)) return;
+  if (btn) { btn.disabled = true; btn._t = btn.textContent; btn.textContent = '⏳ Importando...'; }
+  try {
+    const ts = new Date().toISOString();
+    // 1) Catálogo (batch troceado a 450)
+    const catOps = [...r.cat.nuevos, ...r.cat.upd];
+    for (let k = 0; k < catOps.length; k += 450) {
+      const batch = db.batch();
+      catOps.slice(k, k + 450).forEach(op => batch.set(db.collection('insumos_catalogo').doc(op.docId), { ...op.item, origen: 'IMPORT_XLSX', updatedAt: ts, updatedBy: maUser.email }, { merge: true }));
+      await batch.commit();
+    }
+    catOps.forEach(op => { const idx = catalogoData.findIndex(x => x.id === op.docId); if (idx >= 0) catalogoData[idx] = { ...catalogoData[idx], ...op.item }; else catalogoData.push({ id: op.docId, ...op.item }); });
+    // 2) Instancias (no toca paqueteId)
+    const instOps = [...r.inst.nuevos, ...r.inst.upd];
+    const idsImportadas = new Set(instOps.map(op => op.docId));
+    for (let k = 0; k < instOps.length; k += 450) {
+      const batch = db.batch();
+      instOps.slice(k, k + 450).forEach(op => {
+        const data = { ...op.inst, updatedAt: ts, updatedBy: maUser.email };
+        if (op.esNuevo) { data.creadoEn = ts; data.creadoPor = maUser.email; data.origen = 'IMPORT_XLSX'; }
+        batch.set(db.collection('insumos_instancias').doc(op.docId), data, { merge: true });
+      });
+      await batch.commit();
+    }
+    instOps.forEach(op => { const idx = instanciasData.findIndex(x => x.id === op.docId); if (idx >= 0) instanciasData[idx] = { ...instanciasData[idx], ...op.inst }; else instanciasData.push({ id: op.docId, ...op.inst }); });
+    // 3) Propagar nombre del catálogo a instancias hijas existentes NO incluidas en el archivo (invariante Etapa 1)
+    let propBatch = db.batch(), propCount = 0;
+    for (const op of r.cat.upd.filter(o => o.nombreCambiado)) {
+      const hijas = instanciasData.filter(i => i.itemId === op.docId && !idsImportadas.has(i.id) && i.nombre !== op.item.nombre);
+      for (const h of hijas) {
+        propBatch.update(db.collection('insumos_instancias').doc(h.id), { nombre: op.item.nombre, updatedAt: ts, updatedBy: maUser.email });
+        h.nombre = op.item.nombre;
+        if (++propCount % 450 === 0) { await propBatch.commit(); propBatch = db.batch(); }
+      }
+    }
+    if (propCount % 450 !== 0) await propBatch.commit();
+    toast(`✓ Importación completa — catálogo ${totalCat}, instancias ${totalInst}`, 'ok');
+    _cmImport = null;
+    closeModal('modal-carga-masiva');
+    renderAll();
+  } catch(e) { toast('Error al importar: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._t || '✓ Confirmar importación'; } }
+}
+
 // ── TRANSFERENCIA ─────────────────────────────────────────
 function openModalTransferencia() {
   document.getElementById('ft-sede-origen').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s => `<option value="${s.sede}">${s.sede}</option>`).join('');
@@ -2648,6 +3530,15 @@ function updateInstQRSelectionBar() {
   if (selectedInstQRIds.size > 0) {
     bar.style.display = 'flex';
     count.textContent = selectedInstQRIds.size + ' seleccionado' + (selectedInstQRIds.size > 1 ? 's' : '');
+    // Acciones en lote, cada una según su permiso (salida/baja vs transferencia pueden diferir por rol)
+    const lote = document.getElementById('inst-lote-actions');
+    const puedeSalida = can('salida') === 1;
+    const puedeTransf = can('transferencia') === 1;
+    const bS = document.getElementById('btn-lote-salida'), bB = document.getElementById('btn-lote-baja'), bT = document.getElementById('btn-lote-transf');
+    if (bS) bS.style.display = puedeSalida ? 'inline-flex' : 'none';
+    if (bB) bB.style.display = puedeSalida ? 'inline-flex' : 'none';
+    if (bT) bT.style.display = puedeTransf ? 'inline-flex' : 'none';
+    if (lote) lote.style.display = (puedeSalida || puedeTransf) ? 'inline-flex' : 'none';
   } else {
     bar.style.display = 'none';
   }
@@ -3320,6 +4211,11 @@ async function eliminarMovsCascada(instIds, excludeMovId, fromFecha=null) {
   });
   for (const m of movsACascada) {
     await db.collection('insumos_movimientos').doc(m.id).delete();
+    // Borrar fotos adjuntas (guía/entrega) para no dejar huérfanos
+    if (movFotos[m.id] || m.tieneFotos) {
+      await db.collection('insumos_movimientos_fotos').doc(m.id).delete().catch(() => {});
+      delete movFotos[m.id];
+    }
   }
   const cascadaIds = new Set(movsACascada.map(m => m.id));
   movimientosData = movimientosData.filter(m => !cascadaIds.has(m.id));
@@ -3343,13 +4239,19 @@ async function revertirMovimiento(movId) {
     );
     if (movsAfectados.length) cascadaMsg = `\n\nSe eliminarán también ${movsAfectados.length} movimiento(s) relacionado(s) (actualizaciones, transferencias, salidas de esas instancias).`;
   } else if (mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') {
-    const instId = mov.instanciaId;
-    const movsPost = movimientosData.filter(m => m.id !== movId && m.instanciaId === instId);
-    if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de esta instancia.`;
+    const ids = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+    const movsPost = movimientosData.filter(m => m.id !== movId && (
+      (m.instanciaId && ids.includes(m.instanciaId)) ||
+      (m.instancias && m.instancias.some(id => ids.includes(id)))
+    ));
+    if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de ${ids.length > 1 ? 'estas instancias' : 'esta instancia'}.`;
   } else if (mov.tipo === 'TRANSFERENCIA') {
-    const instId = mov.instanciaId;
-    const movsPost = movimientosData.filter(m => m.id !== movId && m.instanciaId === instId);
-    if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de esta instancia (actualizaciones, transferencias).`;
+    const ids = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+    const movsPost = movimientosData.filter(m => m.id !== movId && (
+      (m.instanciaId && ids.includes(m.instanciaId)) ||
+      (m.instancias && m.instancias.some(id => ids.includes(id)))
+    ));
+    if (movsPost.length) cascadaMsg = `\n\nSe eliminarán también ${movsPost.length} movimiento(s) posteriores de ${ids.length > 1 ? 'estas instancias' : 'esta instancia'} (actualizaciones, transferencias).`;
   } else if (mov.tipo === 'TRANSFERENCIA_PAQUETE') {
     const movsDePkg = movimientosData.filter(m => m.origenPaquete === movId);
     const instIds = mov.instancias || [];
@@ -3371,39 +4273,77 @@ async function revertirMovimiento(movId) {
       toast(`✓ Entrada revertida — ${ids.length} instancia(s) eliminada(s)${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
 
     } else if (mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') {
-      const instId = mov.instanciaId;
-      if (!instId) { toast('No se puede revertir: sin ID de instancia', 'err'); return; }
-      // Cascada: eliminar movimientos posteriores de esta instancia (no tienen sentido si la instancia "no salió")
-      const nCascada = await eliminarMovsCascada([instId], movId);
-      // Recrear la instancia
-      const item = catalogoData.find(x => x.id === mov.itemId);
-      const inst = {
-        itemId: mov.itemId, nombre: mov.itemNombre || (item ? item.nombre : ''),
-        sede: mov.sede || '', estado: 'DISPONIBLE',
-        creadoEn: new Date().toISOString(), creadoPor: maUser.email,
-        notas: `Restaurado el ${new Date().toLocaleDateString('es-PE')} (revertido desde historial)`
-      };
-      await db.collection('insumos_instancias').doc(instId).set(inst);
-      instanciasData.push({ id: instId, ...inst });
-      toast(`✓ ${mov.tipo === 'BAJA' ? 'Baja' : 'Salida'} revertida — ${instId} restaurado${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
+      // Soporta lote (instancias[] + instanciasSnapshot) y formato antiguo (instanciaId singular)
+      const ids = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+      if (!ids.length) { toast('No se puede revertir: sin ID de instancia', 'err'); return; }
+      // Cascada: eliminar movimientos posteriores de estas instancias (no tienen sentido si "no salieron")
+      const nCascada = await eliminarMovsCascada(ids, movId);
+      const fecha = new Date().toLocaleDateString('es-PE');
+      for (const instId of ids) {
+        // Restaurar desde el snapshot si existe (lote mixto) — fielmente; si no, reconstruir con los datos del movimiento
+        const snap = (mov.instanciasSnapshot || []).find(s => s.id === instId);
+        let inst;
+        if (snap) {
+          const { id, ...rest } = snap;
+          inst = { ...rest, estado: rest.estado && rest.estado !== 'BAJA' ? rest.estado : 'DISPONIBLE',
+            updatedAt: new Date().toISOString(), updatedBy: maUser.email };
+        } else {
+          const item = catalogoData.find(x => x.id === mov.itemId);
+          inst = {
+            itemId: mov.itemId, nombre: mov.itemNombre || (item ? item.nombre : ''),
+            sede: mov.sede || '', estado: 'DISPONIBLE',
+            creadoEn: new Date().toISOString(), creadoPor: maUser.email,
+            notas: `Restaurado el ${fecha} (revertido desde historial)`
+          };
+        }
+        await db.collection('insumos_instancias').doc(instId).set(inst);
+        instanciasData.push({ id: instId, ...inst });
+      }
+      // Eliminar fotos adjuntas al movimiento (guía/entrega), si las hubiera
+      if (movFotos[movId] || mov.tieneFotos) {
+        await db.collection('insumos_movimientos_fotos').doc(movId).delete().catch(() => {});
+        delete movFotos[movId];
+      }
+      toast(`✓ ${mov.tipo === 'BAJA' ? 'Baja' : 'Salida'} revertida — ${ids.length} instancia(s) restaurada(s)${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
 
     } else if (mov.tipo === 'TRANSFERENCIA') {
-      const instId = mov.instanciaId;
-      if (!instId) { toast('No se puede revertir: faltan datos', 'err'); return; }
-      // Cascada: eliminar movimientos posteriores de esta instancia
-      const nCascada = await eliminarMovsCascada([instId], movId);
-      // Revertir usando diffsData si existe, sino fallback a sedeOrigen
-      const revertUpdates = { updatedAt: new Date().toISOString() };
-      if (mov.diffsData && mov.diffsData.length) {
-        mov.diffsData.forEach(d => { revertUpdates[d.campo] = d.de; });
+      // Soporta lote (instancias[] + instanciasSnapshot con valores previos) y formato antiguo (instanciaId + diffsData)
+      const ids = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+      if (!ids.length) { toast('No se puede revertir: faltan datos', 'err'); return; }
+      const nCascada = await eliminarMovsCascada(ids, movId);
+      if (mov.instanciasSnapshot && mov.instanciasSnapshot.length) {
+        // Lote: cada instancia vuelve a su valor previo de los campos transferidos
+        const campos = mov.camposTransferidos || ['sede', 'responsable'];
+        for (const instId of ids) {
+          const snap = mov.instanciasSnapshot.find(s => s.id === instId);
+          if (!snap) continue;
+          const revertUpdates = { updatedAt: new Date().toISOString(), updatedBy: maUser.email };
+          campos.forEach(c => { if (snap[c] !== undefined) revertUpdates[c] = snap[c]; });
+          await db.collection('insumos_instancias').doc(instId).update(revertUpdates);
+          const idx = instanciasData.findIndex(x => x.id === instId);
+          if (idx >= 0) Object.assign(instanciasData[idx], revertUpdates);
+        }
+        // Nota: la reversión NO re-inserta las instancias en su paquete previo (igual que la transferencia individual)
       } else {
-        if (!mov.sedeOrigen) { toast('No se puede revertir: faltan datos', 'err'); return; }
-        revertUpdates.sede = mov.sedeOrigen;
+        // Individual (legacy): diffsData con {campo, de, a}, fallback a sedeOrigen
+        const instId = mov.instanciaId;
+        const revertUpdates = { updatedAt: new Date().toISOString() };
+        if (mov.diffsData && mov.diffsData.length) {
+          mov.diffsData.forEach(d => { revertUpdates[d.campo] = d.de; });
+        } else {
+          if (!mov.sedeOrigen) { toast('No se puede revertir: faltan datos', 'err'); return; }
+          revertUpdates.sede = mov.sedeOrigen;
+        }
+        await db.collection('insumos_instancias').doc(instId).update(revertUpdates);
+        const idx = instanciasData.findIndex(x => x.id === instId);
+        if (idx >= 0) Object.assign(instanciasData[idx], revertUpdates);
       }
-      await db.collection('insumos_instancias').doc(instId).update(revertUpdates);
-      const idx = instanciasData.findIndex(x => x.id === instId);
-      if (idx >= 0) Object.assign(instanciasData[idx], revertUpdates);
-      toast(`✓ Transferencia revertida — ${instId}${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
+      // Borrar fotos adjuntas (guía/entrega) si las hubiera
+      if (movFotos[movId] || mov.tieneFotos) {
+        await db.collection('insumos_movimientos_fotos').doc(movId).delete().catch(() => {});
+        delete movFotos[movId];
+      }
+      toast(`✓ Transferencia revertida — ${ids.length} instancia(s)${nCascada ? ` + ${nCascada} movimiento(s) en cascada` : ''}`, 'ok');
 
     } else if (mov.tipo === 'ACTUALIZACION') {
       const instId = mov.instanciaId;
@@ -3478,18 +4418,16 @@ async function editarMovimiento(movId) {
   // Instancias afectadas para ENTRADA / SALIDA / BAJA
   const instWrap = document.getElementById('em-instancias-wrap');
   const instList = document.getElementById('em-instancias-list');
-  if (mov.tipo === 'ENTRADA' && (mov.instancias?.length || mov.instanciaId)) {
-    const ids = mov.instancias || [mov.instanciaId];
-    instList.innerHTML = ids.map(id => {
+  const instIdsEdit = mov.instancias || (mov.instanciaId ? [mov.instanciaId] : []);
+  if ((mov.tipo === 'ENTRADA' || mov.tipo === 'SALIDA' || mov.tipo === 'BAJA' || mov.tipo === 'TRANSFERENCIA') && instIdsEdit.length) {
+    const esSalida = mov.tipo === 'SALIDA' || mov.tipo === 'BAJA';
+    instList.innerHTML = instIdsEdit.map(id => {
       const inst = instanciasData.find(x => x.id === id);
-      const estado = inst ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'}</span>` : `<span style="color:var(--red)"> · eliminada</span>`;
+      const estado = inst
+        ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'}${inst.sede?' · '+inst.sede:''}</span>`
+        : `<span style="color:var(--red)"> · ${esSalida ? 'ya no existe en inventario' : 'eliminada'}</span>`;
       return `<div>${id}${estado}</div>`;
     }).join('');
-    instWrap.style.display = 'block';
-  } else if ((mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') && mov.instanciaId) {
-    const inst = instanciasData.find(x => x.id === mov.instanciaId);
-    const estado = inst ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'} · ${inst.sede||'—'}</span>` : `<span style="color:var(--red)"> · ya no existe en inventario</span>`;
-    instList.innerHTML = `<div>${mov.instanciaId}${estado}</div>`;
     instWrap.style.display = 'block';
   } else {
     instWrap.style.display = 'none';
@@ -3532,27 +4470,7 @@ async function guardarEdicionMovimiento() {
     const movUpdates = { responsable, motivo };
 
     // Si es ACTUALIZACION, aplicar cambios editados a la instancia
-    // Instancias afectadas para ENTRADA / SALIDA / BAJA
-  const instWrap = document.getElementById('em-instancias-wrap');
-  const instList = document.getElementById('em-instancias-list');
-  if (mov.tipo === 'ENTRADA' && (mov.instancias?.length || mov.instanciaId)) {
-    const ids = mov.instancias || [mov.instanciaId];
-    instList.innerHTML = ids.map(id => {
-      const inst = instanciasData.find(x => x.id === id);
-      const estado = inst ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'}</span>` : `<span style="color:var(--red)"> · eliminada</span>`;
-      return `<div>${id}${estado}</div>`;
-    }).join('');
-    instWrap.style.display = 'block';
-  } else if ((mov.tipo === 'SALIDA' || mov.tipo === 'BAJA') && mov.instanciaId) {
-    const inst = instanciasData.find(x => x.id === mov.instanciaId);
-    const estado = inst ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'} · ${inst.sede||'—'}</span>` : `<span style="color:var(--red)"> · ya no existe en inventario</span>`;
-    instList.innerHTML = `<div>${mov.instanciaId}${estado}</div>`;
-    instWrap.style.display = 'block';
-  } else {
-    instWrap.style.display = 'none';
-  }
-
-  if (mov.tipo === 'ACTUALIZACION' && mov.diffsData && mov.diffsData.length) {
+    if (mov.tipo === 'ACTUALIZACION' && mov.diffsData && mov.diffsData.length) {
       const instId = mov.instanciaId;
       const instUpdates = { updatedAt: new Date().toISOString(), updatedBy: maUser.email };
       const newDiffs = [];
