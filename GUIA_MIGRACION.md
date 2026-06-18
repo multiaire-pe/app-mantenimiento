@@ -39,8 +39,9 @@ Texto listo para reenviar:
 > *Para la plataforma de gestión interna de MultiAire Perú (`multiaire.com.pe`) necesitamos:*
 > 1. *Crear la **cuenta funcional** `plataforma@multiaire.com.pe` (Google Workspace). Las
 >    credenciales las custodia la empresa (gestor de contraseñas + 2FA).*
-> 2. *En el **DNS** de `multiaire.com.pe`: crear un **CNAME** `app` → `cname.vercel-dns.com`
->    (o el valor exacto que les pasaremos desde Vercel). Si prefieren, denos acceso para crearlo.*
+> 2. *En el **DNS** de `multiaire.com.pe` (lo gestiona **ChileCL**): agregar un **CNAME**
+>    `app` → `cname.vercel-dns.com`. Es un cambio **puntual, una sola vez** (no requiere darnos
+>    accesos). Si Vercel pide además un `TXT` de verificación, se los pasamos — también una sola vez.*
 > 3. *En **Google Cloud**: asignar el rol **Owner** del proyecto `multiaire-fee43` a la cuenta
 >    `plataforma@multiaire.com.pe`. (Ideal: mover el proyecto a la **Organización** `multiaire.com.pe`
 >    y dejar a `plataforma@` como Owner — requiere un admin de la Organización.)*
@@ -123,6 +124,14 @@ Texto listo para reenviar:
 - Subdominio objetivo: `app.multiaire.com.pe` → CNAME `cname.vercel-dns.com`
 - URLs Vercel actuales: prod `multiaire-peru-app.vercel.app` · develop `multiaire-peru-app-develop.vercel.app`
 - Repo actual: `marchenaangulojoseluis-dev/app-mantenimiento`
+
+### Dominio `multiaire.com.pe` (datos del WHOIS, 2026-06-18)
+- **Titular / admin:** Elizabeth Aedo · contacto admin `jmt.moraga@gmail.com`
+- **Registrador:** KEY-SYSTEMS GmbH · estado `clientTransferProhibited` (bloqueado contra transferencia — normal)
+- **DNS hospedado en:** **ChileCL** (`dns1-4.chilecl.cl`); ahí cuelgan también la web y el correo del dominio
+- **Conclusión:** el dominio es y debe seguir siendo **de la empresa** (gestionado en Chile). Para la app
+  **NO** hace falta transferirlo ni pedir accesos: basta que **Chile agregue el CNAME una sola vez**.
+  El registro a tocar para el DNS es `jmt.moraga@gmail.com` (o a quien deleguen en ChileCL).
 
 ## 6) Qué hace quién
 - **Gestión (tú / Chile):** crear `plataforma@`, DNS, Owner de GCP, Org de GitHub, alta en Meta.
