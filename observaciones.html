@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <link rel="icon" type="image/png" href="favicon.png">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>MultiAire – Proveedores</title>
+<title>MultiAire – Observaciones</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 :root{
@@ -120,6 +120,26 @@ tr:hover td{background:var(--surface2)}
 .estado-dot.off{background:var(--muted)}
 .row-clickable{cursor:pointer}
 .empty-msg{text-align:center;color:var(--muted);padding:40px 20px;font-size:13px}
+/* ── ESTADO BADGES + FOTO ─────────────────────────────────────────────────── */
+.est-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.est-PENDIENTE{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
+.est-EN_PROCESO{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
+.est-OK{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.est-dot.PENDIENTE{background:var(--red)}.est-dot.EN_PROCESO{background:var(--yellow)}.est-dot.OK{background:var(--green)}
+.origen-badge{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:4px}
+.origen-APP{background:var(--blue-pale);color:var(--blue)}
+.origen-WHATSAPP{background:#e6f7ec;color:#0a8f3c}
+.obs-thumb{width:30px;height:30px;border-radius:6px;object-fit:cover;border:1px solid var(--border);cursor:zoom-in;display:block}
+.obs-foto-box{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.obs-foto-preview{width:72px;height:72px;border-radius:8px;object-fit:cover;border:1.5px solid var(--border);cursor:zoom-in}
+.obs-foto-empty{width:72px;height:72px;border-radius:8px;border:1.5px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:24px;background:var(--surface2)}
+.cam-only-mobile{display:none}
+.foto-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:3000;padding:20px;cursor:zoom-out}
+.foto-lightbox.open{display:flex}
+.foto-lightbox img{max-width:92vw;max-height:86vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+.foto-lightbox-close{position:absolute;top:14px;right:18px;font-size:30px;color:#fff;cursor:pointer;background:none;border:none;line-height:1}
+.col-obs{max-width:340px}
+.cell-obs{display:block;max-width:340px;color:var(--accent);font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ── MODAL ────────────────────────────────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(10,20,50,.45);backdrop-filter:blur(2px);z-index:500;display:none;align-items:center;justify-content:center;padding:16px;cursor:pointer}
@@ -144,6 +164,7 @@ tr:hover td{background:var(--surface2)}
   .form-row{flex-direction:column;align-items:stretch}
   .prov-toolbar-actions{width:100%}
   .prov-toolbar-actions .btn{flex:1;justify-content:center}
+  .cam-only-mobile{display:inline-flex}
 }
 </style>
 </head>
@@ -151,7 +172,7 @@ tr:hover td{background:var(--surface2)}
 
 <header>
   <div class="logo-dot"></div>
-  <div class="logo">MultiAire <span>/ Proveedores</span></div>
+  <div class="logo">MultiAire <span>/ Observaciones</span></div>
   <div class="hpill loading" id="conn-pill">⟳ Conectando...</div>
   <div class="hactions">
     <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
@@ -162,7 +183,7 @@ tr:hover td{background:var(--surface2)}
 <div id="auth-overlay" style="display:none">
   <div class="auth-card">
     <div class="auth-logo"><div class="auth-logo-dot"></div><div class="auth-logo-text">MultiAire</div></div>
-    <div class="auth-title">Proveedores</div>
+    <div class="auth-title">Manta de Observaciones</div>
     <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada.</div>
     <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
     <div class="auth-err" id="auth-err"></div>
@@ -177,47 +198,57 @@ tr:hover td{background:var(--surface2)}
   <div class="card">
     <div class="prov-toolbar">
       <div class="prov-search-wrap">
-        <input type="text" id="prov-search" class="form-input"
-               placeholder="🔍 Buscar por RUC, razón social, nombre comercial, rubro o contacto…"
-               oninput="renderProvTable()" autocomplete="off">
+        <input type="text" id="obs-search" class="form-input"
+               placeholder="🔍 Buscar por tienda, equipo u observación…"
+               oninput="renderObsTable()" autocomplete="off">
       </div>
       <div class="prov-toolbar-actions">
-        <button class="btn btn-sm btn-green" onclick="exportProveedores()">⬇ Exportar Excel</button>
-        <button class="btn btn-sm btn-primary" id="btn-new-prov" onclick="openNewProv()" style="display:none">＋ Nuevo proveedor</button>
+        <select id="obs-f-tienda" class="form-select" style="width:auto;min-width:150px" onchange="renderObsTable()"><option value="">Todas las tiendas</option></select>
+        <select id="obs-f-estado" class="form-select" style="width:auto" onchange="renderObsTable()">
+          <option value="">Todos los estados</option>
+          <option value="PENDIENTE">🔴 Pendiente</option>
+          <option value="EN_PROCESO">🟡 En proceso</option>
+          <option value="OK">🟢 OK</option>
+        </select>
+        <input type="date" id="obs-f-fecha" class="form-input" style="width:auto" onchange="renderObsTable()" title="Filtrar por fecha">
+        <button class="btn btn-sm" onclick="clearObsFilters()" title="Limpiar filtros">✕</button>
+        <button class="btn btn-sm btn-green" onclick="exportObsExcel()">⬇ Excel</button>
+        <button class="btn btn-sm btn-green" onclick="exportObsPDF()">⬇ PDF</button>
+        <button class="btn btn-sm btn-primary" id="btn-new-obs" onclick="openNewObs()" style="display:none">＋ Nueva observación</button>
       </div>
     </div>
   </div>
 
-  <!-- PROVIDERS TABLE -->
+  <!-- OBSERVATIONS TABLE -->
   <div class="card">
     <div class="results-header">
-      <h3>🏢 Directorio de proveedores</h3>
-      <span id="prov-count" style="font-size:11px;color:var(--muted2)"></span>
+      <h3>📋 Manta de observaciones — Ripley</h3>
+      <span id="obs-count" style="font-size:11px;color:var(--muted2)"></span>
     </div>
     <div class="table-scroll">
       <table>
         <thead>
           <tr>
             <th class="col-estado" title="Estado"></th>
-            <th>RUC</th>
-            <th>Razón social</th>
-            <th>Nombre comercial</th>
-            <th>Rubro</th>
-            <th>Teléfono</th>
-            <th>Contacto</th>
-            <th>Cond. pago</th>
-            <th class="col-notas">Notas</th>
+            <th>Tienda</th>
+            <th>Equipo</th>
+            <th class="col-obs">Observación</th>
+            <th>Estado</th>
+            <th>Fecha</th>
+            <th class="col-estado" title="Foto">📷</th>
+            <th>Origen</th>
             <th class="col-acc"></th>
           </tr>
         </thead>
-        <tbody id="prov-body">
-          <tr><td colspan="10" class="empty-msg">Cargando proveedores…</td></tr>
+        <tbody id="obs-body">
+          <tr><td colspan="9" class="empty-msg">Cargando observaciones…</td></tr>
         </tbody>
       </table>
     </div>
     <p style="font-size:10px;color:var(--muted2);margin-top:6px">
-      <span class="estado-dot on"></span> Activo &nbsp;·&nbsp;
-      <span class="estado-dot off"></span> Inactivo &nbsp;·&nbsp; doble clic en una fila para ver el detalle.
+      <span class="est-badge est-PENDIENTE">PENDIENTE</span>&nbsp;
+      <span class="est-badge est-EN_PROCESO">EN PROCESO</span>&nbsp;
+      <span class="est-badge est-OK">OK</span>&nbsp;·&nbsp; doble clic en una fila para ver/editar el detalle.
     </p>
   </div>
 
@@ -227,102 +258,81 @@ tr:hover td{background:var(--surface2)}
 <footer>
   <span class="footer-txt">MultiAire © 2026</span>
   <span class="footer-txt" style="opacity:.4">·</span>
-  <span class="footer-txt">Proveedores</span>
+  <span class="footer-txt">Observaciones</span>
   <span class="footer-time" id="clock">—</span>
 </footer>
 
-<!-- MODAL ALTA / EDICIÓN PROVEEDOR -->
-<div class="modal-overlay" id="modal-prov" onclick="if(event.target===this)closeModal('modal-prov')">
+<!-- MODAL ALTA / EDICIÓN OBSERVACIÓN -->
+<div class="modal-overlay" id="modal-obs" onclick="if(event.target===this)closeModal('modal-obs')">
   <div class="modal">
-    <h2 id="prov-modal-title">＋ Nuevo proveedor</h2>
+    <h2 id="obs-modal-title">＋ Nueva observación</h2>
     <div class="modal-sub">
       Los campos marcados con <span style="color:var(--orange)">*</span> son obligatorios.
-      La razón social se guarda en MAYÚSCULAS.
+      Cada observación es un registro independiente del equipo.
     </div>
-    <input type="hidden" id="prov-id">
+    <input type="hidden" id="obs-id">
     <div style="display:flex;flex-direction:column;gap:12px">
 
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">RUC / DNI <span style="color:var(--orange)">*</span></label>
-          <input type="text" id="prov-ruc" class="form-input" maxlength="11" inputmode="numeric"
-                 placeholder="20512345678" autocomplete="off">
+          <label class="form-label">Tienda <span style="color:var(--orange)">*</span></label>
+          <select id="obs-tienda" class="form-select" onchange="onObsTiendaChange()"><option value="">Seleccionar…</option></select>
         </div>
-        <div class="form-group" style="flex:0 0 140px;min-width:120px">
+        <div class="form-group">
+          <label class="form-label">Equipo <span style="color:var(--orange)">*</span></label>
+          <select id="obs-equipo" class="form-select"><option value="">Seleccionar…</option></select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group" style="flex:0 0 170px;min-width:150px">
           <label class="form-label">Estado</label>
-          <select id="prov-activo" class="form-select">
-            <option value="SI">Activo</option>
-            <option value="NO">Inactivo</option>
+          <select id="obs-estado" class="form-select">
+            <option value="PENDIENTE">🔴 Pendiente</option>
+            <option value="EN_PROCESO">🟡 En proceso</option>
+            <option value="OK">🟢 OK</option>
           </select>
         </div>
-      </div>
-
-      <div class="form-group" style="min-width:0">
-        <label class="form-label">Razón social <span style="color:var(--orange)">*</span></label>
-        <input type="text" id="prov-razonSocial" class="form-input" placeholder="FERREYROS S.A." autocomplete="off">
-      </div>
-
-      <div class="form-group" style="min-width:0">
-        <label class="form-label">Nombre comercial</label>
-        <input type="text" id="prov-nombreComercial" class="form-input" placeholder="Ferreyros" autocomplete="off">
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Rubro / Categoría</label>
-          <input type="text" id="prov-rubro" class="form-input" placeholder="Repuestos / Ferretería…" autocomplete="off">
+        <div class="form-group" style="flex:0 0 160px;min-width:140px">
+          <label class="form-label">Fecha</label>
+          <input type="date" id="obs-fecha" class="form-input">
         </div>
         <div class="form-group">
-          <label class="form-label">Teléfono</label>
-          <input type="text" id="prov-telefono" class="form-input" inputmode="tel" placeholder="01 234 5678 / 999 888 777" autocomplete="off">
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Email</label>
-          <input type="email" id="prov-email" class="form-input" placeholder="ventas@proveedor.com" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Persona de contacto</label>
-          <input type="text" id="prov-contacto" class="form-input" placeholder="Nombre del contacto" autocomplete="off">
+          <label class="form-label">Técnico (opcional)</label>
+          <select id="obs-tecnico" class="form-select"><option value="">—</option></select>
         </div>
       </div>
 
       <div class="form-group" style="min-width:0">
-        <label class="form-label">Dirección</label>
-        <input type="text" id="prov-direccion" class="form-input" placeholder="Av. / Jr. …, distrito" autocomplete="off">
+        <label class="form-label">Observación <span style="color:var(--orange)">*</span></label>
+        <textarea id="obs-observacion" class="form-input" rows="4" style="resize:vertical;line-height:1.5"
+                  placeholder="Describe el hallazgo del equipo… Ej.: Los filtros de aire se encuentran saturados; se requiere su reemplazo."></textarea>
       </div>
 
       <div class="form-group" style="min-width:0">
-        <label class="form-label">Condiciones de pago</label>
-        <input type="text" id="prov-condicionesPago" class="form-input" placeholder="Contado / Crédito 30 días…" autocomplete="off">
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Banco</label>
-          <input type="text" id="prov-banco" class="form-input" placeholder="BCP / BBVA / Interbank…" autocomplete="off">
+        <label class="form-label">Foto (opcional)</label>
+        <div class="obs-foto-box">
+          <div id="obs-foto-prev"></div>
+          <label class="btn btn-sm" for="obs-foto-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="obs-foto-input" accept="image/*" style="display:none" onchange="setObsFoto(this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="obs-foto-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="obs-foto-cam" accept="image/*" capture="environment" style="display:none" onchange="setObsFoto(this.files[0]); this.value='';">
         </div>
-        <div class="form-group">
-          <label class="form-label">N° de cuenta / CCI</label>
-          <input type="text" id="prov-cuenta" class="form-input" placeholder="Cuenta o CCI" autocomplete="off">
-        </div>
-      </div>
-
-      <div class="form-group" style="min-width:0">
-        <label class="form-label">Notas / observaciones</label>
-        <textarea id="prov-notas" class="form-input" rows="3" style="resize:vertical;line-height:1.5"
-                  placeholder="Ej.: atiende L-V 9-18h · vendedor: Juan Pérez · descuento 10% acordado · entrega en 48h · ojo con facturas observadas · web/catálogo: …"></textarea>
       </div>
 
     </div>
     <div class="modal-foot">
-      <button class="btn btn-red" id="btn-del-prov" onclick="deleteProv()" style="margin-right:auto;display:none">🗑 Eliminar</button>
-      <button class="btn" onclick="closeModal('modal-prov')">Cancelar</button>
-      <button class="btn btn-primary" id="btn-save-prov" onclick="saveProv()">💾 Guardar</button>
+      <button class="btn btn-red" id="btn-del-obs" onclick="deleteObs()" style="margin-right:auto;display:none">🗑 Eliminar</button>
+      <button class="btn" onclick="closeModal('modal-obs')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-obs" onclick="saveObs()">💾 Guardar</button>
     </div>
   </div>
+</div>
+
+<!-- LIGHTBOX FOTO -->
+<div class="foto-lightbox" id="foto-lightbox" onclick="closeFotoLightbox()">
+  <button class="foto-lightbox-close" onclick="closeFotoLightbox()" title="Cerrar">✕</button>
+  <img id="foto-lightbox-img" src="" alt="" onclick="event.stopPropagation()">
 </div>
 
 <!-- MODAL GESTIÓN DE ACCESOS -->
@@ -357,6 +367,7 @@ tr:hover td{background:var(--surface2)}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 // ── CLOCK ─────────────────────────────────────────────────────────────────────
 (function tickClock(){
@@ -507,187 +518,354 @@ function esc(s){
 function closeModal(id){ document.getElementById(id)?.classList.remove('open'); }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  PROVEEDORES — CRUD (colección Firestore `proveedores`)
+//  MANTA DE OBSERVACIONES — Ripley (colección Firestore `manta_observaciones`)
+//  Maestro de equipos en `manta_equipos` · fotos base64 en `manta_observaciones_fotos`
 //  ADMIN / SUPER_ADMIN editan · SUPERVISOR solo lectura
 // ═══════════════════════════════════════════════════════════════════════════════
-let proveedores = [];
-const PROV_FIELDS = ['ruc','razonSocial','nombreComercial','rubro','telefono','email','contacto','direccion','condicionesPago','banco','cuenta','notas'];
+let observaciones = [];        // log de observaciones (1 doc = 1 observación)
+let obsEquipos    = [];        // maestro: [{tienda, equipo, orden}]
+let obsTiendas    = [];        // tiendas distintas (derivadas del maestro)
+let obsFotos      = {};        // { obsId: dataURL base64 }
+let obsPersonal   = [];        // maestros_personal activos (para el campo "técnico")
+let _obsFotoVal   = null;      // foto mostrada en el modal (dataURL o null)
+let _obsFotoDirty = false;     // true si la foto cambió en esta edición
+const OBS_ESTADOS = ['PENDIENTE','EN_PROCESO','OK'];
 
-function isProvAdmin(){
+function isObsAdmin(){
   const rol = maUser?.rol || '';
   return rol === 'ADMIN' || rol === 'SUPER_ADMIN';
 }
+function hoyISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
 // ── APP INIT ──────────────────────────────────────────────────────────────────
 function initApp(){
-  if(isProvAdmin()){
-    const b = document.getElementById('btn-new-prov');
+  if(isObsAdmin()){
+    const b = document.getElementById('btn-new-obs');
     if(b) b.style.display = 'inline-flex';
   }
-  loadProveedores();
+  loadAll();
 }
 
 // ── LOAD ──────────────────────────────────────────────────────────────────────
-async function loadProveedores(){
-  const body = document.getElementById('prov-body');
+async function loadAll(){
+  const body = document.getElementById('obs-body');
   try{
-    const snap = await db.collection('proveedores').get();
-    proveedores = snap.docs.map(d => ({id:d.id, ...d.data()}));
-    proveedores.sort((a,b) => (a.razonSocial||'').localeCompare(b.razonSocial||'','es'));
+    const [eqS, obsS, fotoS, persS] = await Promise.all([
+      db.collection('manta_equipos').get(),
+      db.collection('manta_observaciones').get(),
+      db.collection('manta_observaciones_fotos').get(),
+      db.collection('maestros_personal').get(),
+    ]);
+    obsEquipos = eqS.docs.map(d => ({id:d.id, ...d.data()}))
+      .filter(e => String(e.activo===undefined?'SI':e.activo).toUpperCase()!=='NO');
+    obsEquipos.sort((a,b) => (a.tienda||'').localeCompare(b.tienda||'','es')
+      || (a.orden||0)-(b.orden||0) || (a.equipo||'').localeCompare(b.equipo||'','es',{numeric:true}));
+    obsTiendas = [...new Set(obsEquipos.map(e => e.tienda).filter(Boolean))];
+    observaciones = obsS.docs.map(d => ({id:d.id, ...d.data()}));
+    observaciones.sort(obsSort);
+    obsFotos = {}; fotoS.docs.forEach(d => { const f=d.data().foto; if(f) obsFotos[d.id]=f; });
+    obsPersonal = persS.docs.map(d => ({id:d.id, ...d.data()})).filter(p => String(p.activo||'SI').toUpperCase()!=='NO');
+    obsPersonal.sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es'));
   }catch(e){
-    proveedores = [];
-    if(body) body.innerHTML = '<tr><td colspan="10" class="empty-msg">Error al cargar proveedores.</td></tr>';
-    toast('Error al cargar proveedores: ' + e.message, 'err');
+    observaciones = [];
+    if(body) body.innerHTML = '<tr><td colspan="9" class="empty-msg">Error al cargar observaciones.</td></tr>';
+    toast('Error al cargar: ' + e.message, 'err');
     return;
   }
-  renderProvTable();
+  populateTiendaFilter();
+  renderObsTable();
+}
+
+function obsSort(a,b){
+  return (a.tienda||'').localeCompare(b.tienda||'','es')
+      || (a.equipo||'').localeCompare(b.equipo||'','es',{numeric:true})
+      || (b.fecha||'').localeCompare(a.fecha||'');
+}
+
+function populateTiendaFilter(){
+  const sel = document.getElementById('obs-f-tienda');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Todas las tiendas</option>' + obsTiendas.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  sel.value = cur;
+}
+
+function clearObsFilters(){
+  document.getElementById('obs-search').value='';
+  document.getElementById('obs-f-tienda').value='';
+  document.getElementById('obs-f-estado').value='';
+  document.getElementById('obs-f-fecha').value='';
+  renderObsTable();
 }
 
 // ── FILTER + RENDER ─────────────────────────────────────────────────────────────
-function provFilter(){
-  const q = (document.getElementById('prov-search').value || '').trim().toLowerCase();
-  if(!q) return proveedores;
-  return proveedores.filter(p =>
-    [p.ruc,p.razonSocial,p.nombreComercial,p.rubro,p.contacto,p.telefono,p.email,p.notas]
-      .some(v => String(v||'').toLowerCase().includes(q))
-  );
+function obsFilter(){
+  const q  = (document.getElementById('obs-search').value || '').trim().toLowerCase();
+  const ft = document.getElementById('obs-f-tienda').value;
+  const fe = document.getElementById('obs-f-estado').value;
+  const ff = document.getElementById('obs-f-fecha').value;
+  return observaciones.filter(o => {
+    if(ft && o.tienda!==ft) return false;
+    if(fe && (o.estado||'PENDIENTE')!==fe) return false;
+    if(ff && (o.fecha||'')!==ff) return false;
+    if(q && ![o.tienda,o.equipo,o.observacion].some(v=>String(v||'').toLowerCase().includes(q))) return false;
+    return true;
+  });
 }
 
-function renderProvTable(){
-  const body  = document.getElementById('prov-body');
-  const list  = provFilter();
-  const admin = isProvAdmin();
-  document.getElementById('prov-count').textContent =
-    `${list.length} de ${proveedores.length} proveedor${proveedores.length!==1?'es':''}`;
+function renderObsTable(){
+  const body  = document.getElementById('obs-body');
+  const list  = obsFilter();
+  const admin = isObsAdmin();
+  document.getElementById('obs-count').textContent =
+    `${list.length} de ${observaciones.length} observaci${observaciones.length!==1?'ones':'ón'}`;
   if(!list.length){
-    body.innerHTML = `<tr><td colspan="10" class="empty-msg">${proveedores.length ? 'Sin coincidencias.' : 'Sin proveedores registrados.'}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="empty-msg">${observaciones.length ? 'Sin coincidencias.' : 'Sin observaciones registradas.'}</td></tr>`;
     return;
   }
-  body.innerHTML = list.map(p => {
-    const activo  = (p.activo || 'SI') === 'SI';
-    const dot     = `<span class="estado-dot ${activo?'on':'off'}" title="${activo?'Activo':'Inactivo'}"></span>`;
+  body.innerHTML = list.map(o => {
+    const est   = o.estado || 'PENDIENTE';
+    const dot   = `<span class="estado-dot est-dot ${est}" title="${est}"></span>`;
+    const idAttr= esc(o.id);
+    const foto  = (o.tieneFoto && obsFotos[o.id])
+      ? `<img class="obs-thumb" src="${obsFotos[o.id]}" onclick="openFotoLightbox('${idAttr}')" title="Ver foto">`
+      : '<span style="color:var(--muted)">—</span>';
+    const origen= (o.origen||'APP').toUpperCase();
     const actIcon = admin ? '✎' : '👁';
-    const idAttr  = esc(p.id);
-    return `<tr class="row-clickable" ondblclick="openEditProv('${idAttr}')">
+    return `<tr class="row-clickable" ondblclick="openEditObs('${idAttr}')">
       <td class="col-estado">${dot}</td>
-      <td style="font-family:var(--mono)">${esc(p.ruc)}</td>
-      <td><strong>${esc(p.razonSocial)}</strong></td>
-      <td>${esc(p.nombreComercial)}</td>
-      <td>${esc(p.rubro)}</td>
-      <td style="font-family:var(--mono)">${esc(p.telefono)}</td>
-      <td>${esc(p.contacto)}</td>
-      <td>${esc(p.condicionesPago)}</td>
-      <td class="col-notas"><span class="cell-notas" title="${esc(p.notas)}">${esc(p.notas)}</span></td>
-      <td class="col-acc"><button class="btn btn-sm" onclick="openEditProv('${idAttr}')" title="${admin?'Editar':'Ver'}" style="padding:3px 9px">${actIcon}</button></td>
+      <td>${esc(o.tienda)}</td>
+      <td style="white-space:nowrap">${esc(o.equipo)}</td>
+      <td class="col-obs"><span class="cell-obs" title="${esc(o.observacion)}">${esc(o.observacion)}</span></td>
+      <td><span class="est-badge est-${est}">${esc(est.replace('_',' '))}</span></td>
+      <td style="font-family:var(--mono);white-space:nowrap">${esc(o.fecha)}</td>
+      <td class="col-estado">${foto}</td>
+      <td><span class="origen-badge origen-${origen}">${origen==='WHATSAPP'?'WSP':'APP'}</span></td>
+      <td class="col-acc"><button class="btn btn-sm" onclick="openEditObs('${idAttr}')" title="${admin?'Editar':'Ver'}" style="padding:3px 9px">${actIcon}</button></td>
     </tr>`;
   }).join('');
 }
 
-// ── MODAL ALTA / EDICIÓN ────────────────────────────────────────────────────────
-function setProvModalReadonly(ro){
-  PROV_FIELDS.forEach(f => { const el = document.getElementById('prov-'+f); if(el) el.disabled = ro; });
-  document.getElementById('prov-activo').disabled = ro;
-  document.getElementById('btn-save-prov').style.display = ro ? 'none' : 'inline-flex';
+// ── MODAL: dropdowns dependientes (tienda → equipo) ─────────────────────────────
+function fillTiendaSelect(sel){
+  sel.innerHTML = '<option value="">Seleccionar…</option>' + obsTiendas.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+}
+function fillEquipoSelect(sel, tienda, ensure){
+  const eqs = obsEquipos.filter(e=>e.tienda===tienda).map(e=>e.equipo);
+  if(ensure && ensure && !eqs.includes(ensure)) eqs.push(ensure);  // conserva un equipo histórico fuera del maestro
+  sel.innerHTML = '<option value="">Seleccionar…</option>' + eqs.map(e=>`<option value="${esc(e)}">${esc(e)}</option>`).join('');
+}
+function onObsTiendaChange(){
+  fillEquipoSelect(document.getElementById('obs-equipo'), document.getElementById('obs-tienda').value);
+}
+function fillTecnicoSelect(sel, val){
+  sel.innerHTML = '<option value="">—</option>' + obsPersonal.map(p=>`<option value="${esc(p.id)}"${val===p.id?' selected':''}>${esc(p.nombre)}</option>`).join('');
 }
 
-function openNewProv(){
-  if(!isProvAdmin()){ toast('Sin permisos para crear proveedores', 'err'); return; }
-  document.getElementById('prov-modal-title').textContent = '＋ Nuevo proveedor';
-  document.getElementById('prov-id').value = '';
-  PROV_FIELDS.forEach(f => { const el = document.getElementById('prov-'+f); if(el) el.value = ''; });
-  document.getElementById('prov-activo').value = 'SI';
-  setProvModalReadonly(false);
-  document.getElementById('btn-del-prov').style.display = 'none';
-  document.getElementById('modal-prov').classList.add('open');
-  setTimeout(() => document.getElementById('prov-ruc')?.focus(), 50);
+// ── MODAL: foto ─────────────────────────────────────────────────────────────────
+function obsCompress(file, maxSide, q){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onerror=()=>rej(new Error('No se pudo leer la imagen'));
+    r.onload=()=>{ const img=new Image();
+      img.onload=()=>{ let w=img.width,h=img.height;
+        if(w>maxSide||h>maxSide){ if(w>=h){h=Math.round(h*maxSide/w);w=maxSide;} else {w=Math.round(w*maxSide/h);h=maxSide;} }
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        res(c.toDataURL('image/jpeg',q)); };
+      img.onerror=()=>rej(new Error('Imagen inválida')); img.src=r.result; };
+    r.readAsDataURL(file);
+  });
+}
+async function setObsFoto(file){
+  if(!file) return;
+  try{ _obsFotoVal = await obsCompress(file, 1100, 0.7); _obsFotoDirty=true; refreshObsFotoPreview(); }
+  catch(e){ toast('Error con la imagen: '+e.message,'err'); }
+}
+function removeObsFoto(){ _obsFotoVal=null; _obsFotoDirty=true; refreshObsFotoPreview(); }
+function refreshObsFotoPreview(){
+  const box=document.getElementById('obs-foto-prev');
+  box.innerHTML = _obsFotoVal
+    ? `<img class="obs-foto-preview" src="${_obsFotoVal}" onclick="openFotoSrc(_obsFotoVal)" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeObsFoto()" title="Quitar foto" style="margin-left:8px">🗑</button>`
+    : `<div class="obs-foto-empty">📷</div>`;
 }
 
-function openEditProv(id){
-  const p = proveedores.find(x => x.id === id);
-  if(!p) return;
-  const admin = isProvAdmin();
-  document.getElementById('prov-modal-title').textContent = admin ? '✎ Editar proveedor' : '👁 Ver proveedor';
-  document.getElementById('prov-id').value = p.id;
-  PROV_FIELDS.forEach(f => { const el = document.getElementById('prov-'+f); if(el) el.value = p[f] || ''; });
-  document.getElementById('prov-activo').value = (p.activo || 'SI');
-  setProvModalReadonly(!admin);
-  document.getElementById('btn-del-prov').style.display = admin ? 'inline-flex' : 'none';
-  document.getElementById('modal-prov').classList.add('open');
+// ── MODAL: lightbox ──────────────────────────────────────────────────────────────
+function openFotoSrc(src){ if(!src) return; document.getElementById('foto-lightbox-img').src=src; document.getElementById('foto-lightbox').classList.add('open'); }
+function openFotoLightbox(obsId){ openFotoSrc(obsFotos[obsId]); }
+function closeFotoLightbox(){ document.getElementById('foto-lightbox').classList.remove('open'); document.getElementById('foto-lightbox-img').src=''; }
+
+// ── MODAL: abrir / readonly ─────────────────────────────────────────────────────
+function setObsModalReadonly(ro){
+  ['obs-tienda','obs-equipo','obs-estado','obs-fecha','obs-tecnico','obs-observacion'].forEach(id=>{const el=document.getElementById(id); if(el) el.disabled=ro;});
+  document.querySelectorAll('#modal-obs label[for="obs-foto-input"],#modal-obs label[for="obs-foto-cam"]').forEach(l=>l.style.display=ro?'none':'');
+  document.getElementById('btn-save-obs').style.display = ro ? 'none' : 'inline-flex';
+}
+
+function openNewObs(){
+  if(!isObsAdmin()){ toast('Sin permisos para crear observaciones', 'err'); return; }
+  document.getElementById('obs-modal-title').textContent = '＋ Nueva observación';
+  document.getElementById('obs-id').value = '';
+  fillTiendaSelect(document.getElementById('obs-tienda'));
+  document.getElementById('obs-equipo').innerHTML = '<option value="">Seleccionar…</option>';
+  document.getElementById('obs-estado').value = 'PENDIENTE';
+  document.getElementById('obs-fecha').value = hoyISO();
+  fillTecnicoSelect(document.getElementById('obs-tecnico'), '');
+  document.getElementById('obs-observacion').value = '';
+  _obsFotoVal=null; _obsFotoDirty=false; refreshObsFotoPreview();
+  setObsModalReadonly(false);
+  document.getElementById('btn-del-obs').style.display = 'none';
+  document.getElementById('modal-obs').classList.add('open');
+  setTimeout(() => document.getElementById('obs-tienda')?.focus(), 50);
+}
+
+function openEditObs(id){
+  const o = observaciones.find(x => x.id === id);
+  if(!o) return;
+  const admin = isObsAdmin();
+  document.getElementById('obs-modal-title').textContent = admin ? '✎ Editar observación' : '👁 Ver observación';
+  document.getElementById('obs-id').value = o.id;
+  fillTiendaSelect(document.getElementById('obs-tienda'));
+  document.getElementById('obs-tienda').value = o.tienda || '';
+  fillEquipoSelect(document.getElementById('obs-equipo'), o.tienda || '', o.equipo || '');
+  document.getElementById('obs-equipo').value = o.equipo || '';
+  document.getElementById('obs-estado').value = o.estado || 'PENDIENTE';
+  document.getElementById('obs-fecha').value = o.fecha || hoyISO();
+  fillTecnicoSelect(document.getElementById('obs-tecnico'), o.tecnicoId || '');
+  document.getElementById('obs-observacion').value = o.observacion || '';
+  _obsFotoVal = obsFotos[o.id] || null; _obsFotoDirty=false; refreshObsFotoPreview();
+  setObsModalReadonly(!admin);
+  document.getElementById('btn-del-obs').style.display = admin ? 'inline-flex' : 'none';
+  document.getElementById('modal-obs').classList.add('open');
 }
 
 // ── SAVE ──────────────────────────────────────────────────────────────────────
-async function saveProv(){
-  if(!isProvAdmin()){ toast('Sin permisos', 'err'); return; }
-  const ruc   = document.getElementById('prov-ruc').value.trim();
-  const razon = document.getElementById('prov-razonSocial').value.trim();
-  if(!ruc){ toast('El RUC es obligatorio', 'err'); document.getElementById('prov-ruc').focus(); return; }
-  if(!/^\d{8,11}$/.test(ruc)){ toast('RUC/DNI inválido (8 a 11 dígitos)', 'err'); document.getElementById('prov-ruc').focus(); return; }
-  if(!razon){ toast('La razón social es obligatoria', 'err'); document.getElementById('prov-razonSocial').focus(); return; }
-
-  const data = {};
-  PROV_FIELDS.forEach(f => { data[f] = (document.getElementById('prov-'+f).value || '').trim(); });
-  data.razonSocial = data.razonSocial.toUpperCase();
-  data.activo      = document.getElementById('prov-activo').value;
-  data.updatedAt   = new Date().toISOString();
-  data.updatedBy   = maUser?.email || '';
-
-  const id = document.getElementById('prov-id').value;
+async function saveObs(){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  const tienda      = document.getElementById('obs-tienda').value;
+  const equipo      = document.getElementById('obs-equipo').value;
+  const observacion = document.getElementById('obs-observacion').value.trim();
+  const estado      = document.getElementById('obs-estado').value || 'PENDIENTE';
+  const fecha       = document.getElementById('obs-fecha').value || hoyISO();
+  const tecnicoId   = document.getElementById('obs-tecnico').value || '';
+  if(!tienda){ toast('Selecciona la tienda', 'err'); return; }
+  if(!equipo){ toast('Selecciona el equipo', 'err'); return; }
+  if(!observacion){ toast('La observación es obligatoria', 'err'); document.getElementById('obs-observacion').focus(); return; }
+  const btn = document.getElementById('btn-save-obs');
+  if(btn.disabled) return; btn.disabled = true;
+  const now = new Date().toISOString();
+  const data = { tienda, equipo, observacion, estado, fecha, tecnicoId,
+    tieneFoto: !!_obsFotoVal, updatedAt: now, updatedBy: maUser?.email || '' };
+  const id = document.getElementById('obs-id').value;
   try{
+    let docId = id;
     if(id){
-      await db.collection('proveedores').doc(id).update(data);
-      const i = proveedores.findIndex(x => x.id === id);
-      if(i >= 0) proveedores[i] = {...proveedores[i], ...data};
-      toast('Proveedor actualizado ✓', 'ok');
+      if(!_obsFotoDirty){ const prev = observaciones.find(x=>x.id===id); data.tieneFoto = !!(prev && prev.tieneFoto); }
+      await db.collection('manta_observaciones').doc(id).update(data);
+      const i = observaciones.findIndex(x => x.id === id);
+      if(i >= 0) observaciones[i] = {...observaciones[i], ...data};
     } else {
-      if(proveedores.some(x => (x.ruc||'') === ruc)){ toast('Ya existe un proveedor con ese RUC', 'err'); return; }
-      data.createdAt = new Date().toISOString();
-      data.createdBy = maUser?.email || '';
-      const ref = await db.collection('proveedores').add(data);
-      proveedores.push({id:ref.id, ...data});
-      toast('Proveedor creado ✓', 'ok');
+      data.origen = 'APP'; data.registradoPor = maUser?.email || '';
+      data.createdAt = now; data.createdBy = maUser?.email || '';
+      const ref = await db.collection('manta_observaciones').add(data);
+      docId = ref.id;
+      observaciones.push({id:docId, ...data});
     }
-    proveedores.sort((a,b) => (a.razonSocial||'').localeCompare(b.razonSocial||'','es'));
-    closeModal('modal-prov');
-    renderProvTable();
+    if(_obsFotoDirty){
+      if(_obsFotoVal){
+        await db.collection('manta_observaciones_fotos').doc(docId).set({foto:_obsFotoVal, observacionId:docId, updatedAt:now, updatedBy:maUser?.email||''});
+        obsFotos[docId] = _obsFotoVal;
+      } else {
+        await db.collection('manta_observaciones_fotos').doc(docId).delete().catch(()=>{});
+        delete obsFotos[docId];
+      }
+    }
+    observaciones.sort(obsSort);
+    closeModal('modal-obs');
+    populateTiendaFilter();
+    renderObsTable();
+    toast(id ? 'Observación actualizada ✓' : 'Observación creada ✓', 'ok');
   }catch(e){ toast('Error al guardar: ' + e.message, 'err'); }
+  finally{ btn.disabled = false; }
 }
 
 // ── DELETE ────────────────────────────────────────────────────────────────────
-async function deleteProv(){
-  if(!isProvAdmin()){ toast('Sin permisos', 'err'); return; }
-  const id = document.getElementById('prov-id').value;
+async function deleteObs(){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  const id = document.getElementById('obs-id').value;
   if(!id) return;
-  const p = proveedores.find(x => x.id === id);
-  if(!confirm(`¿Eliminar al proveedor "${p?.razonSocial || ''}"?\nEsta acción no se puede deshacer.`)) return;
+  const o = observaciones.find(x => x.id === id);
+  if(!confirm(`¿Eliminar esta observación de "${o?.equipo || ''}" (${o?.tienda || ''})?\nEsta acción no se puede deshacer.`)) return;
   try{
-    await db.collection('proveedores').doc(id).delete();
-    proveedores = proveedores.filter(x => x.id !== id);
-    closeModal('modal-prov');
-    renderProvTable();
-    toast('Proveedor eliminado', 'ok');
+    await db.collection('manta_observaciones').doc(id).delete();
+    if(obsFotos[id]){ await db.collection('manta_observaciones_fotos').doc(id).delete().catch(()=>{}); delete obsFotos[id]; }
+    observaciones = observaciones.filter(x => x.id !== id);
+    closeModal('modal-obs');
+    renderObsTable();
+    toast('Observación eliminada', 'ok');
   }catch(e){ toast('Error al eliminar: ' + e.message, 'err'); }
 }
 
-// ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
-function exportProveedores(){
-  if(!proveedores.length){ toast('Sin proveedores para exportar', 'err'); return; }
-  const data = [
-    ['RUC','RAZÓN SOCIAL','NOMBRE COMERCIAL','RUBRO','TELÉFONO','EMAIL','CONTACTO','DIRECCIÓN','CONDICIONES DE PAGO','BANCO','CUENTA / CCI','NOTAS','ACTIVO'],
-    ...[...proveedores]
-      .sort((a,b) => (a.razonSocial||'').localeCompare(b.razonSocial||'','es'))
-      .map(p => [
-        p.ruc||'', p.razonSocial||'', p.nombreComercial||'', p.rubro||'', p.telefono||'',
-        p.email||'', p.contacto||'', p.direccion||'', p.condicionesPago||'', p.banco||'', p.cuenta||'', p.notas||'', p.activo||'SI'
-      ])
-  ];
+// ── EXPORT EXCEL (sábana completa, rellena "Sin observaciones.") ──────────────────
+function tsFile(){ const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; }
+function exportObsExcel(){
+  const data = [['CLIENTE','EQUIPO','OBSERVACIÓN','ESTADO','FECHA','ORIGEN']];
+  const usados = new Set();
+  obsEquipos.forEach(eq => {
+    const obs = observaciones.filter(o => o.tienda===eq.tienda && o.equipo===eq.equipo);
+    if(obs.length){
+      obs.forEach(o => { usados.add(o.id); data.push([eq.tienda, eq.equipo, o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]); });
+    } else {
+      data.push([eq.tienda, eq.equipo, 'Sin observaciones.', '', '', '']);
+    }
+  });
+  observaciones.filter(o => !usados.has(o.id)).forEach(o => {
+    data.push([o.tienda||'', o.equipo||'', o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]);
+  });
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{wch:13},{wch:32},{wch:24},{wch:18},{wch:16},{wch:26},{wch:22},{wch:32},{wch:22},{wch:14},{wch:24},{wch:40},{wch:8}];
+  ws['!cols'] = [{wch:22},{wch:16},{wch:80},{wch:13},{wch:12},{wch:10}];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Proveedores');
-  const d  = new Date();
-  const ts = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-  XLSX.writeFile(wb, `proveedores_${ts}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, 'MANTA GENERAL');
+  XLSX.writeFile(wb, `manta_ripley_${tsFile()}.xlsx`);
   toast('Excel exportado ✓', 'ok');
+}
+
+// ── EXPORT PDF (jsPDF) — agrupado por tienda y equipo ────────────────────────────
+function exportObsPDF(){
+  if(!(window.jspdf && window.jspdf.jsPDF)){ toast('PDF no disponible — reintenta', 'err'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'mm', format:'a4'});
+  const PW=210, PH=297, M=12; let y=0;
+  const ensure = n => { if(y+n > PH-12){ doc.addPage(); y=16; } };
+  doc.setFillColor(27,63,139); doc.rect(0,0,PW,18,'F');
+  doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.text('MANTA GENERAL — RIPLEY', M, 12);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8);
+  doc.text('MultiAire · ' + new Date().toLocaleDateString('es-PE'), PW-M, 12, {align:'right'});
+  y=24; doc.setTextColor(40);
+  (obsTiendas.length?obsTiendas:[...new Set(observaciones.map(o=>o.tienda))]).forEach(t => {
+    const eqs = obsEquipos.filter(e=>e.tienda===t);
+    ensure(9);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(27,63,139);
+    doc.text(String(t||''), M, y); y+=5; doc.setTextColor(40);
+    const lista = eqs.length ? eqs : [...new Set(observaciones.filter(o=>o.tienda===t).map(o=>o.equipo))].map(e=>({equipo:e}));
+    lista.forEach(eq => {
+      const obs = observaciones.filter(o => o.tienda===t && o.equipo===eq.equipo);
+      const filas = obs.length ? obs : [{observacion:'Sin observaciones.', estado:''}];
+      filas.forEach((o,idx) => {
+        const head = idx===0 ? String(eq.equipo||'') : '';
+        const txt = doc.splitTextToSize(String(o.observacion||''), PW-M-46);
+        ensure(txt.length*4 + 2);
+        doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.text(head, M, y);
+        doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+        txt.forEach((ln,i)=>doc.text(ln, M+32, y+i*4));
+        if(o.estado){ doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.text(String(o.estado).replace('_',' '), PW-M, y, {align:'right'}); }
+        y += Math.max(txt.length*4, 5);
+      });
+    });
+    y += 2;
+  });
+  doc.save(`manta_ripley_${tsFile()}.pdf`);
+  toast('PDF exportado ✓', 'ok');
 }
 
 // ── PANEL DE ACCESOS ──────────────────────────────────────────────────────────
