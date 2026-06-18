@@ -1013,10 +1013,10 @@ async function exportBackup() {
     zip.file('insumos_catalogo.csv', [insCatHeaders.join(','), ...insCatRows].join('\n'));
 
     // 10. Insumos — instancias (unidades físicas)
-    const insInstHeaders = ['ID','ITEM_ID','NOMBRE','SEDE','ESTADO','PAQUETE_ID','RESPONSABLE','NOTAS','PLANO','NIVEL','ORIGEN'];
+    const insInstHeaders = ['ID','ITEM_ID','NOMBRE','SEDE','ESTADO','PAQUETE_ID','RESPONSABLE','NOTAS','NIVEL','ORIGEN'];
     const insInstRows = insInstSnap.docs.map(d => {
       const r = d.data();
-      return [d.id, r.itemId||'', r.nombre||'', r.sede||'', r.estado||'', r.paqueteId||'', r.responsable||'', r.notas||'', r.plano||'', r.nivel??'', r.origen||''].map(escapeCSV).join(',');
+      return [d.id, r.itemId||'', r.nombre||'', r.sede||'', r.estado||'', r.paqueteId||'', r.responsable||'', r.notas||'', r.nivel??'', r.origen||''].map(escapeCSV).join(',');
     });
     zip.file('insumos_instancias.csv', [insInstHeaders.join(','), ...insInstRows].join('\n'));
 
@@ -1355,7 +1355,7 @@ async function confirmImport() {
     if (pendingImport.files['insumos_instancias.csv']) {
       addLog('🏷 Importando instancias de insumos...', 'info');
       const rows = parseCSV(pendingImport.files['insumos_instancias.csv']);
-      await batchWrite('insumos_instancias', rows, r => { const o={_docId:r.ID, itemId:r.ITEM_ID, nombre:r.NOMBRE, sede:r.SEDE, estado:r.ESTADO||'DISPONIBLE', notas:r.NOTAS||'', plano:r.PLANO||''}; if(r.PAQUETE_ID)o.paqueteId=r.PAQUETE_ID; if(r.RESPONSABLE)o.responsable=r.RESPONSABLE; if(r.NIVEL!=='')o.nivel=+r.NIVEL; if(r.ORIGEN)o.origen=r.ORIGEN; return o; });
+      await batchWrite('insumos_instancias', rows, r => { const o={_docId:r.ID, itemId:r.ITEM_ID, nombre:r.NOMBRE, sede:r.SEDE, estado:r.ESTADO||'DISPONIBLE', notas:r.NOTAS||''}; if(r.PAQUETE_ID)o.paqueteId=r.PAQUETE_ID; if(r.RESPONSABLE)o.responsable=r.RESPONSABLE; if(r.NIVEL!=='')o.nivel=+r.NIVEL; if(r.ORIGEN)o.origen=r.ORIGEN; return o; });
       addLog('✓ Instancias de insumos importadas (' + rows.length + ' unidades)', 'ok');
     }
 

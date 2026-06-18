@@ -1119,7 +1119,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <button class="btn btn-sm" onclick="exportarBaseInsumos()">⬇ Exportar base actual</button>
       </div>
       <div style="font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:6px;padding:8px 10px;border-left:3px solid var(--blue);line-height:1.5">
-        💡 ¿Primera vez? Descarga el <strong>Manual (PDF)</strong> o abre la hoja <strong>"Instrucciones"</strong> dentro de la plantilla. Muchas columnas traen <strong>menú desplegable</strong> (clic en la celda → elige de la lista). Las filas de ejemplo (con ID = EJEMPLO) se ignoran al importar.
+        💡 ¿Primera vez? Descarga el <strong>Manual (PDF)</strong> o abre la hoja <strong>"Instrucciones"</strong> dentro de la plantilla. Muchas columnas traen <strong>menú desplegable</strong> (clic en la celda → elige de la lista). Para crear, añade filas y llénalas; para actualizar, edita las existentes.
       </div>
       <div style="border-top:1px solid var(--border);padding-top:12px">
         <div class="form-label">Importar archivo</div>
@@ -2919,8 +2919,9 @@ async function saveTransfLote() {
 // ── CARGA MASIVA (XLSX) ───────────────────────────────────
 // Importa/exporta catálogo + instancias en un .xlsx (SheetJS). Upsert: catálogo por CODIGO, instancias por ID.
 // Carga silenciosa (origen IMPORT_XLSX, sin movimientos). NO toca pertenencia a paquetes. Nombre de instancia = nombre del catálogo.
-const CM_CAT_COLS = ['ID','NOMBRE','CATEGORIA','UNIDAD','CODIGO','MARCA','MODELO','STOCK_MIN','TIPO_CANTIDAD'];
-const CM_INST_COLS = ['ID','ITEM_ID','NOMBRE','SEDE','ESTADO','RESPONSABLE','NOTAS','PLANO','NIVEL'];
+// Catálogo: SIN columna ID (la llave es CODIGO). Instancias: la 1ª columna ID es interna del sistema y se OCULTA en el Excel.
+const CM_CAT_COLS = ['NOMBRE','CATEGORIA','UNIDAD','CODIGO','MARCA','MODELO','STOCK_MIN','TIPO_CANTIDAD'];
+const CM_INST_COLS = ['ID','ITEM_ID','NOMBRE','SEDE','ESTADO','RESPONSABLE','NOTAS','NIVEL'];
 const CM_CATEGORIAS = ['INSUMO','HERRAMIENTA'];
 const CM_UNIDADES = ['UND','KG','LT','MT','ROLLO','CAJA','PAR','JGO'];
 const CM_TIPOCANT = ['UNIDAD','RANGO'];
@@ -2942,7 +2943,6 @@ function openModalCargaMasiva() {
 // Hoja "Valores validos" como array-of-arrays (referencia para el usuario)
 // Texto guía de cada columna (reutilizado por la hoja Instrucciones y el manual PDF)
 const CM_GUIA_CAT = [
-  ['ID', 'opcional', 'Vacío en ítems nuevos (se autogenera). En existentes, NO lo cambies.'],
   ['NOMBRE', 'OBLIGATORIO', 'Nombre del ítem. Ej: FILTRO DE AIRE G4 24X24'],
   ['CATEGORIA', 'OBLIGATORIO', 'INSUMO o HERRAMIENTA'],
   ['UNIDAD', 'OBLIGATORIO', 'UND, KG, LT, MT, ROLLO, CAJA, PAR o JGO'],
@@ -2953,20 +2953,18 @@ const CM_GUIA_CAT = [
   ['TIPO_CANTIDAD', 'opcional', 'UNIDAD (por defecto) o RANGO (líquidos medidos por %)'],
 ];
 const CM_GUIA_INST = [
-  ['ID', 'opcional', 'Vacío para crear (se autogenera PREFIJO-001). Indícalo para actualizar una existente.'],
-  ['ITEM_ID', 'OBLIGATORIO', 'A qué ítem del catálogo pertenece. Pon su CODIGO (ej: FILT-G4) o su ID.'],
+  ['ITEM_ID', 'OBLIGATORIO', 'A qué ítem del catálogo pertenece. Pon su CODIGO (ej: FILT-G4).'],
   ['NOMBRE', 'automático', 'Se toma del catálogo. Puedes dejarlo vacío.'],
-  ['SEDE', 'recomendado', 'Debe ser una sede existente (ver hoja Valores validos).'],
+  ['SEDE', 'recomendado', 'Debe ser una sede existente (elige del menú desplegable).'],
   ['ESTADO', 'opcional', 'DISPONIBLE (por defecto), EN_USO, MANTENIMIENTO, DETERIORADO o BAJA'],
   ['RESPONSABLE', 'opcional', 'Persona a cargo'],
   ['NOTAS', 'opcional', ''],
-  ['PLANO', 'opcional', 'Ubicación/plano físico, si aplica'],
   ['NIVEL', 'opcional', 'Solo para ítems RANGO: 0 a 100 (%)'],
 ];
 const CM_REGLAS = [
+  'Para crear ítems o unidades nuevas, simplemente añade filas y llénalas. Para actualizar, edita las filas existentes.',
   'Varias columnas tienen MENÚ DESPLEGABLE (CATEGORIA, UNIDAD, TIPO_CANTIDAD, ESTADO, SEDE, ITEM_ID, RESPONSABLE): haz clic en la celda y elige de la lista.',
-  'Las filas con ID = EJEMPLO son solo guía: el importador las IGNORA (puedes borrarlas o dejarlas).',
-  'Al importar se hace UPSERT: si ya existe se ACTUALIZA, si no, se CREA. Catálogo por CODIGO, instancias por ID.',
+  'Al importar se hace UPSERT: si ya existe se ACTUALIZA, si no, se CREA. Los ítems del catálogo se reconocen por su CODIGO.',
   'El nombre de cada instancia SIEMPRE se toma del catálogo (mantiene todo consistente).',
   'La importación NO cambia la pertenencia a paquetes (eso se hace en la pestaña Paquetes).',
   'Una fila con un valor inválido (categoría mal escrita, sede inexistente, etc.) se OMITE; el resto se importa igual.',
@@ -2992,6 +2990,10 @@ function _cmInstruccionesSheet() {
     ['Columna', 'Obligatoriedad', 'Detalle'],
     ...CM_GUIA_INST,
     [],
+    ['EJEMPLOS'],
+    ['Catalogo:', 'FILTRO DE AIRE G4 24X24', 'INSUMO', 'UND', 'FILT-G4', '3M', '', '5', 'UNIDAD'],
+    ['Instancias:', '(ITEM_ID) FILT-G4', '(SEDE) CHINCHON OFICINA', '(ESTADO) DISPONIBLE'],
+    [],
     ['REGLAS IMPORTANTES'],
     ...CM_REGLAS.map(r => ['• ' + r]),
   ];
@@ -3010,11 +3012,11 @@ function _cmValoresValidos() {
     ['ESTADO (instancias)', ...CM_ESTADOS],
     ['SEDE (instancias)', ...sedes.map(s => s.sede)],
     [],
-    ['ITEMS DEL CATALOGO (para la columna ITEM_ID de Instancias — usa el ID o el CODIGO)'],
-    ['ID', 'CODIGO', 'NOMBRE'],
-    ...catalogoData.map(c => [c.id, c.codigo || '', c.nombre || ''])
+    ['ITEMS DEL CATALOGO (usa el CODIGO en la columna ITEM_ID de Instancias)'],
+    ['CODIGO', 'NOMBRE'],
+    ...catalogoData.map(c => [c.codigo || '', c.nombre || ''])
   ]);
-  ws['!cols'] = [{ wch: 26 }, { wch: 16 }, { wch: 40 }];
+  ws['!cols'] = [{ wch: 16 }, { wch: 40 }];
   return ws;
 }
 
@@ -3030,10 +3032,12 @@ function _cmListasSheet() {
 function _cmBuildWorkbook(catRows, instRows) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, _cmInstruccionesSheet(), 'Instrucciones');
+  // Catálogo (8 cols, sin ID): NOMBRE CATEGORIA UNIDAD CODIGO MARCA MODELO STOCK_MIN TIPO_CANTIDAD
   const wsCat = XLSX.utils.aoa_to_sheet([CM_CAT_COLS, ...catRows]);
-  wsCat['!cols'] = [{ wch: 14 }, { wch: 30 }, { wch: 13 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 14 }];
+  wsCat['!cols'] = [{ wch: 30 }, { wch: 13 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 14 }];
+  // Instancias (8 cols): ID(oculta) ITEM_ID NOMBRE SEDE ESTADO RESPONSABLE NOTAS NIVEL
   const wsInst = XLSX.utils.aoa_to_sheet([CM_INST_COLS, ...instRows]);
-  wsInst['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 22 }, { wch: 14 }, { wch: 7 }];
+  wsInst['!cols'] = [{ hidden: true }, { wch: 12 }, { wch: 28 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 22 }, { wch: 7 }];
   XLSX.utils.book_append_sheet(wb, wsCat, 'Catalogo');
   XLSX.utils.book_append_sheet(wb, wsInst, 'Instancias');
   XLSX.utils.book_append_sheet(wb, _cmValoresValidos(), 'Valores validos');
@@ -3048,8 +3052,10 @@ function _cmValidacionesXml() {
   const N = 1000;
   const dv = (sqref, formula, block) => `<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="${block ? 1 : 0}" sqref="${sqref}"><formula1>${formula}</formula1></dataValidation>`;
   const inline = arr => '"' + arr.join(',') + '"';  // lista corta embebida
-  const catDV = [dv(`C2:C${N}`, inline(CM_CATEGORIAS), true), dv(`D2:D${N}`, inline(CM_UNIDADES), true), dv(`I2:I${N}`, inline(CM_TIPOCANT), true)];
+  // Catálogo: B=CATEGORIA, C=UNIDAD, H=TIPO_CANTIDAD
+  const catDV = [dv(`B2:B${N}`, inline(CM_CATEGORIAS), true), dv(`C2:C${N}`, inline(CM_UNIDADES), true), dv(`H2:H${N}`, inline(CM_TIPOCANT), true)];
   const nSed = sedes.length, nCod = catalogoData.length, nPer = personalData.length;
+  // Instancias: E=ESTADO, D=SEDE, B=ITEM_ID, F=RESPONSABLE (A=ID oculta, sin validación)
   const instDV = [dv(`E2:E${N}`, inline(CM_ESTADOS), true)];
   if (nSed) instDV.push(dv(`D2:D${N}`, `_listas!$A$2:$A$${1 + nSed}`, true));     // SEDE
   if (nCod) instDV.push(dv(`B2:B${N}`, `_listas!$B$2:$B$${1 + nCod}`, false));    // ITEM_ID (sugerencia, no bloquea)
@@ -3096,25 +3102,17 @@ function _cmDownloadBlob(blob, filename) {
 
 async function descargarPlantillaInsumos() {
   if (typeof XLSX === 'undefined' || typeof JSZip === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
-  // Filas de ejemplo marcadas con ID=EJEMPLO → el importador las ignora aunque no se borren
-  const catEj = [
-    ['EJEMPLO', 'FILTRO DE AIRE G4 24X24', 'INSUMO', 'UND', 'FILT-G4', '3M', '', '5', 'UNIDAD'],
-    ['EJEMPLO', 'TALADRO PERCUTOR', 'HERRAMIENTA', 'UND', 'TALA-01', 'BOSCH', 'GSB 13 RE', '1', 'UNIDAD'],
-  ];
-  const instEj = [
-    ['EJEMPLO', 'FILT-G4', '(se toma del catálogo)', sedes[0] ? sedes[0].sede : 'CHINCHON OFICINA', 'DISPONIBLE', '', 'Sin ID = se autogenera', '', ''],
-    ['EJEMPLO', 'TALA-01', '(se toma del catálogo)', sedes[0] ? sedes[0].sede : 'CHINCHON OFICINA', 'EN_USO', '', '', '', ''],
-  ];
+  // Hojas vacías (solo encabezados + menús desplegables); los ejemplos van en la hoja Instrucciones
   try {
-    _cmDownloadBlob(await _cmXlsxBlob(_cmBuildWorkbook(catEj, instEj)), `plantilla_insumos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    _cmDownloadBlob(await _cmXlsxBlob(_cmBuildWorkbook([], [])), `plantilla_insumos_${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast('✓ Plantilla descargada — celdas con menú desplegable', 'ok');
   } catch(e) { toast('Error al generar la plantilla: ' + e.message, 'err'); }
 }
 
 async function exportarBaseInsumos() {
   if (typeof XLSX === 'undefined' || typeof JSZip === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
-  const catRows = catalogoData.map(c => [c.id, c.nombre||'', c.categoria||'', c.unidad||'', c.codigo||'', c.marca||'', c.modelo||'', c.stockMin??0, c.tipoCantidad||'UNIDAD']);
-  const instRows = instanciasData.map(i => [i.id, i.itemId||'', i.nombre||'', i.sede||'', i.estado||'DISPONIBLE', i.responsable||'', i.notas||'', i.plano||'', (i.nivel!==undefined?i.nivel:'')]);
+  const catRows = catalogoData.map(c => [c.nombre||'', c.categoria||'', c.unidad||'', c.codigo||'', c.marca||'', c.modelo||'', c.stockMin??0, c.tipoCantidad||'UNIDAD']);
+  const instRows = instanciasData.map(i => [i.id, i.itemId||'', i.nombre||'', i.sede||'', i.estado||'DISPONIBLE', i.responsable||'', i.notas||'', (i.nivel!==undefined?i.nivel:'')]);
   try {
     _cmDownloadBlob(await _cmXlsxBlob(_cmBuildWorkbook(catRows, instRows)), `insumos_base_${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast('✓ Base exportada — celdas con menú desplegable', 'ok');
@@ -3210,9 +3208,8 @@ function _cmValidar(catRows, instRows) {
   const codigosArchivo = new Set();
   catRows.forEach((r, idx) => {
     const fila = idx + 2;
-    if (_cmStr(r.ID).toUpperCase().startsWith('EJEMPLO')) return;  // fila guía de la plantilla — se ignora
     const nombre = _cmStr(r.NOMBRE).toUpperCase(), codigo = _cmStr(r.CODIGO).toUpperCase();
-    if (!nombre && !codigo && !_cmStr(r.ID)) return;  // fila vacía
+    if (!nombre && !codigo) return;  // fila vacía
     if (!nombre) { out.cat.err.push({ fila, msg: 'NOMBRE vacío' }); return; }
     if (!codigo) { out.cat.err.push({ fila, msg: 'CODIGO vacío' }); return; }
     if (codigosArchivo.has(codigo)) { out.cat.err.push({ fila, msg: `CODIGO duplicado en el archivo: ${codigo}` }); return; }
@@ -3224,10 +3221,11 @@ function _cmValidar(catRows, instRows) {
     const tipoCantidad = _cmStr(r.TIPO_CANTIDAD).toUpperCase() || 'UNIDAD';
     if (!CM_TIPOCANT.includes(tipoCantidad)) { out.cat.err.push({ fila, msg: `TIPO_CANTIDAD inválido: ${tipoCantidad}` }); return; }
     const item = { nombre, categoria, unidad, codigo, marca: _cmStr(r.MARCA), modelo: _cmStr(r.MODELO), stockMin: Number(_cmStr(r.STOCK_MIN)) || 0, tipoCantidad };
+    // Upsert por CODIGO: si existe usa su docId; si es nuevo, se autogenera (el usuario nunca toca el ID)
     const existente = byCodigo[codigo];
     let docId, esNuevo;
     if (existente) { docId = existente.id; esNuevo = false; }
-    else { const idFila = _cmStr(r.ID); docId = (idFila && !byId[idFila]) ? idFila : ('INS-' + Date.now() + '-' + idx); esNuevo = true; }
+    else { docId = 'INS-' + Date.now() + '-' + idx; esNuevo = true; }
     const nombreCambiado = !!existente && existente.nombre !== nombre;
     byCodigo[codigo] = { id: docId, ...item }; byId[docId] = { id: docId, ...item };
     (esNuevo ? out.cat.nuevos : out.cat.upd).push({ docId, item, esNuevo, nombreCambiado });
@@ -3244,7 +3242,6 @@ function _cmValidar(catRows, instRows) {
   };
   instRows.forEach((r, idx) => {
     const fila = idx + 2;
-    if (_cmStr(r.ID).toUpperCase().startsWith('EJEMPLO')) return;  // fila guía de la plantilla — se ignora
     const itemRef = _cmStr(r.ITEM_ID);
     if (!itemRef && !_cmStr(r.ID) && !_cmStr(r.SEDE)) return;  // fila vacía
     if (!itemRef) { out.inst.err.push({ fila, msg: 'ITEM_ID vacío' }); return; }
@@ -3263,7 +3260,7 @@ function _cmValidar(catRows, instRows) {
     if (idsArchivo.has(id)) { out.inst.err.push({ fila, msg: `ID de instancia duplicado en el archivo: ${id}` }); return; }
     idsArchivo.add(id);
     // Nombre SIEMPRE del catálogo (mantiene la denormalización de la Etapa 1)
-    const inst = { itemId: item.id, nombre: item.nombre, sede, estado, responsable: _cmStr(r.RESPONSABLE), notas: _cmStr(r.NOTAS), plano: _cmStr(r.PLANO) };
+    const inst = { itemId: item.id, nombre: item.nombre, sede, estado, responsable: _cmStr(r.RESPONSABLE), notas: _cmStr(r.NOTAS) };
     if (item.tipoCantidad === 'RANGO' && _cmStr(r.NIVEL) !== '') { const nv = Number(_cmStr(r.NIVEL)); if (!isNaN(nv)) inst.nivel = Math.max(0, Math.min(100, nv)); }
     const esNuevo = !instById[id];
     (esNuevo ? out.inst.nuevos : out.inst.upd).push({ docId: id, inst, esNuevo });
