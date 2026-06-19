@@ -7,3 +7,4 @@ GUIA_MIGRACION.md
 *.json
 !firebase-config.js
 !vercel.json
+!package.json
