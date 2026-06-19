@@ -3,12 +3,12 @@
 > Documento interno (no se publica). El bot vive en `/api/whatsapp.js` (Vercel Function).
 > Alimenta la colección `manta_observaciones` desde WhatsApp. Las apps web siguen siendo HTML/JS estático.
 
-## Estado: FASE 2
+## Estado: FASE 3
 - **Fase 1** ✅ — verificación de Meta (GET) + validación de firma `X-Hub-Signature-256` (POST) + parseo.
-- **Fase 2** ✅ — **identidad** del técnico por su número (`maestros_personal.telefono`, match por últimos 9 dígitos)
-  + **idempotencia** por `messageId` (colección `wa_mensajes`, `doc.create()` atómico). Número no reconocido → responde pidiendo registro.
-- Pendiente (3-5): Gemini estructura + match `manta_equipos`; motor conversacional + `manta_guia`; escritura en `manta_observaciones` + aviso a supervisores.
-- Módulos en `api/_lib/`: `firestore.js`, `identidad.js`, `idempotencia.js`, `whatsapp.js`.
+- **Fase 2** ✅ — **identidad** del técnico (`maestros_personal.telefono`, últimos 9 dígitos) + **idempotencia** (`wa_mensajes`).
+- **Fase 3** ✅ — **Gemini** (`gemini-2.5-flash`, `responseSchema`) estructura el mensaje/foto en `{tienda, equipo, observacion, estado}` y redacta la observación de forma profesional + infiere el estado (PENDIENTE/EN_PROCESO/OK). **Emparejamiento** (`manta.js`) resuelve tienda/equipo contra `manta_equipos` o pide aclaración. Probado en vivo.
+- Pendiente (4-5): motor conversacional + `manta_guia` (preguntas/confirmación); escritura en `manta_observaciones` + aviso a supervisores.
+- Módulos en `api/_lib/`: `firestore.js`, `identidad.js`, `idempotencia.js`, `whatsapp.js`, `manta.js`, `gemini.js`.
 
 ## Endpoint
 ```
@@ -26,7 +26,8 @@ GET/POST  https://<dominio>/api/whatsapp
 | `WHATSAPP_APP_SECRET` | App Secret de la app de Meta; valida la firma de los POST | 1 |
 | `WHATSAPP_TOKEN` | Token para **enviar** mensajes (System User token, permanente) | 2+ |
 | `WHATSAPP_PHONE_NUMBER_ID` | ID del número emisor | 2+ |
-| `GEMINI_API_KEY` | API key de Gemini (mismo patrón que comprobantes.html) | 3+ |
+| `GEMINI_API_KEY` | API key de Gemini (AI Studio con la cuenta corporativa) | 3+ |
+| `GEMINI_MODEL` | (opcional) modelo a usar; por defecto `gemini-2.5-flash` | 3+ |
 | `FIREBASE_SERVICE_ACCOUNT` | JSON del service account de `multiaire-fee43` (como string o base64) | 2+ |
 
 ## Configurar el webhook en Meta (resumen — pasos detallados en fases posteriores)
