@@ -9,6 +9,9 @@
 // Endpoint final: https://<dominio>/api/whatsapp   (GET = verificación · POST = mensajes)
 
 import crypto from 'node:crypto';
+import { yaProcesado } from './_lib/idempotencia.js';
+import { identificarTecnico } from './_lib/identidad.js';
+import { enviarTexto } from './_lib/whatsapp.js';
 
 // Necesitamos el body CRUDO (bytes exactos) para validar la firma HMAC → desactivamos
 // el parser automático de Vercel.
@@ -60,21 +63,43 @@ export default async function handler(req, res) {
     let payload;
     try { payload = JSON.parse(raw.toString('utf8')); } catch { return res.status(200).send('EVENT_RECEIVED'); }
 
-    const value    = payload?.entry?.[0]?.changes?.[0]?.value;
-    const mensajes = value?.messages || [];
+    const mensajes = payload?.entry?.[0]?.changes?.[0]?.value?.messages || [];
     for (const msg of mensajes) {
-      // FASE 1: solo registramos en logs. El procesamiento real se implementa en las fases 2+.
-      console.log('[whatsapp] mensaje recibido', JSON.stringify({
-        from: msg.from, id: msg.id, type: msg.type,
-        texto: msg.text?.body, tieneImagen: !!msg.image
-      }));
-      // TODO Fase 2+: await procesarMensaje(value, msg)
+      try {
+        await procesarMensaje(msg);
+      } catch (e) {
+        console.error('[whatsapp] error procesando mensaje', msg?.id, e?.message);
+      }
     }
 
-    // Acusar recibo (procesamos antes de responder; con idempotencia por messageId en Fase 2).
+    // Acusar recibo (procesamos antes de responder; Meta reintenta si tardamos → idempotencia cubre dups).
     return res.status(200).send('EVENT_RECEIVED');
   }
 
   res.setHeader('Allow', 'GET, POST');
   return res.status(405).send('Method Not Allowed');
+}
+
+// Procesa un mensaje entrante. FASE 2: idempotencia + identidad del técnico.
+// (El procesamiento real —Gemini, conversación, escritura en manta_observaciones— llega en fases 3+.)
+async function procesarMensaje(msg) {
+  // Idempotencia: si Meta reenvía el mismo mensaje, lo ignoramos.
+  if (await yaProcesado(msg.id, { from: msg.from, type: msg.type })) {
+    console.log('[whatsapp] duplicado ignorado:', msg.id);
+    return;
+  }
+
+  // Identidad: ¿de quién es este número?
+  const tecnico = await identificarTecnico(msg.from);
+  if (!tecnico) {
+    console.log('[whatsapp] número no reconocido:', msg.from);
+    await enviarTexto(msg.from,
+      '👋 Hola. No reconozco este número en el sistema de MultiAire. ' +
+      'Pídele al administrador que registre tu número (en el personal) para poder usar el bot de observaciones.');
+    return;
+  }
+
+  // FASE 2: técnico identificado. Aún no procesamos la observación.
+  console.log('[whatsapp] mensaje de', tecnico.nombre, `(${tecnico.id})`, '·', msg.type, '·', msg.text?.body || '(sin texto)');
+  // TODO Fase 3+: estructurar con Gemini, conversar con confirmación y guardar en manta_observaciones.
 }

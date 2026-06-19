@@ -3,9 +3,12 @@
 > Documento interno (no se publica). El bot vive en `/api/whatsapp.js` (Vercel Function).
 > Alimenta la colección `manta_observaciones` desde WhatsApp. Las apps web siguen siendo HTML/JS estático.
 
-## Estado: FASE 1
-Webhook con **verificación de Meta (GET)** + **validación de firma `X-Hub-Signature-256` (POST)** + parseo.
-El procesamiento real (identidad del técnico, Gemini, conversación, escritura) llega en las fases 2-5.
+## Estado: FASE 2
+- **Fase 1** ✅ — verificación de Meta (GET) + validación de firma `X-Hub-Signature-256` (POST) + parseo.
+- **Fase 2** ✅ — **identidad** del técnico por su número (`maestros_personal.telefono`, match por últimos 9 dígitos)
+  + **idempotencia** por `messageId` (colección `wa_mensajes`, `doc.create()` atómico). Número no reconocido → responde pidiendo registro.
+- Pendiente (3-5): Gemini estructura + match `manta_equipos`; motor conversacional + `manta_guia`; escritura en `manta_observaciones` + aviso a supervisores.
+- Módulos en `api/_lib/`: `firestore.js`, `identidad.js`, `idempotencia.js`, `whatsapp.js`.
 
 ## Endpoint
 ```
@@ -24,7 +27,7 @@ GET/POST  https://<dominio>/api/whatsapp
 | `WHATSAPP_TOKEN` | Token para **enviar** mensajes (System User token, permanente) | 2+ |
 | `WHATSAPP_PHONE_NUMBER_ID` | ID del número emisor | 2+ |
 | `GEMINI_API_KEY` | API key de Gemini (mismo patrón que comprobantes.html) | 3+ |
-| `FIREBASE_SERVICE_ACCOUNT` | JSON del service account de `multiaire-fee43` (como string o base64) | 5+ |
+| `FIREBASE_SERVICE_ACCOUNT` | JSON del service account de `multiaire-fee43` (como string o base64) | 2+ |
 
 ## Configurar el webhook en Meta (resumen — pasos detallados en fases posteriores)
 1. **developers.facebook.com** → crear app tipo *Business* → agregar producto **WhatsApp**.
