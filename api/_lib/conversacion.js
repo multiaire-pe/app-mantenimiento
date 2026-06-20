@@ -11,6 +11,13 @@ import { estructurarObservacion } from './gemini.js';
 import { resolverTiendaEquipo } from './manta.js';
 import { textoGuia } from './guia.js';
 import { getSesion, guardarSesion, limpiarSesion, nuevaSesion } from './sesiones.js';
+import { guardarFotoPendiente, getFotoPendiente, tieneFotoPendiente, limpiarFotoPendiente } from './fotos.js';
+
+// Termina la conversación: borra la sesión y la foto pendiente.
+async function limpiarTodo(from) {
+  await limpiarSesion(from);
+  await limpiarFotoPendiente(from);
+}
 
 const MAX_REPREGUNTAS = 2;
 
@@ -27,45 +34,49 @@ const RE_AYUDA     = /^\s*(ayuda|help|c[oó]mo\s+funciona|men[uú]|hola|buenas|b
 // Devuelve el texto a responder por WhatsApp. Maneja la sesión internamente.
 export async function manejarMensaje({
   tecnico, from, texto, imagenB64 = null, mime = null,
-  guardar,                              // (borrador, tecnico) => {id,...}  (Fase 5: foto + avisos)
+  guardar,                              // (borrador, tecnico, foto) => {id,...}  (escribe + avisos)
   analizar = estructurarObservacion,    // (texto, imgB64, mime, guiaTexto) => {tienda,equipo,observacion,estado,faltaDetalle,pregunta}
 }) {
   const t = (texto || '').trim();
   let ses = await getSesion(from);
 
-  // Saludo / ayuda sin conversación en curso.
-  if (!ses && RE_AYUDA.test(t)) return bienvenida(tecnico);
+  // Saludo / ayuda sin conversación en curso (y sin foto).
+  if (!ses && !imagenB64 && RE_AYUDA.test(t)) return bienvenida(tecnico);
 
   // Cancelar / reiniciar (solo si hay conversación viva).
   if (ses && RE_CANCELA.test(t)) {
-    await limpiarSesion(from);
+    await limpiarTodo(from);
     return '👍 Listo, descarté esa observación. Cuando quieras, mándame otra.';
   }
   if (ses && RE_NUEVA.test(t)) {
-    await limpiarSesion(from);
+    await limpiarTodo(from);
     return '🔄 Empecemos de nuevo. Cuéntame la observación (tienda, equipo y el hallazgo).';
   }
+
+  // Si llegó una foto, la guardamos pendiente (se adjunta al confirmar).
+  if (imagenB64) await guardarFotoPendiente(from, imagenB64, mime);
 
   // "Guardar así": saltar la repregunta de detalle y pasar a confirmar lo que haya.
   if (ses && ses.fase === 'RECOLECTANDO' && ses.faltante === 'detalle' && RE_GUARDA_ASI.test(t)) {
     ses.fase = 'CONFIRMANDO';
     ses.faltante = null;
     await guardarSesion(from, ses);
-    return resumenConfirmar(ses.borrador);
+    return resumenConfirmar(ses.borrador, await tieneFotoPendiente(from));
   }
 
   // En confirmación: "SÍ" guarda; cualquier otra cosa se trata como corrección.
   if (ses && ses.fase === 'CONFIRMANDO') {
     if (RE_CONFIRMA.test(t)) {
+      const foto = await getFotoPendiente(from);
       try {
-        await guardar(ses.borrador, tecnico);
+        await guardar(ses.borrador, tecnico, foto);
       } catch (e) {
         console.error('[conversacion] error al guardar:', e?.message);
         return '⚠️ No pude guardar la observación ahora mismo. Inténtalo de nuevo en un momento (responde *SÍ*).';
       }
       const b = ses.borrador;
-      await limpiarSesion(from);
-      return resumenGuardado(b);
+      await limpiarTodo(from);
+      return resumenGuardado(b, !!foto);
     }
     if (t) ses.historial.push(t);             // corrección → reextraer con el texto nuevo
     return procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar });
@@ -121,7 +132,7 @@ async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar 
   ses.fase = 'CONFIRMANDO';
   ses.faltante = null;
   await guardarSesion(from, ses);
-  return resumenConfirmar(b);
+  return resumenConfirmar(b, await tieneFotoPendiente(from));
 }
 
 // Marca la sesión como esperando un dato y persiste, devolviendo la pregunta.
@@ -154,18 +165,19 @@ function preguntarEquipo(tienda, cands) {
   return `¿Qué *equipo* de *${sinPrefijo(tienda)}*?${lista ? '\n' + lista : ''}\n\n_(puedes decir solo el número)_`;
 }
 
-function resumenConfirmar(b) {
+function resumenConfirmar(b, conFoto) {
   return '📝 *Confirma la observación:*\n\n' +
     `🏪 Tienda: *${sinPrefijo(b.tienda)}*\n` +
     `❄️ Equipo: *${b.equipo}*\n` +
     `🔧 Observación: ${b.observacion}\n` +
-    `📌 Estado: *${ESTADO_LABEL[b.estado] || b.estado}*\n\n` +
-    'Responde *SÍ* para guardar. Si algo está mal, dime la corrección (o el estado correcto), o escribe *cancelar*.';
+    `📌 Estado: *${ESTADO_LABEL[b.estado] || b.estado}*\n` +
+    (conFoto ? '📷 Con foto adjunta\n' : '') +
+    '\nResponde *SÍ* para guardar. Si algo está mal, dime la corrección (o el estado correcto), o escribe *cancelar*.';
 }
 
-function resumenGuardado(b) {
+function resumenGuardado(b, conFoto) {
   return '✅ *Observación registrada.*\n\n' +
     `🏪 ${sinPrefijo(b.tienda)} · ❄️ ${b.equipo}\n` +
-    `📌 ${ESTADO_LABEL[b.estado] || b.estado}\n\n` +
+    `📌 ${ESTADO_LABEL[b.estado] || b.estado}${conFoto ? ' · 📷' : ''}\n\n` +
     'Gracias. Mándame otra cuando quieras.';
 }

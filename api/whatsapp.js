@@ -17,6 +17,8 @@ import { identificarTecnico } from './_lib/identidad.js';
 import { enviarTexto } from './_lib/whatsapp.js';
 import { manejarMensaje } from './_lib/conversacion.js';
 import { guardarObservacion } from './_lib/escritura.js';
+import { descargarMedia } from './_lib/media.js';
+import { notificarSupervisores } from './_lib/avisos.js';
 
 // Necesitamos el body CRUDO (bytes exactos) para validar la firma HMAC → desactivamos
 // el parser automático de Vercel.
@@ -103,23 +105,38 @@ async function procesarMensaje(msg) {
     return;
   }
 
-  // Texto del mensaje (o pie de foto/video). La lectura de la imagen en sí llega en la Fase 5.
-  const texto = msg.text?.body || msg.image?.caption || msg.video?.caption || '';
-  if (!texto && msg.type && msg.type !== 'text') {
+  // Texto del mensaje (o pie de la foto).
+  const texto = msg.text?.body || msg.image?.caption || '';
+
+  // Fase 5: si es una imagen, la descargamos para que el bot la "vea" (Gemini) y la adjunte.
+  let imagenB64 = null, mime = null;
+  if (msg.type === 'image' && msg.image?.id) {
+    const media = await descargarMedia(msg.image.id);
+    if (media) { imagenB64 = media.base64; mime = media.mime; }
+  }
+
+  // Tipos no soportados (audio, documento, ubicación…) y sin texto → pedir texto o foto.
+  if (!texto && !imagenB64 && msg.type && msg.type !== 'text') {
     await enviarTexto(msg.from,
-      '📸 Por ahora descríbeme la observación en texto (en qué tienda y equipo, y qué encontraste). ' +
-      'El envío de fotos lo habilitamos muy pronto.');
+      '📝 Por ahora mándame la observación en *texto* o como *foto* (con o sin descripción).');
     return;
   }
 
-  console.log('[whatsapp] mensaje de', tecnico.nombre, `(${tecnico.id})`, '·', msg.type, '·', texto || '(sin texto)');
+  console.log('[whatsapp] mensaje de', tecnico.nombre, `(${tecnico.id})`, '·', msg.type, '·', texto || '(sin texto)', imagenB64 ? '· 📷' : '');
 
-  // Motor conversacional (Fase 4): repregunta lo mínimo, confirma y guarda.
+  // Motor conversacional (Fase 4) + escritura con foto + aviso a supervisores (Fase 5).
   const respuesta = await manejarMensaje({
     tecnico,
     from: msg.from,
     texto,
-    guardar: guardarObservacion,
+    imagenB64,
+    mime,
+    guardar: async (borrador, tec, foto) => {
+      const obs = await guardarObservacion(borrador, tec, foto);
+      // El aviso no debe romper el flujo si falla (plantilla no aprobada, etc.).
+      notificarSupervisores({ obs, tecnico: tec }).catch((e) => console.error('[whatsapp] aviso falló:', e?.message));
+      return obs;
+    },
   });
   if (respuesta) await enviarTexto(msg.from, respuesta);
 }
