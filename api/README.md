@@ -11,7 +11,7 @@
 - Pendiente **Fase 5**: foto desde WhatsApp (Graph API → `manta_observaciones_fotos` + `tieneFoto`) + **aviso a supervisores** (plantilla "utility" + flag) + deploy + setup Meta.
 - Módulos en `api/_lib/`: `firestore.js`, `identidad.js`, `idempotencia.js`, `whatsapp.js`, `manta.js`, `gemini.js`, `sesiones.js`, `guia.js`, `conversacion.js`, `escritura.js`.
 
-> **Guía editable (`manta_guia`)**: checklist por tipo de hallazgo que orienta la repregunta del bot. Se siembra con `migrar_db/seed_manta_guia.js` (7 temas) y se edita por script/consola (UI admin en observaciones.html pendiente).
+> **Guía editable (`manta_guia`)**: checklist por tipo de hallazgo que orienta la repregunta del bot. Se siembra con `migrar_db/seed_manta_guia.js` (7 temas) y la **edita el admin** desde `observaciones.html` (menú de usuario → 🤖 Guía del bot). En el backup de `configuracion.html`.
 
 ## Endpoint
 ```

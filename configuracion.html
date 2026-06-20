@@ -291,6 +291,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>manta_equipos.csv</div>
             <div class="backup-file"><span></span>manta_observaciones.csv</div>
             <div class="backup-file"><span></span>manta_observaciones_fotos.csv</div>
+            <div class="backup-file"><span></span>manta_guia.csv</div>
           </div>
           <button class="btn btn-primary" onclick="exportBackup()" id="export-btn" style="width:100%">
             ⬇ Descargar ZIP
@@ -892,7 +893,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap] = await Promise.all([
+    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('maestros_tiendas').get(),
@@ -914,6 +915,7 @@ async function exportBackup() {
       window.__db.collection('manta_equipos').get(),
       window.__db.collection('manta_observaciones').get(),
       window.__db.collection('manta_observaciones_fotos').get(),
+      window.__db.collection('manta_guia').get(),
     ]);
 
     const zip = new JSZip();
@@ -1091,6 +1093,14 @@ async function exportBackup() {
     });
     zip.file('manta_observaciones_fotos.csv', [mObsFotoHeaders.join(','), ...mObsFotoRows].join('\n'));
 
+    // 18. Manta — guía del bot (checklist por tipo de hallazgo; arrays unidos por |)
+    const mGuiaHeaders = ['ID','TIPO','TITULO','PALABRAS_CLAVE','CHECKLIST','ORDEN','ACTIVO','ORIGEN'];
+    const mGuiaRows = mGuiaSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.tipo||'', r.titulo||'', (r.palabrasClave||[]).join('|'), (r.checklist||[]).join('|'), r.orden??'', (r.activo===false?'NO':'SI'), r.origen||''].map(escapeCSV).join(',');
+    });
+    zip.file('manta_guia.csv', [mGuiaHeaders.join(','), ...mGuiaRows].join('\n'));
+
     // Generate and download
     const blob = await zip.generateAsync({type:'blob'});
     const url = URL.createObjectURL(blob);
@@ -1156,7 +1166,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1453,6 +1463,13 @@ async function confirmImport() {
       const conFoto = rows.filter(r => r.FOTO);
       await batchWrite('manta_observaciones_fotos', conFoto, r => ({_docId:r.ID, observacionId:r.ID, foto:r.FOTO}));
       addLog('✓ Fotos de observaciones importadas (' + conFoto.length + ')', 'ok');
+    }
+
+    if (pendingImport.files['manta_guia.csv']) {
+      addLog('🤖 Importando guía del bot...', 'info');
+      const rows = parseCSV(pendingImport.files['manta_guia.csv']);
+      await batchWrite('manta_guia', rows, r => ({_docId:r.ID, tipo:r.TIPO||'', titulo:r.TITULO||'', palabrasClave:r.PALABRAS_CLAVE?r.PALABRAS_CLAVE.split('|'):[], checklist:r.CHECKLIST?r.CHECKLIST.split('|'):[], orden:r.ORDEN!==''?+r.ORDEN:0, activo:(r.ACTIVO||'SI').toUpperCase()!=='NO', origen:r.ORIGEN||''}));
+      addLog('✓ Guía del bot importada (' + rows.length + ')', 'ok');
     }
 
     addLog('✅ Importación completada', 'ok');

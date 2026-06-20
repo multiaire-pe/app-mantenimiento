@@ -30,7 +30,7 @@ Backend serverless en el MISMO repo (no Firebase, sin Blaze). Módulos en `api/_
 - **Fase 5 (PENDIENTE)** — **foto** desde WhatsApp (descarga vía Graph API → `manta_observaciones_fotos` + `tieneFoto:true`) + **avisar a supervisores** (mensaje 1:1; requiere plantilla "utility" aprobada en Meta; flag "recibe avisos" en usuarios/maestros_personal).
 - **Después:** deploy + setup Meta (Business Manager + número) + prueba en vivo. Guía: `api/README.md`.
 - **Env vars en Vercel** (NO en el front): `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `GEMINI_API_KEY`, `FIREBASE_SERVICE_ACCOUNT`, `GEMINI_MODEL` (opcional, def gemini-2.5-flash).
-- **GEMINI_API_KEY:** ya obtenida en AI Studio con la cuenta corporativa (formato nuevo `AQ.Ab8...`, validada, funciona con gemini-2.5-flash). **Guárdala en el gestor de contraseñas + Vercel.** (No se escribe aquí por seguridad; está en el chat de la sesión / rotar si se quiere.)
+- **GEMINI_API_KEY:** ⚠️ **se perdió** (no quedó guardada en ningún archivo ni gestor). Hay que **regenerarla** en AI Studio (aistudio.google.com con `plataforma@multiaire.com.pe`) cuando se vaya a configurar Vercel, y esta vez guardarla en el gestor de contraseñas de la empresa. La key valida `gemini-2.5-flash`.
 - **Decisiones del bot:** conversacional con feedback; confirmar antes de escribir; técnico fija estado; canal = número dedicado 1:1 (la API oficial NO funciona en grupos); "expertise" vía `manta_guia` + RAG sobre histórico (NO fine-tuning); modelo por niveles (flash-lite barato + flash/pro para razonar).
 - **Pruebas sin Meta:** cada fase se prueba con tests unitarios contra Firestore real / Gemini en vivo (no hace falta el número de Meta hasta la prueba end-to-end final). `node_modules` y `package-lock.json` en `.gitignore`.
 
@@ -50,7 +50,9 @@ Backend serverless en el MISMO repo (no Firebase, sin Blaze). Módulos en `api/_
 
 ## Próximos pasos (orden sugerido)
 1. **Bot Fase 5** (foto desde WhatsApp + avisos a supervisores con plantilla "utility").
-2. (Opcional) **UI admin de `manta_guia`** en observaciones.html (hoy editable por script/consola) + agregar `manta_guia` al backup de configuracion.html.
-3. **Poner `GEMINI_API_KEY` en Vercel** (y demás env vars) + **deploy + setup Meta** (Business + número) + prueba end-to-end del bot.
-4. **DNS** (cuando ChileCL responda) → conectar `app.multiaire.com.pe` en Vercel + Authorized domains.
-5. **Verificar Observaciones** en develop + **merge a main** (cuando el usuario apruebe).
+2. **Regenerar `GEMINI_API_KEY`** en AI Studio (aistudio.google.com con `plataforma@multiaire.com.pe`) — la anterior se perdió — y ponerla en Vercel junto al resto de env vars + **deploy + setup Meta** (Business + número) + prueba end-to-end del bot.
+3. **DNS** (cuando ChileCL responda) → conectar `app.multiaire.com.pe` en Vercel + Authorized domains.
+4. **Verificar Observaciones** en develop + **merge a main** (cuando el usuario apruebe).
+
+> ✅ Hecho 2026-06-19: editor de `manta_guia` en observaciones.html (menú → 🤖 Guía del bot) + `manta_guia` en el backup de configuracion.html.
+> ⚠️ `GEMINI_API_KEY`: **se perdió** — hay que regenerarla en AI Studio al configurar Vercel (no está guardada en ningún lado).

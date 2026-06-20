@@ -335,6 +335,64 @@ tr:hover td{background:var(--surface2)}
   <img id="foto-lightbox-img" src="" alt="" onclick="event.stopPropagation()">
 </div>
 
+<!-- MODAL GUÍA DEL BOT (lista de temas) -->
+<div class="modal-overlay" id="modal-guia" onclick="if(event.target===this)closeModal('modal-guia')">
+  <div class="modal">
+    <h2>🤖 Guía del bot de WhatsApp</h2>
+    <div class="modal-sub">
+      Orienta las <strong>repreguntas</strong> del bot: por cada tipo de hallazgo, qué debería incluir una buena
+      observación. El bot la usa para pedir <strong>un</strong> dato faltante antes de guardar. Solo afecta al bot
+      (no cambia la manta). Las <em>palabras clave</em> ayudan a que el bot reconozca el tema.
+    </div>
+    <div id="guia-list" style="max-height:400px;overflow-y:auto;margin-bottom:14px"></div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" onclick="openGuiaEdit('')" style="margin-right:auto">＋ Nuevo tema</button>
+      <button class="btn" onclick="closeModal('modal-guia')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GUÍA: alta / edición de un tema -->
+<div class="modal-overlay" id="modal-guia-edit" style="z-index:600" onclick="if(event.target===this)closeModal('modal-guia-edit')">
+  <div class="modal" style="width:480px">
+    <h2 id="guia-edit-title">＋ Nuevo tema</h2>
+    <div class="modal-sub">
+      Los campos con <span style="color:var(--orange)">*</span> son obligatorios. El <strong>checklist</strong> es lo
+      que una buena observación debería cubrir para este tema.
+    </div>
+    <input type="hidden" id="guia-id">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Título <span style="color:var(--orange)">*</span></label>
+          <input type="text" id="guia-titulo" class="form-input" placeholder="Ej.: Filtros" autocomplete="off">
+        </div>
+        <div class="form-group" style="flex:0 0 110px;min-width:90px">
+          <label class="form-label">Orden</label>
+          <input type="number" id="guia-orden" class="form-input" value="50" min="0" step="10">
+        </div>
+      </div>
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Palabras clave (separadas por comas)</label>
+        <input type="text" id="guia-claves" class="form-input" placeholder="filtro, saturado, sucio" autocomplete="off">
+      </div>
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Checklist — un punto por línea <span style="color:var(--orange)">*</span></label>
+        <textarea id="guia-checklist" class="form-input" rows="5" style="resize:vertical;line-height:1.5"
+                  placeholder="¿Se limpiaron o se reemplazaron?&#10;Nivel de saturación (leve / moderado / alto)&#10;¿Afecta el enfriamiento?"></textarea>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;color:var(--accent)">
+        <input type="checkbox" id="guia-activo" checked style="cursor:pointer"> Activo (el bot lo tiene en cuenta)
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-red" id="btn-del-guia" onclick="deleteGuia()" style="margin-right:auto;display:none">🗑 Eliminar</button>
+      <button class="btn" onclick="closeModal('modal-guia-edit')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-guia" onclick="saveGuia()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL GESTIÓN DE ACCESOS -->
 <div class="modal-overlay" id="modal-access" onclick="if(event.target===this)closeModal('modal-access')">
   <div class="modal">
@@ -474,7 +532,8 @@ function renderUserPill(){
   const rolBadge = `<span class="role-badge role-${rol}">${rol.replace('_',' ')}</span>`;
   const isAdmin = rol === 'ADMIN' || rol === 'SUPER_ADMIN';
   const adminItem = isAdmin
-    ? `<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-div"></div>`
+    ? `<button class="user-menu-item" onclick="openGuiaPanel()">🤖 Guía del bot</button>`
+      + `<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-div"></div>`
     : '';
   pill.innerHTML = avatar
     + `<span class="user-pname">${n}</span>`
@@ -866,6 +925,122 @@ function exportObsPDF(){
   });
   doc.save(`manta_ripley_${tsFile()}.pdf`);
   toast('PDF exportado ✓', 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  GUÍA DEL BOT — colección `manta_guia` (checklist por tipo de hallazgo)
+//  La consume el bot de WhatsApp (api/_lib/guia.js) para repreguntar UN dato faltante.
+//  ADMIN / SUPER_ADMIN editan.
+// ═══════════════════════════════════════════════════════════════════════════════
+let guiaList = [];   // [{id, tipo, titulo, palabrasClave[], checklist[], orden, activo}]
+
+function guiaSlug(s){
+  return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'');
+}
+
+async function openGuiaPanel(){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  document.getElementById('user-menu')?.classList.remove('open');
+  const list = document.getElementById('guia-list');
+  list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Cargando…</div>';
+  document.getElementById('modal-guia').classList.add('open');
+  try{
+    const snap = await db.collection('manta_guia').get();
+    guiaList = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    guiaList.sort((a,b) => (a.orden||0)-(b.orden||0) || (a.titulo||'').localeCompare(b.titulo||'','es'));
+    renderGuiaList();
+  }catch(e){
+    list.innerHTML = `<div style="text-align:center;color:var(--red);padding:16px;font-size:12px">Error al cargar la guía: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderGuiaList(){
+  const list = document.getElementById('guia-list');
+  if(!guiaList.length){
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Aún no hay temas. Crea el primero con “＋ Nuevo tema”.</div>';
+    return;
+  }
+  list.innerHTML = guiaList.map(g => {
+    const claves = (g.palabrasClave||[]).map(c => `<span style="font-size:9px;background:var(--surface3);color:var(--muted2);padding:1px 6px;border-radius:8px">${esc(c)}</span>`).join(' ');
+    const items  = (g.checklist||[]).map(c => `<li style="margin:1px 0">${esc(c)}</li>`).join('');
+    const off    = (g.activo===false) ? ` <span style="font-size:9px;color:var(--muted);font-weight:700">(inactivo)</span>` : '';
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div style="flex:1;font-weight:700;font-size:12px;color:var(--blue)">${esc(g.titulo||g.tipo)}${off}</div>
+        <button class="btn btn-sm" onclick="openGuiaEdit('${esc(g.id)}')" title="Editar" style="padding:3px 9px">✎</button>
+      </div>
+      ${claves ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px">${claves}</div>` : ''}
+      <ul style="margin:0 0 0 18px;font-size:11px;color:var(--muted2);line-height:1.5">${items||'<li style="color:var(--muted)">Sin checklist</li>'}</ul>
+    </div>`;
+  }).join('');
+}
+
+function openGuiaEdit(id){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  const g = id ? guiaList.find(x => x.id === id) : null;
+  document.getElementById('guia-edit-title').textContent = g ? '✎ Editar tema' : '＋ Nuevo tema';
+  document.getElementById('guia-id').value       = g ? g.id : '';
+  document.getElementById('guia-titulo').value   = g ? (g.titulo||g.tipo||'') : '';
+  document.getElementById('guia-orden').value    = g ? (g.orden ?? 50) : ((guiaList.length+1)*10);
+  document.getElementById('guia-claves').value   = g ? (g.palabrasClave||[]).join(', ') : '';
+  document.getElementById('guia-checklist').value= g ? (g.checklist||[]).join('\n') : '';
+  document.getElementById('guia-activo').checked = g ? (g.activo!==false) : true;
+  document.getElementById('btn-del-guia').style.display = g ? 'inline-flex' : 'none';
+  document.getElementById('modal-guia-edit').classList.add('open');
+  setTimeout(() => document.getElementById('guia-titulo')?.focus(), 50);
+}
+
+async function saveGuia(){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  const id       = document.getElementById('guia-id').value;
+  const titulo   = document.getElementById('guia-titulo').value.trim();
+  const orden    = parseInt(document.getElementById('guia-orden').value, 10) || 0;
+  const claves   = document.getElementById('guia-claves').value.split(',').map(s => s.trim()).filter(Boolean);
+  const checklist= document.getElementById('guia-checklist').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const activo   = document.getElementById('guia-activo').checked;
+  if(!titulo){ toast('El título es obligatorio', 'err'); document.getElementById('guia-titulo').focus(); return; }
+  if(!checklist.length){ toast('Agrega al menos un punto al checklist', 'err'); document.getElementById('guia-checklist').focus(); return; }
+  const btn = document.getElementById('btn-save-guia');
+  if(btn.disabled) return; btn.disabled = true;
+  const now = new Date().toISOString();
+  try{
+    if(id){
+      const tipo = (guiaList.find(x => x.id===id)?.tipo) || guiaSlug(titulo);
+      const data = { tipo, titulo, palabrasClave:claves, checklist, orden, activo, updatedAt:now, updatedBy:maUser?.email||'' };
+      await db.collection('manta_guia').doc(id).set(data, {merge:true});
+      const i = guiaList.findIndex(x => x.id===id);
+      if(i>=0) guiaList[i] = {...guiaList[i], ...data};
+    } else {
+      const tipo = guiaSlug(titulo);
+      const docId = 'MGUIA-' + (tipo || ('TEMA_' + Date.now()));
+      const data = { tipo, titulo, palabrasClave:claves, checklist, orden, activo,
+        origen:'APP', createdAt:now, createdBy:maUser?.email||'', updatedAt:now, updatedBy:maUser?.email||'' };
+      await db.collection('manta_guia').doc(docId).set(data, {merge:true});
+      const i = guiaList.findIndex(x => x.id===docId);
+      if(i>=0) guiaList[i] = {...guiaList[i], ...data}; else guiaList.push({id:docId, ...data});
+    }
+    guiaList.sort((a,b) => (a.orden||0)-(b.orden||0) || (a.titulo||'').localeCompare(b.titulo||'','es'));
+    closeModal('modal-guia-edit');
+    renderGuiaList();
+    toast(id ? 'Tema actualizado ✓' : 'Tema creado ✓', 'ok');
+  }catch(e){ toast('Error al guardar: ' + e.message, 'err'); }
+  finally{ btn.disabled = false; }
+}
+
+async function deleteGuia(){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  const id = document.getElementById('guia-id').value;
+  if(!id) return;
+  const g = guiaList.find(x => x.id===id);
+  if(!confirm(`¿Eliminar el tema "${g?.titulo || g?.tipo || ''}" de la guía del bot?\nEsta acción no se puede deshacer.`)) return;
+  try{
+    await db.collection('manta_guia').doc(id).delete();
+    guiaList = guiaList.filter(x => x.id!==id);
+    closeModal('modal-guia-edit');
+    renderGuiaList();
+    toast('Tema eliminado', 'ok');
+  }catch(e){ toast('Error al eliminar: ' + e.message, 'err'); }
 }
 
 // ── PANEL DE ACCESOS ──────────────────────────────────────────────────────────
