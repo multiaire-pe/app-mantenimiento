@@ -1,10 +1,13 @@
 // ── Webhook de WhatsApp Cloud API — Manta de Observaciones (MultiAire) ──────────
 // Backend serverless en Vercel. Los secretos viven en variables de entorno (NUNCA en el front).
 //
-// FASE 1 (esta): verificación del webhook (GET de Meta) + validación de la firma
-//   X-Hub-Signature-256 + parseo del payload. El procesamiento real (identificar técnico,
-//   estructurar con Gemini, conversación con confirmación, escritura en manta_observaciones)
-//   se agrega en las fases siguientes.
+// Flujo (Fases 1-4):
+//   1) Verificación del webhook (GET de Meta) + validación de la firma X-Hub-Signature-256.
+//   2) Identidad del técnico (maestros_personal.telefono) + idempotencia (wa_mensajes).
+//   3) Gemini estructura el mensaje en {tienda, equipo, observacion, estado}.
+//   4) Motor conversacional (sesiones wa_sesiones + guía manta_guia): repregunta lo mínimo,
+//      confirma antes de guardar y escribe en manta_observaciones (origen WHATSAPP).
+//   Pendiente Fase 5: foto desde WhatsApp + aviso a supervisores.
 //
 // Endpoint final: https://<dominio>/api/whatsapp   (GET = verificación · POST = mensajes)
 
@@ -12,6 +15,8 @@ import crypto from 'node:crypto';
 import { yaProcesado } from './_lib/idempotencia.js';
 import { identificarTecnico } from './_lib/identidad.js';
 import { enviarTexto } from './_lib/whatsapp.js';
+import { manejarMensaje } from './_lib/conversacion.js';
+import { guardarObservacion } from './_lib/escritura.js';
 
 // Necesitamos el body CRUDO (bytes exactos) para validar la firma HMAC → desactivamos
 // el parser automático de Vercel.
@@ -80,8 +85,7 @@ export default async function handler(req, res) {
   return res.status(405).send('Method Not Allowed');
 }
 
-// Procesa un mensaje entrante. FASE 2: idempotencia + identidad del técnico.
-// (El procesamiento real —Gemini, conversación, escritura en manta_observaciones— llega en fases 3+.)
+// Procesa un mensaje entrante: idempotencia → identidad → motor conversacional.
 async function procesarMensaje(msg) {
   // Idempotencia: si Meta reenvía el mismo mensaje, lo ignoramos.
   if (await yaProcesado(msg.id, { from: msg.from, type: msg.type })) {
@@ -99,7 +103,23 @@ async function procesarMensaje(msg) {
     return;
   }
 
-  // FASE 2: técnico identificado. Aún no procesamos la observación.
-  console.log('[whatsapp] mensaje de', tecnico.nombre, `(${tecnico.id})`, '·', msg.type, '·', msg.text?.body || '(sin texto)');
-  // TODO Fase 3+: estructurar con Gemini, conversar con confirmación y guardar en manta_observaciones.
+  // Texto del mensaje (o pie de foto/video). La lectura de la imagen en sí llega en la Fase 5.
+  const texto = msg.text?.body || msg.image?.caption || msg.video?.caption || '';
+  if (!texto && msg.type && msg.type !== 'text') {
+    await enviarTexto(msg.from,
+      '📸 Por ahora descríbeme la observación en texto (en qué tienda y equipo, y qué encontraste). ' +
+      'El envío de fotos lo habilitamos muy pronto.');
+    return;
+  }
+
+  console.log('[whatsapp] mensaje de', tecnico.nombre, `(${tecnico.id})`, '·', msg.type, '·', texto || '(sin texto)');
+
+  // Motor conversacional (Fase 4): repregunta lo mínimo, confirma y guarda.
+  const respuesta = await manejarMensaje({
+    tecnico,
+    from: msg.from,
+    texto,
+    guardar: guardarObservacion,
+  });
+  if (respuesta) await enviarTexto(msg.from, respuesta);
 }

@@ -6,7 +6,7 @@
 
 ## Hilos en curso (visión rápida)
 1. **Observaciones (Parte A)** — ✅ LISTO en develop (pendiente verificación del usuario + merge a main).
-2. **Bot WhatsApp (Parte B)** — 🔧 Fases 1-3 listas; faltan Fase 4 (conversacional) y Fase 5 (escritura + avisos).
+2. **Bot WhatsApp (Parte B)** — 🔧 **Fases 1-4 listas** (Fase 4 ya escribe en `manta_observaciones`); falta **Fase 5** (foto desde WhatsApp + avisos a supervisores) + deploy + setup Meta.
 3. **Migración corporativa** — 🔧 cuenta creada; **DNS de `app.multiaire.com.pe` pendiente en ChileCL** (bloqueante del dominio).
 4. **Monitoreo DNS** — wakeup activo cada ~30 min.
 
@@ -26,8 +26,8 @@ Backend serverless en el MISMO repo (no Firebase, sin Blaze). Módulos en `api/_
 - **Fase 1** ✅ (`4872b49`) — webhook GET (verificación Meta) + POST (firma X-Hub-Signature-256, body crudo, timingSafeEqual).
 - **Fase 2** ✅ (`d4b6850`) — identidad por `maestros_personal.telefono` (últimos 9 dígitos) + idempotencia `wa_mensajes` (`doc.create()` atómico). Número desconocido → responde pidiendo registro. `api/_lib/`: firestore, identidad, idempotencia, whatsapp.
 - **Fase 3** ✅ (`46bbc53`, `d7a9719`) — `gemini.js` (`estructurarObservacion`, gemini-2.5-flash + responseSchema → `{tienda,equipo,observacion,estado}`, redacta profesional, infiere estado) + `manta.js` (`resolverTiendaEquipo` empareja contra `manta_equipos` o pide aclarar). **Probado en vivo.**
-- **Fase 4 (PENDIENTE)** — motor **conversacional**: si falta info, repregunta inteligente (máx 1-2); guía editable **`manta_guia`** (checklist por tipo de hallazgo, editable por admin); siempre opción "guardar así"; **confirmar antes de guardar**; el técnico fija el estado; estado de conversación en **`wa_sesiones`** (con TTL).
-- **Fase 5 (PENDIENTE)** — escribir en `manta_observaciones` (origen WHATSAPP) + foto en `manta_observaciones_fotos` + responder confirmación por WhatsApp + **avisar a supervisores** (mensaje 1:1; requiere plantilla "utility" aprobada en Meta; flag "recibe avisos" en usuarios/maestros_personal).
+- **Fase 4** ✅ — motor **conversacional** (`conversacion.js`) sobre **`wa_sesiones`** (RECOLECTANDO→CONFIRMANDO, TTL 30 min). Repregunta lo mínimo (tienda/equipo o **un** detalle sugerido por la guía editable **`manta_guia`**, máx 1-2); siempre "guardar así"; **confirma antes de guardar**; el técnico fija/corrige el estado; comandos cancelar/nueva/ayuda. Nuevos `sesiones.js`, `guia.js`, `escritura.js`; `gemini.js` añade `faltaDetalle`/`pregunta`. **Al confirmar escribe en `manta_observaciones` (origen WHATSAPP).** `manejarMensaje` con `analizar`/`guardar` inyectables. Guía sembrada (`migrar_db/seed_manta_guia.js`, 7 temas). **Probado contra Firestore real** (`migrar_db/test_fase4.mjs`, 17/17). *(Nota: la escritura se adelantó a la Fase 4 para tenerla testeable de punta a punta; la Fase 5 queda = foto + avisos.)*
+- **Fase 5 (PENDIENTE)** — **foto** desde WhatsApp (descarga vía Graph API → `manta_observaciones_fotos` + `tieneFoto:true`) + **avisar a supervisores** (mensaje 1:1; requiere plantilla "utility" aprobada en Meta; flag "recibe avisos" en usuarios/maestros_personal).
 - **Después:** deploy + setup Meta (Business Manager + número) + prueba en vivo. Guía: `api/README.md`.
 - **Env vars en Vercel** (NO en el front): `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `GEMINI_API_KEY`, `FIREBASE_SERVICE_ACCOUNT`, `GEMINI_MODEL` (opcional, def gemini-2.5-flash).
 - **GEMINI_API_KEY:** ya obtenida en AI Studio con la cuenta corporativa (formato nuevo `AQ.Ab8...`, validada, funciona con gemini-2.5-flash). **Guárdala en el gestor de contraseñas + Vercel.** (No se escribe aquí por seguridad; está en el chat de la sesión / rotar si se quiere.)
@@ -49,8 +49,8 @@ Backend serverless en el MISMO repo (no Firebase, sin Blaze). Módulos en `api/_
 ---
 
 ## Próximos pasos (orden sugerido)
-1. **Bot Fase 4** (motor conversacional + `manta_guia` + `wa_sesiones`).
-2. **Bot Fase 5** (escritura en `manta_observaciones` + avisos a supervisores).
-3. **Deploy + setup Meta** (Business + número) + prueba end-to-end del bot.
+1. **Bot Fase 5** (foto desde WhatsApp + avisos a supervisores con plantilla "utility").
+2. (Opcional) **UI admin de `manta_guia`** en observaciones.html (hoy editable por script/consola) + agregar `manta_guia` al backup de configuracion.html.
+3. **Poner `GEMINI_API_KEY` en Vercel** (y demás env vars) + **deploy + setup Meta** (Business + número) + prueba end-to-end del bot.
 4. **DNS** (cuando ChileCL responda) → conectar `app.multiaire.com.pe` en Vercel + Authorized domains.
 5. **Verificar Observaciones** en develop + **merge a main** (cuando el usuario apruebe).

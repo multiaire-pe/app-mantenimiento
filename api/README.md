@@ -3,12 +3,15 @@
 > Documento interno (no se publica). El bot vive en `/api/whatsapp.js` (Vercel Function).
 > Alimenta la colección `manta_observaciones` desde WhatsApp. Las apps web siguen siendo HTML/JS estático.
 
-## Estado: FASE 3
+## Estado: FASE 4
 - **Fase 1** ✅ — verificación de Meta (GET) + validación de firma `X-Hub-Signature-256` (POST) + parseo.
 - **Fase 2** ✅ — **identidad** del técnico (`maestros_personal.telefono`, últimos 9 dígitos) + **idempotencia** (`wa_mensajes`).
 - **Fase 3** ✅ — **Gemini** (`gemini-2.5-flash`, `responseSchema`) estructura el mensaje/foto en `{tienda, equipo, observacion, estado}` y redacta la observación de forma profesional + infiere el estado (PENDIENTE/EN_PROCESO/OK). **Emparejamiento** (`manta.js`) resuelve tienda/equipo contra `manta_equipos` o pide aclaración. Probado en vivo.
-- Pendiente (4-5): motor conversacional + `manta_guia` (preguntas/confirmación); escritura en `manta_observaciones` + aviso a supervisores.
-- Módulos en `api/_lib/`: `firestore.js`, `identidad.js`, `idempotencia.js`, `whatsapp.js`, `manta.js`, `gemini.js`.
+- **Fase 4** ✅ — **motor conversacional** (`conversacion.js`): máquina de estados sobre **`wa_sesiones`** (RECOLECTANDO→CONFIRMANDO, TTL 30 min). Repregunta lo mínimo (tienda/equipo no resueltos, o **un** detalle sugerido por la guía editable **`manta_guia`** vía `guia.js`); siempre permite *guardar así*; **confirma antes de escribir** y el técnico fija/corrige el estado; comandos *cancelar* / *nueva* / *ayuda*. Al confirmar, `escritura.js` crea la observación en `manta_observaciones` (origen WHATSAPP). `manejarMensaje` recibe `analizar`/`guardar` inyectables → testeable sin Meta ni Gemini (`migrar_db/test_fase4.mjs`, contra Firestore real). `gemini.js` ahora devuelve además `faltaDetalle`/`pregunta` guiados por la guía.
+- Pendiente **Fase 5**: foto desde WhatsApp (Graph API → `manta_observaciones_fotos` + `tieneFoto`) + **aviso a supervisores** (plantilla "utility" + flag) + deploy + setup Meta.
+- Módulos en `api/_lib/`: `firestore.js`, `identidad.js`, `idempotencia.js`, `whatsapp.js`, `manta.js`, `gemini.js`, `sesiones.js`, `guia.js`, `conversacion.js`, `escritura.js`.
+
+> **Guía editable (`manta_guia`)**: checklist por tipo de hallazgo que orienta la repregunta del bot. Se siembra con `migrar_db/seed_manta_guia.js` (7 temas) y se edita por script/consola (UI admin en observaciones.html pendiente).
 
 ## Endpoint
 ```
