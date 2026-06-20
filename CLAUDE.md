@@ -94,7 +94,7 @@ Alimenta `manta_observaciones` desde WhatsApp. **No** es Firebase Functions: son
 ## Firestore — colecciones
 | Colección | Descripción |
 |---|---|
-| `maestros_personal` | Colaboradores (id, nombre, cargo, telefono, activo, foto) — `foto` = imagen base64 (dataURL JPEG ~320×320) guardada en el propio documento. **No usa Firebase Storage** (el plan Spark ya no lo incluye; Storage exigiría Blaze). Campo opcional **`recibeAvisos`** (true/"SI"): el bot de WhatsApp avisa a estos colaboradores (con teléfono) cuando se registra una observación (Fase 5). *(Pendiente: checkbox en configuracion.html + columna RECIBE_AVISOS en el backup cuando se use.)* |
+| `maestros_personal` | Colaboradores (id, nombre, cargo, telefono, activo, foto) — `foto` = imagen base64 (dataURL JPEG ~320×320) guardada en el propio documento. **No usa Firebase Storage** (el plan Spark ya no lo incluye; Storage exigiría Blaze). Campo opcional **`recibeAvisos`** (bool): el bot de WhatsApp avisa a estos colaboradores (con teléfono) cuando se registra una observación (Fase 5). Editable con el botón **📣/🔕** por fila en el editor de personal de `configuracion.html` (`toggleAviso`); en el backup como columna `RECIBE_AVISOS` (SI/NO) |
 | `asistencia_registros` | Registros de asistencia diaria |
 | `maestros_feriados` | Feriados (campo `fecha`: YYYY-MM-DD) |
 | `usuarios` | Usuarios del sistema con roles |
