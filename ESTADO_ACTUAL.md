@@ -7,7 +7,7 @@
 ## Hilos en curso (visión rápida)
 1. **Observaciones (Parte A)** — ✅ LISTO en develop (pendiente verificación del usuario + merge a main).
 2. **Bot WhatsApp (Parte B)** — 🔧 **Fases 1-4 listas** (Fase 4 ya escribe en `manta_observaciones`); falta **Fase 5** (foto desde WhatsApp + avisos a supervisores) + deploy + setup Meta.
-3. **Migración corporativa** — dominio ✅ **`app.multiaire.com.pe` EN VIVO**. Centralización en `plataforma@` en curso: **A) GCP/Firebase `multiaire-fee43` ✅** (plataforma@ es Owner). **C) GitHub ✅** (repo movido a la org **`multiaire-pe`** → `multiaire-pe/app-mantenimiento`; remoto local actualizado). **D) Gemini key ✅** regenerada (key "Multiaire Bot" en multiaire-fee43, guardada en gestor). **Pendiente: B) Vercel** (crear Team de plataforma@ + transferir el proyecto + actualizar secrets del Action) y **E) Meta Business** (para el bot).
+3. **Migración corporativa** — dominio ✅ **`app.multiaire.com.pe` EN VIVO**. Centralización en `plataforma@` en curso: **A) GCP/Firebase `multiaire-fee43` ✅** (plataforma@ es Owner). **C) GitHub ✅** (repo en la org **`multiaire-pe`**; cuenta corporativa **`multiaire-plataforma`** como Owner; commits y push por SSH de este repo ya van con identidad corporativa vía alias `github-plataforma`). **D) Gemini key ✅** regenerada (key "Multiaire Bot" en multiaire-fee43, guardada en gestor). **Pendiente: B) Vercel** (crear Team de plataforma@ + transferir el proyecto + actualizar secrets del Action) y **E) Meta Business** (para el bot).
 4. **Monitoreo DNS** — ya no hace falta (DNS resuelto + dominio conectado); el wakeup recurrente puede retirarse.
 
 ---
