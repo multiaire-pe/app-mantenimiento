@@ -851,6 +851,8 @@ function openObsVer(id){
   const area = obsArea(o);
   const tec = (obsPersonal.find(p=>p.id===o.tecnicoId)||{}).nombre || '';
   const cli = obsClienteDe(o);
+  // Hora de registro (createdAt = timestamp real de guardado), en horario de Lima.
+  const reg = o.createdAt ? new Date(o.createdAt).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
   const lbl = (t,v)=> v ? `<div><div style="font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.4px">${t}</div><div style="font-size:14px">${esc(v)}</div></div>` : '';
   const foto = (o.tieneFoto && obsFotos[o.id])
     ? `<div><div style="font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.4px">Foto</div>
@@ -862,7 +864,7 @@ function openObsVer(id){
        <div style="font-size:15px;line-height:1.55;white-space:pre-wrap;background:var(--bg2,#f6f7fb);border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:12px;margin-top:6px">${esc(o.observacion||'—')}</div></div>` +
     `<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
        <div><div style="font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.4px">Estado</div><div style="margin-top:4px"><span class="est-badge est-${est}">${esc(est.replace('_',' '))}</span></div></div>
-       ${lbl('Fecha', o.fecha)}${lbl('Técnico', tec)}${lbl('Origen', (o.origen||'APP')==='WHATSAPP'?'WhatsApp':'App')}</div>` +
+       ${lbl('Fecha', o.fecha)}${lbl('🕐 Registrada', reg)}${lbl('Técnico', tec)}${lbl('Origen', (o.origen||'APP')==='WHATSAPP'?'WhatsApp':'App')}</div>` +
     foto;
   document.getElementById('obs-ver-edit-btn').style.display = isObsAdmin() ? 'inline-flex' : 'none';
   document.getElementById('modal-obs-ver').classList.add('open');
@@ -1005,21 +1007,23 @@ const obsDeEquipo = (eq) => observaciones.filter(o => (o.eqId && o.eqId===eq.eqI
   || (!o.eqId && o.equipo===eq.nombre && sedeDe(o)===eq.sede));
 function exportObsExcel(){
   // Sábana completa del inventario (557 equipos): cada equipo con sus observaciones o "Sin observaciones.".
-  const data = [['CLIENTE','SEDE','TIPO','EQUIPO','CÓDIGO','UBICACIÓN','OBSERVACIÓN','ESTADO','FECHA','ORIGEN']];
+  // Fecha + hora real de registro (createdAt), en horario de Lima.
+  const fmtReg = o => o.createdAt ? new Date(o.createdAt).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+  const data = [['CLIENTE','SEDE','TIPO','EQUIPO','CÓDIGO','UBICACIÓN','OBSERVACIÓN','ESTADO','FECHA','REGISTRADA','ORIGEN']];
   const usados = new Set();
   obsInventario.forEach(eq => {
     const obs = obsDeEquipo(eq);
     if(obs.length){
-      obs.forEach(o => { usados.add(o.id); data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, eq.area||'', o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]); });
+      obs.forEach(o => { usados.add(o.id); data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, eq.area||'', o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', fmtReg(o), (o.origen||'APP')]); });
     } else {
-      data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, eq.area||'', 'Sin observaciones.', '', '', '']);
+      data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, eq.area||'', 'Sin observaciones.', '', '', '', '']);
     }
   });
   observaciones.filter(o => !usados.has(o.id)).forEach(o => {
-    data.push([o.cliente||'', sedeDe(o), o.tipo||'', o.equipo||'', o.eqId||'', obsArea(o), o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]);
+    data.push([o.cliente||'', sedeDe(o), o.tipo||'', o.equipo||'', o.eqId||'', obsArea(o), o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', fmtReg(o), (o.origen||'APP')]);
   });
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{wch:10},{wch:16},{wch:16},{wch:24},{wch:16},{wch:22},{wch:60},{wch:13},{wch:12},{wch:8}];
+  ws['!cols'] = [{wch:10},{wch:16},{wch:16},{wch:24},{wch:16},{wch:22},{wch:60},{wch:13},{wch:12},{wch:17},{wch:8}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'OBSERVACIONES');
   XLSX.writeFile(wb, `observaciones_${tsFile()}.xlsx`);
