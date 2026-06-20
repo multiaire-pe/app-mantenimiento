@@ -203,7 +203,7 @@ tr:hover td{background:var(--surface2)}
                oninput="renderObsTable()" autocomplete="off">
       </div>
       <div class="prov-toolbar-actions">
-        <select id="obs-f-tienda" class="form-select" style="width:auto;min-width:150px" onchange="renderObsTable()"><option value="">Todas las tiendas</option></select>
+        <select id="obs-f-tienda" class="form-select" style="width:auto;min-width:150px" onchange="renderObsTable()"><option value="">Todas las sedes</option></select>
         <select id="obs-f-estado" class="form-select" style="width:auto" onchange="renderObsTable()">
           <option value="">Todos los estados</option>
           <option value="PENDIENTE">🔴 Pendiente</option>
@@ -275,13 +275,17 @@ tr:hover td{background:var(--surface2)}
 
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Tienda <span style="color:var(--orange)">*</span></label>
-          <select id="obs-tienda" class="form-select" onchange="onObsTiendaChange()"><option value="">Seleccionar…</option></select>
+          <label class="form-label">Sede <span style="color:var(--orange)">*</span></label>
+          <select id="obs-sede" class="form-select" onchange="onObsSedeChange()"><option value="">Seleccionar…</option></select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Equipo <span style="color:var(--orange)">*</span></label>
-          <select id="obs-equipo" class="form-select"><option value="">Seleccionar…</option></select>
+        <div class="form-group" style="flex:0 0 200px;min-width:160px">
+          <label class="form-label">Tipo (filtro)</label>
+          <select id="obs-tipo" class="form-select" onchange="onObsTipoChange()"><option value="">Todos los tipos</option></select>
         </div>
+      </div>
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Equipo <span style="color:var(--orange)">*</span></label>
+        <select id="obs-equipo" class="form-select"><option value="">Seleccionar…</option></select>
       </div>
 
       <div class="form-row">
@@ -582,8 +586,8 @@ function closeModal(id){ document.getElementById(id)?.classList.remove('open'); 
 //  ADMIN / SUPER_ADMIN editan · SUPERVISOR solo lectura
 // ═══════════════════════════════════════════════════════════════════════════════
 let observaciones = [];        // log de observaciones (1 doc = 1 observación)
-let obsEquipos    = [];        // maestro: [{tienda, equipo, orden}]
-let obsTiendas    = [];        // tiendas distintas (derivadas del maestro)
+let obsInventario = [];        // inventario real: [{eqId, sede, cliente, tipo, nombre, area}] (557 equipos)
+let obsSedes      = [];        // sedes distintas (derivadas del inventario)
 let obsFotos      = {};        // { obsId: dataURL base64 }
 let obsPersonal   = [];        // maestros_personal activos (para el campo "técnico")
 let _obsFotoVal   = null;      // foto mostrada en el modal (dataURL o null)
@@ -609,17 +613,19 @@ function initApp(){
 async function loadAll(){
   const body = document.getElementById('obs-body');
   try{
-    const [eqS, obsS, fotoS, persS] = await Promise.all([
-      db.collection('manta_equipos').get(),
+    const [invS, obsS, fotoS, persS] = await Promise.all([
+      db.collection('inventario').get(),
       db.collection('manta_observaciones').get(),
       db.collection('manta_observaciones_fotos').get(),
       db.collection('maestros_personal').get(),
     ]);
-    obsEquipos = eqS.docs.map(d => ({id:d.id, ...d.data()}))
-      .filter(e => String(e.activo===undefined?'SI':e.activo).toUpperCase()!=='NO');
-    obsEquipos.sort((a,b) => (a.tienda||'').localeCompare(b.tienda||'','es')
-      || (a.orden||0)-(b.orden||0) || (a.equipo||'').localeCompare(b.equipo||'','es',{numeric:true}));
-    obsTiendas = [...new Set(obsEquipos.map(e => e.tienda).filter(Boolean))];
+    obsInventario = invS.docs.map(d => ({
+      eqId:d.id, sede:d.data().sede||'', cliente:d.data().cliente||'',
+      tipo:d.data().tipo||'', nombre:d.data().nombre||'', area:d.data().area||''
+    })).filter(e => e.sede && e.nombre);
+    obsInventario.sort((a,b) => (a.sede||'').localeCompare(b.sede||'','es')
+      || (a.tipo||'').localeCompare(b.tipo||'','es') || (a.nombre||'').localeCompare(b.nombre||'','es',{numeric:true}));
+    obsSedes = [...new Set(obsInventario.map(e => e.sede).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
     observaciones = obsS.docs.map(d => ({id:d.id, ...d.data()}));
     observaciones.sort(obsSort);
     obsFotos = {}; fotoS.docs.forEach(d => { const f=d.data().foto; if(f) obsFotos[d.id]=f; });
@@ -644,7 +650,9 @@ function obsSort(a,b){
 function populateTiendaFilter(){
   const sel = document.getElementById('obs-f-tienda');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">Todas las tiendas</option>' + obsTiendas.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  // Sedes presentes en las observaciones (robusto: el campo `tienda` = "RIPLEY <SEDE>").
+  const tiendas = [...new Set(observaciones.map(o => o.tienda).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  sel.innerHTML = '<option value="">Todas las sedes</option>' + tiendas.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
   sel.value = cur;
 }
 
@@ -704,17 +712,28 @@ function renderObsTable(){
   }).join('');
 }
 
-// ── MODAL: dropdowns dependientes (tienda → equipo) ─────────────────────────────
-function fillTiendaSelect(sel){
-  sel.innerHTML = '<option value="">Seleccionar…</option>' + obsTiendas.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+// ── MODAL: dropdowns dependientes (sede → tipo → equipo, desde `inventario`) ─────
+function fillSedeSelect(sel){
+  sel.innerHTML = '<option value="">Seleccionar…</option>' + obsSedes.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
 }
-function fillEquipoSelect(sel, tienda, ensure){
-  const eqs = obsEquipos.filter(e=>e.tienda===tienda).map(e=>e.equipo);
-  if(ensure && ensure && !eqs.includes(ensure)) eqs.push(ensure);  // conserva un equipo histórico fuera del maestro
-  sel.innerHTML = '<option value="">Seleccionar…</option>' + eqs.map(e=>`<option value="${esc(e)}">${esc(e)}</option>`).join('');
+function fillTipoSelect(sel, sede){
+  const tipos = [...new Set(obsInventario.filter(e=>e.sede===sede).map(e=>e.tipo).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
 }
-function onObsTiendaChange(){
-  fillEquipoSelect(document.getElementById('obs-equipo'), document.getElementById('obs-tienda').value);
+// El valor del <option> de equipo es el eqId (referencia al inventario); el texto es el nombre + tipo.
+function fillEquipoSelect(sel, sede, tipo, ensureEqId){
+  let eqs = obsInventario.filter(e=>e.sede===sede);
+  if(tipo) eqs = eqs.filter(e=>e.tipo===tipo);
+  sel.innerHTML = '<option value="">Seleccionar…</option>' + eqs.map(e=>`<option value="${esc(e.eqId)}">${esc(e.nombre)} · ${esc((e.tipo||'').toLowerCase())}</option>`).join('');
+  if(ensureEqId) sel.value = ensureEqId;
+}
+function onObsSedeChange(){
+  const sede = document.getElementById('obs-sede').value;
+  fillTipoSelect(document.getElementById('obs-tipo'), sede);
+  fillEquipoSelect(document.getElementById('obs-equipo'), sede, '');
+}
+function onObsTipoChange(){
+  fillEquipoSelect(document.getElementById('obs-equipo'), document.getElementById('obs-sede').value, document.getElementById('obs-tipo').value);
 }
 function fillTecnicoSelect(sel, val){
   sel.innerHTML = '<option value="">—</option>' + obsPersonal.map(p=>`<option value="${esc(p.id)}"${val===p.id?' selected':''}>${esc(p.nombre)}</option>`).join('');
@@ -755,7 +774,7 @@ function closeFotoLightbox(){ document.getElementById('foto-lightbox').classList
 
 // ── MODAL: abrir / readonly ─────────────────────────────────────────────────────
 function setObsModalReadonly(ro){
-  ['obs-tienda','obs-equipo','obs-estado','obs-fecha','obs-tecnico','obs-observacion'].forEach(id=>{const el=document.getElementById(id); if(el) el.disabled=ro;});
+  ['obs-sede','obs-tipo','obs-equipo','obs-estado','obs-fecha','obs-tecnico','obs-observacion'].forEach(id=>{const el=document.getElementById(id); if(el) el.disabled=ro;});
   document.querySelectorAll('#modal-obs label[for="obs-foto-input"],#modal-obs label[for="obs-foto-cam"]').forEach(l=>l.style.display=ro?'none':'');
   document.getElementById('btn-save-obs').style.display = ro ? 'none' : 'inline-flex';
 }
@@ -764,7 +783,8 @@ function openNewObs(){
   if(!isObsAdmin()){ toast('Sin permisos para crear observaciones', 'err'); return; }
   document.getElementById('obs-modal-title').textContent = '＋ Nueva observación';
   document.getElementById('obs-id').value = '';
-  fillTiendaSelect(document.getElementById('obs-tienda'));
+  fillSedeSelect(document.getElementById('obs-sede'));
+  document.getElementById('obs-tipo').innerHTML = '<option value="">Todos los tipos</option>';
   document.getElementById('obs-equipo').innerHTML = '<option value="">Seleccionar…</option>';
   document.getElementById('obs-estado').value = 'PENDIENTE';
   document.getElementById('obs-fecha').value = hoyISO();
@@ -774,7 +794,7 @@ function openNewObs(){
   setObsModalReadonly(false);
   document.getElementById('btn-del-obs').style.display = 'none';
   document.getElementById('modal-obs').classList.add('open');
-  setTimeout(() => document.getElementById('obs-tienda')?.focus(), 50);
+  setTimeout(() => document.getElementById('obs-sede')?.focus(), 50);
 }
 
 function openEditObs(id){
@@ -783,10 +803,12 @@ function openEditObs(id){
   const admin = isObsAdmin();
   document.getElementById('obs-modal-title').textContent = admin ? '✎ Editar observación' : '👁 Ver observación';
   document.getElementById('obs-id').value = o.id;
-  fillTiendaSelect(document.getElementById('obs-tienda'));
-  document.getElementById('obs-tienda').value = o.tienda || '';
-  fillEquipoSelect(document.getElementById('obs-equipo'), o.tienda || '', o.equipo || '');
-  document.getElementById('obs-equipo').value = o.equipo || '';
+  const oSede = o.sede || String(o.tienda||'').replace(/^RIPLEY\s+/i,'');   // compat si faltara `sede`
+  fillSedeSelect(document.getElementById('obs-sede'));
+  document.getElementById('obs-sede').value = oSede;
+  fillTipoSelect(document.getElementById('obs-tipo'), oSede);
+  document.getElementById('obs-tipo').value = o.tipo || '';
+  fillEquipoSelect(document.getElementById('obs-equipo'), oSede, o.tipo || '', o.eqId || '');
   document.getElementById('obs-estado').value = o.estado || 'PENDIENTE';
   document.getElementById('obs-fecha').value = o.fecha || hoyISO();
   fillTecnicoSelect(document.getElementById('obs-tecnico'), o.tecnicoId || '');
@@ -800,19 +822,24 @@ function openEditObs(id){
 // ── SAVE ──────────────────────────────────────────────────────────────────────
 async function saveObs(){
   if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
-  const tienda      = document.getElementById('obs-tienda').value;
-  const equipo      = document.getElementById('obs-equipo').value;
+  const sede        = document.getElementById('obs-sede').value;
+  const eqId        = document.getElementById('obs-equipo').value;   // value = eqId del inventario
   const observacion = document.getElementById('obs-observacion').value.trim();
   const estado      = document.getElementById('obs-estado').value || 'PENDIENTE';
   const fecha       = document.getElementById('obs-fecha').value || hoyISO();
   const tecnicoId   = document.getElementById('obs-tecnico').value || '';
-  if(!tienda){ toast('Selecciona la tienda', 'err'); return; }
-  if(!equipo){ toast('Selecciona el equipo', 'err'); return; }
+  if(!sede){ toast('Selecciona la sede', 'err'); return; }
+  if(!eqId){ toast('Selecciona el equipo', 'err'); return; }
   if(!observacion){ toast('La observación es obligatoria', 'err'); document.getElementById('obs-observacion').focus(); return; }
+  const inv = obsInventario.find(e => e.eqId === eqId);
+  if(!inv){ toast('Equipo no encontrado en el inventario', 'err'); return; }
+  const cliente = inv.cliente || '';
+  const tienda  = (cliente ? cliente + ' ' : '') + inv.sede;   // "RIPLEY ATOCONGO" (compat columna Tienda)
   const btn = document.getElementById('btn-save-obs');
   if(btn.disabled) return; btn.disabled = true;
   const now = new Date().toISOString();
-  const data = { tienda, equipo, observacion, estado, fecha, tecnicoId,
+  const data = { sede: inv.sede, tienda, equipo: inv.nombre, eqId: inv.eqId, tipo: inv.tipo,
+    observacion, estado, fecha, tecnicoId,
     tieneFoto: !!_obsFotoVal, updatedAt: now, updatedBy: maUser?.email || '' };
   const id = document.getElementById('obs-id').value;
   try{
@@ -866,25 +893,29 @@ async function deleteObs(){
 
 // ── EXPORT EXCEL (sábana completa, rellena "Sin observaciones.") ──────────────────
 function tsFile(){ const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; }
+const sedeDe = (o) => o.sede || String(o.tienda||'').replace(/^RIPLEY\s+/i,'');
+const obsDeEquipo = (eq) => observaciones.filter(o => (o.eqId && o.eqId===eq.eqId)
+  || (!o.eqId && o.equipo===eq.nombre && sedeDe(o)===eq.sede));
 function exportObsExcel(){
-  const data = [['CLIENTE','EQUIPO','OBSERVACIÓN','ESTADO','FECHA','ORIGEN']];
+  // Sábana completa del inventario (557 equipos): cada equipo con sus observaciones o "Sin observaciones.".
+  const data = [['CLIENTE','SEDE','TIPO','EQUIPO','CÓDIGO','OBSERVACIÓN','ESTADO','FECHA','ORIGEN']];
   const usados = new Set();
-  obsEquipos.forEach(eq => {
-    const obs = observaciones.filter(o => o.tienda===eq.tienda && o.equipo===eq.equipo);
+  obsInventario.forEach(eq => {
+    const obs = obsDeEquipo(eq);
     if(obs.length){
-      obs.forEach(o => { usados.add(o.id); data.push([eq.tienda, eq.equipo, o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]); });
+      obs.forEach(o => { usados.add(o.id); data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]); });
     } else {
-      data.push([eq.tienda, eq.equipo, 'Sin observaciones.', '', '', '']);
+      data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, 'Sin observaciones.', '', '', '']);
     }
   });
   observaciones.filter(o => !usados.has(o.id)).forEach(o => {
-    data.push([o.tienda||'', o.equipo||'', o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]);
+    data.push([o.cliente||'', sedeDe(o), o.tipo||'', o.equipo||'', o.eqId||'', o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]);
   });
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{wch:22},{wch:16},{wch:80},{wch:13},{wch:12},{wch:10}];
+  ws['!cols'] = [{wch:10},{wch:16},{wch:16},{wch:24},{wch:16},{wch:60},{wch:13},{wch:12},{wch:8}];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'MANTA GENERAL');
-  XLSX.writeFile(wb, `manta_ripley_${tsFile()}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, 'OBSERVACIONES');
+  XLSX.writeFile(wb, `observaciones_${tsFile()}.xlsx`);
   toast('Excel exportado ✓', 'ok');
 }
 
@@ -897,21 +928,24 @@ function exportObsPDF(){
   const ensure = n => { if(y+n > PH-12){ doc.addPage(); y=16; } };
   doc.setFillColor(27,63,139); doc.rect(0,0,PW,18,'F');
   doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(13);
-  doc.text('MANTA GENERAL — RIPLEY', M, 12);
+  doc.text('OBSERVACIONES — MULTIAIRE', M, 12);
   doc.setFont('helvetica','normal'); doc.setFontSize(8);
   doc.text('MultiAire · ' + new Date().toLocaleDateString('es-PE'), PW-M, 12, {align:'right'});
   y=24; doc.setTextColor(40);
-  (obsTiendas.length?obsTiendas:[...new Set(observaciones.map(o=>o.tienda))]).forEach(t => {
-    const eqs = obsEquipos.filter(e=>e.tienda===t);
+  // El PDF es un reporte de HALLAZGOS: solo sedes/equipos CON observaciones (557 equipos con relleno serían absurdos).
+  const sedesConObs = [...new Set(observaciones.map(sedeDe).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  if(!sedesConObs.length){ doc.text('No hay observaciones registradas.', M, y); doc.save(`observaciones_${tsFile()}.pdf`); toast('PDF exportado ✓','ok'); return; }
+  sedesConObs.forEach(sede => {
     ensure(9);
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(27,63,139);
-    doc.text(String(t||''), M, y); y+=5; doc.setTextColor(40);
-    const lista = eqs.length ? eqs : [...new Set(observaciones.filter(o=>o.tienda===t).map(o=>o.equipo))].map(e=>({equipo:e}));
+    doc.text(String(sede||''), M, y); y+=5; doc.setTextColor(40);
+    // equipos con observaciones en esa sede (del inventario, o por etiqueta si no estuviera)
+    const eqs = obsInventario.filter(e=>e.sede===sede && obsDeEquipo(e).length);
+    const lista = eqs.length ? eqs : [...new Set(observaciones.filter(o=>sedeDe(o)===sede).map(o=>o.equipo))].map(e=>({nombre:e, eqId:'', sede}));
     lista.forEach(eq => {
-      const obs = observaciones.filter(o => o.tienda===t && o.equipo===eq.equipo);
-      const filas = obs.length ? obs : [{observacion:'Sin observaciones.', estado:''}];
-      filas.forEach((o,idx) => {
-        const head = idx===0 ? String(eq.equipo||'') : '';
+      const obs = obsDeEquipo(eq);
+      obs.forEach((o,idx) => {
+        const head = idx===0 ? String(eq.nombre||'') : '';
         const txt = doc.splitTextToSize(String(o.observacion||''), PW-M-46);
         ensure(txt.length*4 + 2);
         doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.text(head, M, y);
@@ -923,7 +957,7 @@ function exportObsPDF(){
     });
     y += 2;
   });
-  doc.save(`manta_ripley_${tsFile()}.pdf`);
+  doc.save(`observaciones_${tsFile()}.pdf`);
   toast('PDF exportado ✓', 'ok');
 }
 
