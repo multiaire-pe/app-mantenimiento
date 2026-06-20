@@ -161,3 +161,60 @@ Con esas dos cosas, todo lo demás lo hago yo. ¡Gracias! 🙏
 - **Gestión (tú / Chile):** crear `plataforma@`, DNS, Owner de GCP, Org de GitHub, alta en Meta.
 - **Código/config (Claude Code):** dominio en Vercel, *Authorized domains*, env vars del bot, el bot y
   las notificaciones. Te guío paso a paso en cada uno.
+
+---
+
+## 7) GUÍA CLICABLE — estado y pasos restantes (al 2026-06-19)
+
+### ✅ Ya hecho (no tocar)
+- **DNS:** `app.multiaire.com.pe` → CNAME `cname.vercel-dns.com` activo en ChileCL (serial `2026062002`).
+- **Vercel:** dominio conectado al proyecto **`app-mantenimiento`** (producción/main), **SSL OK**, sirviendo en `https://app.multiaire.com.pe` (HTTP 200).
+- **Firebase Authorized domains:** `app.multiaire.com.pe` ya agregado (login con Google funciona en el dominio nuevo).
+
+> ⚠️ **Antes de empezar:** confirma que `plataforma@multiaire.com.pe` ya puede **iniciar sesión con Google** (el upgrade a Gmail quedó pendiente por el límite de verificación). Sin ese login no se puede ser Owner de Vercel/GCP. Probar en https://accounts.google.com con esa cuenta.
+
+### Orden recomendado: A → C → B → D → E (B y C rompen el link Vercel↔GitHub; se reconecta una vez al final).
+
+---
+
+#### A) GCP / Firebase — `plataforma@` como **Owner**  *(5 min)*
+1. Abrir IAM del proyecto: **https://console.cloud.google.com/iam-admin/iam?project=multiaire-fee43**
+2. Botón **「＋ GRANT ACCESS / Conceder acceso」** → *New principals* = `plataforma@multiaire.com.pe` → *Role* = **Owner** → **Save**.
+3. `plataforma@` recibe un **email de invitación a Owner** → debe **aceptarlo** (revisar https://webmail.multiaire.com.pe o el Gmail si ya está activo). El rol Owner no queda activo hasta aceptar.
+4. (Espejo en Firebase, mismo efecto): **https://console.firebase.google.com/project/multiaire-fee43/settings/iam**
+5. **No** quites tu cuenta personal como Owner hasta confirmar que `plataforma@` ya es Owner activo.
+
+#### C) GitHub — Organización + transferir el repo  *(10 min)*
+1. Crear org (plan Free): **https://github.com/account/organizations/new** → nombre ej. `multiaire-pe`.
+2. Transferir el repo: **https://github.com/marchenaangulojoseluis-dev/app-mantenimiento/settings** → al final, *Danger Zone* → **「Transfer ownership」** → nuevo owner = la org `multiaire-pe` → confirmar escribiendo el nombre del repo.
+3. Reapuntar el remoto local (te lo hago yo):
+   `git remote set-url origin git@github.com:multiaire-pe/app-mantenimiento.git`
+4. Reconectar la integración Git en Vercel (ver paso B.4).
+
+#### B) Vercel — Team de `plataforma@` + transferir el proyecto  *(10 min)*
+1. Inicia sesión en Vercel con `plataforma@`: **https://vercel.com/login** (botón *Continue with Google*).
+2. Crear Team: **https://vercel.com/teams/create** (nombre ej. `MultiAire`, plan Hobby/Free).
+3. Invitar tu cuenta personal a ese Team como **Owner** (Team → Settings → Members) — así puedes mover el proyecto. Luego, desde tu cuenta personal:
+   **https://vercel.com/marchenaangulojoseluis-4484s-projects/app-mantenimiento/settings** → *Advanced* → **「Transfer Project」** → destino = Team `MultiAire`.
+4. Reconectar el repo: proyecto → **Settings → Git** → conectar a `multiaire-pe/app-mantenimiento` (si C ya se hizo).
+5. **Actualizar los secrets del GitHub Action** (repo → Settings → Secrets → Actions:
+   **https://github.com/multiaire-pe/app-mantenimiento/settings/secrets/actions**): `VERCEL_ORG_ID` (nuevo id del Team), `VERCEL_PROJECT_ID`, `VERCEL_TOKEN` (token creado en el Team). → **Esto lo hago yo** una vez tengas el Team y un token.
+6. Verifica que `app.multiaire.com.pe` y las URLs `*.vercel.app` siguen sirviendo tras el traspaso.
+
+#### D) Gemini API key (corporativa)  *(5 min)*
+1. AI Studio con `plataforma@`: **https://aistudio.google.com/apikey** → *Create API key* → en el proyecto `multiaire-fee43` → copiar.
+2. Guardarla en el **gestor de contraseñas** de la empresa.
+3. Ponerla en Vercel (env var del bot, Production): proyecto → **Settings → Environment Variables** → `GEMINI_API_KEY`. → **Esto lo hago yo** cuando me pases la key (o la pegas tú).
+4. (Rendición de Caja usa `localStorage cs_gemini_key` por usuario; ahí cada quien pega la suya, no es env var.)
+
+#### E) Meta Business + WhatsApp (para el bot, Fase 5)  *(30-40 min)*
+1. Crear Business: **https://business.facebook.com** → *Create account*.
+   - ⚠️ Meta exige un **Facebook personal** como admin inicial (no hay cuenta funcional como en Google). Los *assets* los posee el Business, no la persona; agrega varios admins.
+2. Crear app con WhatsApp: **https://developers.facebook.com/apps** → *Create app* (tipo Business) → agregar producto **WhatsApp**.
+3. Registrar el **número de la empresa** (no debe estar activo en WhatsApp normal).
+4. Copiar `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TOKEN` (System User token permanente), `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` (lo inventas) → **env vars en Vercel** (te ayudo a ponerlas).
+5. Webhook: Callback URL `https://app.multiaire.com.pe/api/whatsapp`, suscribir campo **messages**.
+6. Plantilla "utility" aprobada para avisos a supervisores (Fase 5).
+
+### Lo que hago yo (config dentro de las cuentas, una vez tengas acceso)
+- `git remote set-url` al nuevo repo · reconectar/verificar el deploy · actualizar los **secrets** del Action · poner las **env vars** (`GEMINI_API_KEY`, `WHATSAPP_*`, `FIREBASE_SERVICE_ACCOUNT`) en Vercel · verificar dominios y login.
