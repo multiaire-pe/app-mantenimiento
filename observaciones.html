@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MultiAire – Observaciones</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+:root{
+  --bg:#f0f4fa;--surface:#fff;--surface2:#f5f8ff;--surface3:#e8eef8;
+  --border:#d0daf0;--border2:#b8cce8;
+  --accent:#1a2540;--muted:#8a9ab8;--muted2:#6a7a9a;
+  --blue:#1B3F8B;--blue-light:#2a52b0;--blue-pale:#e8eef8;
+  --orange:#F47920;--orange-dark:#d4621a;--orange-pale:#fff3eb;
+  --green:#1a9e5a;--green-bg:#f0faf5;--green-border:#b0e0c8;
+  --yellow:#d48a00;--yellow-bg:#fff8ee;--yellow-border:#f5d080;
+  --red:#d63344;--red-bg:#fdf0f2;--red-border:#f0c0c8;
+  --purple:#6b3fa0;--purple-bg:#f3eeff;--purple-border:#d0b0f0;
+  --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow:0 2px 12px rgba(27,63,139,.10);--shadow-lg:0 8px 32px rgba(27,63,139,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height:100vh;font-size:14px;display:flex;flex-direction:column}
+
+/* ── HEADER ───────────────────────────────────────────────────────────────── */
+header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0;animation:blink 2.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.logo{font-weight:700;font-size:16px;letter-spacing:.03em;color:#fff;display:flex;align-items:center;gap:8px}
+.logo span{color:rgba(255,255,255,.5);font-weight:300}
+.hpill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
+.hpill.ok{color:#4ddd88;border-color:rgba(77,221,136,.4)}
+.hpill.loading{color:#ffd866;border-color:rgba(255,216,102,.4)}
+.hactions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.role-badge{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700}
+.role-SUPER_ADMIN{background:#fff3eb;color:var(--orange-dark)}
+.role-ADMIN{background:#e8eef8;color:var(--blue)}
+.role-SUPERVISOR{background:var(--purple-bg);color:var(--purple)}
+
+/* ── USER PILL ────────────────────────────────────────────────────────────── */
+.user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative}
+.user-pill:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.1)}
+.user-avatar-init{width:26px;height:26px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.user-avatar-img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.user-pname{font-size:11px;color:rgba(255,255,255,.85);font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1.5px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);min-width:200px;overflow:hidden;z-index:999}
+.user-menu.open{display:block}
+.user-menu-head{padding:10px 14px 6px;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.user-menu-item{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;color:var(--accent);cursor:pointer;background:none;border:none;width:100%;text-align:left;font-family:var(--font);transition:background .15s}
+.user-menu-item:hover{background:var(--bg)}
+.user-menu-item.danger{color:var(--red)}
+.user-menu-item.danger:hover{background:var(--red-bg)}
+.user-menu-div{height:1px;background:var(--border);margin:4px 0}
+.back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:20px;white-space:nowrap;transition:all .15s}
+.back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
+
+/* ── AUTH OVERLAY ─────────────────────────────────────────────────────────── */
+#auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:36px 32px;max-width:380px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
+.auth-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px}
+.auth-logo-dot{width:10px;height:10px;border-radius:50%;background:var(--orange)}
+.auth-logo-text{font-weight:700;font-size:20px;color:var(--blue)}
+.auth-title{font-size:15px;font-weight:700;color:var(--accent);margin-bottom:6px}
+.auth-sub{font-size:12px;color:var(--muted2);margin-bottom:24px;line-height:1.5}
+.auth-err{margin-top:14px;padding:10px 14px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:8px;font-size:12px;color:var(--red);display:none;line-height:1.5;text-align:left}
+.auth-err.show{display:block}
+.auth-loading{font-size:12px;color:var(--muted2);margin-top:10px;display:none}
+.auth-loading.show{display:block}
+
+/* ── TOAST ────────────────────────────────────────────────────────────────── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a2540;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:all .25s;z-index:9998;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{background:#1a9e5a}.toast.err{background:#d63344}
+
+/* ── BUTTONS ──────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--accent);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--surface3);border-color:var(--border2)}
+.btn-primary{background:#1B3F8B;border-color:#1B3F8B;color:#fff;font-weight:600}.btn-primary:hover{opacity:.9}
+.btn-green{color:var(--green);border-color:var(--green-border)}.btn-green:hover{background:var(--green-bg)}
+.btn-red{color:var(--red);border-color:var(--red-border)}.btn-red:hover{background:var(--red-bg)}
+.btn-sm{padding:5px 10px;font-size:11px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── PAGE & FOOTER ────────────────────────────────────────────────────────── */
+.page{flex:1;padding:24px;max-width:1100px;width:100%;margin:0 auto}
+footer{background:var(--surface);border-top:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px}
+.footer-txt{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.footer-time{font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:auto}
+
+/* ── CARDS ────────────────────────────────────────────────────────────────── */
+.card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
+.card-title{font-size:13px;font-weight:700;color:var(--blue);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.form-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.form-group{display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px}
+.form-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2)}
+.form-input,.form-select{background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:12px;padding:8px 10px;border-radius:6px;outline:none;width:100%}
+.form-input:focus,.form-select:focus{border-color:var(--blue);background:#fff}
+.form-input:disabled,.form-select:disabled{opacity:.7;cursor:not-allowed;background:var(--surface3)}
+
+/* ── TOOLBAR ──────────────────────────────────────────────────────────────── */
+.prov-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.prov-search-wrap{flex:1;min-width:220px}
+.prov-toolbar-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ── TABLE ────────────────────────────────────────────────────────────────── */
+.results-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.results-header h3{font-size:13px;font-weight:700;color:var(--blue)}
+.table-scroll{overflow-x:auto;margin-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:var(--surface3);color:var(--muted2);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:8px;text-align:left;border-bottom:2px solid var(--border);white-space:nowrap}
+td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:var(--surface2)}
+.col-estado{width:30px;text-align:center}
+.col-acc{width:48px;text-align:center}
+.col-notas{max-width:240px}
+.cell-notas{display:block;max-width:240px;color:var(--muted2);font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.estado-dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle}
+.estado-dot.on{background:var(--green)}
+.estado-dot.off{background:var(--muted)}
+.row-clickable{cursor:pointer}
+.empty-msg{text-align:center;color:var(--muted);padding:40px 20px;font-size:13px}
+/* ── ESTADO BADGES + FOTO ─────────────────────────────────────────────────── */
+.est-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.est-PENDIENTE{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
+.est-EN_PROCESO{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
+.est-OK{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.est-dot.PENDIENTE{background:var(--red)}.est-dot.EN_PROCESO{background:var(--yellow)}.est-dot.OK{background:var(--green)}
+.origen-badge{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:4px}
+.origen-APP{background:var(--blue-pale);color:var(--blue)}
+.origen-WHATSAPP{background:#e6f7ec;color:#0a8f3c}
+.obs-thumb{width:30px;height:30px;border-radius:6px;object-fit:cover;border:1px solid var(--border);cursor:zoom-in;display:block}
+.obs-foto-box{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.obs-foto-preview{width:72px;height:72px;border-radius:8px;object-fit:cover;border:1.5px solid var(--border);cursor:zoom-in}
+.obs-foto-empty{width:72px;height:72px;border-radius:8px;border:1.5px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:24px;background:var(--surface2)}
+.cam-only-mobile{display:none}
+.foto-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:3000;padding:20px;cursor:zoom-out}
+.foto-lightbox.open{display:flex}
+.foto-lightbox img{max-width:92vw;max-height:86vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+.foto-lightbox-close{position:absolute;top:14px;right:18px;font-size:30px;color:#fff;cursor:pointer;background:none;border:none;line-height:1}
+.col-obs{max-width:340px}
+.cell-obs{display:block;max-width:340px;color:var(--accent);font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── MODAL ────────────────────────────────────────────────────────────────── */
+.modal-overlay{position:fixed;inset:0;background:rgba(10,20,50,.45);backdrop-filter:blur(2px);z-index:500;display:none;align-items:center;justify-content:center;padding:16px;cursor:pointer}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:12px;box-shadow:var(--shadow-lg);width:560px;max-width:100%;max-height:90vh;overflow-y:auto;padding:22px;cursor:default}
+.modal h2{font-size:15px;font-weight:700;margin-bottom:4px;color:var(--blue)}
+.modal-sub{font-size:11px;color:var(--muted2);margin-bottom:16px;line-height:1.6;padding:8px 10px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--blue)}
+.modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+
+/* ── MOBILE ───────────────────────────────────────────────────────────────── */
+@media(max-width:768px){
+  header{padding:0 12px;height:52px;gap:8px}
+  .logo{font-size:14px}
+  .logo span{display:none}
+  .hpill{display:none}
+  .hactions{gap:6px}
+  .user-pname{display:none}
+  .user-pill{padding:2px 4px;border-radius:50%}
+  .page{padding:14px 12px}
+  footer{padding:12px 16px;flex-wrap:wrap}
+  .card{padding:14px}
+  .form-row{flex-direction:column;align-items:stretch}
+  .prov-toolbar-actions{width:100%}
+  .prov-toolbar-actions .btn{flex:1;justify-content:center}
+  .cam-only-mobile{display:inline-flex}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-dot"></div>
+  <div class="logo">MultiAire <span>/ Observaciones</span></div>
+  <div class="hpill loading" id="conn-pill">⟳ Conectando...</div>
+  <div class="hactions">
+    <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
+    <a href="index.html" class="back-link">← Inicio</a>
+  </div>
+</header>
+
+<div id="auth-overlay" style="display:none">
+  <div class="auth-card">
+    <div class="auth-logo"><div class="auth-logo-dot"></div><div class="auth-logo-text">MultiAire</div></div>
+    <div class="auth-title">Manta de Observaciones</div>
+    <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada.</div>
+    <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="auth-loading" id="auth-loading"></div>
+  </div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column">
+<div class="page" id="main-page" style="display:none">
+
+  <!-- TOOLBAR -->
+  <div class="card">
+    <div class="prov-toolbar">
+      <div class="prov-search-wrap">
+        <input type="text" id="obs-search" class="form-input"
+               placeholder="🔍 Buscar por tienda, equipo u observación…"
+               oninput="renderObsTable()" autocomplete="off">
+      </div>
+      <div class="prov-toolbar-actions">
+        <select id="obs-f-tienda" class="form-select" style="width:auto;min-width:150px" onchange="renderObsTable()"><option value="">Todas las sedes</option></select>
+        <select id="obs-f-estado" class="form-select" style="width:auto" onchange="renderObsTable()">
+          <option value="">Todos los estados</option>
+          <option value="PENDIENTE">🔴 Pendiente</option>
+          <option value="EN_PROCESO">🟡 En proceso</option>
+          <option value="OK">🟢 OK</option>
+        </select>
+        <input type="date" id="obs-f-fecha" class="form-input" style="width:auto" onchange="renderObsTable()" title="Filtrar por fecha">
+        <button class="btn btn-sm" onclick="clearObsFilters()" title="Limpiar filtros">✕</button>
+        <button class="btn btn-sm btn-green" onclick="exportObsExcel()">⬇ Excel</button>
+        <button class="btn btn-sm btn-green" onclick="exportObsPDF()">⬇ PDF</button>
+        <button class="btn btn-sm btn-primary" id="btn-new-obs" onclick="openNewObs()" style="display:none">＋ Nueva observación</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- OBSERVATIONS TABLE -->
+  <div class="card">
+    <div class="results-header">
+      <h3>📋 Manta de observaciones — Ripley</h3>
+      <span id="obs-count" style="font-size:11px;color:var(--muted2)"></span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-estado" title="Estado"></th>
+            <th>Tienda</th>
+            <th>Equipo</th>
+            <th class="col-obs">Observación</th>
+            <th>Estado</th>
+            <th>Fecha</th>
+            <th class="col-estado" title="Foto">📷</th>
+            <th>Origen</th>
+            <th class="col-acc"></th>
+          </tr>
+        </thead>
+        <tbody id="obs-body">
+          <tr><td colspan="9" class="empty-msg">Cargando observaciones…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:10px;color:var(--muted2);margin-top:6px">
+      <span class="est-badge est-PENDIENTE">PENDIENTE</span>&nbsp;
+      <span class="est-badge est-EN_PROCESO">EN PROCESO</span>&nbsp;
+      <span class="est-badge est-OK">OK</span>&nbsp;·&nbsp; doble clic en una fila para ver/editar el detalle.
+    </p>
+  </div>
+
+</div><!-- /.page -->
+</div><!-- flex:1 wrapper -->
+
+<footer>
+  <span class="footer-txt">MultiAire © 2026</span>
+  <span class="footer-txt" style="opacity:.4">·</span>
+  <span class="footer-txt">Observaciones</span>
+  <span class="footer-time" id="clock">—</span>
+</footer>
+
+<!-- MODAL ALTA / EDICIÓN OBSERVACIÓN -->
+<div class="modal-overlay" id="modal-obs" onclick="if(event.target===this)closeModal('modal-obs')">
+  <div class="modal">
+    <h2 id="obs-modal-title">＋ Nueva observación</h2>
+    <div class="modal-sub">
+      Los campos marcados con <span style="color:var(--orange)">*</span> son obligatorios.
+      Cada observación es un registro independiente del equipo.
+    </div>
+    <input type="hidden" id="obs-id">
+    <div style="display:flex;flex-direction:column;gap:12px">
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Sede <span style="color:var(--orange)">*</span></label>
+          <select id="obs-sede" class="form-select" onchange="onObsSedeChange()"><option value="">Seleccionar…</option></select>
+        </div>
+        <div class="form-group" style="flex:0 0 200px;min-width:160px">
+          <label class="form-label">Tipo (filtro)</label>
+          <select id="obs-tipo" class="form-select" onchange="onObsTipoChange()"><option value="">Todos los tipos</option></select>
+        </div>
+      </div>
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Equipo <span style="color:var(--orange)">*</span></label>
+        <select id="obs-equipo" class="form-select"><option value="">Seleccionar…</option></select>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group" style="flex:0 0 170px;min-width:150px">
+          <label class="form-label">Estado</label>
+          <select id="obs-estado" class="form-select">
+            <option value="PENDIENTE">🔴 Pendiente</option>
+            <option value="EN_PROCESO">🟡 En proceso</option>
+            <option value="OK">🟢 OK</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:0 0 160px;min-width:140px">
+          <label class="form-label">Fecha</label>
+          <input type="date" id="obs-fecha" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Técnico (opcional)</label>
+          <select id="obs-tecnico" class="form-select"><option value="">—</option></select>
+        </div>
+      </div>
+
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Observación <span style="color:var(--orange)">*</span></label>
+        <textarea id="obs-observacion" class="form-input" rows="4" style="resize:vertical;line-height:1.5"
+                  placeholder="Describe el hallazgo del equipo… Ej.: Los filtros de aire se encuentran saturados; se requiere su reemplazo."></textarea>
+      </div>
+
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Foto (opcional)</label>
+        <div class="obs-foto-box">
+          <div id="obs-foto-prev"></div>
+          <label class="btn btn-sm" for="obs-foto-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="obs-foto-input" accept="image/*" style="display:none" onchange="setObsFoto(this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="obs-foto-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="obs-foto-cam" accept="image/*" capture="environment" style="display:none" onchange="setObsFoto(this.files[0]); this.value='';">
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-red" id="btn-del-obs" onclick="deleteObs()" style="margin-right:auto;display:none">🗑 Eliminar</button>
+      <button class="btn" onclick="closeModal('modal-obs')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-obs" onclick="saveObs()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- LIGHTBOX FOTO -->
+<div class="foto-lightbox" id="foto-lightbox" onclick="closeFotoLightbox()">
+  <button class="foto-lightbox-close" onclick="closeFotoLightbox()" title="Cerrar">✕</button>
+  <img id="foto-lightbox-img" src="" alt="" onclick="event.stopPropagation()">
+</div>
+
+<!-- MODAL GUÍA DEL BOT (lista de temas) -->
+<div class="modal-overlay" id="modal-guia" onclick="if(event.target===this)closeModal('modal-guia')">
+  <div class="modal">
+    <h2>🤖 Guía del bot de WhatsApp</h2>
+    <div class="modal-sub">
+      Orienta las <strong>repreguntas</strong> del bot: por cada tipo de hallazgo, qué debería incluir una buena
+      observación. El bot la usa para pedir <strong>un</strong> dato faltante antes de guardar. Solo afecta al bot
+      (no cambia la manta). Las <em>palabras clave</em> ayudan a que el bot reconozca el tema.
+    </div>
+    <div id="guia-list" style="max-height:400px;overflow-y:auto;margin-bottom:14px"></div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" onclick="openGuiaEdit('')" style="margin-right:auto">＋ Nuevo tema</button>
+      <button class="btn" onclick="closeModal('modal-guia')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GUÍA: alta / edición de un tema -->
+<div class="modal-overlay" id="modal-guia-edit" style="z-index:600" onclick="if(event.target===this)closeModal('modal-guia-edit')">
+  <div class="modal" style="width:480px">
+    <h2 id="guia-edit-title">＋ Nuevo tema</h2>
+    <div class="modal-sub">
+      Los campos con <span style="color:var(--orange)">*</span> son obligatorios. El <strong>checklist</strong> es lo
+      que una buena observación debería cubrir para este tema.
+    </div>
+    <input type="hidden" id="guia-id">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Título <span style="color:var(--orange)">*</span></label>
+          <input type="text" id="guia-titulo" class="form-input" placeholder="Ej.: Filtros" autocomplete="off">
+        </div>
+        <div class="form-group" style="flex:0 0 110px;min-width:90px">
+          <label class="form-label">Orden</label>
+          <input type="number" id="guia-orden" class="form-input" value="50" min="0" step="10">
+        </div>
+      </div>
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Palabras clave (separadas por comas)</label>
+        <input type="text" id="guia-claves" class="form-input" placeholder="filtro, saturado, sucio" autocomplete="off">
+      </div>
+      <div class="form-group" style="min-width:0">
+        <label class="form-label">Checklist — un punto por línea <span style="color:var(--orange)">*</span></label>
+        <textarea id="guia-checklist" class="form-input" rows="5" style="resize:vertical;line-height:1.5"
+                  placeholder="¿Se limpiaron o se reemplazaron?&#10;Nivel de saturación (leve / moderado / alto)&#10;¿Afecta el enfriamiento?"></textarea>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;color:var(--accent)">
+        <input type="checkbox" id="guia-activo" checked style="cursor:pointer"> Activo (el bot lo tiene en cuenta)
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-red" id="btn-del-guia" onclick="deleteGuia()" style="margin-right:auto;display:none">🗑 Eliminar</button>
+      <button class="btn" onclick="closeModal('modal-guia-edit')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-guia" onclick="saveGuia()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GESTIÓN DE ACCESOS -->
+<div class="modal-overlay" id="modal-access" onclick="if(event.target===this)closeModal('modal-access')">
+  <div class="modal">
+    <h2>⚙️ Gestión de accesos</h2>
+    <div class="modal-sub">
+      <strong>SUPERVISOR</strong> — solo lectura en todas las apps<br>
+      <strong>ADMIN</strong> — gestión completa<br>
+      <strong>SUPER_ADMIN</strong> — acceso total sin restricciones
+    </div>
+    <div id="access-list" style="max-height:340px;overflow-y:auto;margin-bottom:14px"></div>
+    <div style="display:flex;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+      <input type="text" class="form-input" id="new-user-email" placeholder="nuevo@email.com" style="flex:1;min-width:180px">
+      <select class="form-select" id="new-user-rol">
+        <option value="SUPERVISOR">SUPERVISOR</option>
+        <option value="ADMIN">ADMIN</option>
+        <option value="SUPER_ADMIN">SUPER ADMIN</option>
+      </select>
+      <button class="btn btn-primary" onclick="addAccessUser()">+ Agregar</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-access')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// ── CLOCK ─────────────────────────────────────────────────────────────────────
+(function tickClock(){
+  document.getElementById('clock').textContent = new Date().toLocaleString('es-PE',{
+    weekday:'short',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'
+  });
+  setTimeout(tickClock, 1000);
+})();
+
+// ── FIREBASE / AUTH ───────────────────────────────────────────────────────────
+const MA_ADM  = 'marchenaangulojoseluis@gmail.com';
+const _fbApp  = firebase.initializeApp(window.__firebaseConfig);
+const db      = firebase.firestore();
+window.__auth = firebase.auth();
+window.__prov = new firebase.auth.GoogleAuthProvider();
+window.__fb   = {
+  onAuthStateChanged: (auth, cb) => firebase.auth().onAuthStateChanged(cb),
+  signInWithPopup:    (auth, prov) => firebase.auth().signInWithPopup(prov),
+  signOut:            () => firebase.auth().signOut(),
+};
+
+let maUser = null;
+
+(function(){
+  function waitForFirebase(){
+    if(window.__auth && window.__fb){
+      window.__fb.onAuthStateChanged(window.__auth, function(user){
+        if(user && !window._maInitDone){
+          window._maInitDone = true;
+          maVerify({email:user.email, name:user.displayName, picture:user.photoURL}, true);
+        } else if(!user && !window._maInitDone){
+          window._maInitDone = true;
+          maShowLogin();
+        }
+      });
+    } else { setTimeout(waitForFirebase, 50); }
+  }
+  waitForFirebase();
+})();
+
+function maShowLogin(){
+  var ov = document.getElementById('auth-overlay');
+  if(ov){ ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+  var btn = document.getElementById('g-btn');
+  if(btn){ btn.innerHTML = '<button onclick="maFirebaseSignIn()" style="display:flex;align-items:center;gap:10px;padding:10px 20px;border:1.5px solid #d0daf0;border-radius:8px;background:#fff;font-family:IBM Plex Sans,sans-serif;font-size:14px;cursor:pointer;font-weight:500"><img src=\'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg\' width=18>Continuar con Google</button>'; }
+}
+
+async function maFirebaseSignIn(){
+  try{
+    const result = await window.__fb.signInWithPopup(window.__auth, window.__prov);
+    maVerify({email:result.user.email, name:result.user.displayName, picture:result.user.photoURL}, true);
+  }catch(e){
+    var errEl = document.getElementById('auth-err');
+    if(errEl){ errEl.textContent = 'Error al iniciar sesión: ' + e.message; errEl.classList.add('show'); }
+  }
+}
+
+async function maVerify(payload, save){
+  var email = (payload.email || '').toLowerCase();
+  var errEl = document.getElementById('auth-err');
+  var ldEl  = document.getElementById('auth-loading');
+  if(ldEl){ ldEl.textContent = 'Verificando acceso...'; ldEl.classList.add('show'); }
+  if(errEl) errEl.classList.remove('show');
+  try{
+    const snap = await db.collection('usuarios').doc(email).get();
+    if(!snap.exists){
+      if(ldEl) ldEl.classList.remove('show');
+      if(errEl){ errEl.textContent = 'Acceso denegado para ' + email + '. Contacta al administrador.'; errEl.classList.add('show'); }
+      return;
+    }
+    const fsData = snap.data();
+    maUser = {
+      email,
+      name:    payload.name    || fsData.nombre || fsData.name || email,
+      picture: payload.picture || fsData.picture || '',
+      ...fsData,
+      name: payload.name || fsData.nombre || fsData.name || email,
+    };
+    if(maUser.email === MA_ADM) maUser.rol = 'SUPER_ADMIN';
+    if(save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
+    if(ldEl) ldEl.classList.remove('show');
+    document.getElementById('auth-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    document.getElementById('main-page').style.display = 'block';
+    document.getElementById('conn-pill').textContent = '✓ Conectado';
+    document.getElementById('conn-pill').className   = 'hpill ok';
+    renderUserPill();
+    initApp();
+  }catch(e){
+    if(ldEl) ldEl.classList.remove('show');
+    if(errEl){ errEl.textContent = 'Error: ' + e.message; errEl.classList.add('show'); }
+  }
+}
+
+function renderUserPill(){
+  const pill = document.getElementById('user-pill');
+  if(!pill || !maUser) return;
+  const n    = maUser.nombre || maUser.name || maUser.email;
+  const init = n.split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase();
+  const avatar   = maUser.picture
+    ? `<img class="user-avatar-img" src="${maUser.picture}">`
+    : `<div class="user-avatar-init">${init}</div>`;
+  const rol      = maUser.rol || 'ADMIN';
+  const rolBadge = `<span class="role-badge role-${rol}">${rol.replace('_',' ')}</span>`;
+  const isAdmin = rol === 'ADMIN' || rol === 'SUPER_ADMIN';
+  const adminItem = isAdmin
+    ? `<button class="user-menu-item" onclick="openGuiaPanel()">🤖 Guía del bot</button>`
+      + `<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-div"></div>`
+    : '';
+  pill.innerHTML = avatar
+    + `<span class="user-pname">${n}</span>`
+    + `<div class="user-menu" id="user-menu">`
+    + `<div class="user-menu-head">${maUser.email} ${rolBadge}</div>`
+    + `<div class="user-menu-div"></div>`
+    + adminItem
+    + `<button class="user-menu-item danger" onclick="maSignOut()">→ Cerrar sesión</button>`
+    + `</div>`;
+  pill.style.display = 'flex';
+}
+function toggleUserMenu(){
+  const m = document.getElementById('user-menu');
+  if(m) m.classList.toggle('open');
+}
+function maSignOut(){
+  firebase.auth().signOut().then(() => { sessionStorage.removeItem('ma_user'); location.href = 'index.html'; });
+}
+document.addEventListener('click', e => {
+  const pill = document.getElementById('user-pill');
+  const menu = document.getElementById('user-menu');
+  if(menu && pill && !pill.contains(e.target)) menu.classList.remove('open');
+});
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+let _toastT = null;
+function toast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = 'toast' + (type ? ' ' + type : '');
+  t.classList.add('show');
+  clearTimeout(_toastT);
+  _toastT = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function esc(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── MODAL UTILS ────────────────────────────────────────────────────────────────
+function closeModal(id){ document.getElementById(id)?.classList.remove('open'); }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  MANTA DE OBSERVACIONES — Ripley (colección Firestore `manta_observaciones`)
+//  Maestro de equipos en `manta_equipos` · fotos base64 en `manta_observaciones_fotos`
+//  ADMIN / SUPER_ADMIN editan · SUPERVISOR solo lectura
+// ═══════════════════════════════════════════════════════════════════════════════
+let observaciones = [];        // log de observaciones (1 doc = 1 observación)
+let obsInventario = [];        // inventario real: [{eqId, sede, cliente, tipo, nombre, area}] (557 equipos)
+let obsSedes      = [];        // sedes distintas (derivadas del inventario)
+let obsFotos      = {};        // { obsId: dataURL base64 }
+let obsPersonal   = [];        // maestros_personal activos (para el campo "técnico")
+let _obsFotoVal   = null;      // foto mostrada en el modal (dataURL o null)
+let _obsFotoDirty = false;     // true si la foto cambió en esta edición
+const OBS_ESTADOS = ['PENDIENTE','EN_PROCESO','OK'];
+
+function isObsAdmin(){
+  const rol = maUser?.rol || '';
+  return rol === 'ADMIN' || rol === 'SUPER_ADMIN';
+}
+function hoyISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+// ── APP INIT ──────────────────────────────────────────────────────────────────
+function initApp(){
+  if(isObsAdmin()){
+    const b = document.getElementById('btn-new-obs');
+    if(b) b.style.display = 'inline-flex';
+  }
+  loadAll();
+}
+
+// ── LOAD ──────────────────────────────────────────────────────────────────────
+async function loadAll(){
+  const body = document.getElementById('obs-body');
+  try{
+    const [invS, obsS, fotoS, persS] = await Promise.all([
+      db.collection('inventario').get(),
+      db.collection('manta_observaciones').get(),
+      db.collection('manta_observaciones_fotos').get(),
+      db.collection('maestros_personal').get(),
+    ]);
+    obsInventario = invS.docs.map(d => ({
+      eqId:d.id, sede:d.data().sede||'', cliente:d.data().cliente||'',
+      tipo:d.data().tipo||'', nombre:d.data().nombre||'', area:d.data().area||''
+    })).filter(e => e.sede && e.nombre);
+    obsInventario.sort((a,b) => (a.sede||'').localeCompare(b.sede||'','es')
+      || (a.tipo||'').localeCompare(b.tipo||'','es') || (a.nombre||'').localeCompare(b.nombre||'','es',{numeric:true}));
+    obsSedes = [...new Set(obsInventario.map(e => e.sede).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+    observaciones = obsS.docs.map(d => ({id:d.id, ...d.data()}));
+    observaciones.sort(obsSort);
+    obsFotos = {}; fotoS.docs.forEach(d => { const f=d.data().foto; if(f) obsFotos[d.id]=f; });
+    obsPersonal = persS.docs.map(d => ({id:d.id, ...d.data()})).filter(p => String(p.activo||'SI').toUpperCase()!=='NO');
+    obsPersonal.sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es'));
+  }catch(e){
+    observaciones = [];
+    if(body) body.innerHTML = '<tr><td colspan="9" class="empty-msg">Error al cargar observaciones.</td></tr>';
+    toast('Error al cargar: ' + e.message, 'err');
+    return;
+  }
+  populateTiendaFilter();
+  renderObsTable();
+}
+
+function obsSort(a,b){
+  return (a.tienda||'').localeCompare(b.tienda||'','es')
+      || (a.equipo||'').localeCompare(b.equipo||'','es',{numeric:true})
+      || (b.fecha||'').localeCompare(a.fecha||'');
+}
+
+function populateTiendaFilter(){
+  const sel = document.getElementById('obs-f-tienda');
+  const cur = sel.value;
+  // Sedes presentes en las observaciones (robusto: el campo `tienda` = "RIPLEY <SEDE>").
+  const tiendas = [...new Set(observaciones.map(o => o.tienda).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  sel.innerHTML = '<option value="">Todas las sedes</option>' + tiendas.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  sel.value = cur;
+}
+
+function clearObsFilters(){
+  document.getElementById('obs-search').value='';
+  document.getElementById('obs-f-tienda').value='';
+  document.getElementById('obs-f-estado').value='';
+  document.getElementById('obs-f-fecha').value='';
+  renderObsTable();
+}
+
+// ── FILTER + RENDER ─────────────────────────────────────────────────────────────
+function obsFilter(){
+  const q  = (document.getElementById('obs-search').value || '').trim().toLowerCase();
+  const ft = document.getElementById('obs-f-tienda').value;
+  const fe = document.getElementById('obs-f-estado').value;
+  const ff = document.getElementById('obs-f-fecha').value;
+  return observaciones.filter(o => {
+    if(ft && o.tienda!==ft) return false;
+    if(fe && (o.estado||'PENDIENTE')!==fe) return false;
+    if(ff && (o.fecha||'')!==ff) return false;
+    if(q && ![o.tienda,o.equipo,o.observacion].some(v=>String(v||'').toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+
+function renderObsTable(){
+  const body  = document.getElementById('obs-body');
+  const list  = obsFilter();
+  const admin = isObsAdmin();
+  document.getElementById('obs-count').textContent =
+    `${list.length} de ${observaciones.length} observaci${observaciones.length!==1?'ones':'ón'}`;
+  if(!list.length){
+    body.innerHTML = `<tr><td colspan="9" class="empty-msg">${observaciones.length ? 'Sin coincidencias.' : 'Sin observaciones registradas.'}</td></tr>`;
+    return;
+  }
+  body.innerHTML = list.map(o => {
+    const est   = o.estado || 'PENDIENTE';
+    const dot   = `<span class="estado-dot est-dot ${est}" title="${est}"></span>`;
+    const idAttr= esc(o.id);
+    const foto  = (o.tieneFoto && obsFotos[o.id])
+      ? `<img class="obs-thumb" src="${obsFotos[o.id]}" onclick="openFotoLightbox('${idAttr}')" title="Ver foto">`
+      : '<span style="color:var(--muted)">—</span>';
+    const origen= (o.origen||'APP').toUpperCase();
+    const actIcon = admin ? '✎' : '👁';
+    return `<tr class="row-clickable" ondblclick="openEditObs('${idAttr}')">
+      <td class="col-estado">${dot}</td>
+      <td>${esc(o.tienda)}</td>
+      <td style="white-space:nowrap">${esc(o.equipo)}</td>
+      <td class="col-obs"><span class="cell-obs" title="${esc(o.observacion)}">${esc(o.observacion)}</span></td>
+      <td><span class="est-badge est-${est}">${esc(est.replace('_',' '))}</span></td>
+      <td style="font-family:var(--mono);white-space:nowrap">${esc(o.fecha)}</td>
+      <td class="col-estado">${foto}</td>
+      <td><span class="origen-badge origen-${origen}">${origen==='WHATSAPP'?'WSP':'APP'}</span></td>
+      <td class="col-acc"><button class="btn btn-sm" onclick="openEditObs('${idAttr}')" title="${admin?'Editar':'Ver'}" style="padding:3px 9px">${actIcon}</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── MODAL: dropdowns dependientes (sede → tipo → equipo, desde `inventario`) ─────
+function fillSedeSelect(sel){
+  sel.innerHTML = '<option value="">Seleccionar…</option>' + obsSedes.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+}
+function fillTipoSelect(sel, sede){
+  const tipos = [...new Set(obsInventario.filter(e=>e.sede===sede).map(e=>e.tipo).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+}
+// El valor del <option> de equipo es el eqId (referencia al inventario); el texto es el nombre + tipo.
+function fillEquipoSelect(sel, sede, tipo, ensureEqId){
+  let eqs = obsInventario.filter(e=>e.sede===sede);
+  if(tipo) eqs = eqs.filter(e=>e.tipo===tipo);
+  sel.innerHTML = '<option value="">Seleccionar…</option>' + eqs.map(e=>`<option value="${esc(e.eqId)}">${esc(e.nombre)} · ${esc((e.tipo||'').toLowerCase())}</option>`).join('');
+  if(ensureEqId) sel.value = ensureEqId;
+}
+function onObsSedeChange(){
+  const sede = document.getElementById('obs-sede').value;
+  fillTipoSelect(document.getElementById('obs-tipo'), sede);
+  fillEquipoSelect(document.getElementById('obs-equipo'), sede, '');
+}
+function onObsTipoChange(){
+  fillEquipoSelect(document.getElementById('obs-equipo'), document.getElementById('obs-sede').value, document.getElementById('obs-tipo').value);
+}
+function fillTecnicoSelect(sel, val){
+  sel.innerHTML = '<option value="">—</option>' + obsPersonal.map(p=>`<option value="${esc(p.id)}"${val===p.id?' selected':''}>${esc(p.nombre)}</option>`).join('');
+}
+
+// ── MODAL: foto ─────────────────────────────────────────────────────────────────
+function obsCompress(file, maxSide, q){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onerror=()=>rej(new Error('No se pudo leer la imagen'));
+    r.onload=()=>{ const img=new Image();
+      img.onload=()=>{ let w=img.width,h=img.height;
+        if(w>maxSide||h>maxSide){ if(w>=h){h=Math.round(h*maxSide/w);w=maxSide;} else {w=Math.round(w*maxSide/h);h=maxSide;} }
+        const c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        res(c.toDataURL('image/jpeg',q)); };
+      img.onerror=()=>rej(new Error('Imagen inválida')); img.src=r.result; };
+    r.readAsDataURL(file);
+  });
+}
+async function setObsFoto(file){
+  if(!file) return;
+  try{ _obsFotoVal = await obsCompress(file, 1100, 0.7); _obsFotoDirty=true; refreshObsFotoPreview(); }
+  catch(e){ toast('Error con la imagen: '+e.message,'err'); }
+}
+function removeObsFoto(){ _obsFotoVal=null; _obsFotoDirty=true; refreshObsFotoPreview(); }
+function refreshObsFotoPreview(){
+  const box=document.getElementById('obs-foto-prev');
+  box.innerHTML = _obsFotoVal
+    ? `<img class="obs-foto-preview" src="${_obsFotoVal}" onclick="openFotoSrc(_obsFotoVal)" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeObsFoto()" title="Quitar foto" style="margin-left:8px">🗑</button>`
+    : `<div class="obs-foto-empty">📷</div>`;
+}
+
+// ── MODAL: lightbox ──────────────────────────────────────────────────────────────
+function openFotoSrc(src){ if(!src) return; document.getElementById('foto-lightbox-img').src=src; document.getElementById('foto-lightbox').classList.add('open'); }
+function openFotoLightbox(obsId){ openFotoSrc(obsFotos[obsId]); }
+function closeFotoLightbox(){ document.getElementById('foto-lightbox').classList.remove('open'); document.getElementById('foto-lightbox-img').src=''; }
+
+// ── MODAL: abrir / readonly ─────────────────────────────────────────────────────
+function setObsModalReadonly(ro){
+  ['obs-sede','obs-tipo','obs-equipo','obs-estado','obs-fecha','obs-tecnico','obs-observacion'].forEach(id=>{const el=document.getElementById(id); if(el) el.disabled=ro;});
+  document.querySelectorAll('#modal-obs label[for="obs-foto-input"],#modal-obs label[for="obs-foto-cam"]').forEach(l=>l.style.display=ro?'none':'');
+  document.getElementById('btn-save-obs').style.display = ro ? 'none' : 'inline-flex';
+}
+
+function openNewObs(){
+  if(!isObsAdmin()){ toast('Sin permisos para crear observaciones', 'err'); return; }
+  document.getElementById('obs-modal-title').textContent = '＋ Nueva observación';
+  document.getElementById('obs-id').value = '';
+  fillSedeSelect(document.getElementById('obs-sede'));
+  document.getElementById('obs-tipo').innerHTML = '<option value="">Todos los tipos</option>';
+  document.getElementById('obs-equipo').innerHTML = '<option value="">Seleccionar…</option>';
+  document.getElementById('obs-estado').value = 'PENDIENTE';
+  document.getElementById('obs-fecha').value = hoyISO();
+  fillTecnicoSelect(document.getElementById('obs-tecnico'), '');
+  document.getElementById('obs-observacion').value = '';
+  _obsFotoVal=null; _obsFotoDirty=false; refreshObsFotoPreview();
+  setObsModalReadonly(false);
+  document.getElementById('btn-del-obs').style.display = 'none';
+  document.getElementById('modal-obs').classList.add('open');
+  setTimeout(() => document.getElementById('obs-sede')?.focus(), 50);
+}
+
+function openEditObs(id){
+  const o = observaciones.find(x => x.id === id);
+  if(!o) return;
+  const admin = isObsAdmin();
+  document.getElementById('obs-modal-title').textContent = admin ? '✎ Editar observación' : '👁 Ver observación';
+  document.getElementById('obs-id').value = o.id;
+  const oSede = o.sede || String(o.tienda||'').replace(/^RIPLEY\s+/i,'');   // compat si faltara `sede`
+  fillSedeSelect(document.getElementById('obs-sede'));
+  document.getElementById('obs-sede').value = oSede;
+  fillTipoSelect(document.getElementById('obs-tipo'), oSede);
+  document.getElementById('obs-tipo').value = o.tipo || '';
+  fillEquipoSelect(document.getElementById('obs-equipo'), oSede, o.tipo || '', o.eqId || '');
+  document.getElementById('obs-estado').value = o.estado || 'PENDIENTE';
+  document.getElementById('obs-fecha').value = o.fecha || hoyISO();
+  fillTecnicoSelect(document.getElementById('obs-tecnico'), o.tecnicoId || '');
+  document.getElementById('obs-observacion').value = o.observacion || '';
+  _obsFotoVal = obsFotos[o.id] || null; _obsFotoDirty=false; refreshObsFotoPreview();
+  setObsModalReadonly(!admin);
+  document.getElementById('btn-del-obs').style.display = admin ? 'inline-flex' : 'none';
+  document.getElementById('modal-obs').classList.add('open');
+}
+
+// ── SAVE ──────────────────────────────────────────────────────────────────────
+async function saveObs(){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  const sede        = document.getElementById('obs-sede').value;
+  const eqId        = document.getElementById('obs-equipo').value;   // value = eqId del inventario
+  const observacion = document.getElementById('obs-observacion').value.trim();
+  const estado      = document.getElementById('obs-estado').value || 'PENDIENTE';
+  const fecha       = document.getElementById('obs-fecha').value || hoyISO();
+  const tecnicoId   = document.getElementById('obs-tecnico').value || '';
+  if(!sede){ toast('Selecciona la sede', 'err'); return; }
+  if(!eqId){ toast('Selecciona el equipo', 'err'); return; }
+  if(!observacion){ toast('La observación es obligatoria', 'err'); document.getElementById('obs-observacion').focus(); return; }
+  const inv = obsInventario.find(e => e.eqId === eqId);
+  if(!inv){ toast('Equipo no encontrado en el inventario', 'err'); return; }
+  const cliente = inv.cliente || '';
+  const tienda  = (cliente ? cliente + ' ' : '') + inv.sede;   // "RIPLEY ATOCONGO" (compat columna Tienda)
+  const btn = document.getElementById('btn-save-obs');
+  if(btn.disabled) return; btn.disabled = true;
+  const now = new Date().toISOString();
+  const data = { sede: inv.sede, tienda, equipo: inv.nombre, eqId: inv.eqId, tipo: inv.tipo,
+    observacion, estado, fecha, tecnicoId,
+    tieneFoto: !!_obsFotoVal, updatedAt: now, updatedBy: maUser?.email || '' };
+  const id = document.getElementById('obs-id').value;
+  try{
+    let docId = id;
+    if(id){
+      if(!_obsFotoDirty){ const prev = observaciones.find(x=>x.id===id); data.tieneFoto = !!(prev && prev.tieneFoto); }
+      await db.collection('manta_observaciones').doc(id).update(data);
+      const i = observaciones.findIndex(x => x.id === id);
+      if(i >= 0) observaciones[i] = {...observaciones[i], ...data};
+    } else {
+      data.origen = 'APP'; data.registradoPor = maUser?.email || '';
+      data.createdAt = now; data.createdBy = maUser?.email || '';
+      const ref = await db.collection('manta_observaciones').add(data);
+      docId = ref.id;
+      observaciones.push({id:docId, ...data});
+    }
+    if(_obsFotoDirty){
+      if(_obsFotoVal){
+        await db.collection('manta_observaciones_fotos').doc(docId).set({foto:_obsFotoVal, observacionId:docId, updatedAt:now, updatedBy:maUser?.email||''});
+        obsFotos[docId] = _obsFotoVal;
+      } else {
+        await db.collection('manta_observaciones_fotos').doc(docId).delete().catch(()=>{});
+        delete obsFotos[docId];
+      }
+    }
+    observaciones.sort(obsSort);
+    closeModal('modal-obs');
+    populateTiendaFilter();
+    renderObsTable();
+    toast(id ? 'Observación actualizada ✓' : 'Observación creada ✓', 'ok');
+  }catch(e){ toast('Error al guardar: ' + e.message, 'err'); }
+  finally{ btn.disabled = false; }
+}
+
+// ── DELETE ────────────────────────────────────────────────────────────────────
+async function deleteObs(){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  const id = document.getElementById('obs-id').value;
+  if(!id) return;
+  const o = observaciones.find(x => x.id === id);
+  if(!confirm(`¿Eliminar esta observación de "${o?.equipo || ''}" (${o?.tienda || ''})?\nEsta acción no se puede deshacer.`)) return;
+  try{
+    await db.collection('manta_observaciones').doc(id).delete();
+    if(obsFotos[id]){ await db.collection('manta_observaciones_fotos').doc(id).delete().catch(()=>{}); delete obsFotos[id]; }
+    observaciones = observaciones.filter(x => x.id !== id);
+    closeModal('modal-obs');
+    renderObsTable();
+    toast('Observación eliminada', 'ok');
+  }catch(e){ toast('Error al eliminar: ' + e.message, 'err'); }
+}
+
+// ── EXPORT EXCEL (sábana completa, rellena "Sin observaciones.") ──────────────────
+function tsFile(){ const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; }
+const sedeDe = (o) => o.sede || String(o.tienda||'').replace(/^RIPLEY\s+/i,'');
+const obsDeEquipo = (eq) => observaciones.filter(o => (o.eqId && o.eqId===eq.eqId)
+  || (!o.eqId && o.equipo===eq.nombre && sedeDe(o)===eq.sede));
+function exportObsExcel(){
+  // Sábana completa del inventario (557 equipos): cada equipo con sus observaciones o "Sin observaciones.".
+  const data = [['CLIENTE','SEDE','TIPO','EQUIPO','CÓDIGO','OBSERVACIÓN','ESTADO','FECHA','ORIGEN']];
+  const usados = new Set();
+  obsInventario.forEach(eq => {
+    const obs = obsDeEquipo(eq);
+    if(obs.length){
+      obs.forEach(o => { usados.add(o.id); data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]); });
+    } else {
+      data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, 'Sin observaciones.', '', '', '']);
+    }
+  });
+  observaciones.filter(o => !usados.has(o.id)).forEach(o => {
+    data.push([o.cliente||'', sedeDe(o), o.tipo||'', o.equipo||'', o.eqId||'', o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:10},{wch:16},{wch:16},{wch:24},{wch:16},{wch:60},{wch:13},{wch:12},{wch:8}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'OBSERVACIONES');
+  XLSX.writeFile(wb, `observaciones_${tsFile()}.xlsx`);
+  toast('Excel exportado ✓', 'ok');
+}
+
+// ── EXPORT PDF (jsPDF) — agrupado por tienda y equipo ────────────────────────────
+function exportObsPDF(){
+  if(!(window.jspdf && window.jspdf.jsPDF)){ toast('PDF no disponible — reintenta', 'err'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'mm', format:'a4'});
+  const PW=210, PH=297, M=12; let y=0;
+  const ensure = n => { if(y+n > PH-12){ doc.addPage(); y=16; } };
+  doc.setFillColor(27,63,139); doc.rect(0,0,PW,18,'F');
+  doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(13);
+  doc.text('OBSERVACIONES — MULTIAIRE', M, 12);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8);
+  doc.text('MultiAire · ' + new Date().toLocaleDateString('es-PE'), PW-M, 12, {align:'right'});
+  y=24; doc.setTextColor(40);
+  // El PDF es un reporte de HALLAZGOS: solo sedes/equipos CON observaciones (557 equipos con relleno serían absurdos).
+  const sedesConObs = [...new Set(observaciones.map(sedeDe).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  if(!sedesConObs.length){ doc.text('No hay observaciones registradas.', M, y); doc.save(`observaciones_${tsFile()}.pdf`); toast('PDF exportado ✓','ok'); return; }
+  sedesConObs.forEach(sede => {
+    ensure(9);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(27,63,139);
+    doc.text(String(sede||''), M, y); y+=5; doc.setTextColor(40);
+    // equipos con observaciones en esa sede (del inventario, o por etiqueta si no estuviera)
+    const eqs = obsInventario.filter(e=>e.sede===sede && obsDeEquipo(e).length);
+    const lista = eqs.length ? eqs : [...new Set(observaciones.filter(o=>sedeDe(o)===sede).map(o=>o.equipo))].map(e=>({nombre:e, eqId:'', sede}));
+    lista.forEach(eq => {
+      const obs = obsDeEquipo(eq);
+      obs.forEach((o,idx) => {
+        const head = idx===0 ? String(eq.nombre||'') : '';
+        const txt = doc.splitTextToSize(String(o.observacion||''), PW-M-46);
+        ensure(txt.length*4 + 2);
+        doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.text(head, M, y);
+        doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+        txt.forEach((ln,i)=>doc.text(ln, M+32, y+i*4));
+        if(o.estado){ doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.text(String(o.estado).replace('_',' '), PW-M, y, {align:'right'}); }
+        y += Math.max(txt.length*4, 5);
+      });
+    });
+    y += 2;
+  });
+  doc.save(`observaciones_${tsFile()}.pdf`);
+  toast('PDF exportado ✓', 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  GUÍA DEL BOT — colección `manta_guia` (checklist por tipo de hallazgo)
+//  La consume el bot de WhatsApp (api/_lib/guia.js) para repreguntar UN dato faltante.
+//  ADMIN / SUPER_ADMIN editan.
+// ═══════════════════════════════════════════════════════════════════════════════
+let guiaList = [];   // [{id, tipo, titulo, palabrasClave[], checklist[], orden, activo}]
+
+function guiaSlug(s){
+  return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'');
+}
+
+async function openGuiaPanel(){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  document.getElementById('user-menu')?.classList.remove('open');
+  const list = document.getElementById('guia-list');
+  list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Cargando…</div>';
+  document.getElementById('modal-guia').classList.add('open');
+  try{
+    const snap = await db.collection('manta_guia').get();
+    guiaList = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    guiaList.sort((a,b) => (a.orden||0)-(b.orden||0) || (a.titulo||'').localeCompare(b.titulo||'','es'));
+    renderGuiaList();
+  }catch(e){
+    list.innerHTML = `<div style="text-align:center;color:var(--red);padding:16px;font-size:12px">Error al cargar la guía: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderGuiaList(){
+  const list = document.getElementById('guia-list');
+  if(!guiaList.length){
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Aún no hay temas. Crea el primero con “＋ Nuevo tema”.</div>';
+    return;
+  }
+  list.innerHTML = guiaList.map(g => {
+    const claves = (g.palabrasClave||[]).map(c => `<span style="font-size:9px;background:var(--surface3);color:var(--muted2);padding:1px 6px;border-radius:8px">${esc(c)}</span>`).join(' ');
+    const items  = (g.checklist||[]).map(c => `<li style="margin:1px 0">${esc(c)}</li>`).join('');
+    const off    = (g.activo===false) ? ` <span style="font-size:9px;color:var(--muted);font-weight:700">(inactivo)</span>` : '';
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div style="flex:1;font-weight:700;font-size:12px;color:var(--blue)">${esc(g.titulo||g.tipo)}${off}</div>
+        <button class="btn btn-sm" onclick="openGuiaEdit('${esc(g.id)}')" title="Editar" style="padding:3px 9px">✎</button>
+      </div>
+      ${claves ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px">${claves}</div>` : ''}
+      <ul style="margin:0 0 0 18px;font-size:11px;color:var(--muted2);line-height:1.5">${items||'<li style="color:var(--muted)">Sin checklist</li>'}</ul>
+    </div>`;
+  }).join('');
+}
+
+function openGuiaEdit(id){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  const g = id ? guiaList.find(x => x.id === id) : null;
+  document.getElementById('guia-edit-title').textContent = g ? '✎ Editar tema' : '＋ Nuevo tema';
+  document.getElementById('guia-id').value       = g ? g.id : '';
+  document.getElementById('guia-titulo').value   = g ? (g.titulo||g.tipo||'') : '';
+  document.getElementById('guia-orden').value    = g ? (g.orden ?? 50) : ((guiaList.length+1)*10);
+  document.getElementById('guia-claves').value   = g ? (g.palabrasClave||[]).join(', ') : '';
+  document.getElementById('guia-checklist').value= g ? (g.checklist||[]).join('\n') : '';
+  document.getElementById('guia-activo').checked = g ? (g.activo!==false) : true;
+  document.getElementById('btn-del-guia').style.display = g ? 'inline-flex' : 'none';
+  document.getElementById('modal-guia-edit').classList.add('open');
+  setTimeout(() => document.getElementById('guia-titulo')?.focus(), 50);
+}
+
+async function saveGuia(){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  const id       = document.getElementById('guia-id').value;
+  const titulo   = document.getElementById('guia-titulo').value.trim();
+  const orden    = parseInt(document.getElementById('guia-orden').value, 10) || 0;
+  const claves   = document.getElementById('guia-claves').value.split(',').map(s => s.trim()).filter(Boolean);
+  const checklist= document.getElementById('guia-checklist').value.split('\n').map(s => s.trim()).filter(Boolean);
+  const activo   = document.getElementById('guia-activo').checked;
+  if(!titulo){ toast('El título es obligatorio', 'err'); document.getElementById('guia-titulo').focus(); return; }
+  if(!checklist.length){ toast('Agrega al menos un punto al checklist', 'err'); document.getElementById('guia-checklist').focus(); return; }
+  const btn = document.getElementById('btn-save-guia');
+  if(btn.disabled) return; btn.disabled = true;
+  const now = new Date().toISOString();
+  try{
+    if(id){
+      const tipo = (guiaList.find(x => x.id===id)?.tipo) || guiaSlug(titulo);
+      const data = { tipo, titulo, palabrasClave:claves, checklist, orden, activo, updatedAt:now, updatedBy:maUser?.email||'' };
+      await db.collection('manta_guia').doc(id).set(data, {merge:true});
+      const i = guiaList.findIndex(x => x.id===id);
+      if(i>=0) guiaList[i] = {...guiaList[i], ...data};
+    } else {
+      const tipo = guiaSlug(titulo);
+      const docId = 'MGUIA-' + (tipo || ('TEMA_' + Date.now()));
+      const data = { tipo, titulo, palabrasClave:claves, checklist, orden, activo,
+        origen:'APP', createdAt:now, createdBy:maUser?.email||'', updatedAt:now, updatedBy:maUser?.email||'' };
+      await db.collection('manta_guia').doc(docId).set(data, {merge:true});
+      const i = guiaList.findIndex(x => x.id===docId);
+      if(i>=0) guiaList[i] = {...guiaList[i], ...data}; else guiaList.push({id:docId, ...data});
+    }
+    guiaList.sort((a,b) => (a.orden||0)-(b.orden||0) || (a.titulo||'').localeCompare(b.titulo||'','es'));
+    closeModal('modal-guia-edit');
+    renderGuiaList();
+    toast(id ? 'Tema actualizado ✓' : 'Tema creado ✓', 'ok');
+  }catch(e){ toast('Error al guardar: ' + e.message, 'err'); }
+  finally{ btn.disabled = false; }
+}
+
+async function deleteGuia(){
+  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  const id = document.getElementById('guia-id').value;
+  if(!id) return;
+  const g = guiaList.find(x => x.id===id);
+  if(!confirm(`¿Eliminar el tema "${g?.titulo || g?.tipo || ''}" de la guía del bot?\nEsta acción no se puede deshacer.`)) return;
+  try{
+    await db.collection('manta_guia').doc(id).delete();
+    guiaList = guiaList.filter(x => x.id!==id);
+    closeModal('modal-guia-edit');
+    renderGuiaList();
+    toast('Tema eliminado', 'ok');
+  }catch(e){ toast('Error al eliminar: ' + e.message, 'err'); }
+}
+
+// ── PANEL DE ACCESOS ──────────────────────────────────────────────────────────
+let accessUsers = [];
+const ALL_APPS = [
+  {id:'inventario',    label:'📦 Inv'},
+  {id:'mantenimiento', label:'🔧 Mant'},
+  {id:'itinerario',    label:'🗓 Iti'},
+  {id:'insumos',       label:'🧰 Ins'},
+  {id:'asistencia',    label:'🕐 Asis'},
+  {id:'comprobantes',  label:'🧾 Comp'},
+  {id:'proveedores',   label:'🏢 Prov'},
+  {id:'observaciones', label:'📋 Obs'},
+];
+const ROLES = ['SUPERVISOR','ADMIN','SUPER_ADMIN'];
+
+async function openAccessPanel(){
+  document.getElementById('user-menu')?.classList.remove('open');
+  try{
+    const snap = await db.collection('usuarios').get();
+    accessUsers = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    renderAccessPanel();
+    document.getElementById('modal-access').classList.add('open');
+  }catch(e){ toast('Error al cargar usuarios: '+e.message,'err'); }
+}
+
+function renderAccessPanel(){
+  const list = document.getElementById('access-list');
+  if(!accessUsers.length){
+    list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Sin usuarios</div>';
+    return;
+  }
+  const iAmSuper = maUser?.rol === 'SUPER_ADMIN';
+  list.innerHTML = accessUsers.map(u => {
+    const isMe         = u.email === maUser.email;
+    const rol          = u.rol || 'SUPERVISOR';
+    const isSuperTgt   = rol === 'SUPER_ADMIN';
+    const isAdminOrSup = rol === 'ADMIN' || rol === 'SUPER_ADMIN';
+    const canEdit      = !isMe && (isSuperTgt ? iAmSuper : true);
+    const canDelete    = !isMe && (isSuperTgt ? iAmSuper : true);
+    const opts         = ROLES.map(r => `<option value="${r}"${rol===r?' selected':''}>${r.replace('_',' ')}</option>`).join('');
+    const userApps     = u.apps || [];
+    let appsHtml;
+    if(isAdminOrSup){
+      appsHtml = `<div style="font-size:10px;color:var(--orange-dark);padding:5px 0 2px;font-style:italic">✓ Acceso a todas las apps por rol</div>`;
+    } else {
+      appsHtml = `<div style="display:flex;gap:4px;flex-wrap:wrap;padding:5px 0 2px">`
+        + ALL_APPS.map(app => {
+          const checked = userApps.includes(app.id);
+          const dis = !canEdit;
+          return `<label style="display:flex;align-items:center;gap:3px;font-size:10px;padding:2px 7px;border-radius:10px;border:1px solid ${checked?'var(--blue)':'var(--border)'};background:${checked?'#e8eef8':'#fff'};color:${checked?'var(--blue)':'var(--muted)'};cursor:${dis?'not-allowed':'pointer'};${dis?'opacity:.5':''}">
+            <input type="checkbox" data-email="${u.email}" data-app="${app.id}"${checked?' checked':''}${dis?' disabled':''} onchange="toggleAppAccess(this)" style="margin:0;cursor:inherit">${app.label}</label>`;
+        }).join('') + `</div>`;
+    }
+    const meMark    = isMe ? ` <span style="font-size:9px;color:var(--blue);font-weight:700">(tú)</span>` : '';
+    const superMark = (isSuperTgt && !isMe) ? ` <span style="font-size:9px;color:var(--orange-dark);font-weight:700">★</span>` : '';
+    return `<div style="padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;font-family:var(--mono);font-size:11px">${u.email}${meMark}${superMark}</div>
+        <select style="font-size:11px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;outline:none;${canEdit?'':'opacity:.6;cursor:not-allowed'}" ${canEdit?'':'disabled'} onchange="changeUserRol('${u.email}',this.value)">
+          ${opts}
+        </select>
+        ${canDelete ? `<button class="btn btn-sm btn-red" onclick="deleteAccessUser('${u.email}')" style="padding:3px 8px">🗑</button>` : '<span style="width:36px"></span>'}
+      </div>
+      ${appsHtml}
+    </div>`;
+  }).join('');
+}
+
+async function toggleAppAccess(cb){
+  const email = cb.getAttribute('data-email');
+  const app   = cb.getAttribute('data-app');
+  const u     = accessUsers.find(x => x.email === email);
+  if(!u) return;
+  if(!u.apps) u.apps = [];
+  if(cb.checked){ if(!u.apps.includes(app)) u.apps.push(app); }
+  else           { u.apps = u.apps.filter(a => a !== app); }
+  try{
+    await db.collection('usuarios').doc(email).update({apps: u.apps});
+  }catch(e){
+    toast('Error: '+e.message, 'err');
+    cb.checked = !cb.checked;
+  }
+}
+
+async function changeUserRol(email, rol){
+  try{
+    await db.collection('usuarios').doc(email).update({rol});
+    const u = accessUsers.find(x => x.email === email);
+    if(u) u.rol = rol;
+    renderAccessPanel();
+    toast('Rol actualizado', 'ok');
+  }catch(e){ toast('Error: '+e.message, 'err'); }
+}
+
+async function deleteAccessUser(email){
+  if(!confirm(`¿Eliminar acceso de ${email}?`)) return;
+  try{
+    await db.collection('usuarios').doc(email).delete();
+    accessUsers = accessUsers.filter(x => x.email !== email);
+    renderAccessPanel();
+    toast('Usuario eliminado', 'ok');
+  }catch(e){ toast('Error: '+e.message, 'err'); }
+}
+
+async function addAccessUser(){
+  const email = document.getElementById('new-user-email').value.trim().toLowerCase();
+  const rol   = document.getElementById('new-user-rol').value;
+  if(!email || !email.includes('@')){ toast('Email inválido', 'err'); return; }
+  try{
+    await db.collection('usuarios').doc(email).set({email, rol}, {merge:true});
+    if(!accessUsers.find(x => x.email === email)) accessUsers.push({email, rol});
+    document.getElementById('new-user-email').value = '';
+    renderAccessPanel();
+    toast('Usuario agregado', 'ok');
+  }catch(e){ toast('Error: '+e.message, 'err'); }
+}
+</script>
+</body>
+</html>
