@@ -272,3 +272,45 @@ Con esas dos cosas, todo lo demás lo hago yo. ¡Gracias! 🙏
 - **Sin plantilla aprobada** el bot igual responde a quien le escribe (ventana de 24 h); los **avisos proactivos a supervisores** fuera de esa ventana necesitan la plantilla.
 - Para límites altos Meta pide **verificación del negocio**; para probar / poco volumen, la app sin verificar funciona con números limitados.
 - Recordar marcar quién **recibe avisos** (botón 📣 en el editor de personal de `configuracion.html`).
+
+---
+
+## 9) PLAN DE RECUPERACIÓN DEL HOSTING (Vercel) — y cierre de la centralización
+
+> **Decisión (2026-06-20):** el "cutover" de Vercel a la cuenta corporativa se **deprioriza**. La centralización
+> de lo que importa ya está hecha (ver tabla abajo); Vercel es solo hosting **sin estado y 100% recreatable**,
+> así que no justifica el riesgo de migrarlo con el bot en vivo ni la espera del TXT de ChileCL.
+> Este plan permite **recrear el hosting en una cuenta corporativa en ~30-60 min** si alguna vez hace falta.
+
+### Estado de la centralización (lo que de verdad importa YA es corporativo)
+| Pieza | Contenido | Estado |
+|---|---|---|
+| Firebase/GCP `multiaire-fee43` | **Todos los datos** + Auth + billing Gemini | ✅ Owner = `plataforma@multiaire.com.pe` |
+| GitHub `multiaire-pe/app-mantenimiento` | **El código** | ✅ Org corp + cuenta corp Owner |
+| Dominio `multiaire.com.pe` | URL pública | ✅ De la empresa (ChileCL) |
+| Gemini | IA del bot | ✅ Key + billing en el proyecto corp |
+| Meta/WhatsApp | El bot | ✅ Assets del Business "MultiAire" (José solo admin) |
+| **Vercel** | **Solo hosting/deploy — NADA de datos** | ⚠️ Cuenta personal de José — recreatable (este plan) |
+
+### Cómo se sirve hoy (referencia)
+- **Deploy:** GitHub Actions (`.github/workflows/vercel-*.yml`) → `vercel deploy` + alias a URLs fijas. NO hay auto-deploy de la integración Git (`vercel.json` tiene `git.deploymentEnabled:false`).
+- **Secrets del Action** (repo → Settings → Secrets → Actions): `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `VERCEL_TOKEN`.
+- **URLs:** prod `multiaire-peru-app.vercel.app` (rama `main`) · develop `multiaire-peru-app-develop.vercel.app` (rama `develop`) · dominio `app.multiaire.com.pe` (CNAME `cname.vercel-dns.com` en ChileCL, apunta a prod).
+- **El BOT corre en `develop`** (webhook de Meta → `https://multiaire-peru-app-develop.vercel.app/api/whatsapp`).
+
+### Receta para recrear el hosting en una cuenta Vercel nueva (corp)
+1. **Crear/loguear** la cuenta Vercel destino (ideal `plataforma@multiaire.com.pe`, plan Hobby gratis).
+2. **Importar el repo** `multiaire-pe/app-mantenimiento` como proyecto nuevo. Framework: **Other** (sitio estático + funciones en `/api`, sin build). Confirmar que respeta `vercel.json` y `.vercelignore`.
+3. **Anotar** el `VERCEL_ORG_ID` (id del team) y `VERCEL_PROJECT_ID` del proyecto nuevo, y **crear un `VERCEL_TOKEN`** en esa cuenta.
+4. **Actualizar los 3 secrets** del GitHub Action con esos valores nuevos.
+5. **Re-crear las env vars del BOT** (entorno **Preview**, rama **develop**) — `vercel env add NAME preview develop --value … --yes` (correr en foreground con `| head`; el CLI del plugin exige la rama como 3er arg):
+   - `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `GEMINI_API_KEY`, `GEMINI_MODEL` (=`gemini-2.5-flash`), `FIREBASE_SERVICE_ACCOUNT` (base64 del serviceAccount.json).
+   - **Valores:** en el **gestor de contraseñas** de la empresa / `~/Documents/migrar_db/serviceAccount.json` (Firebase) / consola de Meta (WhatsApp) / AI Studio (Gemini). NUNCA en el repo.
+   - *(Si se mueve también producción a este proyecto, replicar las que apliquen en entorno Production.)*
+6. **Dominio `app.multiaire.com.pe`:** agregarlo al proyecto nuevo (Settings → Domains). El CNAME ya apunta a `cname.vercel-dns.com`. Si Vercel pide verificación TXT anti-hijack (porque el dominio está reclamado por otra cuenta): pedir a ChileCL un **TXT `_vercel` = `vc-domain-verify=app.multiaire.com.pe,<token que muestre Vercel>` en la zona DNS ACTIVA del cPanel** (NO en WHMCS). Alternativa sin TXT si controlas ambas cuentas: **quitar el dominio de la cuenta vieja primero** y luego agregarlo a la nueva (hay unos minutos de downtime).
+7. **Aliases fijos:** reapuntar `multiaire-peru-app.vercel.app` y `multiaire-peru-app-develop.vercel.app` al proyecto nuevo (o ajustar el paso de alias del Action). El bot usa el alias de develop, así que su webhook sigue igual.
+8. **Firebase Authorized domains:** confirmar que estén `app.multiaire.com.pe` + las `*.vercel.app` (Authentication → Settings → Authorized domains). Script de apoyo: `migrar_db/add_authorized_domain.js`.
+9. **Verificar:** `git push origin develop` → deploy OK; el sitio carga; `GET …/api/whatsapp?hub.mode=subscribe&hub.verify_token=<WHATSAPP_VERIFY_TOKEN>&hub.challenge=ok` devuelve el challenge (200); mandar un WhatsApp al número del bot y que responda.
+
+### Conclusión
+Con esto, **la dependencia de la cuenta personal de Vercel deja de ser un riesgo**: el hosting es reproducible desde el repo + este plan. La **centralización corporativa se da por CERRADA** en lo sustancial; el cutover de Vercel queda como tarea **opcional** para un momento tranquilo.
