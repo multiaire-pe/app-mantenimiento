@@ -14,6 +14,7 @@ export async function guardarObservacion(borrador, tecnico, foto = null) {
   const cliente = borrador.cliente || '';
   const doc = {
     sede,
+    cliente,                                          // multi-cliente (RIPLEY, TOTTUS…)
     tienda: (cliente ? cliente + ' ' : '') + sede,   // ej. "RIPLEY ATOCONGO" (compat columna Tienda de la app)
     equipo: borrador.equipo,                          // nombre del equipo (ej. "Cortina de aire 01")
     eqId: borrador.eqId || '',                        // referencia al inventario (ej. MA-ATO-CAI-001)

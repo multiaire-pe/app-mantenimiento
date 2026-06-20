@@ -6,15 +6,25 @@ import { cargarInventario } from './inventario.js';
 const norm = (s) => String(s == null ? '' : s)
   .normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-const sinRipley = (s) => norm(s).replace(/\bRIPLEY\b/g, '').trim();
+// Quita el nombre del cliente del texto (RIPLEY, TOTTUS…), genérico → multi-cliente.
+const sinClientes = (s, clientes) => {
+  let n = norm(s);
+  for (const c of (clientes || [])) { const cn = norm(c); if (cn) n = n.split(cn).join(' '); }
+  return n.replace(/\s+/g, ' ').trim();
+};
+// ¿el técnico nombró un cliente? (para desambiguar si dos clientes comparten nombre de sede)
+const clienteMencionado = (raw, clientes) => {
+  const n = ' ' + norm(raw) + ' ';
+  return (clientes || []).find((c) => { const cn = norm(c); return cn && n.includes(' ' + cn + ' '); }) || null;
+};
 
 // Palabras que no aportan a la identificación del equipo.
 const STOP = new Set(['DE', 'DEL', 'LA', 'EL', 'LOS', 'LAS', 'AA', 'AIRE', 'ACONDICIONADO',
   'EQUIPO', 'UNIDAD', 'EN', 'PISO', 'NIVEL', 'Nº', 'NRO', 'NUMERO', 'QUE', 'UN', 'UNA']);
 const tokens = (s) => norm(s).split(' ').filter((t) => t.length > 1 && !STOP.has(t));
 
-function matchSede(sedeRaw, sedes) {
-  const q = sinRipley(sedeRaw);
+function matchSede(sedeRaw, sedes, clientes) {
+  const q = sinClientes(sedeRaw, clientes);
   if (!q) return { ok: false, candidatos: sedes };
   const exact = sedes.find((s) => norm(s) === q);
   if (exact) return { ok: true, sede: exact };
@@ -49,8 +59,10 @@ function tipoMencionado(equipoRaw, tiposSede) {
   return null;
 }
 
-function matchEquipo(equipoRaw, sede, equipos) {
-  const delSede = equipos.filter((e) => e.sede === sede);
+function matchEquipo(equipoRaw, sede, equipos, cliente) {
+  // Filtra por sede y, si se nombró un cliente, por ese cliente (desambigua sedes compartidas).
+  let delSede = equipos.filter((e) => e.sede === sede && (!cliente || e.cliente === cliente));
+  if (!delSede.length) delSede = equipos.filter((e) => e.sede === sede);
   if (!delSede.length) return { ok: false, candidatos: [] };
   const q = norm(equipoRaw);
   if (!q) return { ok: false, candidatos: delSede };
@@ -101,12 +113,14 @@ function matchEquipo(equipoRaw, sede, equipos) {
   return { ok: false, candidatos: pool };
 }
 
-// Resuelve {sede, equipo} contra `inventario`. `equipo` = objeto {eqId, sede, tipo, nombre, area}.
+// Resuelve {sede, equipo} contra `inventario`. `equipo` = objeto {eqId, sede, cliente, tipo, nombre, area}.
+// Multi-cliente: detecta el cliente nombrado (si lo hay) para desambiguar sedes compartidas.
 export async function resolverEquipo(sedeRaw, equipoRaw) {
-  const { equipos, sedes } = await cargarInventario();
-  const t = matchSede(sedeRaw, sedes);
+  const { equipos, sedes, clientes } = await cargarInventario();
+  const cliente = clienteMencionado(`${sedeRaw || ''} ${equipoRaw || ''}`, clientes);
+  const t = matchSede(sedeRaw, sedes, clientes);
   if (!t.ok) return { ok: false, motivo: 'sede', candidatosSede: t.candidatos };
-  const e = matchEquipo(equipoRaw, t.sede, equipos);
+  const e = matchEquipo(equipoRaw, t.sede, equipos, cliente);
   if (!e.ok) return { ok: false, motivo: 'equipo', sede: t.sede, candidatosEquipo: e.candidatos };
   return { ok: true, sede: t.sede, equipo: e.equipo };
 }

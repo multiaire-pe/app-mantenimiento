@@ -222,7 +222,7 @@ tr:hover td{background:var(--surface2)}
   <!-- OBSERVATIONS TABLE -->
   <div class="card">
     <div class="results-header">
-      <h3>📋 Manta de observaciones — Ripley</h3>
+      <h3>📋 Manta de observaciones</h3>
       <span id="obs-count" style="font-size:11px;color:var(--muted2)"></span>
     </div>
     <div class="table-scroll">
@@ -275,6 +275,10 @@ tr:hover td{background:var(--surface2)}
     <div style="display:flex;flex-direction:column;gap:12px">
 
       <div class="form-row">
+        <div class="form-group" id="obs-cliente-group" style="flex:0 0 200px;min-width:160px;display:none">
+          <label class="form-label">Cliente <span style="color:var(--orange)">*</span></label>
+          <select id="obs-cliente" class="form-select" onchange="onObsClienteChange()"><option value="">Seleccionar…</option></select>
+        </div>
         <div class="form-group">
           <label class="form-label">Sede <span style="color:var(--orange)">*</span></label>
           <select id="obs-sede" class="form-select" onchange="onObsSedeChange()"><option value="">Seleccionar…</option></select>
@@ -590,6 +594,7 @@ function closeModal(id){ document.getElementById(id)?.classList.remove('open'); 
 let observaciones = [];        // log de observaciones (1 doc = 1 observación)
 let obsInventario = [];        // inventario real: [{eqId, sede, cliente, tipo, nombre, area}] (557 equipos)
 let obsSedes      = [];        // sedes distintas (derivadas del inventario)
+let obsClientes   = [];        // clientes distintos del inventario (RIPLEY, TOTTUS…) — multi-cliente
 let obsFotos      = {};        // { obsId: dataURL base64 }
 let obsPersonal   = [];        // maestros_personal activos (para el campo "técnico")
 let _obsFotoVal   = null;      // foto mostrada en el modal (dataURL o null)
@@ -628,6 +633,7 @@ async function loadAll(){
     obsInventario.sort((a,b) => (a.sede||'').localeCompare(b.sede||'','es')
       || (a.tipo||'').localeCompare(b.tipo||'','es') || (a.nombre||'').localeCompare(b.nombre||'','es',{numeric:true}));
     obsSedes = [...new Set(obsInventario.map(e => e.sede).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+    obsClientes = [...new Set(obsInventario.map(e => e.cliente).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
     observaciones = obsS.docs.map(d => ({id:d.id, ...d.data()}));
     observaciones.sort(obsSort);
     obsFotos = {}; fotoS.docs.forEach(d => { const f=d.data().foto; if(f) obsFotos[d.id]=f; });
@@ -718,29 +724,47 @@ function renderObsTable(){
   }).join('');
 }
 
-// ── MODAL: dropdowns dependientes (sede → tipo → equipo, desde `inventario`) ─────
-function fillSedeSelect(sel){
-  sel.innerHTML = '<option value="">Seleccionar…</option>' + obsSedes.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+// ── MODAL: dropdowns dependientes (cliente → sede → tipo → equipo, desde `inventario`) ──
+// Multi-cliente: con un solo cliente el campo se autoselecciona y se oculta (UX igual que antes).
+function obsClienteSel(){ return document.getElementById('obs-cliente').value; }
+function fillClienteSelect(sel){
+  sel.innerHTML = '<option value="">Seleccionar…</option>' + obsClientes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
 }
-function fillTipoSelect(sel, sede){
-  const tipos = [...new Set(obsInventario.filter(e=>e.sede===sede).map(e=>e.tipo).filter(Boolean))].sort();
+function applyClienteVisibility(){
+  const grp = document.getElementById('obs-cliente-group');
+  const sel = document.getElementById('obs-cliente');
+  if(obsClientes.length <= 1){ sel.value = obsClientes[0] || ''; if(grp) grp.style.display = 'none'; }
+  else { if(grp) grp.style.display = ''; }
+}
+function fillSedeSelect(sel, cliente){
+  const sedes = [...new Set(obsInventario.filter(e=>!cliente||e.cliente===cliente).map(e=>e.sede).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  sel.innerHTML = '<option value="">Seleccionar…</option>' + sedes.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+}
+function fillTipoSelect(sel, cliente, sede){
+  const tipos = [...new Set(obsInventario.filter(e=>(!cliente||e.cliente===cliente) && e.sede===sede).map(e=>e.tipo).filter(Boolean))].sort();
   sel.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
 }
 // El valor del <option> de equipo es el eqId (referencia al inventario); el texto es el nombre + tipo.
-function fillEquipoSelect(sel, sede, tipo, ensureEqId){
-  let eqs = obsInventario.filter(e=>e.sede===sede);
+function fillEquipoSelect(sel, cliente, sede, tipo, ensureEqId){
+  let eqs = obsInventario.filter(e=>(!cliente||e.cliente===cliente) && e.sede===sede);
   if(tipo) eqs = eqs.filter(e=>e.tipo===tipo);
   sel.innerHTML = '<option value="">Seleccionar…</option>' + eqs.map(e=>`<option value="${esc(e.eqId)}">${esc(e.nombre)} · ${esc((e.tipo||'').toLowerCase())}</option>`).join('');
   if(ensureEqId) sel.value = ensureEqId;
 }
+function onObsClienteChange(){
+  fillSedeSelect(document.getElementById('obs-sede'), obsClienteSel());
+  document.getElementById('obs-tipo').innerHTML = '<option value="">Todos los tipos</option>';
+  document.getElementById('obs-equipo').innerHTML = '<option value="">Seleccionar…</option>';
+  onObsEquipoChange();
+}
 function onObsSedeChange(){
-  const sede = document.getElementById('obs-sede').value;
-  fillTipoSelect(document.getElementById('obs-tipo'), sede);
-  fillEquipoSelect(document.getElementById('obs-equipo'), sede, '');
+  const cliente = obsClienteSel(), sede = document.getElementById('obs-sede').value;
+  fillTipoSelect(document.getElementById('obs-tipo'), cliente, sede);
+  fillEquipoSelect(document.getElementById('obs-equipo'), cliente, sede, '');
   onObsEquipoChange();
 }
 function onObsTipoChange(){
-  fillEquipoSelect(document.getElementById('obs-equipo'), document.getElementById('obs-sede').value, document.getElementById('obs-tipo').value);
+  fillEquipoSelect(document.getElementById('obs-equipo'), obsClienteSel(), document.getElementById('obs-sede').value, document.getElementById('obs-tipo').value);
   onObsEquipoChange();
 }
 // Muestra la ubicación (área) del equipo seleccionado, debajo del desplegable.
@@ -789,7 +813,7 @@ function closeFotoLightbox(){ document.getElementById('foto-lightbox').classList
 
 // ── MODAL: abrir / readonly ─────────────────────────────────────────────────────
 function setObsModalReadonly(ro){
-  ['obs-sede','obs-tipo','obs-equipo','obs-estado','obs-fecha','obs-tecnico','obs-observacion'].forEach(id=>{const el=document.getElementById(id); if(el) el.disabled=ro;});
+  ['obs-cliente','obs-sede','obs-tipo','obs-equipo','obs-estado','obs-fecha','obs-tecnico','obs-observacion'].forEach(id=>{const el=document.getElementById(id); if(el) el.disabled=ro;});
   document.querySelectorAll('#modal-obs label[for="obs-foto-input"],#modal-obs label[for="obs-foto-cam"]').forEach(l=>l.style.display=ro?'none':'');
   document.getElementById('btn-save-obs').style.display = ro ? 'none' : 'inline-flex';
 }
@@ -798,7 +822,9 @@ function openNewObs(){
   if(!isObsAdmin()){ toast('Sin permisos para crear observaciones', 'err'); return; }
   document.getElementById('obs-modal-title').textContent = '＋ Nueva observación';
   document.getElementById('obs-id').value = '';
-  fillSedeSelect(document.getElementById('obs-sede'));
+  fillClienteSelect(document.getElementById('obs-cliente'));
+  applyClienteVisibility();
+  fillSedeSelect(document.getElementById('obs-sede'), obsClienteSel());
   document.getElementById('obs-tipo').innerHTML = '<option value="">Todos los tipos</option>';
   document.getElementById('obs-equipo').innerHTML = '<option value="">Seleccionar…</option>';
   onObsEquipoChange();
@@ -820,11 +846,17 @@ function openEditObs(id){
   document.getElementById('obs-modal-title').textContent = admin ? '✎ Editar observación' : '👁 Ver observación';
   document.getElementById('obs-id').value = o.id;
   const oSede = o.sede || String(o.tienda||'').replace(/^RIPLEY\s+/i,'');   // compat si faltara `sede`
-  fillSedeSelect(document.getElementById('obs-sede'));
+  // Cliente: del doc, o derivado del inventario por eqId, o el único cliente.
+  const oCliente = o.cliente || (obsInventario.find(e=>e.eqId===o.eqId)||{}).cliente || (obsClientes.length===1?obsClientes[0]:'');
+  fillClienteSelect(document.getElementById('obs-cliente'));
+  document.getElementById('obs-cliente').value = oCliente || '';
+  applyClienteVisibility();
+  const cli = obsClienteSel();
+  fillSedeSelect(document.getElementById('obs-sede'), cli);
   document.getElementById('obs-sede').value = oSede;
-  fillTipoSelect(document.getElementById('obs-tipo'), oSede);
+  fillTipoSelect(document.getElementById('obs-tipo'), cli, oSede);
   document.getElementById('obs-tipo').value = o.tipo || '';
-  fillEquipoSelect(document.getElementById('obs-equipo'), oSede, o.tipo || '', o.eqId || '');
+  fillEquipoSelect(document.getElementById('obs-equipo'), cli, oSede, o.tipo || '', o.eqId || '');
   onObsEquipoChange();
   document.getElementById('obs-estado').value = o.estado || 'PENDIENTE';
   document.getElementById('obs-fecha').value = o.fecha || hoyISO();
@@ -855,7 +887,7 @@ async function saveObs(){
   const btn = document.getElementById('btn-save-obs');
   if(btn.disabled) return; btn.disabled = true;
   const now = new Date().toISOString();
-  const data = { sede: inv.sede, tienda, equipo: inv.nombre, eqId: inv.eqId, tipo: inv.tipo, area: inv.area || '',
+  const data = { sede: inv.sede, cliente, tienda, equipo: inv.nombre, eqId: inv.eqId, tipo: inv.tipo, area: inv.area || '',
     observacion, estado, fecha, tecnicoId,
     tieneFoto: !!_obsFotoVal, updatedAt: now, updatedBy: maUser?.email || '' };
   const id = document.getElementById('obs-id').value;
