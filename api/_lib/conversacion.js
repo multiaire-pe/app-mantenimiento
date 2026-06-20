@@ -105,7 +105,18 @@ async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar 
   try {
     const guiaTexto = await textoGuia();
     const contexto = await contextoInventario();
-    g = await analizar(textoAcum, imagenB64, mime, guiaTexto, contexto);
+    try {
+      g = await analizar(textoAcum, imagenB64, mime, guiaTexto, contexto);
+    } catch (e1) {
+      // Si falló CON imagen pero hay texto, reintentamos SOLO con el texto: la foto igual se
+      // adjunta al guardar (Gemini "verla" es opcional; el caption es la señal principal).
+      if (imagenB64 && textoAcum) {
+        console.warn('[conversacion] análisis con imagen falló, reintento solo texto:', e1?.message);
+        g = await analizar(textoAcum, null, null, guiaTexto, contexto);
+      } else {
+        throw e1;
+      }
+    }
   } catch (e) {
     console.error('[conversacion] análisis falló:', e?.message);
     await guardarSesion(from, ses);           // conserva el historial para reintentar
