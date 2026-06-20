@@ -8,7 +8,8 @@
 // Diseño desacoplado/testeable: `analizar` (Gemini) y `guardar` (escritura) se inyectan;
 // por defecto usan los módulos reales, pero en pruebas se pasan stubs.
 import { estructurarObservacion } from './gemini.js';
-import { resolverTiendaEquipo } from './manta.js';
+import { resolverEquipo } from './equipos.js';
+import { contextoInventario } from './inventario.js';
 import { textoGuia } from './guia.js';
 import { getSesion, guardarSesion, limpiarSesion, nuevaSesion } from './sesiones.js';
 import { guardarFotoPendiente, getFotoPendiente, tieneFotoPendiente, limpiarFotoPendiente } from './fotos.js';
@@ -87,7 +88,7 @@ export async function manejarMensaje({
   if (t) ses.historial.push(t);
   if (!ses.historial.length && !imagenB64) {
     await guardarSesion(from, ses);
-    return 'Cuéntame la observación: en qué *tienda* y *equipo*, y qué encontraste. 🛠️';
+    return 'Cuéntame la observación: en qué *sede* y *equipo*, y qué encontraste. 🛠️';
   }
   return procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar });
 }
@@ -98,7 +99,8 @@ async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar 
   let g;
   try {
     const guiaTexto = await textoGuia();
-    g = await analizar(textoAcum, imagenB64, mime, guiaTexto);
+    const contexto = await contextoInventario();
+    g = await analizar(textoAcum, imagenB64, mime, guiaTexto, contexto);
   } catch (e) {
     console.error('[conversacion] análisis falló:', e?.message);
     await guardarSesion(from, ses);           // conserva el historial para reintentar
@@ -109,18 +111,21 @@ async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar 
   b.observacion = g.observacion || b.observacion || '';
   b.estado = g.estado || b.estado || 'PENDIENTE';
 
-  // Resolver tienda/equipo contra el maestro manta_equipos.
-  const r = await resolverTiendaEquipo(g.tienda || b.tienda, g.equipo || b.equipo);
-  if (!r.ok && r.motivo === 'tienda') {
-    b.tienda = ''; b.equipo = '';
-    return repreguntar(ses, from, 'tienda', preguntarTienda(r.candidatosTienda));
+  // Resolver sede/equipo contra el inventario REAL (557 equipos).
+  const r = await resolverEquipo(g.sede || b.sede, g.equipo);
+  if (!r.ok && r.motivo === 'sede') {
+    b.sede = ''; b.eqId = ''; b.equipo = '';
+    return repreguntar(ses, from, 'sede', preguntarSede(r.candidatosSede));
   }
   if (!r.ok && r.motivo === 'equipo') {
-    b.tienda = r.tienda; b.equipo = '';
-    return repreguntar(ses, from, 'equipo', preguntarEquipo(r.tienda, r.candidatosEquipo));
+    b.sede = r.sede; b.eqId = ''; b.equipo = '';
+    return repreguntar(ses, from, 'equipo', preguntarEquipo(r.sede, r.candidatosEquipo));
   }
-  b.tienda = r.tienda;
-  b.equipo = r.equipo;
+  b.sede = r.sede;
+  b.eqId = r.equipo.eqId;
+  b.equipo = r.equipo.nombre;
+  b.tipo = r.equipo.tipo;
+  b.cliente = r.equipo.cliente;
 
   // ¿Gemini sugiere una repregunta útil y aún no la hicimos?
   if (g.faltaDetalle && g.pregunta && !ses.preguntoDetalle && ses.intentos < MAX_REPREGUNTAS) {
@@ -149,26 +154,37 @@ const sinPrefijo = (t) => String(t || '').replace(/^RIPLEY\s+/i, '');
 
 function bienvenida(tecnico) {
   const nombre = (tecnico?.nombre || '').split(' ')[0];
-  return `👋 Hola${nombre ? ' ' + nombre : ''}. Soy el asistente de la *Manta de Observaciones*.\n\n` +
-    'Mándame por aquí los hallazgos de los equipos (Roof Top) y yo los registro. ' +
-    'Por ejemplo:\n_"Santa Anita roof top 3, filtros saturados"_\n\n' +
+  return `👋 Hola${nombre ? ' ' + nombre : ''}. Soy el asistente de *Observaciones* de MultiAire.\n\n` +
+    'Mándame por aquí los hallazgos de los equipos y yo los registro. ' +
+    'Por ejemplo:\n_"Atocongo, cortina de aire 1, no enciende"_\n_(o mándame el código del equipo: MA-...)_\n\n' +
     'Te confirmo antes de guardar. Puedes escribir *cancelar* en cualquier momento.';
 }
 
-function preguntarTienda(cands) {
-  const lista = (cands || []).slice(0, 8).map((c) => `• ${sinPrefijo(c)}`).join('\n');
-  return `¿En qué *tienda* es?${lista ? '\n' + lista : ''}`;
+function preguntarSede(cands) {
+  const lista = (cands || []).slice(0, 14).map((c) => `• ${sinPrefijo(c)}`).join('\n');
+  return `¿En qué *sede* es?${lista ? '\n' + lista : ''}`;
 }
 
-function preguntarEquipo(tienda, cands) {
-  const lista = (cands || []).slice(0, 14).map((c) => `• ${c}`).join('\n');
-  return `¿Qué *equipo* de *${sinPrefijo(tienda)}*?${lista ? '\n' + lista : ''}\n\n_(puedes decir solo el número)_`;
+function preguntarEquipo(sede, cands) {
+  const lista = cands || [];
+  if (!lista.length) return `Dame el *código* del equipo de *${sinPrefijo(sede)}* (ej. MA-...).`;
+  if (lista.length <= 15) {
+    const items = lista.map((e) => `• ${e.nombre}${e.tipo ? ` (${e.tipo.toLowerCase()})` : ''}`).join('\n');
+    return `¿Cuál equipo de *${sinPrefijo(sede)}*?\n${items}\n\n_(dime el nombre, el número o el código MA-...)_`;
+  }
+  // Muchos equipos → agrupar por tipo y pedir tipo+número o código.
+  const porTipo = {};
+  lista.forEach((e) => { const t = e.tipo || 'OTRO'; porTipo[t] = (porTipo[t] || 0) + 1; });
+  const tipos = Object.entries(porTipo).sort((a, b) => b[1] - a[1])
+    .map(([t, n]) => `• ${t.toLowerCase()} (${n})`).join('\n');
+  return `*${sinPrefijo(sede)}* tiene ${lista.length} equipos. ¿De qué *tipo* y número? O dame el *código* (MA-...).\nTipos disponibles:\n${tipos}`;
 }
 
 function resumenConfirmar(b, conFoto) {
   return '📝 *Confirma la observación:*\n\n' +
-    `🏪 Tienda: *${sinPrefijo(b.tienda)}*\n` +
-    `❄️ Equipo: *${b.equipo}*\n` +
+    `🏪 Sede: *${sinPrefijo(b.sede)}*\n` +
+    `❄️ Equipo: *${b.equipo}*${b.tipo ? ` (${String(b.tipo).toLowerCase()})` : ''}\n` +
+    (b.eqId ? `🔖 Código: ${b.eqId}\n` : '') +
     `🔧 Observación: ${b.observacion}\n` +
     `📌 Estado: *${ESTADO_LABEL[b.estado] || b.estado}*\n` +
     (conFoto ? '📷 Con foto adjunta\n' : '') +
@@ -177,7 +193,7 @@ function resumenConfirmar(b, conFoto) {
 
 function resumenGuardado(b, conFoto) {
   return '✅ *Observación registrada.*\n\n' +
-    `🏪 ${sinPrefijo(b.tienda)} · ❄️ ${b.equipo}\n` +
+    `🏪 ${sinPrefijo(b.sede)} · ❄️ ${b.equipo}\n` +
     `📌 ${ESTADO_LABEL[b.estado] || b.estado}${conFoto ? ' · 📷' : ''}\n\n` +
     'Gracias. Mándame otra cuando quieras.';
 }

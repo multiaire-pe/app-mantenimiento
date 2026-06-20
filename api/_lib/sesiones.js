@@ -15,7 +15,7 @@ export function nuevaSesion(from, tecnico) {
     from,
     tecnicoId: tecnico?.id || null,
     fase: 'RECOLECTANDO',                                 // RECOLECTANDO | CONFIRMANDO
-    borrador: { tienda: '', equipo: '', observacion: '', estado: 'PENDIENTE' },
+    borrador: { sede: '', equipo: '', eqId: '', tipo: '', cliente: '', observacion: '', estado: 'PENDIENTE' },
     faltante: null,                                       // 'tienda' | 'equipo' | 'detalle' | null
     intentos: 0,                                          // nº de repreguntas hechas (tope MAX)
     preguntoDetalle: false,                               // ya se hizo la repregunta de detalle (máx 1)
