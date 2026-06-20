@@ -56,9 +56,10 @@ export async function estructurarObservacion(texto, imagenB64, mime, guiaTexto, 
     contents: [{ parts }],
     generationConfig: {
       temperature: 0,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 2048,
       responseMimeType: 'application/json',
       responseSchema: SCHEMA,
+      thinkingConfig: { thinkingBudget: 0 },   // sin "thinking": JSON estructurado fiable y más rápido
     },
   };
   const res = await fetch(ENDPOINT(MODELO()), {
@@ -70,5 +71,12 @@ export async function estructurarObservacion(texto, imagenB64, mime, guiaTexto, 
   const data = await res.json();
   const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
   const clean = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
-  return JSON.parse(clean);
+  try {
+    return JSON.parse(clean);
+  } catch {
+    // Parseo defensivo: extrae el primer objeto {...} por si viene con texto alrededor.
+    const m = clean.match(/\{[\s\S]*\}/);
+    if (m) return JSON.parse(m[0]);
+    throw new Error('Gemini: respuesta no es JSON válido: ' + clean.slice(0, 120));
+  }
 }
