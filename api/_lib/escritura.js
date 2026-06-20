@@ -18,6 +18,7 @@ export async function guardarObservacion(borrador, tecnico, foto = null) {
     equipo: borrador.equipo,                          // nombre del equipo (ej. "Cortina de aire 01")
     eqId: borrador.eqId || '',                        // referencia al inventario (ej. MA-ATO-CAI-001)
     tipo: borrador.tipo || '',
+    area: borrador.area || '',                        // ubicación del equipo (ej. "COMEDOR")
     observacion: borrador.observacion,
     estado: borrador.estado || 'PENDIENTE',
     fecha,

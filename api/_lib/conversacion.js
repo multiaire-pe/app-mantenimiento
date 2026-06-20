@@ -130,6 +130,7 @@ async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar 
   b.eqId = r.equipo.eqId;
   b.equipo = r.equipo.nombre;
   b.tipo = r.equipo.tipo;
+  b.area = r.equipo.area || '';
   b.cliente = r.equipo.cliente;
 
   // ¿Gemini sugiere una repregunta útil y aún no la hicimos?
@@ -174,8 +175,9 @@ function preguntarEquipo(sede, cands) {
   const lista = cands || [];
   if (!lista.length) return `Dame el *código* del equipo de *${sinPrefijo(sede)}* (ej. MA-...).`;
   if (lista.length <= 15) {
-    const items = lista.map((e) => `• ${e.nombre}${e.tipo ? ` (${e.tipo.toLowerCase()})` : ''}`).join('\n');
-    return `¿Cuál equipo de *${sinPrefijo(sede)}*?\n${items}\n\n_(dime el nombre, el número o el código MA-...)_`;
+    // Mostramos la UBICACIÓN (área) — es lo que el técnico reconoce ("el del comedor").
+    const items = lista.map((e) => `• ${e.nombre}${e.area ? ` — ${e.area}` : (e.tipo ? ` (${e.tipo.toLowerCase()})` : '')}`).join('\n');
+    return `¿Cuál equipo de *${sinPrefijo(sede)}*?\n${items}\n\n_(dime el nombre, la *ubicación*, el número o el código MA-...)_`;
   }
   // Muchos equipos → agrupar por tipo y pedir tipo+número o código.
   const porTipo = {};
@@ -189,6 +191,7 @@ function resumenConfirmar(b, conFoto) {
   return '📝 *Confirma la observación:*\n\n' +
     `🏪 Sede: *${sinPrefijo(b.sede)}*\n` +
     `❄️ Equipo: *${b.equipo}*${b.tipo ? ` (${String(b.tipo).toLowerCase()})` : ''}\n` +
+    (b.area ? `📍 Ubicación: ${b.area}\n` : '') +
     (b.eqId ? `🔖 Código: ${b.eqId}\n` : '') +
     `🔧 Observación: ${b.observacion}\n` +
     `📌 Estado: *${ESTADO_LABEL[b.estado] || b.estado}*\n` +
