@@ -7,8 +7,8 @@
 ## Hilos en curso (visión rápida)
 1. **Observaciones (Parte A)** — ✅ LISTO en develop (pendiente verificación del usuario + merge a main).
 2. **Bot WhatsApp (Parte B)** — 🔧 **Fases 1-4 listas** (Fase 4 ya escribe en `manta_observaciones`); falta **Fase 5** (foto desde WhatsApp + avisos a supervisores) + deploy + setup Meta.
-3. **Migración corporativa** — 🔧 cuenta creada; **DNS de `app.multiaire.com.pe` pendiente en ChileCL** (bloqueante del dominio).
-4. **Monitoreo DNS** — wakeup activo cada ~30 min.
+3. **Migración corporativa** — dominio ✅ **`app.multiaire.com.pe` EN VIVO** (DNS resuelto, conectado al proyecto Vercel `app-mantenimiento` prod/main, SSL OK HTTP 200, + Authorized domains de Firebase ya con el dominio). **Falta la centralización de PROPIEDAD en `plataforma@multiaire.com.pe`**: transferir el proyecto Vercel a un Team de plataforma@, agregar plataforma@ como Owner de GCP/`multiaire-fee43`, mover el repo GitHub a una org corp, regenerar la Gemini key, crear Meta Business. Todo eso requiere **login de plataforma@** (no lo puede hacer Claude por sí solo).
+4. **Monitoreo DNS** — ya no hace falta (DNS resuelto + dominio conectado); el wakeup recurrente puede retirarse.
 
 ---
 
