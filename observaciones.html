@@ -203,7 +203,7 @@ tr:hover td{background:var(--surface2)}
                oninput="renderObsTable()" autocomplete="off">
       </div>
       <div class="prov-toolbar-actions">
-        <select id="obs-f-cliente" class="form-select" style="width:auto;min-width:130px;display:none" onchange="renderObsTable()"><option value="">Todos los clientes</option></select>
+        <select id="obs-f-cliente" class="form-select" style="width:auto;min-width:130px;display:none" onchange="onClienteFilterChange()"><option value="">Todos los clientes</option></select>
         <select id="obs-f-tienda" class="form-select" style="width:auto;min-width:150px" onchange="renderObsTable()"><option value="">Todas las sedes</option></select>
         <select id="obs-f-estado" class="form-select" style="width:auto" onchange="renderObsTable()">
           <option value="">Todos los estados</option>
@@ -658,8 +658,8 @@ async function loadAll(){
     toast('Error al cargar: ' + e.message, 'err');
     return;
   }
-  populateTiendaFilter();
   populateClienteFilter();
+  populateTiendaFilter(document.getElementById('obs-f-cliente').value);
   renderObsTable();
 }
 
@@ -669,13 +669,18 @@ function obsSort(a,b){
       || (b.fecha||'').localeCompare(a.fecha||'');
 }
 
-function populateTiendaFilter(){
+function populateTiendaFilter(cliente){
   const sel = document.getElementById('obs-f-tienda');
   const cur = sel.value;
-  // Sedes presentes en las observaciones (robusto: el campo `tienda` = "RIPLEY <SEDE>").
-  const tiendas = [...new Set(observaciones.map(o => o.tienda).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  // Tiendas con observaciones; si hay un cliente filtrado, solo las de ese cliente.
+  const tiendas = [...new Set(observaciones.filter(o=>!cliente || obsClienteDe(o)===cliente).map(o => o.tienda).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
   sel.innerHTML = '<option value="">Todas las sedes</option>' + tiendas.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
-  sel.value = cur;
+  sel.value = tiendas.includes(cur) ? cur : '';   // conserva la selección si sigue siendo válida
+}
+// Al cambiar el filtro de cliente, recargamos el de sedes para mostrar solo las de ese cliente.
+function onClienteFilterChange(){
+  populateTiendaFilter(document.getElementById('obs-f-cliente').value);
+  renderObsTable();
 }
 
 // Cliente de una observación (del doc o derivado del inventario por eqId).
