@@ -49,10 +49,9 @@ Backend serverless en el MISMO repo (no Firebase, sin Blaze). Módulos en `api/_
 ---
 
 ## Próximos pasos (orden sugerido)
-1. **Bot Fase 5** (foto desde WhatsApp + avisos a supervisores con plantilla "utility").
-2. **Regenerar `GEMINI_API_KEY`** en AI Studio (aistudio.google.com con `plataforma@multiaire.com.pe`) — la anterior se perdió — y ponerla en Vercel junto al resto de env vars + **deploy + setup Meta** (Business + número) + prueba end-to-end del bot.
-3. **DNS** (cuando ChileCL responda) → conectar `app.multiaire.com.pe` en Vercel + Authorized domains.
+1. **Cutover Vercel** — esperando el TXT de ChileCL (`_vercel.multiaire.com.pe = vc-domain-verify=app.multiaire.com.pe,5b75a41f5f706add961f`). Cuando esté: verificar + dominio al proyecto plataforma@ + secrets + mover alias + borrar viejo + reemplazar `VERCEL_TOKEN` (hoy tiene el token personal temporal).
+2. **⭐ Observaciones v2 — pivot a `inventario`** (decidido: bot + app, master único, deprecar `manta_equipos`). El grande; construir FRESCO. Plan detallado en la memoria `project_observaciones`.
+3. **Setup Meta** (Business + número + plantilla "utility") + poner las **env vars del bot en Vercel** (`GEMINI_API_KEY` — regenerar en AI Studio con plataforma@, se perdió —, `FIREBASE_SERVICE_ACCOUNT`, `WHATSAPP_*`, `WHATSAPP_TEMPLATE_AVISO`) → bot en vivo.
 4. **Verificar Observaciones** en develop + **merge a main** (cuando el usuario apruebe).
 
-> ✅ Hecho 2026-06-19: editor de `manta_guia` en observaciones.html (menú → 🤖 Guía del bot) + `manta_guia` en el backup de configuracion.html.
-> ⚠️ `GEMINI_API_KEY`: **se perdió** — hay que regenerarla en AI Studio al configurar Vercel (no está guardada en ningún lado).
+> ⚠️ `GEMINI_API_KEY`: se perdió — regenerar en AI Studio (plataforma@) al configurar Vercel.
