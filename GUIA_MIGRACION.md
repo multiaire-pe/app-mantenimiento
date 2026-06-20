@@ -218,3 +218,57 @@ Con esas dos cosas, todo lo demás lo hago yo. ¡Gracias! 🙏
 
 ### Lo que hago yo (config dentro de las cuentas, una vez tengas acceso)
 - `git remote set-url` al nuevo repo · reconectar/verificar el deploy · actualizar los **secrets** del Action · poner las **env vars** (`GEMINI_API_KEY`, `WHATSAPP_*`, `FIREBASE_SERVICE_ACCOUNT`) en Vercel · verificar dominios y login.
+
+---
+
+## 8) CHECKLIST META — WhatsApp Business API (para poner el bot EN VIVO)
+
+> El código del bot (Fases 1-5 + Observaciones v2) está listo y probado (lógica + Gemini en vivo).
+> Lo único que falta es el transporte por WhatsApp: esto. **Tu parte:** pasos 1-5 y 8 (consola de Meta).
+> **Parte de Claude:** las env vars (paso 6) + verificar el webhook.
+
+### ⚠️ Antes de empezar
+- Meta exige un **Facebook personal** como admin (no hay cuenta funcional como Google). Usar uno controlado por la empresa.
+- El **número de la empresa** para el bot **no debe estar activo en WhatsApp normal** (la API lo reclama).
+- Los **técnicos** deben tener su teléfono en `maestros_personal.telefono` (el bot identifica por número).
+
+### 1) Crear el Business
+- **https://business.facebook.com** → *Crear cuenta* → nombre empresa, tu nombre, email.
+
+### 2) Crear la App + producto WhatsApp
+- **https://developers.facebook.com/apps** → *Crear app* → tipo **Business** → nombre (ej. "MultiAire Bot").
+- En la app → *Agregar producto* → **WhatsApp** → *Configurar*.
+
+### 3) Registrar el número de la empresa
+- WhatsApp → **API Setup / Configuración de la API** → *Agregar número de teléfono* → verificar por SMS/llamada.
+
+### 4) Credenciales (Claude las pone en Vercel)
+| Dónde sacarlo | → env var |
+|---|---|
+| WhatsApp → API Setup → **Phone number ID** | `WHATSAPP_PHONE_NUMBER_ID` |
+| App → Settings → Basic → **App Secret** | `WHATSAPP_APP_SECRET` |
+| **Token permanente** (ver abajo) | `WHATSAPP_TOKEN` |
+| Lo inventas tú (ej. `multiaire-bot-2026`) | `WHATSAPP_VERIFY_TOKEN` |
+
+**Token permanente** (mejor que el temporal de 24 h): **business.facebook.com → Configuración del negocio → Usuarios → Usuarios del sistema** → crear uno → *Agregar activos* (la app de WhatsApp) → **Generar token** con permisos `whatsapp_business_messaging` + `whatsapp_business_management`.
+
+### 5) Configurar el webhook
+- WhatsApp → **Configuration / Configuración** → Webhook → *Editar*:
+  - **Callback URL:** `https://multiaire-peru-app-develop.vercel.app/api/whatsapp` (develop, para probar; tras merge a main + cutover → `https://app.multiaire.com.pe/api/whatsapp`).
+  - **Verify token:** el mismo `WHATSAPP_VERIFY_TOKEN` que inventaste.
+  - Meta hace un **GET** → si el token coincide, queda verificado (el webhook ya lo soporta).
+  - **Suscribirse al campo `messages`.**
+
+### 6) Env vars en Vercel — **lo hace Claude**
+`WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `GEMINI_API_KEY` (la key "Multiaire Bot"), `FIREBASE_SERVICE_ACCOUNT` (Claude tiene el JSON), opcional `WHATSAPP_TEMPLATE_AVISO`. Ojo a en qué entorno (Preview para develop / Production para main) y en qué proyecto Vercel (según el estado del cutover).
+
+### 7) Probar en vivo 🎉
+- Desde el WhatsApp de un técnico registrado, mandar un mensaje al número de la empresa → el bot debe responder y registrar la observación.
+
+### 8) Plantilla de avisos (para notificar a supervisores)
+- **WhatsApp Manager → Message Templates → Crear**: categoría **Utility**, nombre ej. `nueva_observacion`, cuerpo con variables `🔧 Nueva observación · {{1}} · {{2}} · {{3}}: {{4}}` (sede, equipo, estado, observación) → enviar a aprobación. Cuando la aprueben, pasar el **nombre** → Claude lo pone en `WHATSAPP_TEMPLATE_AVISO`.
+
+### Notas
+- **Sin plantilla aprobada** el bot igual responde a quien le escribe (ventana de 24 h); los **avisos proactivos a supervisores** fuera de esa ventana necesitan la plantilla.
+- Para límites altos Meta pide **verificación del negocio**; para probar / poco volumen, la app sin verificar funciona con números limitados.
+- Recordar marcar quién **recibe avisos** (botón 📣 en el editor de personal de `configuracion.html`).
