@@ -41,6 +41,11 @@ export async function manejarMensaje({
   const t = (texto || '').trim();
   let ses = await getSesion(from);
 
+  // Si no hay sesión viva (inexistente o expirada por TTL), descarta cualquier foto pendiente
+  // huérfana de una conversación anterior: NO debe adjuntarse a la observación que empiece ahora.
+  // La foto de ESTE turno se guarda más abajo, después de esta limpieza.
+  if (!ses) await limpiarFotoPendiente(from);
+
   // Saludo / ayuda sin conversación en curso (y sin foto).
   if (!ses && !imagenB64 && RE_AYUDA.test(t)) return bienvenida(tecnico);
 
