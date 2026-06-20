@@ -62,12 +62,23 @@ export async function estructurarObservacion(texto, imagenB64, mime, guiaTexto, 
       thinkingConfig: { thinkingBudget: 0 },   // sin "thinking": JSON estructurado fiable y más rápido
     },
   };
-  const res = await fetch(ENDPOINT(MODELO()), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error('Gemini ' + res.status + ': ' + (await res.text().catch(() => '')));
+  // El free tier de Gemini da 429 (rate limit) con llamadas seguidas, y a veces 5xx transitorios.
+  // Reintentamos con backoff para que el bot se recupere solo en vez de pedirle al técnico que repita.
+  const MAX_INTENTOS = 3;
+  let res;
+  for (let intento = 1; ; intento++) {
+    res = await fetch(ENDPOINT(MODELO()), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) break;
+    const transitorio = res.status === 429 || res.status >= 500;
+    if (!transitorio || intento >= MAX_INTENTOS) {
+      throw new Error('Gemini ' + res.status + ': ' + (await res.text().catch(() => '')));
+    }
+    await new Promise((r) => setTimeout(r, intento * 1500));   // backoff: 1.5s, 3s
+  }
   const data = await res.json();
   const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
   const clean = raw.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();

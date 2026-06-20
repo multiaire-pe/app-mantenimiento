@@ -15,7 +15,7 @@ export function nuevaSesion(from, tecnico) {
     from,
     tecnicoId: tecnico?.id || null,
     fase: 'RECOLECTANDO',                                 // RECOLECTANDO | CONFIRMANDO
-    borrador: { sede: '', equipo: '', eqId: '', tipo: '', cliente: '', observacion: '', estado: 'PENDIENTE' },
+    borrador: { sede: '', equipo: '', eqId: '', tipo: '', area: '', cliente: '', observacion: '', estado: 'PENDIENTE' },
     faltante: null,                                       // 'tienda' | 'equipo' | 'detalle' | null
     intentos: 0,                                          // nº de repreguntas hechas (tope MAX)
     preguntoDetalle: false,                               // ya se hizo la repregunta de detalle (máx 1)
@@ -46,4 +46,30 @@ export async function guardarSesion(from, ses) {
 // Borra la sesión (conversación terminada o cancelada).
 export async function limpiarSesion(from) {
   await getDb().collection(COL).doc(String(from)).delete().catch(() => {});
+}
+
+// ── Última observación guardada por número (para "agregar foto a la última") ──────
+// 1 doc por número en wa_ultima_obs. Vida corta (TTL): solo sirve para adjuntar una foto
+// olvidada justo después de registrar. Transitoria/operativa (no se respalda).
+const COL_ULT = 'wa_ultima_obs';
+const TTL_ULT_MS = TTL_MIN * 60 * 1000;   // misma ventana que la sesión (30 min)
+
+export async function guardarUltimaObs(from, obsId, etiqueta) {
+  if (!from || !obsId) return;
+  await getDb().collection(COL_ULT).doc(String(from)).set({
+    obsId, etiqueta: etiqueta || '', expiraEn: new Date(Date.now() + TTL_ULT_MS).toISOString(),
+  });
+}
+
+export async function getUltimaObs(from) {
+  if (!from) return null;
+  const snap = await getDb().collection(COL_ULT).doc(String(from)).get();
+  if (!snap.exists) return null;
+  const d = snap.data();
+  if (d?.expiraEn && new Date(d.expiraEn).getTime() < Date.now()) return null; // expirada
+  return d?.obsId ? { obsId: d.obsId, etiqueta: d.etiqueta || '' } : null;
+}
+
+export async function limpiarUltimaObs(from) {
+  await getDb().collection(COL_ULT).doc(String(from)).delete().catch(() => {});
 }

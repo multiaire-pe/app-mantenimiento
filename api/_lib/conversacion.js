@@ -11,8 +11,9 @@ import { estructurarObservacion } from './gemini.js';
 import { resolverEquipo } from './equipos.js';
 import { contextoInventario } from './inventario.js';
 import { textoGuia } from './guia.js';
-import { getSesion, guardarSesion, limpiarSesion, nuevaSesion } from './sesiones.js';
+import { getSesion, guardarSesion, limpiarSesion, nuevaSesion, guardarUltimaObs, getUltimaObs, limpiarUltimaObs } from './sesiones.js';
 import { guardarFotoPendiente, getFotoPendiente, tieneFotoPendiente, limpiarFotoPendiente } from './fotos.js';
+import { agregarFotoAObservacion } from './escritura.js';
 
 // Termina la conversación: borra la sesión y la foto pendiente.
 async function limpiarTodo(from) {
@@ -30,6 +31,8 @@ const RE_CANCELA   = /^\s*(cancel\w*|anul\w*|olv[ií]d\w*|descart\w*|borr\w*)/i;
 const RE_NUEVA     = /^\s*(nueva\s+observ\w*|otra\s+observ\w*|empez\w*\s+de\s+nuevo|reinici\w*)/i;
 const RE_GUARDA_ASI = /(guard\w*\s+as[ií]|as[ií]\s+est[aá]|d[eé]jal\w*\s+as[ií]|sin\s+m[aá]s|sin\s+detalle|no\s+aplica)/i;
 const RE_AYUDA     = /^\s*(ayuda|help|c[oó]mo\s+funciona|men[uú]|hola|buenas|buenos d[ií]as)\s*$/i;
+// "agregar foto a la última", "olvidé la foto", "foto de la anterior"…
+const RE_AGREGAR_FOTO = /\b(agreg\w*|a[ñn]ad\w*|adjunt\w*|sub\w*|pon\w*|olvid\w*)\b[\s\w]*\b(foto|imagen)\b|\b(foto|imagen)\b[\s\w]*\b(ultim\w*|anterior|olvid\w*|esa\s+observ\w*)\b/i;
 
 // ── Entrada principal ───────────────────────────────────────────────────────────
 // Devuelve el texto a responder por WhatsApp. Maneja la sesión internamente.
@@ -37,6 +40,7 @@ export async function manejarMensaje({
   tecnico, from, texto, imagenB64 = null, mime = null,
   guardar,                              // (borrador, tecnico, foto) => {id,...}  (escribe + avisos)
   analizar = estructurarObservacion,    // (texto, imgB64, mime, guiaTexto) => {tienda,equipo,observacion,estado,faltaDetalle,pregunta}
+  adjuntarFoto = agregarFotoAObservacion, // (obsId, foto) => bool  (adjunta foto a una obs ya guardada)
 }) {
   const t = (texto || '').trim();
   let ses = await getSesion(from);
@@ -48,6 +52,31 @@ export async function manejarMensaje({
 
   // Saludo / ayuda sin conversación en curso (y sin foto).
   if (!ses && !imagenB64 && RE_AYUDA.test(t)) return bienvenida(tecnico);
+
+  // ── Agregar foto a la ÚLTIMA observación guardada (la olvidó al registrar) ──────
+  if (ses && ses.fase === 'ADJUNTAR_FOTO') {
+    return manejarAdjuntarFoto(ses, tecnico, from, { t, imagenB64, mime, adjuntarFoto, analizar });
+  }
+  if (!ses) {
+    const ult = await getUltimaObs(from);
+    if (ult) {
+      // Foto SIN texto justo después de guardar → casi seguro la que olvidó.
+      if (imagenB64 && !t) {
+        await guardarFotoPendiente(from, imagenB64, mime);
+        const s = nuevaSesion(from, tecnico);
+        s.fase = 'ADJUNTAR_FOTO'; s.ultimaObs = ult;
+        await guardarSesion(from, s);
+        return `📷 ¿Adjunto esta foto a tu última observación (*${ult.etiqueta}*)? Responde *SÍ*.\n_(o si es de un equipo nuevo, descríbela)_`;
+      }
+      // Pidió "agregar foto a la última" (aún sin mandarla).
+      if (!imagenB64 && RE_AGREGAR_FOTO.test(t)) {
+        const s = nuevaSesion(from, tecnico);
+        s.fase = 'ADJUNTAR_FOTO'; s.ultimaObs = ult; s.esperaFoto = true;
+        await guardarSesion(from, s);
+        return `📷 Mándame la foto y la adjunto a tu última observación (*${ult.etiqueta}*).`;
+      }
+    }
+  }
 
   // Cancelar / reiniciar (solo si hay conversación viva).
   if (ses && RE_CANCELA.test(t)) {
@@ -74,14 +103,17 @@ export async function manejarMensaje({
   if (ses && ses.fase === 'CONFIRMANDO') {
     if (RE_CONFIRMA.test(t)) {
       const foto = await getFotoPendiente(from);
+      let obs;
       try {
-        await guardar(ses.borrador, tecnico, foto);
+        obs = await guardar(ses.borrador, tecnico, foto);
       } catch (e) {
         console.error('[conversacion] error al guardar:', e?.message);
         return '⚠️ No pude guardar la observación ahora mismo. Inténtalo de nuevo en un momento (responde *SÍ*).';
       }
       const b = ses.borrador;
       await limpiarTodo(from);
+      // Recordamos la obs ~30 min por si el técnico olvidó la foto y la quiere adjuntar.
+      if (obs?.id) await guardarUltimaObs(from, obs.id, b.equipo);
       return resumenGuardado(b, !!foto);
     }
     if (t) ses.historial.push(t);             // corrección → reextraer con el texto nuevo
@@ -105,7 +137,18 @@ async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar 
   try {
     const guiaTexto = await textoGuia();
     const contexto = await contextoInventario();
-    g = await analizar(textoAcum, imagenB64, mime, guiaTexto, contexto);
+    try {
+      g = await analizar(textoAcum, imagenB64, mime, guiaTexto, contexto);
+    } catch (e1) {
+      // Si falló CON imagen pero hay texto, reintentamos SOLO con el texto: la foto igual se
+      // adjunta al guardar (Gemini "verla" es opcional; el caption es la señal principal).
+      if (imagenB64 && textoAcum) {
+        console.warn('[conversacion] análisis con imagen falló, reintento solo texto:', e1?.message);
+        g = await analizar(textoAcum, null, null, guiaTexto, contexto);
+      } else {
+        throw e1;
+      }
+    }
   } catch (e) {
     console.error('[conversacion] análisis falló:', e?.message);
     await guardarSesion(from, ses);           // conserva el historial para reintentar
@@ -130,6 +173,7 @@ async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar 
   b.eqId = r.equipo.eqId;
   b.equipo = r.equipo.nombre;
   b.tipo = r.equipo.tipo;
+  b.area = r.equipo.area || '';
   b.cliente = r.equipo.cliente;
 
   // ¿Gemini sugiere una repregunta útil y aún no la hicimos?
@@ -174,8 +218,9 @@ function preguntarEquipo(sede, cands) {
   const lista = cands || [];
   if (!lista.length) return `Dame el *código* del equipo de *${sinPrefijo(sede)}* (ej. MA-...).`;
   if (lista.length <= 15) {
-    const items = lista.map((e) => `• ${e.nombre}${e.tipo ? ` (${e.tipo.toLowerCase()})` : ''}`).join('\n');
-    return `¿Cuál equipo de *${sinPrefijo(sede)}*?\n${items}\n\n_(dime el nombre, el número o el código MA-...)_`;
+    // Mostramos la UBICACIÓN (área) — es lo que el técnico reconoce ("el del comedor").
+    const items = lista.map((e) => `• ${e.nombre}${e.area ? ` — ${e.area}` : (e.tipo ? ` (${e.tipo.toLowerCase()})` : '')}`).join('\n');
+    return `¿Cuál equipo de *${sinPrefijo(sede)}*?\n${items}\n\n_(dime el nombre, la *ubicación*, el número o el código MA-...)_`;
   }
   // Muchos equipos → agrupar por tipo y pedir tipo+número o código.
   const porTipo = {};
@@ -189,6 +234,7 @@ function resumenConfirmar(b, conFoto) {
   return '📝 *Confirma la observación:*\n\n' +
     `🏪 Sede: *${sinPrefijo(b.sede)}*\n` +
     `❄️ Equipo: *${b.equipo}*${b.tipo ? ` (${String(b.tipo).toLowerCase()})` : ''}\n` +
+    (b.area ? `📍 Ubicación: ${b.area}\n` : '') +
     (b.eqId ? `🔖 Código: ${b.eqId}\n` : '') +
     `🔧 Observación: ${b.observacion}\n` +
     `📌 Estado: *${ESTADO_LABEL[b.estado] || b.estado}*\n` +
@@ -200,5 +246,40 @@ function resumenGuardado(b, conFoto) {
   return '✅ *Observación registrada.*\n\n' +
     `🏪 ${sinPrefijo(b.sede)} · ❄️ ${b.equipo}\n` +
     `📌 ${ESTADO_LABEL[b.estado] || b.estado}${conFoto ? ' · 📷' : ''}\n\n` +
-    'Gracias. Mándame otra cuando quieras.';
+    (conFoto
+      ? 'Gracias. Mándame otra cuando quieras.'
+      : '📷 _¿Olvidaste la foto? Mándamela ahora y la adjunto a esta observación._\n\nGracias. Mándame otra cuando quieras.');
+}
+
+// ── Adjuntar una foto a la última observación guardada (estado ADJUNTAR_FOTO) ──────
+async function manejarAdjuntarFoto(ses, tecnico, from, { t, imagenB64, mime, adjuntarFoto, analizar }) {
+  if (RE_CANCELA.test(t)) {
+    await limpiarTodo(from);
+    await limpiarUltimaObs(from);
+    return '👍 Listo, no adjunté nada. La observación quedó como estaba.';
+  }
+  if (imagenB64) await guardarFotoPendiente(from, imagenB64, mime);
+  const foto = await getFotoPendiente(from);
+  // Adjuntar: confirmó (SÍ), o pidió "agregar foto" y recién la mandó.
+  if (foto && (ses.esperaFoto || RE_CONFIRMA.test(t) || (imagenB64 && !t))) {
+    try {
+      await adjuntarFoto(ses.ultimaObs.obsId, foto);
+    } catch (e) {
+      console.error('[conversacion] adjuntar foto falló:', e?.message);
+      return '⚠️ No pude adjuntar la foto ahora mismo. Inténtalo de nuevo en un momento.';
+    }
+    const et = ses.ultimaObs?.etiqueta || '';
+    await limpiarSesion(from);
+    await limpiarFotoPendiente(from);
+    await limpiarUltimaObs(from);
+    return `✅ 📷 Foto agregada a tu última observación${et ? ` (*${et}*)` : ''}. ¡Gracias!`;
+  }
+  // Pidió agregar foto pero mandó texto (no la foto) → seguir esperándola.
+  if (ses.esperaFoto && !foto) return '📷 Mándame la *foto* (como imagen) y la adjunto.';
+  // No confirmó ni hay foto válida → es una observación NUEVA: arrancamos de cero
+  // (la foto pendiente, si la hubiera, se adjuntará a la nueva al guardar).
+  await limpiarUltimaObs(from);
+  const nueva = nuevaSesion(from, tecnico);
+  if (t) nueva.historial.push(t);
+  return procesarBorrador(nueva, tecnico, from, { imagenB64, mime, analizar });
 }

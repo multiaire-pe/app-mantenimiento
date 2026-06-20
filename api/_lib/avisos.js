@@ -21,6 +21,7 @@ export async function destinatariosAviso() {
 function textoAviso(obs, tecnico) {
   return '🔧 *Nueva observación* (vía WhatsApp)\n' +
     `🏪 ${sinRipley(obs.tienda)} · ❄️ ${obs.equipo}\n` +
+    (obs.area ? `📍 Ubicación: ${obs.area}\n` : '') +
     `📌 ${ESTADO_LABEL[obs.estado] || obs.estado}\n` +
     `📝 ${obs.observacion}\n` +
     `👤 Reportó: ${tecnico?.nombre || '—'}`;
@@ -40,10 +41,12 @@ export async function notificarSupervisores({ obs, tecnico }, opts = {}) {
     if (opts.enviar) {
       ok = await opts.enviar(p, obs, tecnico);                // pruebas
     } else if (plantilla) {
+      // Orden de la plantilla `nueva_observacion`: {{1}}sede {{2}}equipo {{3}}ubicación {{4}}estado {{5}}detalle.
+      // Meta rechaza parámetros vacíos o con saltos de línea → placeholder "—" y se colapsa el whitespace.
       ok = await enviarPlantilla(to, plantilla, idioma, [{
         type: 'body',
-        parameters: [sinRipley(obs.tienda), obs.equipo, ESTADO_LABEL[obs.estado] || obs.estado, obs.observacion]
-          .map((x) => ({ type: 'text', text: String(x || '').slice(0, 600) })),
+        parameters: [sinRipley(obs.tienda), obs.equipo, obs.area, ESTADO_LABEL[obs.estado] || obs.estado, obs.observacion]
+          .map((x) => ({ type: 'text', text: (String(x || '').replace(/\s+/g, ' ').trim() || '—').slice(0, 600) })),
       }]);
     } else {
       ok = await enviarTexto(to, textoAviso(obs, tecnico));   // sin plantilla → texto (ventana 24h / pruebas)

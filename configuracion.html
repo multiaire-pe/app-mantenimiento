@@ -1077,11 +1077,11 @@ async function exportBackup() {
     });
     zip.file('manta_equipos.csv', [mEquHeaders.join(','), ...mEquRows].join('\n'));
 
-    // 16. Manta — observaciones (log)
-    const mObsHeaders = ['ID','TIENDA','EQUIPO','OBSERVACION','ESTADO','FECHA','TECNICO_ID','ORIGEN','TIENE_FOTO','REGISTRADO_POR','CREADO_EN','CREADO_POR','ACTUALIZADO_EN','ACTUALIZADO_POR'];
+    // 16. Manta — observaciones (log). Obs v2: cliente/sede/eqId/tipo/area (alineado a `inventario`)
+    const mObsHeaders = ['ID','CLIENTE','SEDE','TIENDA','EQUIPO','EQ_ID','TIPO','AREA','OBSERVACION','ESTADO','FECHA','TECNICO_ID','ORIGEN','TIENE_FOTO','REGISTRADO_POR','CREADO_EN','CREADO_POR','ACTUALIZADO_EN','ACTUALIZADO_POR'];
     const mObsRows = mObsSnap.docs.map(d => {
       const r = d.data();
-      return [d.id, r.tienda||'', r.equipo||'', r.observacion||'', r.estado||'PENDIENTE', r.fecha||'', r.tecnicoId||'', r.origen||'APP', (r.tieneFoto?'SI':'NO'), r.registradoPor||'', r.createdAt||'', r.createdBy||'', r.updatedAt||'', r.updatedBy||''].map(escapeCSV).join(',');
+      return [d.id, r.cliente||'', r.sede||'', r.tienda||'', r.equipo||'', r.eqId||'', r.tipo||'', r.area||'', r.observacion||'', r.estado||'PENDIENTE', r.fecha||'', r.tecnicoId||'', r.origen||'APP', (r.tieneFoto?'SI':'NO'), r.registradoPor||'', r.createdAt||'', r.createdBy||'', r.updatedAt||'', r.updatedBy||''].map(escapeCSV).join(',');
     });
     zip.file('manta_observaciones.csv', [mObsHeaders.join(','), ...mObsRows].join('\n'));
 
@@ -1452,7 +1452,7 @@ async function confirmImport() {
     if (pendingImport.files['manta_observaciones.csv']) {
       addLog('📝 Importando observaciones (manta)...', 'info');
       const rows = parseCSV(pendingImport.files['manta_observaciones.csv']);
-      await batchWrite('manta_observaciones', rows, r => { const o={_docId:r.ID, tienda:r.TIENDA||'', equipo:r.EQUIPO||'', observacion:r.OBSERVACION||'', estado:r.ESTADO||'PENDIENTE', fecha:r.FECHA||'', tecnicoId:r.TECNICO_ID||'', origen:r.ORIGEN||'APP', tieneFoto:(r.TIENE_FOTO||'NO').toUpperCase()==='SI'}; if(r.REGISTRADO_POR)o.registradoPor=r.REGISTRADO_POR; if(r.CREADO_EN)o.createdAt=r.CREADO_EN; if(r.CREADO_POR)o.createdBy=r.CREADO_POR; if(r.ACTUALIZADO_EN)o.updatedAt=r.ACTUALIZADO_EN; if(r.ACTUALIZADO_POR)o.updatedBy=r.ACTUALIZADO_POR; return o; });
+      await batchWrite('manta_observaciones', rows, r => { const o={_docId:r.ID, cliente:r.CLIENTE||'', sede:r.SEDE||'', tienda:r.TIENDA||'', equipo:r.EQUIPO||'', eqId:r.EQ_ID||'', tipo:r.TIPO||'', area:r.AREA||'', observacion:r.OBSERVACION||'', estado:r.ESTADO||'PENDIENTE', fecha:r.FECHA||'', tecnicoId:r.TECNICO_ID||'', origen:r.ORIGEN||'APP', tieneFoto:(r.TIENE_FOTO||'NO').toUpperCase()==='SI'}; if(r.REGISTRADO_POR)o.registradoPor=r.REGISTRADO_POR; if(r.CREADO_EN)o.createdAt=r.CREADO_EN; if(r.CREADO_POR)o.createdBy=r.CREADO_POR; if(r.ACTUALIZADO_EN)o.updatedAt=r.ACTUALIZADO_EN; if(r.ACTUALIZADO_POR)o.updatedBy=r.ACTUALIZADO_POR; return o; });
       addLog('✓ Observaciones importadas (' + rows.length + ')', 'ok');
     }
 

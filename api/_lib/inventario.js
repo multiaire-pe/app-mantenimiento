@@ -17,7 +17,8 @@ export async function cargarInventario() {
     area: d.data().area || '',
   })).filter((e) => e.sede && e.nombre);
   const sedes = [...new Set(equipos.map((e) => e.sede))].sort();
-  _cache = { equipos, sedes };
+  const clientes = [...new Set(equipos.map((e) => e.cliente).filter(Boolean))].sort();
+  _cache = { equipos, sedes, clientes };
   return _cache;
 }
 
