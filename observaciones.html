@@ -232,6 +232,7 @@ tr:hover td{background:var(--surface2)}
             <th class="col-estado" title="Estado"></th>
             <th>Tienda</th>
             <th>Equipo</th>
+            <th>Ubicación</th>
             <th class="col-obs">Observación</th>
             <th>Estado</th>
             <th>Fecha</th>
@@ -241,7 +242,7 @@ tr:hover td{background:var(--surface2)}
           </tr>
         </thead>
         <tbody id="obs-body">
-          <tr><td colspan="9" class="empty-msg">Cargando observaciones…</td></tr>
+          <tr><td colspan="10" class="empty-msg">Cargando observaciones…</td></tr>
         </tbody>
       </table>
     </div>
@@ -285,7 +286,8 @@ tr:hover td{background:var(--surface2)}
       </div>
       <div class="form-group" style="min-width:0">
         <label class="form-label">Equipo <span style="color:var(--orange)">*</span></label>
-        <select id="obs-equipo" class="form-select"><option value="">Seleccionar…</option></select>
+        <select id="obs-equipo" class="form-select" onchange="onObsEquipoChange()"><option value="">Seleccionar…</option></select>
+        <div id="obs-area-hint" style="font-size:12px;color:var(--muted2);margin-top:4px"></div>
       </div>
 
       <div class="form-row">
@@ -633,7 +635,7 @@ async function loadAll(){
     obsPersonal.sort((a,b) => (a.nombre||'').localeCompare(b.nombre||'','es'));
   }catch(e){
     observaciones = [];
-    if(body) body.innerHTML = '<tr><td colspan="9" class="empty-msg">Error al cargar observaciones.</td></tr>';
+    if(body) body.innerHTML = '<tr><td colspan="10" class="empty-msg">Error al cargar observaciones.</td></tr>';
     toast('Error al cargar: ' + e.message, 'err');
     return;
   }
@@ -679,6 +681,9 @@ function obsFilter(){
   });
 }
 
+// Ubicación (área) del equipo: del propio doc, o derivada del inventario por eqId si faltara.
+function obsArea(o){ return (o && (o.area || (obsInventario.find(e=>e.eqId===o.eqId)||{}).area)) || ''; }
+
 function renderObsTable(){
   const body  = document.getElementById('obs-body');
   const list  = obsFilter();
@@ -686,7 +691,7 @@ function renderObsTable(){
   document.getElementById('obs-count').textContent =
     `${list.length} de ${observaciones.length} observaci${observaciones.length!==1?'ones':'ón'}`;
   if(!list.length){
-    body.innerHTML = `<tr><td colspan="9" class="empty-msg">${observaciones.length ? 'Sin coincidencias.' : 'Sin observaciones registradas.'}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10" class="empty-msg">${observaciones.length ? 'Sin coincidencias.' : 'Sin observaciones registradas.'}</td></tr>`;
     return;
   }
   body.innerHTML = list.map(o => {
@@ -702,6 +707,7 @@ function renderObsTable(){
       <td class="col-estado">${dot}</td>
       <td>${esc(o.tienda)}</td>
       <td style="white-space:nowrap">${esc(o.equipo)}</td>
+      <td style="white-space:nowrap;color:var(--muted2)">${obsArea(o) ? esc(obsArea(o)) : '<span style="color:var(--muted)">—</span>'}</td>
       <td class="col-obs"><span class="cell-obs" title="${esc(o.observacion)}">${esc(o.observacion)}</span></td>
       <td><span class="est-badge est-${est}">${esc(est.replace('_',' '))}</span></td>
       <td style="font-family:var(--mono);white-space:nowrap">${esc(o.fecha)}</td>
@@ -731,9 +737,18 @@ function onObsSedeChange(){
   const sede = document.getElementById('obs-sede').value;
   fillTipoSelect(document.getElementById('obs-tipo'), sede);
   fillEquipoSelect(document.getElementById('obs-equipo'), sede, '');
+  onObsEquipoChange();
 }
 function onObsTipoChange(){
   fillEquipoSelect(document.getElementById('obs-equipo'), document.getElementById('obs-sede').value, document.getElementById('obs-tipo').value);
+  onObsEquipoChange();
+}
+// Muestra la ubicación (área) del equipo seleccionado, debajo del desplegable.
+function onObsEquipoChange(){
+  const eqId = document.getElementById('obs-equipo').value;
+  const eq = obsInventario.find(e => e.eqId === eqId);
+  const hint = document.getElementById('obs-area-hint');
+  if(hint) hint.textContent = (eq && eq.area) ? `📍 Ubicación: ${eq.area}` : '';
 }
 function fillTecnicoSelect(sel, val){
   sel.innerHTML = '<option value="">—</option>' + obsPersonal.map(p=>`<option value="${esc(p.id)}"${val===p.id?' selected':''}>${esc(p.nombre)}</option>`).join('');
@@ -786,6 +801,7 @@ function openNewObs(){
   fillSedeSelect(document.getElementById('obs-sede'));
   document.getElementById('obs-tipo').innerHTML = '<option value="">Todos los tipos</option>';
   document.getElementById('obs-equipo').innerHTML = '<option value="">Seleccionar…</option>';
+  onObsEquipoChange();
   document.getElementById('obs-estado').value = 'PENDIENTE';
   document.getElementById('obs-fecha').value = hoyISO();
   fillTecnicoSelect(document.getElementById('obs-tecnico'), '');
@@ -809,6 +825,7 @@ function openEditObs(id){
   fillTipoSelect(document.getElementById('obs-tipo'), oSede);
   document.getElementById('obs-tipo').value = o.tipo || '';
   fillEquipoSelect(document.getElementById('obs-equipo'), oSede, o.tipo || '', o.eqId || '');
+  onObsEquipoChange();
   document.getElementById('obs-estado').value = o.estado || 'PENDIENTE';
   document.getElementById('obs-fecha').value = o.fecha || hoyISO();
   fillTecnicoSelect(document.getElementById('obs-tecnico'), o.tecnicoId || '');
@@ -838,7 +855,7 @@ async function saveObs(){
   const btn = document.getElementById('btn-save-obs');
   if(btn.disabled) return; btn.disabled = true;
   const now = new Date().toISOString();
-  const data = { sede: inv.sede, tienda, equipo: inv.nombre, eqId: inv.eqId, tipo: inv.tipo,
+  const data = { sede: inv.sede, tienda, equipo: inv.nombre, eqId: inv.eqId, tipo: inv.tipo, area: inv.area || '',
     observacion, estado, fecha, tecnicoId,
     tieneFoto: !!_obsFotoVal, updatedAt: now, updatedBy: maUser?.email || '' };
   const id = document.getElementById('obs-id').value;
@@ -898,21 +915,21 @@ const obsDeEquipo = (eq) => observaciones.filter(o => (o.eqId && o.eqId===eq.eqI
   || (!o.eqId && o.equipo===eq.nombre && sedeDe(o)===eq.sede));
 function exportObsExcel(){
   // Sábana completa del inventario (557 equipos): cada equipo con sus observaciones o "Sin observaciones.".
-  const data = [['CLIENTE','SEDE','TIPO','EQUIPO','CÓDIGO','OBSERVACIÓN','ESTADO','FECHA','ORIGEN']];
+  const data = [['CLIENTE','SEDE','TIPO','EQUIPO','CÓDIGO','UBICACIÓN','OBSERVACIÓN','ESTADO','FECHA','ORIGEN']];
   const usados = new Set();
   obsInventario.forEach(eq => {
     const obs = obsDeEquipo(eq);
     if(obs.length){
-      obs.forEach(o => { usados.add(o.id); data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]); });
+      obs.forEach(o => { usados.add(o.id); data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, eq.area||'', o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]); });
     } else {
-      data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, 'Sin observaciones.', '', '', '']);
+      data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, eq.area||'', 'Sin observaciones.', '', '', '']);
     }
   });
   observaciones.filter(o => !usados.has(o.id)).forEach(o => {
-    data.push([o.cliente||'', sedeDe(o), o.tipo||'', o.equipo||'', o.eqId||'', o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]);
+    data.push([o.cliente||'', sedeDe(o), o.tipo||'', o.equipo||'', o.eqId||'', obsArea(o), o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', (o.origen||'APP')]);
   });
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{wch:10},{wch:16},{wch:16},{wch:24},{wch:16},{wch:60},{wch:13},{wch:12},{wch:8}];
+  ws['!cols'] = [{wch:10},{wch:16},{wch:16},{wch:24},{wch:16},{wch:22},{wch:60},{wch:13},{wch:12},{wch:8}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'OBSERVACIONES');
   XLSX.writeFile(wb, `observaciones_${tsFile()}.xlsx`);
