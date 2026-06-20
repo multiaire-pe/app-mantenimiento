@@ -203,6 +203,7 @@ tr:hover td{background:var(--surface2)}
                oninput="renderObsTable()" autocomplete="off">
       </div>
       <div class="prov-toolbar-actions">
+        <select id="obs-f-cliente" class="form-select" style="width:auto;min-width:130px;display:none" onchange="renderObsTable()"><option value="">Todos los clientes</option></select>
         <select id="obs-f-tienda" class="form-select" style="width:auto;min-width:150px" onchange="renderObsTable()"><option value="">Todas las sedes</option></select>
         <select id="obs-f-estado" class="form-select" style="width:auto" onchange="renderObsTable()">
           <option value="">Todos los estados</option>
@@ -343,6 +344,18 @@ tr:hover td{background:var(--surface2)}
 <div class="foto-lightbox" id="foto-lightbox" onclick="closeFotoLightbox()">
   <button class="foto-lightbox-close" onclick="closeFotoLightbox()" title="Cerrar">✕</button>
   <img id="foto-lightbox-img" src="" alt="" onclick="event.stopPropagation()">
+</div>
+
+<!-- MODAL VER DETALLE (solo lectura) -->
+<div class="modal-overlay" id="modal-obs-ver" onclick="if(event.target===this)closeModal('modal-obs-ver')">
+  <div class="modal" style="max-width:560px">
+    <h2>👁 Detalle de la observación</h2>
+    <div id="obs-ver-body" style="display:flex;flex-direction:column;gap:12px;margin-top:10px"></div>
+    <div class="form-actions" style="margin-top:18px;display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn" onclick="closeModal('modal-obs-ver')">Cerrar</button>
+      <button class="btn btn-primary" id="obs-ver-edit-btn" onclick="obsVerEditar()" style="display:none">✎ Editar</button>
+    </div>
+  </div>
 </div>
 
 <!-- MODAL GUÍA DEL BOT (lista de temas) -->
@@ -646,6 +659,7 @@ async function loadAll(){
     return;
   }
   populateTiendaFilter();
+  populateClienteFilter();
   renderObsTable();
 }
 
@@ -664,8 +678,21 @@ function populateTiendaFilter(){
   sel.value = cur;
 }
 
+// Cliente de una observación (del doc o derivado del inventario por eqId).
+function obsClienteDe(o){ return (o && (o.cliente || (obsInventario.find(e=>e.eqId===o.eqId)||{}).cliente)) || ''; }
+
+// Filtro de Cliente en la barra — solo visible cuando hay más de un cliente (multi-cliente).
+function populateClienteFilter(){
+  const sel = document.getElementById('obs-f-cliente');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Todos los clientes</option>' + obsClientes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  sel.value = cur;
+  sel.style.display = obsClientes.length > 1 ? '' : 'none';
+}
+
 function clearObsFilters(){
   document.getElementById('obs-search').value='';
+  document.getElementById('obs-f-cliente').value='';
   document.getElementById('obs-f-tienda').value='';
   document.getElementById('obs-f-estado').value='';
   document.getElementById('obs-f-fecha').value='';
@@ -675,10 +702,12 @@ function clearObsFilters(){
 // ── FILTER + RENDER ─────────────────────────────────────────────────────────────
 function obsFilter(){
   const q  = (document.getElementById('obs-search').value || '').trim().toLowerCase();
+  const fc = document.getElementById('obs-f-cliente').value;
   const ft = document.getElementById('obs-f-tienda').value;
   const fe = document.getElementById('obs-f-estado').value;
   const ff = document.getElementById('obs-f-fecha').value;
   return observaciones.filter(o => {
+    if(fc && obsClienteDe(o)!==fc) return false;
     if(ft && o.tienda!==ft) return false;
     if(fe && (o.estado||'PENDIENTE')!==fe) return false;
     if(ff && (o.fecha||'')!==ff) return false;
@@ -705,11 +734,12 @@ function renderObsTable(){
     const dot   = `<span class="estado-dot est-dot ${est}" title="${est}"></span>`;
     const idAttr= esc(o.id);
     const foto  = (o.tieneFoto && obsFotos[o.id])
-      ? `<img class="obs-thumb" src="${obsFotos[o.id]}" onclick="openFotoLightbox('${idAttr}')" title="Ver foto">`
+      ? `<img class="obs-thumb" src="${obsFotos[o.id]}" onclick="event.stopPropagation();openFotoLightbox('${idAttr}')" title="Ver foto">`
       : '<span style="color:var(--muted)">—</span>';
     const origen= (o.origen||'APP').toUpperCase();
     const actIcon = admin ? '✎' : '👁';
-    return `<tr class="row-clickable" ondblclick="openEditObs('${idAttr}')">
+    const accFn = admin ? `openEditObs('${idAttr}')` : `openObsVer('${idAttr}')`;
+    return `<tr class="row-clickable" onclick="openObsVer('${idAttr}')" title="Ver detalle">
       <td class="col-estado">${dot}</td>
       <td>${esc(o.tienda)}</td>
       <td style="white-space:nowrap">${esc(o.equipo)}</td>
@@ -719,7 +749,7 @@ function renderObsTable(){
       <td style="font-family:var(--mono);white-space:nowrap">${esc(o.fecha)}</td>
       <td class="col-estado">${foto}</td>
       <td><span class="origen-badge origen-${origen}">${origen==='WHATSAPP'?'WSP':'APP'}</span></td>
-      <td class="col-acc"><button class="btn btn-sm" onclick="openEditObs('${idAttr}')" title="${admin?'Editar':'Ver'}" style="padding:3px 9px">${actIcon}</button></td>
+      <td class="col-acc"><button class="btn btn-sm" onclick="event.stopPropagation();${accFn}" title="${admin?'Editar':'Ver'}" style="padding:3px 9px">${actIcon}</button></td>
     </tr>`;
   }).join('');
 }
@@ -810,6 +840,34 @@ function refreshObsFotoPreview(){
 function openFotoSrc(src){ if(!src) return; document.getElementById('foto-lightbox-img').src=src; document.getElementById('foto-lightbox').classList.add('open'); }
 function openFotoLightbox(obsId){ openFotoSrc(obsFotos[obsId]); }
 function closeFotoLightbox(){ document.getElementById('foto-lightbox').classList.remove('open'); document.getElementById('foto-lightbox-img').src=''; }
+
+// ── MODAL VER DETALLE (solo lectura) — click en la fila abre esto ────────────────
+let _obsVerId = null;
+function openObsVer(id){
+  const o = observaciones.find(x => x.id === id);
+  if(!o) return;
+  _obsVerId = id;
+  const est = o.estado || 'PENDIENTE';
+  const area = obsArea(o);
+  const tec = (obsPersonal.find(p=>p.id===o.tecnicoId)||{}).nombre || '';
+  const cli = obsClienteDe(o);
+  const lbl = (t,v)=> v ? `<div><div style="font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.4px">${t}</div><div style="font-size:14px">${esc(v)}</div></div>` : '';
+  const foto = (o.tieneFoto && obsFotos[o.id])
+    ? `<div><div style="font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.4px">Foto</div>
+         <img src="${obsFotos[o.id]}" style="max-width:100%;max-height:300px;border-radius:8px;margin-top:6px;cursor:zoom-in" onclick="openFotoLightbox('${esc(o.id)}')" title="Ampliar"></div>`
+    : '';
+  document.getElementById('obs-ver-body').innerHTML =
+    `<div style="display:flex;gap:24px;flex-wrap:wrap">${lbl('Tienda', o.tienda)}${lbl('Cliente', obsClientes.length>1?cli:'')}${lbl('Equipo', o.equipo + (o.tipo?` · ${String(o.tipo).toLowerCase()}`:''))}${lbl('📍 Ubicación', area)}</div>` +
+    `<div><div style="font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.4px">Observación</div>
+       <div style="font-size:15px;line-height:1.55;white-space:pre-wrap;background:var(--bg2,#f6f7fb);border:1px solid var(--border,#e5e7eb);border-radius:8px;padding:12px;margin-top:6px">${esc(o.observacion||'—')}</div></div>` +
+    `<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+       <div><div style="font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.4px">Estado</div><div style="margin-top:4px"><span class="est-badge est-${est}">${esc(est.replace('_',' '))}</span></div></div>
+       ${lbl('Fecha', o.fecha)}${lbl('Técnico', tec)}${lbl('Origen', (o.origen||'APP')==='WHATSAPP'?'WhatsApp':'App')}</div>` +
+    foto;
+  document.getElementById('obs-ver-edit-btn').style.display = isObsAdmin() ? 'inline-flex' : 'none';
+  document.getElementById('modal-obs-ver').classList.add('open');
+}
+function obsVerEditar(){ const id=_obsVerId; closeModal('modal-obs-ver'); if(id) openEditObs(id); }
 
 // ── MODAL: abrir / readonly ─────────────────────────────────────────────────────
 function setObsModalReadonly(ro){
