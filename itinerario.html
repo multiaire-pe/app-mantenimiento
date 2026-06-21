@@ -176,12 +176,20 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 
 /* RESPONSIVE */
 @media(max-width:768px){
+  header{padding:0 10px;gap:8px}
+  .logo span{display:none}
+  .user-name{display:none}                  /* homogéneo con los demás módulos: solo el avatar */
+  .user-pill{padding:2px;border-radius:50%}
+  .user-avatar,.user-avatar-init,.user-avatar-img{width:32px;height:32px}
+  .back-link{border-radius:8px}
   .app{flex-direction:column;height:auto}
-  .sidebar{width:100%;min-width:unset;border-right:none;border-bottom:1.5px solid var(--border);max-height:300px}
-  .main{padding:16px}
+  .sidebar{width:100%;min-width:unset;border-right:none;border-bottom:1.5px solid var(--border);max-height:300px;overflow-x:hidden}
+  .main{padding:16px;overflow-x:hidden}   /* sin scroll lateral en móvil (no hay tablas; ambos ya tienen overflow-y:auto) */
   .bloque-body{grid-template-columns:1fr}
   .form-grid{grid-template-columns:1fr}
   .personal-grid{grid-template-columns:1fr}
+  .iti-actions{flex-direction:column}                /* botones de acción apilados, sin desbordar */
+  .iti-actions>*{width:100%;justify-content:center}
 }
 </style>
 <script src="firebase-config.js"></script>

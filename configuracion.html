@@ -136,12 +136,26 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 .tarea-item.drag-over{border-color:var(--blue);background:var(--blue-pale)}
 
 /* RESPONSIVE */
-@media(max-width:600px){
+@media(max-width:768px){
   main{padding:20px 16px}
-  header{padding:0 16px}
+  header{padding:0 12px;height:48px;gap:8px}
+  .logo span{display:none}
+  .user-name{display:none}
+  .user-pill{padding:2px;border-radius:50%}
+  .user-avatar,.user-avatar-init,.user-avatar-img{width:32px;height:32px}
+  .back-link{border-radius:8px}
+  .section-head{flex-wrap:wrap;padding:12px 14px}
+  .section-body{padding:14px}
   .add-tarea-row{flex-wrap:wrap}
   .add-tarea-row input[type=text]{width:100%}
-  .section-head{flex-wrap:wrap}
+  .section-head .btn,.section-head button{flex:1 1 auto;justify-content:center}
+  .backup-card{padding:14px}
+  .import-mode{flex-direction:column}
+  .cam-only-mobile{display:inline-flex}
+  /* Editor de personal: las filas envuelven en vez de desbordar */
+  .maestro-item{flex-wrap:wrap}
+  .maestro-input{flex:1 1 55%;min-width:120px}
+  .maestro-cargo{flex:1 1 auto;width:auto!important;min-width:90px}
 }
 
 /* BACKUP SECTION */
@@ -169,7 +183,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 .import-log p.ok{color:#4ddd88}
 .import-log p.err{color:#ff7788}
 .import-log p.info{color:#ffc266}
-@media(max-width:600px){.backup-grid{grid-template-columns:1fr}}
+@media(max-width:768px){.backup-grid{grid-template-columns:1fr}}
 
 
 /* MAESTROS MANAGEMENT */
@@ -195,6 +209,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 .per-avatar{width:34px;height:34px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--blue-pale);color:var(--blue);font-size:13px;font-weight:700;border:1.5px solid var(--border)}
 .per-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .maestro-foto-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:2px 6px;border-radius:4px;transition:all .15s;line-height:1}
+.cam-only-mobile{display:none}   /* botón 📸 Tomar foto: solo en móvil (capture=environment) */
 .maestro-foto-btn:hover{background:var(--surface3)}
 .add-maestro-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .add-maestro-row input{background:var(--surface2);border:1.5px solid var(--border);color:var(--accent);font-family:var(--font);font-size:13px;padding:8px 12px;border-radius:8px;outline:none;flex:1;min-width:120px}
@@ -1608,6 +1623,8 @@ function renderPersonal() {
       ${cargoBadgeHtml(p.cargo)}
       <label class="maestro-foto-btn" for="per-foto-${i}" title="Subir / cambiar foto">📷</label>
       <input type="file" id="per-foto-${i}" accept="image/*" style="display:none" onchange="setPersonalFoto(${i}, this.files[0]); this.value='';">
+      <label class="maestro-foto-btn cam-only-mobile" for="per-foto-cam-${i}" title="Tomar foto">📸</label>
+      <input type="file" id="per-foto-cam-${i}" accept="image/*" capture="environment" style="display:none" onchange="setPersonalFoto(${i}, this.files[0]); this.value='';">
       <button class="maestro-toggle" onclick="toggleAviso(${i})" title="${p.recibeAvisos?'📣 Recibe avisos del bot de WhatsApp':'🔕 No recibe avisos del bot'}" style="${p.recibeAvisos?'color:var(--orange-dark)':'opacity:.45'}">${p.recibeAvisos?'📣':'🔕'}</button>
       <button class="maestro-toggle" onclick="togglePersonal(${i})" title="${p.activo==='SI'?'Desactivar':'Activar'}">${p.activo==='SI'?'✅':'⭕'}</button>
       <button class="maestro-del" onclick="deletePersonal(${i})" title="Eliminar">✕</button>

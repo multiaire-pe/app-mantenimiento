@@ -158,7 +158,9 @@ tr:hover td{background:var(--surface2)}
   .hpill{display:none}
   .hactions{gap:6px}
   .user-pname{display:none}
-  .user-pill{padding:2px 4px;border-radius:50%}
+  .user-pill{padding:2px;border-radius:50%}
+  .user-avatar,.user-avatar-init,.user-avatar-img{width:32px;height:32px}
+  .back-link{border-radius:8px}
   .page{padding:14px 12px}
   footer{padding:12px 16px;flex-wrap:wrap}
   .card{padding:14px}
@@ -204,15 +206,7 @@ tr:hover td{background:var(--surface2)}
   <!-- CONFIG CARD -->
   <div class="card">
     <div class="card-title">🤖 Configuración de IA — Gemini</div>
-    <div class="form-row">
-      <div class="form-group" style="flex:2">
-        <div class="form-label">API Key de Google Gemini</div>
-        <input type="password" id="api-key-input" class="form-input"
-               placeholder="Pega tu API key de Google AI Studio..." autocomplete="off">
-      </div>
-      <button class="btn btn-primary" onclick="saveKey()">💾 Guardar key</button>
-    </div>
-    <div id="key-status" style="margin-top:8px;font-size:11px"></div>
+    <div style="font-size:12px;color:var(--muted2);line-height:1.5">🔒 La IA usa la clave del <b>servidor de MultiAire</b> (tier pagado) — no necesitas pegar ninguna API key.</div>
     <div style="margin-top:16px">
       <div class="form-label" style="margin-bottom:8px">Modelo de IA</div>
       <!-- IMPORTANT: custom pills — NOT <select> (global CSS appearance:none breaks selects) -->
@@ -478,13 +472,14 @@ function toast(msg, type){
 
 // ── GEMINI CONFIG ─────────────────────────────────────────────────────────────
 const GEMINI_MODELS = [
-  { id:'gemini-2.5-flash-lite', label:'2.5 Flash Lite' },  // default — 1000 RPD free tier
-  { id:'gemini-2.5-flash',      label:'2.5 Flash'      },  // más capaz, 250 RPD free tier
+  { id:'gemini-2.5-flash',      label:'2.5 Flash (recomendado)' },     // default — buen balance precisión/costo (tier pagado)
+  { id:'gemini-2.5-pro',        label:'2.5 Pro (máxima precisión)' },  // para comprobantes difíciles
+  { id:'gemini-2.5-flash-lite', label:'2.5 Flash Lite (rápido)' },     // el más barato/rápido, menos preciso
 ];
 const VALID_IDS = GEMINI_MODELS.map(m => m.id);
 
 let geminiModelId = (VALID_IDS.includes(localStorage.getItem('cs_gemini_model'))
-  ? localStorage.getItem('cs_gemini_model') : null) || 'gemini-2.5-flash-lite';
+  ? localStorage.getItem('cs_gemini_model') : null) || 'gemini-2.5-flash';
 let geminiKey = localStorage.getItem('cs_gemini_key') || '';
 
 function geminiUrl(model){
@@ -500,12 +495,6 @@ function initApp(){
           data-id="${m.id}" onclick="selectModel('${m.id}')">${m.label}</div>`
   ).join('');
 
-  if(geminiKey){
-    document.getElementById('api-key-input').placeholder = '(key guardada en este dispositivo)';
-    setKeyStatus(true);
-  } else {
-    setKeyStatus(false);
-  }
   updateAnalyzeBtn();
 }
 
@@ -622,7 +611,7 @@ function removeFile(i){
 
 function updateAnalyzeBtn(){
   const hasPending = pendingFiles.some(f => f.status === 'pending');
-  document.getElementById('btn-analyze').disabled = !geminiKey || !hasPending;
+  document.getElementById('btn-analyze').disabled = !hasPending;
 }
 
 // ── FREE-TIER RATE LIMITER ────────────────────────────────────────────────────
@@ -713,72 +702,35 @@ Claves requeridas:
 - "tipo": "FT"=Factura, "BO"=Boleta, "TK"=Ticket, "NC"=Nota de Crédito, "OT"=Otro.
 - "numero": número completo con serie (ejemplo: "F001-00001234"). Si no se lee usa "".
 - "ruc": RUC o DNI del emisor, solo dígitos (ejemplo: "20512345678"). Si no se lee usa "".
-- "proveedor": razón social del emisor en MAYÚSCULAS (ejemplo: "FERREYROS S.A."). Si no se lee usa "".
+- "proveedor": la RAZÓN SOCIAL LEGAL del emisor (el nombre registrado en SUNAT, el mismo que figura junto al RUC), NO la marca ni el nombre comercial ni el logo. La razón social casi siempre termina en la forma jurídica: S.A.C., S.A., E.I.R.L., S.R.L., S.C.R.L. Ejemplo: si el logo grande dice "Promart" pero el RUC corresponde a "MAESTRO PERU S.A.", usa "MAESTRO PERU S.A." (no "Promart"). En MAYÚSCULAS. Si no se lee usa "".
 - "monto": número decimal con el total a pagar (ejemplo: 150.00). Si no se lee usa 0.
 
 Responde SOLO el JSON. Ejemplo de respuesta válida:
 {"fecha":"27/05/2026","tipo":"FT","numero":"F001-00001234","ruc":"20512345678","proveedor":"FERREYROS S.A.","monto":150.00}`;
 
 // ── GEMINI CALL HELPER ────────────────────────────────────────────────────────
-// Sends one image (b64/mime) to Gemini and returns parsed JSON, throws on error
+// Llama a nuestra función serverless /api/comprobante, que usa la GEMINI_API_KEY del
+// SERVIDOR (la misma del bot, tier pagado). La key nunca llega al navegador. Se autentica
+// con el ID token de Firebase del usuario logueado. Devuelve el JSON parseado, lanza si falla.
 async function callGeminiForImage(b64, mime){
-  const res = await fetch(geminiUrl(geminiModelId), {
+  const user = window.__auth && window.__auth.currentUser;
+  if(!user) throw new Error('Sesión no válida. Vuelve a iniciar sesión.');
+  const idToken = await user.getIdToken();
+  const res = await fetch('/api/comprobante', {
     method:  'POST',
-    headers: { 'Content-Type':'application/json', 'x-goog-api-key': geminiKey },
-    body:    JSON.stringify({
-      contents: [{ parts: [
-        { inline_data: { mime_type: mime, data: b64 } },
-        { text: GEMINI_PROMPT }
-      ]}],
-      generationConfig: {
-        temperature: 0,
-        maxOutputTokens: 1024,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'object',
-          properties: {
-            fecha:     { type: 'string' },
-            tipo:      { type: 'string', enum: ['FT','BO','TK','NC','OT'] },
-            numero:    { type: 'string' },
-            ruc:       { type: 'string' },
-            proveedor: { type: 'string' },
-            monto:     { type: 'number' }
-          },
-          required: ['fecha','tipo','numero','ruc','proveedor','monto']
-        }
-      }
-    })
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + idToken },
+    body:    JSON.stringify({ image: b64, mime, model: geminiModelId })
   });
   if(!res.ok){
-    const errJson = await res.json().catch(() => ({}));
-    throw new Error(errJson?.error?.message || `HTTP ${res.status}`);
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || `HTTP ${res.status}`);
   }
-  const data = await res.json();
-  const finishReason = data?.candidates?.[0]?.finishReason;
-  if(finishReason && finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS'){
-    throw new Error(`Gemini no pudo procesar (${finishReason})`);
-  }
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  console.log('[Rendición de Caja] Gemini raw:', rawText);
-  if(!rawText){
-    console.warn('[Rendición de Caja] Empty response. Full payload:', JSON.stringify(data));
-    throw new Error('Gemini no devolvió texto');
-  }
-  const clean = rawText.replace(/```(?:json)?/gi,'').replace(/```/g,'').trim();
-  let parsed = {};
-  try{ parsed = JSON.parse(clean); }
-  catch(parseErr){
-    console.warn('[Rendición de Caja] JSON parse failed, raw:', rawText);
-    const match = rawText.match(/\{[\s\S]*\}/);
-    if(match){ try{ parsed = JSON.parse(match[0]); }catch(e2){ console.error('[Rendición de Caja] Fallback parse also failed'); } }
-    if(!Object.keys(parsed).length) throw new Error(`Respuesta inesperada: "${rawText.substring(0,80)}"`);
-  }
-  return parsed;
+  return await res.json();   // {fecha,tipo,numero,ruc,proveedor,monto}
 }
 
 // ── ANALYZE ───────────────────────────────────────────────────────────────────
 async function analyzeAll(){
-  if(!geminiKey){ toast('Configura tu API key primero', 'err'); return; }
+  if(!(window.__auth && window.__auth.currentUser)){ toast('Sesión no válida. Vuelve a entrar.', 'err'); return; }
   const toProcess = pendingFiles.filter(f => f.status === 'pending');
   if(!toProcess.length){ toast('No hay imágenes pendientes', 'err'); return; }
 

@@ -187,13 +187,28 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .empty-state .empty-icon{font-size:40px;margin-bottom:12px}
 .empty-state .empty-text{font-size:13px}
 @media(max-width:768px){
+  header{padding:0 10px;gap:8px}
+  .logo span{display:none}
+  .user-name{display:none}
+  .user-pill{padding:2px;border-radius:50%}
+  .user-avatar,.user-avatar-init,.user-avatar-img{width:32px;height:32px}
+  .back-link{border-radius:8px}
+  .main{padding:12px}
   .app{flex-direction:column;height:auto}
   .sidebar{width:100%;min-width:unset;max-height:none;border-right:none;border-bottom:1.5px solid var(--border)}
   .colabs-grid{grid-template-columns:1fr}
   .stats-row{grid-template-columns:1fr 1fr}
-  .table-head,.table-row{grid-template-columns:2fr 1fr 1fr 1fr}
+  /* La tabla tiene 7 columnas; en móvil ocultamos Cargo(2) y Comentario(7) → quedan 5 visibles.
+     La grilla DEBE tener 5 columnas (antes tenía 4 → las celdas se desalineaban). */
+  .table-head,.table-row{grid-template-columns:1.6fr .8fr .8fr .7fr 1.1fr;padding-left:10px;padding-right:10px}
   .table-head>div:nth-child(2),.table-row>div:nth-child(2),
   .table-head>div:nth-child(7),.table-row>div:nth-child(7){display:none}
+  /* Tablas secundarias (Historial 8 col, E/S 6 col, Resumen 4 col): scroll horizontal
+     en vez de aplastarse. La tabla "Hoy" (arriba) ya se reflowa a 5 columnas y no scrollea. */
+  .table-wrap{overflow-x:auto}
+  .hist-table-head,.hist-table-row{min-width:720px}
+  .es-table-head,.es-table-row{min-width:520px}
+  .resumen-table-head,.resumen-table-row{min-width:440px}
 }
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
