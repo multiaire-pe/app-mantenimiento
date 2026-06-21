@@ -207,7 +207,9 @@ option{background:#fff}
   .sidebar.open{left:0;box-shadow:4px 0 20px rgba(0,0,0,.5)}
   .main{width:100%}
   .mob-menu{display:flex!important}
-  header{padding:0 10px;gap:8px}
+  header{padding:0 8px;gap:6px}
+  .hpill{display:none}              /* la pill "Conectado · 557 equipos" no cabe en el header móvil */
+  .hdr-lbl{display:none}            /* export icon-only: 📤 / 📄 sin texto en móvil */
   .logo span{display:none}
   .user-name{display:none}
   .user-pill{padding:3px;border-radius:50%}
@@ -313,10 +315,10 @@ option{background:#fff}
   <button class="mob-menu" onclick="toggleSidebar()">☰</button>
   <div class="logo"><div style="width:8px;height:8px;border-radius:50%;background:#F47920;flex-shrink:0"></div>MultiAire <span>/ Mantenimiento</span></div>
   <div class="hpill" id="connPill">⟳ Conectando...</div>
-  <div class="saving" id="savingInd"><div class="spin"></div> Guardando...</div>
+  <div class="saving" id="savingInd"><div class="spin"></div> <span class="hdr-lbl">Guardando...</span></div>
   <div style="flex:1"></div>
-  <button class="btn btn-sm" onclick="exportWhatsApp()" id="btnExport" style="display:none;color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.25);background:none">📤 WhatsApp</button>
-  <button class="btn btn-sm" onclick="exportPDF()" id="btnPNG" style="display:none;background:none;border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.9)">📄 PDF</button>
+  <button class="btn btn-sm" onclick="exportWhatsApp()" id="btnExport" style="display:none;color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.25);background:none">📤 <span class="hdr-lbl">WhatsApp</span></button>
+  <button class="btn btn-sm" onclick="exportPDF()" id="btnPNG" style="display:none;background:none;border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.9)">📄 <span class="hdr-lbl">PDF</span></button>
   <div id="user-pill" class="user-pill" style="display:none" onclick="maOpenAdmin()"></div>
   <a href="index.html" class="back-link">← Inicio</a>
 </header>
