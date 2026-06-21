@@ -198,7 +198,9 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
   .sidebar{width:100%;min-width:unset;max-height:none;border-right:none;border-bottom:1.5px solid var(--border)}
   .colabs-grid{grid-template-columns:1fr}
   .stats-row{grid-template-columns:1fr 1fr}
-  .table-head,.table-row{grid-template-columns:2fr 1fr 1fr 1fr}
+  /* La tabla tiene 7 columnas; en móvil ocultamos Cargo(2) y Comentario(7) → quedan 5 visibles.
+     La grilla DEBE tener 5 columnas (antes tenía 4 → las celdas se desalineaban). */
+  .table-head,.table-row{grid-template-columns:1.6fr .8fr .8fr .7fr 1.1fr;padding-left:10px;padding-right:10px}
   .table-head>div:nth-child(2),.table-row>div:nth-child(2),
   .table-head>div:nth-child(7),.table-row>div:nth-child(7){display:none}
 }
