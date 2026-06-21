@@ -151,6 +151,28 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 .add-row button{padding:8px 14px;background:#1B3F8B;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;}
 .admin-foot{padding:14px 20px;border-top:1.5px solid #d0daf0;display:flex;justify-content:flex-end;gap:8px}
 
+/* ── Responsive móvil (teléfono) ─────────────────────────────────────────── */
+@media(max-width:768px){
+  header{padding:0 12px;gap:8px}
+  .logo{font-size:13px}
+  .logo span{display:none}
+  .stats{gap:10px}
+  .stat{font-size:10px}
+  .app{flex-direction:column;height:auto}                 /* sidebar arriba, tabla abajo a todo el ancho */
+  .sidebar{width:100%;min-width:0;max-height:280px;border-right:none;border-bottom:1.5px solid var(--border)}
+  .main{overflow:visible}
+  .toolbar{flex-wrap:wrap}
+  .toolbar input{max-width:none;flex:1 1 100%}
+  .cnt{margin-left:0}
+  .tw{overflow:auto;max-height:65vh}                        /* la tabla scrollea (x e y) con thead sticky */
+  .selbar{flex-wrap:wrap}
+  .modal,.eb{padding:18px}
+  .fg2{grid-template-columns:1fr}                           /* formularios del modal a 1 columna */
+  .ma{flex-direction:column}
+  .ma .btn{width:100%;justify-content:center}
+  .add-row{flex-direction:column}
+}
+
 </style>
 <script src="firebase-config.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>

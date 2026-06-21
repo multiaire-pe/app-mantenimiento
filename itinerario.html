@@ -176,12 +176,16 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 
 /* RESPONSIVE */
 @media(max-width:768px){
+  header{padding:0 12px;gap:8px}
+  .logo span{display:none}
   .app{flex-direction:column;height:auto}
   .sidebar{width:100%;min-width:unset;border-right:none;border-bottom:1.5px solid var(--border);max-height:300px}
   .main{padding:16px}
   .bloque-body{grid-template-columns:1fr}
   .form-grid{grid-template-columns:1fr}
   .personal-grid{grid-template-columns:1fr}
+  .iti-actions{flex-direction:column}                /* botones de acción apilados, sin desbordar */
+  .iti-actions>*{width:100%;justify-content:center}
 }
 </style>
 <script src="firebase-config.js"></script>
