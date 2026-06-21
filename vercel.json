@@ -1,5 +1,10 @@
 {
   "git": {
     "deploymentEnabled": false
+  },
+  "functions": {
+    "api/whatsapp.js": {
+      "maxDuration": 30
+    }
   }
 }

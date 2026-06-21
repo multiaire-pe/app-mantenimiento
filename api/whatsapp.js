@@ -12,7 +12,7 @@
 // Endpoint final: https://<dominio>/api/whatsapp   (GET = verificación · POST = mensajes)
 
 import crypto from 'node:crypto';
-import { yaProcesado } from './_lib/idempotencia.js';
+import { yaProcesado, liberarMensaje } from './_lib/idempotencia.js';
 import { identificarTecnico } from './_lib/identidad.js';
 import { enviarTexto } from './_lib/whatsapp.js';
 import { manejarMensaje } from './_lib/conversacion.js';
@@ -71,14 +71,19 @@ export default async function handler(req, res) {
     try { payload = JSON.parse(raw.toString('utf8')); } catch { return res.status(200).send('EVENT_RECEIVED'); }
 
     const mensajes = payload?.entry?.[0]?.changes?.[0]?.value?.messages || [];
+    let reintentar = false;
     for (const msg of mensajes) {
       try {
         await procesarMensaje(msg);
       } catch (e) {
         console.error('[whatsapp] error procesando mensaje', msg?.id, e?.message);
+        if (e?.recuperable) reintentar = true;   // falló ANTES de escribir → vale la pena que Meta reintente
       }
     }
 
+    // Si un fallo recuperable (pre-escritura) tumbó algún mensaje, respondemos 500 para que Meta
+    // reintente; la idempotencia evita duplicar los que SÍ se procesaron en este lote.
+    if (reintentar) return res.status(500).send('RETRY');
     // Acusar recibo (procesamos antes de responder; Meta reintenta si tardamos → idempotencia cubre dups).
     return res.status(200).send('EVENT_RECEIVED');
   }
@@ -95,48 +100,62 @@ async function procesarMensaje(msg) {
     return;
   }
 
-  // Identidad: ¿de quién es este número?
-  const tecnico = await identificarTecnico(msg.from);
-  if (!tecnico) {
-    console.log('[whatsapp] número no reconocido:', msg.from);
-    await enviarTexto(msg.from,
-      '👋 Hola. No reconozco este número en el sistema de MultiAire. ' +
-      'Pídele al administrador que registre tu número (en el personal) para poder usar el bot de observaciones.');
-    return;
+  let escrituraIniciada = false;
+  try {
+    // Identidad: ¿de quién es este número?
+    const tecnico = await identificarTecnico(msg.from);
+    if (!tecnico) {
+      console.log('[whatsapp] número no reconocido:', msg.from);
+      await enviarTexto(msg.from,
+        '👋 Hola. No reconozco este número en el sistema de MultiAire. ' +
+        'Pídele al administrador que registre tu número (en el personal) para poder usar el bot de observaciones.');
+      return;
+    }
+
+    // Texto del mensaje (o pie de la foto).
+    const texto = msg.text?.body || msg.image?.caption || '';
+
+    // Fase 5: si es una imagen, la descargamos para que el bot la "vea" (Gemini) y la adjunte.
+    let imagenB64 = null, mime = null;
+    if (msg.type === 'image' && msg.image?.id) {
+      const media = await descargarMedia(msg.image.id);
+      if (media) { imagenB64 = media.base64; mime = media.mime; }
+    }
+
+    // Tipos no soportados (audio, documento, ubicación…) y sin texto → pedir texto o foto.
+    if (!texto && !imagenB64 && msg.type && msg.type !== 'text') {
+      await enviarTexto(msg.from,
+        '📝 Por ahora mándame la observación en *texto* o como *foto* (con o sin descripción).');
+      return;
+    }
+
+    console.log('[whatsapp] mensaje de', tecnico.nombre, `(${tecnico.id})`, '·', msg.type, '·', texto || '(sin texto)', imagenB64 ? '· 📷' : '');
+
+    // Motor conversacional (Fase 4) + escritura con foto + aviso a supervisores (Fase 5).
+    const respuesta = await manejarMensaje({
+      tecnico,
+      from: msg.from,
+      texto,
+      imagenB64,
+      mime,
+      guardar: async (borrador, tec, foto) => {
+        escrituraIniciada = true;   // de aquí en adelante YA se escribe → no liberar la marca (evita doble obs)
+        const obs = await guardarObservacion(borrador, tec, foto);
+        // El aviso no debe romper el flujo si falla (plantilla no aprobada, etc.).
+        notificarSupervisores({ obs, tecnico: tec }).catch((e) => console.error('[whatsapp] aviso falló:', e?.message));
+        return obs;
+      },
+    });
+    if (respuesta) await enviarTexto(msg.from, respuesta);
+  } catch (e) {
+    // Si el fallo ocurrió ANTES de cualquier escritura, liberamos la marca de idempotencia para que
+    // el reintento de Meta reprocese el mensaje (no perderlo). Si ya empezó a escribir, NO la liberamos:
+    // la observación pudo quedar guardada y reprocesar la duplicaría. (Los errores de escritura, además,
+    // los maneja conversacion.js con gracia pidiendo reintentar el "SÍ", sin propagar excepción.)
+    if (!escrituraIniciada) {
+      await liberarMensaje(msg.id);
+      e.recuperable = true;
+    }
+    throw e;
   }
-
-  // Texto del mensaje (o pie de la foto).
-  const texto = msg.text?.body || msg.image?.caption || '';
-
-  // Fase 5: si es una imagen, la descargamos para que el bot la "vea" (Gemini) y la adjunte.
-  let imagenB64 = null, mime = null;
-  if (msg.type === 'image' && msg.image?.id) {
-    const media = await descargarMedia(msg.image.id);
-    if (media) { imagenB64 = media.base64; mime = media.mime; }
-  }
-
-  // Tipos no soportados (audio, documento, ubicación…) y sin texto → pedir texto o foto.
-  if (!texto && !imagenB64 && msg.type && msg.type !== 'text') {
-    await enviarTexto(msg.from,
-      '📝 Por ahora mándame la observación en *texto* o como *foto* (con o sin descripción).');
-    return;
-  }
-
-  console.log('[whatsapp] mensaje de', tecnico.nombre, `(${tecnico.id})`, '·', msg.type, '·', texto || '(sin texto)', imagenB64 ? '· 📷' : '');
-
-  // Motor conversacional (Fase 4) + escritura con foto + aviso a supervisores (Fase 5).
-  const respuesta = await manejarMensaje({
-    tecnico,
-    from: msg.from,
-    texto,
-    imagenB64,
-    mime,
-    guardar: async (borrador, tec, foto) => {
-      const obs = await guardarObservacion(borrador, tec, foto);
-      // El aviso no debe romper el flujo si falla (plantilla no aprobada, etc.).
-      notificarSupervisores({ obs, tecnico: tec }).catch((e) => console.error('[whatsapp] aviso falló:', e?.message));
-      return obs;
-    },
-  });
-  if (respuesta) await enviarTexto(msg.from, respuesta);
 }

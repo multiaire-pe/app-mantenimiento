@@ -26,20 +26,36 @@ export function nuevaSesion(from, tecnico) {
 // Devuelve la sesión activa o null (si no existe o ya expiró).
 export async function getSesion(from) {
   if (!from) return null;
-  const snap = await getDb().collection(COL).doc(String(from)).get();
+  const ref = getDb().collection(COL).doc(String(from));
+  const snap = await ref.get();
   if (!snap.exists) return null;
   const s = snap.data();
-  if (s?.expiraEn && new Date(s.expiraEn).getTime() < Date.now()) return null; // expirada
+  if (s?.expiraEn && new Date(s.expiraEn).getTime() < Date.now()) {
+    // Expirada: la borramos para que una conversación nueva NO herede su historial al fusionar.
+    await ref.delete().catch(() => {});
+    return null;
+  }
   return s;
 }
 
-// Persiste la sesión (sobrescribe) y renueva su TTL.
+// Persiste la sesión y renueva su TTL. Usa una transacción que FUSIONA el historial con el del
+// doc actual (union por valor): si dos mensajes del mismo número se procesan casi a la vez, ninguno
+// pierde su texto. El resto del estado (fase/borrador) es last-write-wins, pero se re-deriva del
+// historial en el siguiente turno (procesarBorrador reextrae el acumulado), así que se autocorrige.
 export async function guardarSesion(from, ses) {
   const now = Date.now();
   ses.from = String(from);
   ses.updatedAt = new Date(now).toISOString();
   ses.expiraEn = new Date(now + TTL_MS).toISOString();
-  await getDb().collection(COL).doc(String(from)).set(ses);
+  const ref = getDb().collection(COL).doc(String(from));
+  await getDb().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const prev = (snap.exists && Array.isArray(snap.data().historial)) ? snap.data().historial : [];
+    const merged = prev.slice();
+    for (const h of (ses.historial || [])) if (!merged.includes(h)) merged.push(h);
+    ses.historial = merged;
+    tx.set(ref, ses);
+  });
   return ses;
 }
 

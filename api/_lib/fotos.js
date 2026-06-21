@@ -5,6 +5,7 @@ import { getDb } from './firestore.js';
 
 const COL = 'wa_sesiones_fotos';
 const MAX_B64 = 900 * 1024; // ~900KB: deja margen bajo el límite de 1MB por doc de Firestore
+const TTL_MS = 30 * 60 * 1000; // 30 min: misma ventana que la sesión (wa_sesiones) — la foto no debe sobrevivirla
 
 // Guarda la foto pendiente. Devuelve true si se guardó (false si no hay o es muy grande).
 export async function guardarFotoPendiente(from, base64, mime) {
@@ -13,8 +14,11 @@ export async function guardarFotoPendiente(from, base64, mime) {
     console.warn('[fotos] imagen muy grande, no se adjunta:', base64.length, 'bytes b64');
     return false;
   }
+  const now = Date.now();
   await getDb().collection(COL).doc(String(from)).set({
-    base64, mime: mime || 'image/jpeg', updatedAt: new Date().toISOString(),
+    base64, mime: mime || 'image/jpeg',
+    updatedAt: new Date(now).toISOString(),
+    expiraEn: new Date(now + TTL_MS).toISOString(),
   });
   return true;
 }
@@ -23,6 +27,7 @@ export async function getFotoPendiente(from) {
   const snap = await getDb().collection(COL).doc(String(from)).get();
   if (!snap.exists) return null;
   const d = snap.data();
+  if (d?.expiraEn && new Date(d.expiraEn).getTime() < Date.now()) return null; // expirada (defensa por si no se limpió)
   return d?.base64 ? { base64: d.base64, mime: d.mime || 'image/jpeg' } : null;
 }
 

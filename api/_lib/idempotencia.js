@@ -17,3 +17,11 @@ export async function yaProcesado(messageId, meta = {}) {
     throw e; // otro error real → propagar para que Meta reintente (no perder el mensaje)
   }
 }
+
+// Libera la marca de un mensaje (lo "des-procesa"). Se usa cuando el procesamiento falló
+// ANTES de cualquier escritura: borrando la marca, el reintento de Meta lo reprocesa y no se
+// pierde. NO se llama si ya se empezó a escribir (evitaría una observación duplicada).
+export async function liberarMensaje(messageId) {
+  if (!messageId) return;
+  await getDb().collection('wa_mensajes').doc(messageId).delete().catch(() => {});
+}

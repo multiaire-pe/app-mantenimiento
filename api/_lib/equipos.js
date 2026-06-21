@@ -23,6 +23,12 @@ const STOP = new Set(['DE', 'DEL', 'LA', 'EL', 'LOS', 'LAS', 'AA', 'AIRE', 'ACON
   'EQUIPO', 'UNIDAD', 'EN', 'PISO', 'NIVEL', 'Nº', 'NRO', 'NUMERO', 'QUE', 'UN', 'UNA']);
 const tokens = (s) => norm(s).split(' ').filter((t) => t.length > 1 && !STOP.has(t));
 
+// Palabras-número coloquiales → dígito ("extractor uno" → "extractor 1"). Excluye UN/UNA
+// (artículos: "una cortina" NO debe volverse "1 cortina" e inyectar un número falso).
+const NUM_PALABRA = { UNO: '1', DOS: '2', TRES: '3', CUATRO: '4', CINCO: '5', SEIS: '6',
+  SIETE: '7', OCHO: '8', NUEVE: '9', DIEZ: '10', ONCE: '11', DOCE: '12' };
+const conNumeros = (s) => norm(s).split(' ').map((w) => NUM_PALABRA[w] || w).join(' ');
+
 function matchSede(sedeRaw, sedes, clientes) {
   const q = sinClientes(sedeRaw, clientes);
   if (!q) return { ok: false, candidatos: sedes };
@@ -82,8 +88,9 @@ function matchEquipo(equipoRaw, sede, equipos, cliente) {
 
   // 3) scoring por NOMBRE + ÁREA (ubicación) + número. El tipo ya filtró el pool;
   //    NO se puntúa por eq_id (su prefijo "MA" está en todos los códigos).
-  const qToks = tokens(equipoRaw);
-  const qNums = (q.match(/\d+/g) || []).map((n) => parseInt(n, 10));
+  const qNum = conNumeros(equipoRaw);                    // "extractor uno" → "extractor 1"
+  const qToks = tokens(qNum);
+  const qNums = (qNum.match(/\d+/g) || []).map((n) => parseInt(n, 10));
   const scored = pool.map((e) => {
     const nombreTxt = norm(e.nombre);
     const areaTxt = norm(e.area);
@@ -115,11 +122,20 @@ function matchEquipo(equipoRaw, sede, equipos, cliente) {
 
 // Resuelve {sede, equipo} contra `inventario`. `equipo` = objeto {eqId, sede, cliente, tipo, nombre, area}.
 // Multi-cliente: detecta el cliente nombrado (si lo hay) para desambiguar sedes compartidas.
-export async function resolverEquipo(sedeRaw, equipoRaw) {
+// `textoCompleto` (opcional) = todo lo que dijo el técnico; se usa para detectar el cliente aunque
+// no esté en sedeRaw/equipoRaw (p.ej. lo respondió a una repregunta). Cae a sedeRaw+equipoRaw.
+export async function resolverEquipo(sedeRaw, equipoRaw, textoCompleto) {
   const { equipos, sedes, clientes } = await cargarInventario();
-  const cliente = clienteMencionado(`${sedeRaw || ''} ${equipoRaw || ''}`, clientes);
+  const cliente = clienteMencionado(textoCompleto || `${sedeRaw || ''} ${equipoRaw || ''}`, clientes);
   const t = matchSede(sedeRaw, sedes, clientes);
   if (!t.ok) return { ok: false, motivo: 'sede', candidatosSede: t.candidatos };
+  // Multi-cliente: si esa sede existe para >1 cliente y el técnico no dijo cuál, preguntamos
+  // (evita emparejar silenciosamente con el equipo del cliente equivocado). Con un solo cliente
+  // —caso de hoy: solo RIPLEY— esta rama nunca dispara.
+  const clientesSede = [...new Set(equipos.filter((e) => e.sede === t.sede).map((e) => e.cliente).filter(Boolean))];
+  if (clientesSede.length > 1 && !cliente) {
+    return { ok: false, motivo: 'cliente', sede: t.sede, candidatosCliente: clientesSede };
+  }
   const e = matchEquipo(equipoRaw, t.sede, equipos, cliente);
   if (!e.ok) return { ok: false, motivo: 'equipo', sede: t.sede, candidatosEquipo: e.candidatos };
   return { ok: true, sede: t.sede, equipo: e.equipo };
