@@ -34,7 +34,7 @@ header{background:#1B3F8B;border-bottom:none;padding:0 24px;height:52px;display:
 .stat{font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.6)}
 .stat strong{color:#fff}
 .app{display:flex;height:calc(100vh - 52px)}
-.sidebar{width:240px;min-width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.sidebar{width:240px;min-width:240px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto}
 .sec{padding:12px 14px 6px;font-size:10px;font-weight:700;letter-spacing:.1em;color:#1B3F8B;text-transform:uppercase}
 .fg{padding:0 8px 8px}
 .fl{font-size:10px;color:var(--muted);padding:4px 6px 2px}
@@ -207,7 +207,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 <body>
 <header>
   <div class="logo"><div style="width:8px;height:8px;border-radius:50%;background:#F47920;flex-shrink:0"></div>MultiAire <span>/ Inventario de Equipos</span></div>
-  <div class="pill loading" id="pill">⟳ Conectando...</div><div style="flex:1"></div><div id="user-pill" class="user-pill" style="display:none;margin-right:8px;margin-left:auto" onclick="maOpenAdmin()"></div><a href="index.html" style="font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:20px;white-space:nowrap">&#8592; Inicio</a>
+  <div class="pill loading" id="pill">⟳ Conectando...</div><div style="flex:1"></div><div id="user-pill" class="user-pill" style="display:none;margin-right:8px;margin-left:auto" onclick="maOpenAdmin()"></div><a href="index.html" style="font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:8px;white-space:nowrap">&#8592; Inicio</a>
   <div class="stats" style="margin-left:0">
     <div class="stat">Equipos: <strong id="sTotal">—</strong></div>
     <div class="stat">Sedes: <strong id="sSedes">—</strong></div>
