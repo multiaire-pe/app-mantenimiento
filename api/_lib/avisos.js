@@ -33,6 +33,8 @@ export async function notificarSupervisores({ obs, tecnico }, opts = {}) {
   const destinos = opts.destinos || await destinatariosAviso();
   const plantilla = process.env.WHATSAPP_TEMPLATE_AVISO || '';
   const idioma = process.env.WHATSAPP_TEMPLATE_IDIOMA || 'es';
+  const _enviarPlantilla = opts.enviarPlantilla || enviarPlantilla;  // inyectables en pruebas
+  const _enviarTexto = opts.enviarTexto || enviarTexto;
   let n = 0;
   for (const p of destinos) {
     if (tecnico && p.id === tecnico.id) continue;             // no avisar a quien reportó
@@ -43,13 +45,19 @@ export async function notificarSupervisores({ obs, tecnico }, opts = {}) {
     } else if (plantilla) {
       // Orden de la plantilla `nueva_observacion`: {{1}}sede {{2}}equipo {{3}}ubicación {{4}}estado {{5}}detalle.
       // Meta rechaza parámetros vacíos o con saltos de línea → placeholder "—" y se colapsa el whitespace.
-      ok = await enviarPlantilla(to, plantilla, idioma, [{
+      ok = await _enviarPlantilla(to, plantilla, idioma, [{
         type: 'body',
         parameters: [sinRipley(obs.tienda), obs.equipo, obs.area, ESTADO_LABEL[obs.estado] || obs.estado, obs.observacion]
           .map((x) => ({ type: 'text', text: (String(x || '').replace(/\s+/g, ' ').trim() || '—').slice(0, 600) })),
       }]);
+      // Si la plantilla falla (typo en el nombre, pausada, error transitorio), caer a texto libre:
+      // le llega igual al supervisor que esté dentro de su ventana de 24h.
+      if (!ok) {
+        console.warn('[avisos] plantilla falló, intento texto libre ·', to);
+        ok = await _enviarTexto(to, textoAviso(obs, tecnico));
+      }
     } else {
-      ok = await enviarTexto(to, textoAviso(obs, tecnico));   // sin plantilla → texto (ventana 24h / pruebas)
+      ok = await _enviarTexto(to, textoAviso(obs, tecnico));  // sin plantilla → texto (ventana 24h / pruebas)
     }
     if (ok) n++;
   }
