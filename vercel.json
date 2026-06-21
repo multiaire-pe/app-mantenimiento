@@ -5,6 +5,9 @@
   "functions": {
     "api/whatsapp.js": {
       "maxDuration": 30
+    },
+    "api/comprobante.js": {
+      "maxDuration": 30
     }
   }
 }
