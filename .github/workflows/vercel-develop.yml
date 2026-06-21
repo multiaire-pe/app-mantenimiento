@@ -3,6 +3,7 @@ name: Deploy Develop → Vercel
 on:
   push:
     branches: [develop]
+  workflow_dispatch:        # permite redeploy manual (ej. tras cambiar env vars) sin un push
 
 jobs:
   deploy:
