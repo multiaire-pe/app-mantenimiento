@@ -23,6 +23,12 @@ const STOP = new Set(['DE', 'DEL', 'LA', 'EL', 'LOS', 'LAS', 'AA', 'AIRE', 'ACON
   'EQUIPO', 'UNIDAD', 'EN', 'PISO', 'NIVEL', 'Nº', 'NRO', 'NUMERO', 'QUE', 'UN', 'UNA']);
 const tokens = (s) => norm(s).split(' ').filter((t) => t.length > 1 && !STOP.has(t));
 
+// Palabras-número coloquiales → dígito ("extractor uno" → "extractor 1"). Excluye UN/UNA
+// (artículos: "una cortina" NO debe volverse "1 cortina" e inyectar un número falso).
+const NUM_PALABRA = { UNO: '1', DOS: '2', TRES: '3', CUATRO: '4', CINCO: '5', SEIS: '6',
+  SIETE: '7', OCHO: '8', NUEVE: '9', DIEZ: '10', ONCE: '11', DOCE: '12' };
+const conNumeros = (s) => norm(s).split(' ').map((w) => NUM_PALABRA[w] || w).join(' ');
+
 function matchSede(sedeRaw, sedes, clientes) {
   const q = sinClientes(sedeRaw, clientes);
   if (!q) return { ok: false, candidatos: sedes };
@@ -82,8 +88,9 @@ function matchEquipo(equipoRaw, sede, equipos, cliente) {
 
   // 3) scoring por NOMBRE + ÁREA (ubicación) + número. El tipo ya filtró el pool;
   //    NO se puntúa por eq_id (su prefijo "MA" está en todos los códigos).
-  const qToks = tokens(equipoRaw);
-  const qNums = (q.match(/\d+/g) || []).map((n) => parseInt(n, 10));
+  const qNum = conNumeros(equipoRaw);                    // "extractor uno" → "extractor 1"
+  const qToks = tokens(qNum);
+  const qNums = (qNum.match(/\d+/g) || []).map((n) => parseInt(n, 10));
   const scored = pool.map((e) => {
     const nombreTxt = norm(e.nombre);
     const areaTxt = norm(e.area);

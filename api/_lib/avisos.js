@@ -31,6 +31,7 @@ function textoAviso(obs, tecnico) {
 // Devuelve cuántos avisos se enviaron.
 export async function notificarSupervisores({ obs, tecnico }, opts = {}) {
   const destinos = opts.destinos || await destinatariosAviso();
+  if (!destinos.length) console.log('[avisos] 0 supervisores con recibeAvisos — nadie será notificado · obs', obs.id || '');
   const plantilla = process.env.WHATSAPP_TEMPLATE_AVISO || '';
   const idioma = process.env.WHATSAPP_TEMPLATE_IDIOMA || 'es';
   const _enviarPlantilla = opts.enviarPlantilla || enviarPlantilla;  // inyectables en pruebas

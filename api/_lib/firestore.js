@@ -8,9 +8,13 @@ let _db = null;
 function credencial() {
   const raw = (process.env.FIREBASE_SERVICE_ACCOUNT || '').trim();
   if (!raw) throw new Error('Falta la variable de entorno FIREBASE_SERVICE_ACCOUNT');
-  // Acepta el JSON directo o codificado en base64 (para evitar problemas con saltos de línea).
-  const json = raw.startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8');
-  return JSON.parse(json);
+  try {
+    // Acepta el JSON directo o codificado en base64 (para evitar problemas con saltos de línea).
+    const json = raw.startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8');
+    return JSON.parse(json);
+  } catch (e) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT inválido (no es un JSON ni el base64 de un JSON): ' + e.message);
+  }
 }
 
 export function getDb() {

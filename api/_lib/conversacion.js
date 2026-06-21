@@ -88,15 +88,19 @@ export async function manejarMensaje({
     return '🔄 Empecemos de nuevo. Cuéntame la observación (tienda, equipo y el hallazgo).';
   }
 
-  // Si llegó una foto, la guardamos pendiente (se adjunta al confirmar).
-  if (imagenB64) await guardarFotoPendiente(from, imagenB64, mime);
+  // Si llegó una foto, la guardamos pendiente (se adjunta al confirmar). Si es muy grande no se
+  // guarda (devuelve false) → avisamos al técnico y seguimos con la observación sin la foto.
+  let avisoFoto = '';
+  if (imagenB64 && !(await guardarFotoPendiente(from, imagenB64, mime))) {
+    avisoFoto = '⚠️ Esa foto pesa demasiado, no pude adjuntarla. Compríme y reenvíala. Sigo con la observación.\n\n';
+  }
 
   // "Guardar así": saltar la repregunta de detalle y pasar a confirmar lo que haya.
   if (ses && ses.fase === 'RECOLECTANDO' && ses.faltante === 'detalle' && RE_GUARDA_ASI.test(t)) {
     ses.fase = 'CONFIRMANDO';
     ses.faltante = null;
     await guardarSesion(from, ses);
-    return resumenConfirmar(ses.borrador, await tieneFotoPendiente(from));
+    return avisoFoto + resumenConfirmar(ses.borrador, await tieneFotoPendiente(from));
   }
 
   // En confirmación: "SÍ" guarda; cualquier otra cosa se trata como corrección.
@@ -117,7 +121,7 @@ export async function manejarMensaje({
       return resumenGuardado(b, !!foto);
     }
     if (t) ses.historial.push(t);             // corrección → reextraer con el texto nuevo
-    return procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar });
+    return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar });
   }
 
   // Nuevo mensaje o sesión en RECOLECTANDO.
@@ -127,7 +131,7 @@ export async function manejarMensaje({
     await guardarSesion(from, ses);
     return 'Cuéntame la observación: en qué *sede* y *equipo*, y qué encontraste. 🛠️';
   }
-  return procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar });
+  return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar });
 }
 
 // ── Núcleo: reextrae el acumulado, resuelve tienda/equipo y decide el siguiente paso ──
