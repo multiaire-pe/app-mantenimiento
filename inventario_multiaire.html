@@ -153,11 +153,11 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 
 /* ── Responsive móvil (teléfono) ─────────────────────────────────────────── */
 @media(max-width:768px){
-  header{padding:0 12px;gap:8px}
+  header{padding:0 10px;gap:6px}
   .logo{font-size:13px}
   .logo span{display:none}
-  .stats{gap:10px}
-  .stat{font-size:10px}
+  .user-name{display:none}              /* solo el avatar: el nombre desbordaba el header */
+  .stats{display:none}                  /* las stats (Equipos/Sedes/Tipos) sacaban la página de pantalla; el conteo ya sale en la toolbar */
   .app{flex-direction:column;height:auto}                 /* sidebar arriba, tabla abajo a todo el ancho */
   .sidebar{width:100%;min-width:0;max-height:280px;border-right:none;border-bottom:1.5px solid var(--border)}
   .main{overflow:visible}
