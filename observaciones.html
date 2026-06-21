@@ -213,8 +213,8 @@ tr:hover td{background:var(--surface2)}
           <option value="EN_PROCESO">🟡 En proceso</option>
           <option value="OK">🟢 OK</option>
         </select>
-        <input type="date" id="obs-f-fecha" class="form-input" style="width:auto" onchange="renderObsTable()" title="Filtrar por fecha">
-        <button class="btn btn-sm" onclick="clearObsFilters()" title="Limpiar filtros">✕</button>
+        <input type="date" id="obs-f-fecha" class="form-input" style="width:auto;min-width:150px" onchange="renderObsTable()" title="Filtrar por fecha">
+        <button class="btn btn-sm" onclick="clearObsFilters()" title="Limpiar filtros">✕ Limpiar</button>
         <button class="btn btn-sm btn-green" onclick="exportObsExcel()">⬇ Excel</button>
         <button class="btn btn-sm btn-green" onclick="exportObsPDF()">⬇ PDF</button>
         <button class="btn btn-sm btn-primary" id="btn-new-obs" onclick="openNewObs()" style="display:none">＋ Nueva observación</button>

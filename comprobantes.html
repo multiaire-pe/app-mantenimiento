@@ -480,13 +480,14 @@ function toast(msg, type){
 
 // ── GEMINI CONFIG ─────────────────────────────────────────────────────────────
 const GEMINI_MODELS = [
-  { id:'gemini-2.5-flash-lite', label:'2.5 Flash Lite' },  // default — 1000 RPD free tier
-  { id:'gemini-2.5-flash',      label:'2.5 Flash'      },  // más capaz, 250 RPD free tier
+  { id:'gemini-2.5-flash',      label:'2.5 Flash (recomendado)' },     // default — buen balance precisión/costo (tier pagado)
+  { id:'gemini-2.5-pro',        label:'2.5 Pro (máxima precisión)' },  // para comprobantes difíciles
+  { id:'gemini-2.5-flash-lite', label:'2.5 Flash Lite (rápido)' },     // el más barato/rápido, menos preciso
 ];
 const VALID_IDS = GEMINI_MODELS.map(m => m.id);
 
 let geminiModelId = (VALID_IDS.includes(localStorage.getItem('cs_gemini_model'))
-  ? localStorage.getItem('cs_gemini_model') : null) || 'gemini-2.5-flash-lite';
+  ? localStorage.getItem('cs_gemini_model') : null) || 'gemini-2.5-flash';
 let geminiKey = localStorage.getItem('cs_gemini_key') || '';
 
 function geminiUrl(model){
@@ -715,7 +716,7 @@ Claves requeridas:
 - "tipo": "FT"=Factura, "BO"=Boleta, "TK"=Ticket, "NC"=Nota de Crédito, "OT"=Otro.
 - "numero": número completo con serie (ejemplo: "F001-00001234"). Si no se lee usa "".
 - "ruc": RUC o DNI del emisor, solo dígitos (ejemplo: "20512345678"). Si no se lee usa "".
-- "proveedor": razón social del emisor en MAYÚSCULAS (ejemplo: "FERREYROS S.A."). Si no se lee usa "".
+- "proveedor": la RAZÓN SOCIAL LEGAL del emisor (el nombre registrado en SUNAT, el mismo que figura junto al RUC), NO la marca ni el nombre comercial ni el logo. La razón social casi siempre termina en la forma jurídica: S.A.C., S.A., E.I.R.L., S.R.L., S.C.R.L. Ejemplo: si el logo grande dice "Promart" pero el RUC corresponde a "MAESTRO PERU S.A.", usa "MAESTRO PERU S.A." (no "Promart"). En MAYÚSCULAS. Si no se lee usa "".
 - "monto": número decimal con el total a pagar (ejemplo: 150.00). Si no se lee usa 0.
 
 Responde SOLO el JSON. Ejemplo de respuesta válida:

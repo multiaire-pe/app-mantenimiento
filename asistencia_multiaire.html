@@ -203,6 +203,12 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
   .table-head,.table-row{grid-template-columns:1.6fr .8fr .8fr .7fr 1.1fr;padding-left:10px;padding-right:10px}
   .table-head>div:nth-child(2),.table-row>div:nth-child(2),
   .table-head>div:nth-child(7),.table-row>div:nth-child(7){display:none}
+  /* Tablas secundarias (Historial 8 col, E/S 6 col, Resumen 4 col): scroll horizontal
+     en vez de aplastarse. La tabla "Hoy" (arriba) ya se reflowa a 5 columnas y no scrollea. */
+  .table-wrap{overflow-x:auto}
+  .hist-table-head,.hist-table-row{min-width:720px}
+  .es-table-head,.es-table-row{min-width:520px}
+  .resumen-table-head,.resumen-table-row{min-width:440px}
 }
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
