@@ -176,8 +176,10 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 
 /* RESPONSIVE */
 @media(max-width:768px){
-  header{padding:0 12px;gap:8px}
+  header{padding:0 10px;gap:8px}
   .logo span{display:none}
+  .user-name{display:none}                  /* homogéneo con los demás módulos: solo el avatar */
+  .user-pill{padding:3px;border-radius:50%}
   .app{flex-direction:column;height:auto}
   .sidebar{width:100%;min-width:unset;border-right:none;border-bottom:1.5px solid var(--border);max-height:300px}
   .main{padding:16px}
