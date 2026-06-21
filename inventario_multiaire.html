@@ -157,7 +157,9 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
   .logo{font-size:13px}
   .logo span{display:none}
   .user-name{display:none}              /* solo el avatar: el nombre desbordaba el header */
-  .user-pill{padding:3px;border-radius:50%}   /* sin el nombre, el pill queda como círculo limpio (no óvalo) */
+  .user-pill{padding:2px;border-radius:50%}   /* solo el avatar, círculo limpio */
+  .user-avatar,.user-avatar-init,.user-avatar-img{width:32px;height:32px}   /* avatar grande y centrado (estilo insumos) */
+  header a{border-radius:8px!important}        /* botón ← Inicio cuadrado (no píldora) */
   .stats{display:none}                  /* las stats (Equipos/Sedes/Tipos) sacaban la página de pantalla; el conteo ya sale en la toolbar */
   .app{flex-direction:column;height:auto}                 /* sidebar arriba, tabla abajo a todo el ancho */
   .sidebar{width:100%;min-width:0;max-height:280px;border-right:none;border-bottom:1.5px solid var(--border)}
