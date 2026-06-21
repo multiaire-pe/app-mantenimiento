@@ -9,5 +9,12 @@
     "api/comprobante.js": {
       "maxDuration": 30
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/bot",
+      "destination": "https://wa.me/51972416669?text=Nueva%20observaci%C3%B3n%20%F0%9F%9B%A0%EF%B8%8F",
+      "permanent": false
+    }
+  ]
 }
