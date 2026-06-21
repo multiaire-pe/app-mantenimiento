@@ -3,7 +3,7 @@
 // está protegido por las reglas de Firestore (auth requerida).
 window.__firebaseConfig = {
   apiKey: "AIzaSyB4evOa_eqi7GQ5B8jK_-hXZMPWnKGinEQ",
-  authDomain: "multiaire-fee43.firebaseapp.com",
+  authDomain: "app.multiaire.com.pe",
   projectId: "multiaire-fee43",
   storageBucket: "multiaire-fee43.firebasestorage.app",
   messagingSenderId: "607794460192",

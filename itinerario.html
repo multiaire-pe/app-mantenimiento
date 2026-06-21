@@ -29,7 +29,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;color:#fff}
 .logo span{color:rgba(255,255,255,.5);font-weight:300}
 .logo-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0}
-.back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:20px;white-space:nowrap}
+.back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:8px;white-space:nowrap}
 .back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
 .conn-pill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
 .conn-pill.ok{color:#4ddd88;border-color:rgba(77,221,136,.4)}
@@ -49,8 +49,8 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 
 /* LAYOUT */
 .app{display:flex;height:calc(100vh - 52px)}
-.sidebar{width:280px;min-width:280px;background:var(--surface);border-right:1.5px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
-.main{flex:1;overflow-y:auto;padding:24px}
+.sidebar{width:280px;min-width:280px;background:var(--surface);border-right:1.5px solid var(--border);display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto}
+.main{flex:1;min-width:0;overflow-y:auto;padding:24px}
 
 /* SIDEBAR */
 .sb-section{padding:14px 16px 8px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--blue);text-transform:uppercase;border-bottom:1px solid var(--border)}
