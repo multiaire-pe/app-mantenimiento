@@ -122,11 +122,20 @@ function matchEquipo(equipoRaw, sede, equipos, cliente) {
 
 // Resuelve {sede, equipo} contra `inventario`. `equipo` = objeto {eqId, sede, cliente, tipo, nombre, area}.
 // Multi-cliente: detecta el cliente nombrado (si lo hay) para desambiguar sedes compartidas.
-export async function resolverEquipo(sedeRaw, equipoRaw) {
+// `textoCompleto` (opcional) = todo lo que dijo el técnico; se usa para detectar el cliente aunque
+// no esté en sedeRaw/equipoRaw (p.ej. lo respondió a una repregunta). Cae a sedeRaw+equipoRaw.
+export async function resolverEquipo(sedeRaw, equipoRaw, textoCompleto) {
   const { equipos, sedes, clientes } = await cargarInventario();
-  const cliente = clienteMencionado(`${sedeRaw || ''} ${equipoRaw || ''}`, clientes);
+  const cliente = clienteMencionado(textoCompleto || `${sedeRaw || ''} ${equipoRaw || ''}`, clientes);
   const t = matchSede(sedeRaw, sedes, clientes);
   if (!t.ok) return { ok: false, motivo: 'sede', candidatosSede: t.candidatos };
+  // Multi-cliente: si esa sede existe para >1 cliente y el técnico no dijo cuál, preguntamos
+  // (evita emparejar silenciosamente con el equipo del cliente equivocado). Con un solo cliente
+  // —caso de hoy: solo RIPLEY— esta rama nunca dispara.
+  const clientesSede = [...new Set(equipos.filter((e) => e.sede === t.sede).map((e) => e.cliente).filter(Boolean))];
+  if (clientesSede.length > 1 && !cliente) {
+    return { ok: false, motivo: 'cliente', sede: t.sede, candidatosCliente: clientesSede };
+  }
   const e = matchEquipo(equipoRaw, t.sede, equipos, cliente);
   if (!e.ok) return { ok: false, motivo: 'equipo', sede: t.sede, candidatosEquipo: e.candidatos };
   return { ok: true, sede: t.sede, equipo: e.equipo };

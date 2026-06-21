@@ -163,11 +163,16 @@ async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar 
   b.observacion = g.observacion || b.observacion || '';
   b.estado = g.estado || b.estado || 'PENDIENTE';
 
-  // Resolver sede/equipo contra el inventario REAL (557 equipos).
-  const r = await resolverEquipo(g.sede || b.sede, g.equipo);
+  // Resolver sede/equipo contra el inventario REAL (557 equipos). Pasamos el texto acumulado
+  // para detectar el cliente aunque lo haya dicho en una repregunta anterior (multi-cliente).
+  const r = await resolverEquipo(g.sede || b.sede, g.equipo, textoAcum);
   if (!r.ok && r.motivo === 'sede') {
     b.sede = ''; b.eqId = ''; b.equipo = '';
     return repreguntar(ses, from, 'sede', preguntarSede(r.candidatosSede));
+  }
+  if (!r.ok && r.motivo === 'cliente') {
+    b.sede = r.sede; b.eqId = ''; b.equipo = '';
+    return repreguntar(ses, from, 'cliente', preguntarCliente(r.sede, r.candidatosCliente));
   }
   if (!r.ok && r.motivo === 'equipo') {
     b.sede = r.sede; b.eqId = ''; b.equipo = '';
@@ -216,6 +221,11 @@ function bienvenida(tecnico) {
 function preguntarSede(cands) {
   const lista = (cands || []).slice(0, 14).map((c) => `• ${sinPrefijo(c)}`).join('\n');
   return `¿En qué *sede* es?${lista ? '\n' + lista : ''}`;
+}
+
+function preguntarCliente(sede, clientes) {
+  const lista = (clientes || []).map((c) => `• ${c}`).join('\n');
+  return `*${sinPrefijo(sede)}* es de más de un cliente. ¿De cuál es?\n${lista}`;
 }
 
 function preguntarEquipo(sede, cands) {
