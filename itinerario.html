@@ -75,6 +75,11 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .iti-title{flex:1}
 .iti-title h2{font-size:18px;font-weight:700;color:var(--blue)}
 .iti-title-meta{font-size:12px;color:var(--muted2);margin-top:2px;font-family:var(--mono)}
+.ver-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;align-items:center}
+.ver-chips-label{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+.ver-chip{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:6px;border:1.5px solid var(--border);background:var(--surface);color:var(--muted2);cursor:pointer;font-weight:700;transition:all .12s}
+.ver-chip:hover{border-color:var(--blue);color:var(--blue)}
+.ver-chip.active{background:var(--blue);border-color:var(--blue);color:#fff}
 .iti-actions{display:flex;gap:8px;flex-wrap:wrap}
 
 /* BLOQUES GRID */
@@ -190,6 +195,8 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
   .personal-grid{grid-template-columns:1fr}
   .iti-actions{flex-direction:column}                /* botones de acción apilados, sin desbordar */
   .iti-actions>*{width:100%;justify-content:center}
+  .ver-chips{gap:6px;margin-top:9px}
+  .ver-chip{font-size:12px;padding:7px 13px}         /* chips de versión más tocables en móvil/iPad */
 }
 </style>
 <script src="firebase-config.js"></script>
@@ -293,6 +300,7 @@ const DIAS = ['DOMINGO','LUNES','MARTES','MIÉRCOLES','JUEVES','VIERNES','SÁBAD
 let maUser = null, maEmails = null;
 let maestros = { personal: [], tiendas: [], grupos: [] };
 let currentIti = null;
+let allItis = [];   // todas las versiones de todos los itinerarios (para la trazabilidad de versiones)
 let editBloques = [];
 
 // ── COLOR HELPERS ────────────────────────────────────────────────────────────
@@ -515,7 +523,7 @@ function renderRecientes(itinerarios) {
     const estadoClass = iti.estado === 'ACTUALIZADO' ? 'estado-actualizado' : 'estado-registrado';
     // Use UTC date to match what's stored in Firestore
     const fechaISO = iti.fecha && typeof iti.fecha === 'string' ? iti.fecha.slice(0,10) : fecha instanceof Date ? fecha.toISOString().slice(0,10) : String(fecha).slice(0,10);
-    return `<div class="iti-item" onclick="loadItiById('${iti.id}','${fechaISO}')">
+    return `<div class="iti-item" onclick="loadItiVersion('${iti.id}',${iti.version})">
       <div class="iti-item-date">${fechaStr}</div>
       <div class="iti-item-meta">${iti.totalBloques} bloques · v${iti.version}</div>
       <div class="iti-item-estado ${estadoClass}">${iti.estado}</div>
@@ -559,7 +567,8 @@ async function loadFecha(fecha) {
     const iSnap = await getDocs(collection(window.__db, 'bd_itinerarios'));
     // Compare using UTC date slice (YYYY-MM-DD) to avoid timezone issues
     const fd = fecha.slice(0, 10); // e.g. '2026-05-01'
-    const matching = iSnap.docs.map(dd=>dd.data()).filter(dd=>{
+    allItis = iSnap.docs.map(dd=>dd.data());
+    const matching = allItis.filter(dd=>{
       const f = dd.fecha;
       let d;
       if (f && typeof f.toDate === 'function') d = f.toDate();
@@ -593,6 +602,37 @@ async function loadItiById(id, fecha) {
   await loadFecha(fechaNorm);
 }
 
+// Carga una VERSIÓN específica de un itinerario (trazabilidad de versiones)
+async function loadItiVersion(id, version) {
+  const main = document.getElementById('main-content');
+  main.innerHTML = '<div style="text-align:center;padding:60px;color:var(--muted)">Cargando...</div>';
+  try {
+    const { getDocs, collection } = window.__fb;
+    const iSnap = await getDocs(collection(window.__db, 'bd_itinerarios'));
+    allItis = iSnap.docs.map(dd=>dd.data());
+    const iti = allItis.find(dd=>dd.id===id && Number(dd.version)===Number(version)) || null;
+    let bloques = [];
+    let fechaNorm = '';
+    if (iti) {
+      const bSnap = await getDocs(collection(window.__db, 'bd_bloques'));
+      bloques = bSnap.docs.map(dd=>dd.data())
+        .filter(dd=>dd.idIti===iti.id && Number(dd.version)===Number(iti.version))
+        .sort((a,b)=>a.nBloque-b.nBloque);
+      const f = iti.fecha;
+      if (f && typeof f.toDate === 'function') fechaNorm = f.toDate().toISOString().slice(0,10);
+      else if (f && f.seconds) fechaNorm = new Date(f.seconds*1000).toISOString().slice(0,10);
+      else if (typeof f === 'string') fechaNorm = f.slice(0,10);
+      else fechaNorm = excelDateToDate(f).toISOString().slice(0,10);
+      const fi = document.getElementById('fecha-input'); if (fi) fi.value = fechaNorm;
+    }
+    currentIti = iti;
+    if (iti) renderItinerario(iti, bloques, fechaNorm);
+    else toast('No se encontró esa versión', 'err');
+  } catch(e) {
+    toast('Error cargando la versión', 'err');
+  }
+}
+
 // ── RENDER ITINERARIO ─────────────────────────────────────────────────────────
 function renderItinerario(iti, bloques, fecha) {
   const main = document.getElementById('main-content');
@@ -623,6 +663,13 @@ function renderItinerario(iti, bloques, fecha) {
 
   const bloquesHtml = bloques.map((b, i) => renderBloqueCard(b, i)).join('');
 
+  const _vers = (allItis || []).filter(x => x.id === iti.id)
+    .map(x => Number(x.version)).filter(v => !isNaN(v)).sort((a, b) => a - b);
+  const versionsHtml = _vers.length > 1
+    ? `<div class="ver-chips" title="Ver otra versión"><span class="ver-chips-label">Versiones</span>${_vers.map(v =>
+        `<button class="ver-chip${v === Number(iti.version) ? ' active' : ''}" onclick="loadItiVersion('${iti.id}',${v})">v${v}</button>`).join('')}</div>`
+    : '';
+
   main.innerHTML = `
     <div class="iti-header">
       <div class="iti-title">
@@ -630,6 +677,7 @@ function renderItinerario(iti, bloques, fecha) {
         <div class="iti-title-meta">${iti.id} · v${iti.version} · ${bloques.length} bloques
           <span class="iti-item-estado ${estadoClass}" style="margin-left:8px">${iti.estado}</span>
         </div>
+        ${versionsHtml}
       </div>
       <div class="iti-actions">
         <button class="btn" onclick="exportPNG()" title="Exportar PNG">🖼 PNG</button>
