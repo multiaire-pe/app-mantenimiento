@@ -33,6 +33,10 @@ Luego, usando la GUÍA de abajo (qué debe cubrir una buena observación según 
 - "faltaDetalle": true SOLO si falta un dato que un supervisor de mantenimiento realmente necesitaría y que el técnico podría dar fácilmente. Si la observación ya es suficiente, false. No insistas en detalles menores.
 - "pregunta": si "faltaDetalle" es true, UNA sola pregunta corta y amable en español para conseguir ese dato. Si es false, "".
 Máximo una pregunta. Si el técnico no menciona sede o equipo, NO preguntes por eso aquí (eso se gestiona aparte).
+La pregunta DEBE ser pertinente al TIPO de equipo de la observación. Nunca preguntes por un componente que ese tipo de equipo NO tiene:
+- Cortinas de aire, extractores, inyectores y UMA son equipos de VENTILACIÓN: NO tienen compresor ni gas refrigerante. Para ellos pregunta por el motor/ventilador, el flujo de aire, vibración o ruido — nunca por compresor/refrigerante.
+- Splits, chillers, fan coils y paquetes/roof tops sí pueden tener compresor y gas refrigerante.
+Si la guía no encaja con ese tipo de equipo, haz una pregunta genérica útil o pon "faltaDetalle": false (mejor no preguntar que preguntar algo que no aplica).
 
 SEDES Y TIPOS de equipo disponibles (úsalos para reconocer la sede y el tipo):
 {CONTEXTO}
