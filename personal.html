@@ -164,6 +164,16 @@ tr:hover td{background:var(--surface2)}
   .pers-toolbar-actions{width:100%}
   .pers-toolbar-actions .btn{flex:1;justify-content:center}
   .rep-row .form-input,.rep-row .form-select{width:100%}
+  /* Anula los anchos fijos inline (flex:0 0 Npx) → todo a ancho completo y alto natural al apilar */
+  .form-group{flex:1 1 auto!important;min-width:0}
+  .rep-row{gap:6px}
+  .rep-row .rep-pais,.rep-row .rep-num,.rep-row .rep-tipo,.rep-row .rep-email,.rep-row .rep-ctipo{flex:1 1 100%!important;width:100%}
+  .modal{padding:16px}
+  .fieldset{padding:12px}
+  /* Tabla: oculta columnas secundarias (Documento·Área·Correo) en móvil; el resto + scroll-x */
+  table td:nth-child(4),table th:nth-child(4),
+  table td:nth-child(6),table th:nth-child(6),
+  table td:nth-child(8),table th:nth-child(8){display:none}
 }
 </style>
 </head>
