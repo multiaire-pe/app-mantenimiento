@@ -565,10 +565,48 @@ tr:hover td{background:var(--surface2)}
       <textarea id="pers-notas" class="form-input" rows="2" style="resize:vertical;line-height:1.5" placeholder="Observaciones internas del colaborador…"></textarea>
     </div>
 
+    <!-- HISTORIAL / TIMELINE (colección personal_eventos; solo al editar un colaborador existente) -->
+    <div class="fieldset" id="pers-fieldset-historial" style="display:none">
+      <div class="fieldset-legend">📅 Historial</div>
+      <div id="pers-eventos-list" style="margin-bottom:10px"><span style="font-size:11px;color:var(--muted)">—</span></div>
+      <button type="button" class="btn btn-sm" id="pers-btn-nuevo-evento" onclick="openNuevoEvento()">＋ Agregar evento</button>
+    </div>
+
     <div class="modal-foot">
       <button class="btn btn-red" id="btn-del-pers" onclick="deletePers()" style="margin-right:auto;display:none">🗑 Eliminar</button>
       <button class="btn" onclick="closeModal('modal-pers')">Cancelar</button>
       <button class="btn btn-primary" id="btn-save-pers" onclick="savePers()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- SUB-MODAL: NUEVO EVENTO DEL HISTORIAL -->
+<div class="modal-overlay" id="modal-evento" onclick="if(event.target===this)closeModal('modal-evento')">
+  <div class="modal" style="width:480px">
+    <h2>📅 Nuevo evento</h2>
+    <div class="modal-sub">Queda registrado en el historial del colaborador. No se edita; el super admin puede eliminarlo.</div>
+    <input type="hidden" id="evt-personalId">
+    <div class="form-row">
+      <div class="form-group" style="flex:0 0 190px">
+        <label class="form-label">Tipo <span style="color:var(--orange)">*</span></label>
+        <select id="evt-tipo" class="form-select"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha <span style="color:var(--orange)">*</span></label>
+        <input type="date" id="evt-fecha" class="form-input">
+      </div>
+    </div>
+    <div class="form-group" style="min-width:0;margin-top:10px">
+      <label class="form-label">Título</label>
+      <input type="text" id="evt-titulo" class="form-input" placeholder="Resumen corto" autocomplete="off">
+    </div>
+    <div class="form-group" style="min-width:0;margin-top:10px">
+      <label class="form-label">Detalle</label>
+      <textarea id="evt-detalle" class="form-input" rows="3" style="resize:vertical;line-height:1.5" placeholder="Descripción del evento…"></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-evento')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveEvento()">💾 Guardar evento</button>
     </div>
   </div>
 </div>
@@ -1097,6 +1135,8 @@ function resetModal(){
   document.getElementById('pers-correos').innerHTML = '';
   _comp = []; renderCompChips();
   _persFoto = ''; paintFoto();
+  _eventos = []; renderEventos();
+  document.getElementById('pers-fieldset-historial').style.display = 'none';
 }
 
 function openNewPers(){
@@ -1140,7 +1180,11 @@ function openEditPers(id){
   document.getElementById('pers-licTiene').checked = !!lic.tiene;
   setVal('pers-licCat', lic.categoria); setVal('pers-licVence', lic.vence); toggleLic();
   setVal('pers-notas', p.notas);
-  if(MA.isAdmin()) loadConfidencial(p.id);
+  if(MA.isAdmin()){   // confidencial e historial: solo ADMIN/SUPER (coincide con firestore.rules)
+    loadConfidencial(p.id);
+    document.getElementById('pers-fieldset-historial').style.display = '';
+    loadEventos(p.id);
+  }
   // repeaters
   const tels = telsDe(p); document.getElementById('pers-tels').innerHTML = '';
   (tels.length?tels:[null]).forEach(t=>addTelRow(t||undefined));
@@ -1195,6 +1239,79 @@ async function saveConfidencial(id){
     updatedAt: new Date().toISOString(),
     updatedBy: maUser?.email || ''
   }, {merge:true});
+}
+
+// ── HISTORIAL / TIMELINE (colección personal_eventos; read/escritura = isAdmin por firestore.rules) ──
+let _eventos = [];
+const TIPOS_EVENTO = [
+  {v:'INGRESO',l:'Ingreso'},{v:'ASCENSO',l:'Ascenso'},{v:'CAMBIO_CARGO',l:'Cambio de cargo'},
+  {v:'AUMENTO',l:'Aumento de sueldo'},{v:'FELICITACION',l:'Felicitación'},{v:'AMONESTACION',l:'Amonestación'},
+  {v:'SANCION',l:'Sanción'},{v:'VACACIONES',l:'Vacaciones'},{v:'LICENCIA',l:'Licencia'},
+  {v:'DESCANSO_MEDICO',l:'Descanso médico'},{v:'CAPACITACION',l:'Capacitación'},{v:'ACCIDENTE',l:'Accidente / incidente'},
+  {v:'CAMBIO_DATOS',l:'Actualización de datos'},{v:'BAJA',l:'Cese / baja'},{v:'OTRO',l:'Otro'}
+];
+function tipoEventoLabel(v){ const t=TIPOS_EVENTO.find(x=>x.v===v); return t?t.l:(v||''); }
+async function loadEventos(id){
+  _eventos = [];
+  try{
+    const snap = await db.collection('personal_eventos').where('personalId','==',id).get();
+    _eventos = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    _eventos.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));   // más reciente primero
+  }catch(e){ /* sin permiso o error: timeline queda vacío, no rompe el resto */ }
+  renderEventos();
+}
+function renderEventos(){
+  const box = document.getElementById('pers-eventos-list');
+  if(!box) return;
+  if(!_eventos.length){ box.innerHTML = '<span style="font-size:11px;color:var(--muted)">Sin eventos registrados.</span>'; return; }
+  const canDel = MA.can('borrar');
+  box.innerHTML = _eventos.map(e=>{
+    const del = canDel ? `<button class="rep-del" style="padding:3px 7px;flex:0 0 auto" onclick="deleteEvento('${esc(e.id)}')" title="Eliminar">✕</button>` : '';
+    return `<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:0 0 80px;font-family:var(--mono);font-size:11px;color:var(--muted2)">${esc(e.fecha||'')}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:var(--blue)">${esc(tipoEventoLabel(e.tipo))}${e.titulo?(' · '+esc(e.titulo)):''}</div>
+        ${e.detalle?`<div style="font-size:11px;color:var(--muted2);line-height:1.4;white-space:pre-wrap">${esc(e.detalle)}</div>`:''}
+      </div>
+      ${del}
+    </div>`;
+  }).join('');
+}
+function openNuevoEvento(){
+  if(!isPersAdmin()){ toast('Sin permisos para agregar eventos','err'); return; }
+  const id = val('pers-id');
+  if(!id){ toast('Guarda primero el colaborador','err'); return; }
+  setVal('evt-personalId', id);
+  document.getElementById('evt-tipo').innerHTML = TIPOS_EVENTO.map(t=>`<option value="${t.v}">${esc(t.l)}</option>`).join('');
+  setVal('evt-tipo','INGRESO'); setVal('evt-fecha',''); setVal('evt-titulo',''); setVal('evt-detalle','');
+  document.getElementById('modal-evento').classList.add('open');
+}
+async function saveEvento(){
+  if(!isPersAdmin()){ toast('Sin permisos','err'); return; }
+  const personalId = val('evt-personalId'), tipo = val('evt-tipo'), fecha = val('evt-fecha');
+  if(!personalId) return;
+  if(!fecha){ toast('La fecha es obligatoria','err'); return; }
+  const titulo = val('evt-titulo').trim(), detalle = val('evt-detalle').trim();
+  try{
+    const ref = await db.collection('personal_eventos').add({
+      personalId, tipo, fecha, titulo, detalle,
+      createdAt: new Date().toISOString(), createdBy: maUser?.email || ''
+    });
+    _eventos.push({id:ref.id, personalId, tipo, fecha, titulo, detalle});
+    _eventos.sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+    closeModal('modal-evento'); renderEventos();
+    toast('Evento agregado ✓','ok');
+  }catch(e){ toast('Error al guardar el evento: '+e.message,'err'); }
+}
+async function deleteEvento(id){
+  if(!MA.can('borrar')){ toast('Solo el super admin puede eliminar','err'); return; }
+  if(!confirm('¿Eliminar este evento del historial? No se puede deshacer.')) return;
+  try{
+    await db.collection('personal_eventos').doc(id).delete();
+    _eventos = _eventos.filter(e=>e.id!==id);
+    renderEventos();
+    toast('Evento eliminado','ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
 }
 
 async function savePers(){
