@@ -533,12 +533,7 @@ function initApp(){
   // 'proveedores' en su apps[]. Sin acceso, no se cargan datos.
   if(!MA.canEnter('proveedores')){
     document.getElementById('main-page').style.display = 'none';
-    const ov = document.getElementById('auth-overlay');
-    const gb = document.getElementById('g-btn');
-    const err = document.getElementById('auth-err');
-    if(gb) gb.style.display = 'none';
-    if(err){ err.textContent = 'Sin acceso a la sección Proveedores. Contacta al administrador.'; err.classList.add('show'); }
-    if(ov){ ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+    MA.showNoAccess('Proveedores');
     return;
   }
   if(isProvAdmin()){

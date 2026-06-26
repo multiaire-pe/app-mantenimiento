@@ -415,8 +415,8 @@ function maVerify(payload, save) {
     // Gate de entrada por módulo: admins entran a todo; el resto necesita MA_APP en apps[].
     if (!MA.canEnter(MA_APP)) {
       if (ldEl) ldEl.classList.remove('show');
-      if (errEl) { errEl.textContent = 'Sin acceso a esta sección (' + MA_APP + '). Contacta al administrador.'; errEl.classList.add('show'); }
-      sessionStorage.removeItem('ma_user'); maUser = null; MA.setUser(null); return;
+      sessionStorage.removeItem('ma_user'); maUser = null; MA.setUser(null);
+      MA.showNoAccess('Itinerario'); return;
     }
     if (save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
     if (ldEl) ldEl.classList.remove('show');

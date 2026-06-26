@@ -1516,8 +1516,8 @@ function maVerify(payload,save){
     MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
     if(!MA.canEnter(MA_APP)){
       if(ldEl)ldEl.classList.remove('show');
-      if(errEl){errEl.textContent='Sin acceso a esta sección ('+MA_APP+'). Contacta al administrador.';errEl.classList.add('show');}
-      sessionStorage.removeItem('ma_user');maUser=null;MA.setUser(null);return;
+      sessionStorage.removeItem('ma_user');maUser=null;MA.setUser(null);
+      MA.showNoAccess('Mantenimiento');return;
     }
     if(save)sessionStorage.setItem('ma_user',JSON.stringify(maUser));
     if(ldEl)ldEl.classList.remove('show');

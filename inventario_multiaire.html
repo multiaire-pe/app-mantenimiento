@@ -225,9 +225,9 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
     <div style="padding:8px;border-top:1px solid var(--border)"><button class="btn btn-sm btn-bl" onclick="rf()">✕ Limpiar filtros</button></div>
     <div class="sa">
       <div class="sec" style="padding:0 0 6px">Acciones</div>
-      <button class="btn btn-p btn-bl" onclick="openNew()">+ Nuevo equipo</button>
-      <button class="btn btn-bl" style="color:#7c5cfc;border-color:#3a2a6a;background:var(--orange-pale)" onclick="exportPDF()">📄 Exportar PDF</button>
-      <button class="btn btn-e btn-bl" onclick="openExport()">⬇ Exportar etiquetas</button>
+      <button class="btn btn-p btn-bl" id="btn-new-eq" onclick="openNew()">+ Nuevo equipo</button>
+      <button class="btn btn-bl" id="btn-pdf-eq" style="color:#7c5cfc;border-color:#3a2a6a;background:var(--orange-pale)" onclick="exportPDF()">📄 Exportar PDF</button>
+      <button class="btn btn-e btn-bl" id="btn-lbl-eq" onclick="openExport()">⬇ Exportar etiquetas</button>
       <button class="btn btn-g btn-bl" onclick="sync()">↻ Sincronizar Sheets</button>
     </div>
   </div>
@@ -445,6 +445,7 @@ function us(){document.getElementById('sTotal').textContent=data.length;document
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 async function openNew(){
+  if(!MA.can('editar','inventario')){toast('Sin permisos','err');return;}
   editRow=null;
   document.getElementById('mtitle').textContent='Nuevo equipo';
   document.getElementById('sbtn').textContent='Guardar';
@@ -555,7 +556,7 @@ async function delSel(){
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────
-function openExport(){document.getElementById('ec1').textContent=filtered.length;document.getElementById('ec2').textContent=selected.size;document.getElementById('ec3').textContent=data.length;document.getElementById('epanel').classList.add('open');}
+function openExport(){if(!MA.can('exportar','inventario')){toast('Sin permisos para exportar','err');return;}document.getElementById('ec1').textContent=filtered.length;document.getElementById('ec2').textContent=selected.size;document.getElementById('ec3').textContent=data.length;document.getElementById('epanel').classList.add('open');}
 function ce(){document.getElementById('epanel').classList.remove('open');}
 function gr(){const s=document.querySelector('input[name=esc]:checked').value;if(s==='selected')return data.filter(r=>selected.has(r.row));if(s==='all')return[...data];return[...filtered];}
 function expCat(){const sede=document.getElementById('ebSede').value,tipo=document.getElementById('ebTipo').value;let rows=[...data];if(sede)rows=rows.filter(r=>r.sede===sede);if(tipo)rows=rows.filter(r=>r.equipo===tipo);if(!rows.length){toast('Sin resultados','err');return;}runExp(rows,'etiquetas_'+[sede,tipo].filter(Boolean).join('_')+'.zip');}
@@ -836,14 +837,17 @@ function maVerify(payload,save){
     MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
     if(!MA.canEnter(MA_APP)){
       if(ldEl)ldEl.classList.remove('show');
-      if(errEl){errEl.textContent='Sin acceso a esta sección ('+MA_APP+'). Contacta al administrador.';errEl.classList.add('show');}
-      sessionStorage.removeItem('ma_user');maUser=null;MA.setUser(null);return;
+      sessionStorage.removeItem('ma_user');maUser=null;MA.setUser(null);
+      MA.showNoAccess('Inventario de Equipos');return;
     }
     if(save)sessionStorage.setItem('ma_user',JSON.stringify(maUser));
     if(ldEl)ldEl.classList.remove('show');
     var ov=document.getElementById('auth-overlay');
     if(ov){ov.style.display='none';document.body.style.overflow='';}
     maRenderPill();maLogAccess(email);
+    // Acciones de escritura/exportación: ocultas para quien no puede (técnico solo lee)
+    if(!MA.can('editar','inventario')){var _bn=document.getElementById('btn-new-eq');if(_bn)_bn.style.display='none';}
+    if(!MA.can('exportar','inventario')){['btn-pdf-eq','btn-lbl-eq'].forEach(function(id){var e=document.getElementById(id);if(e)e.style.display='none';});}
     sync(); // Load data after auth
   }).catch(function(){
     if(ldEl)ldEl.classList.remove('show');

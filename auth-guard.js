@@ -67,10 +67,33 @@ window.MA = (function () {
     return false;                                         // USUARIO u otro: nada
   }
 
+  // Pantalla de "Sin acceso" uniforme para el gate de entrada por módulo.
+  // Cubre el contenido (z-index alto) y detiene la sensación de "conectando".
+  function showNoAccess(seccion) {
+    try {
+      if (document.getElementById('ma-no-access')) return;
+      var s = String(seccion || 'esta sección').replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+      var ov = document.createElement('div');
+      ov.id = 'ma-no-access';
+      ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#f0f4fa;display:flex;align-items:center;justify-content:center;padding:20px;font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif';
+      ov.innerHTML =
+        '<div style="max-width:380px;text-align:center;background:#fff;border:1px solid #d0daf0;border-radius:14px;padding:32px 28px;box-shadow:0 8px 30px rgba(27,63,139,.08)">'
+        + '<div style="font-size:40px;margin-bottom:8px">🔒</div>'
+        + '<div style="font-size:17px;font-weight:700;color:#1B3F8B;margin-bottom:8px">Sin acceso a ' + s + '</div>'
+        + '<div style="font-size:13px;color:#6a7a9a;line-height:1.5;margin-bottom:20px">Tu rol no tiene acceso a esta sección. Si crees que es un error, contacta al administrador.</div>'
+        + '<a href="index.html" style="display:inline-block;padding:10px 20px;background:#1B3F8B;color:#fff;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600">← Volver al inicio</a>'
+        + '</div>';
+      document.body.appendChild(ov);
+      document.body.style.overflow = 'hidden';
+    } catch (e) { /* DOM no listo: el return del gate igual detiene la carga */ }
+  }
+
   return {
     setUser: setUser, getUser: getUser, rol: rol, apps: apps,
     isSuperAdmin: isSuperAdmin, isAdmin: isAdmin,
-    canEnter: canEnter, can: can,
+    canEnter: canEnter, can: can, showNoAccess: showNoAccess,
     ROLES: ROLES, SUPER_ADMIN_EMAIL: SUPER_ADMIN_EMAIL
   };
 })();

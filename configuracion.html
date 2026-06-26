@@ -514,10 +514,8 @@ function maVerify(payload, save) {
     // Configuración (backup/restauración, maestros, usuarios) es SOLO del super admin.
     // El resto ni siquiera carga los datos sensibles.
     if (!MA.isSuperAdmin()) {
-      if (adminOnlyEl) adminOnlyEl.classList.add('show');
       document.getElementById('auth-overlay').style.display = 'none';
-      document.body.style.overflow = '';
-      maRenderPill();
+      MA.showNoAccess('Configuración');
       return;
     }
 
