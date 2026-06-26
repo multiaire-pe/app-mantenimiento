@@ -511,6 +511,54 @@ tr:hover td{background:var(--surface2)}
       </div>
     </div>
 
+    <!-- CONFIDENCIAL (solo ADMIN — colección personal_confidencial) -->
+    <div class="fieldset" id="pers-fieldset-confidencial" style="display:none;border-color:var(--orange-pale);background:var(--orange-pale)">
+      <div class="fieldset-legend" style="color:var(--orange-dark)">🔒 Confidencial · solo ADMIN</div>
+      <div class="form-row">
+        <div class="form-group" style="flex:0 0 160px">
+          <label class="form-label">Sueldo / tarifa</label>
+          <input type="number" id="pers-sueldo" class="form-input" min="0" step="0.01" placeholder="0.00" autocomplete="off">
+        </div>
+        <div class="form-group" style="flex:0 0 120px">
+          <label class="form-label">Moneda</label>
+          <select id="pers-moneda" class="form-select">
+            <option value="PEN">S/ (PEN)</option>
+            <option value="USD">$ (USD)</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:0 0 180px">
+          <label class="form-label">Periodicidad</label>
+          <select id="pers-periodicidad" class="form-select">
+            <option value="MENSUAL">Mensual</option>
+            <option value="QUINCENAL">Quincenal</option>
+            <option value="SEMANAL">Semanal</option>
+            <option value="POR_HORA">Por hora</option>
+            <option value="POR_DIA">Por día</option>
+            <option value="RXH">Recibo por honorarios</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:10px">
+        <div class="form-group" style="flex:0 0 150px">
+          <label class="form-label">Banco</label>
+          <input type="text" id="pers-banco" class="form-input" placeholder="BCP / BBVA…" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">N° de cuenta</label>
+          <input type="text" id="pers-cuentaNumero" class="form-input" placeholder="Cuenta" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">CCI</label>
+          <input type="text" id="pers-cci" class="form-input" placeholder="Código interbancario" autocomplete="off">
+        </div>
+      </div>
+      <div class="form-group" style="min-width:0;margin-top:10px">
+        <label class="form-label">Notas confidenciales</label>
+        <input type="text" id="pers-notasConf" class="form-input" placeholder="Bonos, acuerdos, etc." autocomplete="off">
+      </div>
+      <div style="font-size:10px;color:var(--orange-dark);margin-top:8px">⚠️ Se guarda en una colección aparte (<code>personal_confidencial</code>), accesible solo para ADMIN/SUPER por reglas de Firestore.</div>
+    </div>
+
     <!-- NOTAS -->
     <div class="form-group" style="min-width:0">
       <label class="form-label">Notas internas</label>
@@ -996,7 +1044,7 @@ function fillJefeSelect(excludeId){
 
 // ── MODAL: form fill / read ─────────────────────────────────────────────────────
 function setModalReadonly(ro){
-  const ids = ['pers-nombre','pers-tipoDoc','pers-numDoc','pers-activo','pers-fechaNacimiento','pers-genero','pers-nacionalidad','pers-estadoCivil','pers-direccion','pers-emgNombre','pers-emgParentesco','pers-emgTelefono','pers-cargo','pers-area','pers-estadoLaboral','pers-fechaIngreso','pers-fechaCese','pers-tipoContrato','pers-sedeBase','pers-jefeId','pers-recibeAvisos','pers-regimenAsist','pers-horfijo-entrada','pers-horfijo-salida','pers-rolOperativo','pers-vehiculo','pers-licTiene','pers-licCat','pers-licVence','pers-notas','pers-comp-input'];
+  const ids = ['pers-nombre','pers-tipoDoc','pers-numDoc','pers-activo','pers-fechaNacimiento','pers-genero','pers-nacionalidad','pers-estadoCivil','pers-direccion','pers-emgNombre','pers-emgParentesco','pers-emgTelefono','pers-cargo','pers-area','pers-estadoLaboral','pers-fechaIngreso','pers-fechaCese','pers-tipoContrato','pers-sedeBase','pers-jefeId','pers-recibeAvisos','pers-regimenAsist','pers-horfijo-entrada','pers-horfijo-salida','pers-rolOperativo','pers-vehiculo','pers-licTiene','pers-licCat','pers-licVence','pers-sueldo','pers-moneda','pers-periodicidad','pers-banco','pers-cuentaNumero','pers-cci','pers-notasConf','pers-notas','pers-comp-input'];
   ids.forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = ro; });
   document.querySelectorAll('#modal-pers .rep-row select, #modal-pers .rep-row input').forEach(el=>el.disabled=ro);
   ['pers-tel-add','pers-correo-add','pers-foto-up-lbl','pers-foto-cam-lbl'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display = ro?'none':''; });
@@ -1042,6 +1090,9 @@ function resetModal(){
   document.getElementById('pers-licTiene').checked = false;
   setVal('pers-licCat',''); setVal('pers-licVence',''); toggleLic();
   setVal('pers-notas','');
+  ['pers-sueldo','pers-cuentaNumero','pers-cci','pers-notasConf'].forEach(id=>setVal(id,''));
+  setVal('pers-moneda','PEN'); setVal('pers-periodicidad','MENSUAL'); setVal('pers-banco','');
+  document.getElementById('pers-fieldset-confidencial').style.display = MA.isAdmin() ? '' : 'none';
   document.getElementById('pers-tels').innerHTML = '';
   document.getElementById('pers-correos').innerHTML = '';
   _comp = []; renderCompChips();
@@ -1089,6 +1140,7 @@ function openEditPers(id){
   document.getElementById('pers-licTiene').checked = !!lic.tiene;
   setVal('pers-licCat', lic.categoria); setVal('pers-licVence', lic.vence); toggleLic();
   setVal('pers-notas', p.notas);
+  if(MA.isAdmin()) loadConfidencial(p.id);
   // repeaters
   const tels = telsDe(p); document.getElementById('pers-tels').innerHTML = '';
   (tels.length?tels:[null]).forEach(t=>addTelRow(t||undefined));
@@ -1112,6 +1164,37 @@ function nextPersId(){
   let id = 'PER' + String(Date.now()).slice(-6);
   while(ids.has(id)) id = 'PER' + String(Date.now()).slice(-5) + Math.floor(Math.random()*10);
   return id;
+}
+
+// ── CONFIDENCIAL (colección personal_confidencial, solo ADMIN; protegido por firestore.rules) ──
+async function loadConfidencial(id){
+  try{
+    const snap = await db.collection('personal_confidencial').doc(id).get();
+    if(!snap.exists) return;
+    const c = snap.data();
+    setVal('pers-sueldo', c.sueldo!=null ? c.sueldo : '');
+    setVal('pers-moneda', c.moneda||'PEN');
+    setVal('pers-periodicidad', c.periodicidad||'MENSUAL');
+    setVal('pers-banco', c.banco||'');
+    setVal('pers-cuentaNumero', c.cuentaNumero||'');
+    setVal('pers-cci', c.cci||'');
+    setVal('pers-notasConf', c.notas||'');
+  }catch(e){ /* sin permiso o error: el fieldset queda vacío, no rompe el resto */ }
+}
+async function saveConfidencial(id){
+  const sueldoRaw = val('pers-sueldo').trim();
+  await db.collection('personal_confidencial').doc(id).set({
+    personalId: id,
+    sueldo: sueldoRaw==='' ? null : (parseFloat(sueldoRaw) || 0),
+    moneda: val('pers-moneda'),
+    periodicidad: val('pers-periodicidad'),
+    banco: val('pers-banco').trim(),
+    cuentaNumero: val('pers-cuentaNumero').trim(),
+    cci: val('pers-cci').trim(),
+    notas: val('pers-notasConf').trim(),
+    updatedAt: new Date().toISOString(),
+    updatedBy: maUser?.email || ''
+  }, {merge:true});
 }
 
 async function savePers(){
@@ -1180,6 +1263,7 @@ async function savePers(){
   try{
     if(id){
       await db.collection('maestros_personal').doc(id).set(data, {merge:true});  // merge: no pisa otras fases
+      if(MA.isAdmin()) await saveConfidencial(id);
       const i = personal.findIndex(x => x.id === id);
       if(i >= 0) personal[i] = {...personal[i], ...data, id};
       toast('Colaborador actualizado ✓', 'ok');
@@ -1189,6 +1273,7 @@ async function savePers(){
       data.createdBy = maUser?.email || '';
       data.id = newId;
       await db.collection('maestros_personal').doc(newId).set(data, {merge:true});
+      if(MA.isAdmin()) await saveConfidencial(newId);
       personal.push({id:newId, ...data});
       toast('Colaborador creado ✓ ('+newId+')', 'ok');
     }

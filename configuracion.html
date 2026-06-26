@@ -901,9 +901,10 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
+      window.__db.collection('personal_confidencial').get(),
       window.__db.collection('maestros_tiendas').get(),
       window.__db.collection('maestros_grupos').get(),
       window.__db.collection('maestros_feriados').get(),
@@ -946,6 +947,14 @@ async function exportBackup() {
       return [r.id||d.id, r.nombre||'', r.cargo||'', r.telefono||'', r.activo||'SI', r.foto||'', (r.recibeAvisos?'SI':'NO'), JSON.stringify(r)].map(escapeCSV).join(',');
     });
     zip.file('maestros_personal.csv', [persHeaders.join(','), ...persRows].join('\n'));
+
+    // 2b. Personal confidencial CSV (sueldo/banco; el backup completo es solo super). JSON = doc completo.
+    const confidHeaders = ['ID','SUELDO','MONEDA','PERIODICIDAD','BANCO','CUENTA','CCI','JSON'];
+    const confidRows = confidSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.sueldo??'', r.moneda||'', r.periodicidad||'', r.banco||'', r.cuentaNumero||'', r.cci||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('personal_confidencial.csv', [confidHeaders.join(','), ...confidRows].join('\n'));
 
     // 3. Maestros tiendas CSV
     const tienHeaders = ['ID','CLIENTE','TIENDA','SEDE','ACTIVO'];
@@ -1177,7 +1186,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1295,6 +1304,18 @@ async function confirmImport() {
         return {...base, id:r.ID, nombre:r.NOMBRE, cargo:r.CARGO, telefono:r.TELEFONO||'', activo:r.ACTIVO||'SI', foto:r.FOTO||'', recibeAvisos:String(r.RECIBE_AVISOS||'').toUpperCase()==='SI', obs:(base.obs||'')};
       }, {merge:true});
       addLog('✓ Personal importado (' + rows.length + ' colaboradores)', 'ok');
+    }
+
+    // 2b. Personal confidencial (sueldo/banco). Doc id = personalId. JSON = doc completo.
+    if (pendingImport.files['personal_confidencial.csv']) {
+      addLog('🔒 Importando datos confidenciales...', 'info');
+      const rows = parseCSV(pendingImport.files['personal_confidencial.csv']);
+      await batchWrite('personal_confidencial', rows, r => {
+        let base = {};
+        if (r.JSON) { try { base = JSON.parse(r.JSON); } catch(e) { base = {}; } }
+        return {...base, _docId:r.ID, personalId:r.ID, sueldo:(r.SUELDO!==''&&r.SUELDO!=null)?+r.SUELDO:null, moneda:r.MONEDA||'', periodicidad:r.PERIODICIDAD||'', banco:r.BANCO||'', cuentaNumero:r.CUENTA||'', cci:r.CCI||''};
+      }, {merge:true});
+      addLog('✓ Confidencial importado (' + rows.length + ' registros)', 'ok');
     }
 
     // 3. Maestros tiendas

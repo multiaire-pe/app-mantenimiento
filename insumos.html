@@ -2216,7 +2216,7 @@ async function resetearBaseDatos() {
   const showMsg = (msg) => { if(toastEl){ toastEl.textContent=msg; toastEl.className='toast show'; setTimeout(()=>toastEl.classList.remove('show'),3000); }};
   try {
     showMsg('Reseteando...');
-    const colecciones = ['insumos_catalogo','insumos_instancias','insumos_movimientos','insumos_stock','insumos_paquetes'];
+    const colecciones = ['insumos_catalogo','insumos_instancias','insumos_movimientos','insumos_paquetes']; // 'insumos_stock' retirada: colección legacy inexistente (el catch-all fail-closed la bloquea)
     for (const col of colecciones) {
       const snap = await db.collection(col).get();
       for (const doc of snap.docs) await doc.ref.delete();
