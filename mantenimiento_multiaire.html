@@ -9,6 +9,9 @@
 <title>MultiAire – Mantenimiento</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+/* Modo solo-lectura (TECNICO): oculta botones de edición; las casillas de tareas no responden */
+.mant-readonly .mant-edit-btn{display:none!important}
+.mant-readonly .tarea-cb{pointer-events:none;opacity:.55}
 :root{
   --bg:#f0f4fa;--surface:#fff;--surface2:#f5f8ff;--surface3:#e8eef8;
   --border:#d0daf0;--border2:#b8cce8;
@@ -366,7 +369,7 @@ option{background:#fff}
     </div>
 
     <div class="sb-actions">
-      <button class="btn btn-primary btn-block" onclick="openSelEquipos()" id="btnSelEq" disabled>
+      <button class="btn btn-primary btn-block mant-edit-btn" onclick="openSelEquipos()" id="btnSelEq" disabled>
         ＋ Seleccionar equipos
       </button>
     </div>
@@ -378,7 +381,7 @@ option{background:#fff}
         <div class="toolbar-title" id="toolbarTitle">—</div>
         <div class="toolbar-sub" id="toolbarSub">—</div>
       </div>
-      <button class="btn btn-sm" style="margin-left:auto" onclick="openSelEquipos()">✎ Editar equipos</button>
+      <button class="btn btn-sm mant-edit-btn" style="margin-left:auto" onclick="openSelEquipos()">✎ Editar equipos</button>
     </div>
 
     <div class="tab-nav" id="tabNav" style="display:none">
@@ -553,7 +556,7 @@ async function loadInventario() {
     setPill('ok', '✓ Conectado · ' + allEquipos.length + ' equipos');
   } catch(e) {
     setPill('err', '✗ Sin conexión');
-    toast('No se pudo conectar con Google Sheets', 'err');
+    toast('No se pudo cargar el inventario', 'err');
   }
 }
 
@@ -634,8 +637,9 @@ function renderMain() {
   document.getElementById('tabNav').style.display = 'flex';
   document.getElementById('toolbarTitle').textContent = currentSede;
   document.getElementById('toolbarSub').textContent = currentPeriodo + ' ' + currentAnio + ' · ' + sel.length + ' equipos seleccionados';
-  document.getElementById('btnExport').style.display = sel.length ? 'flex' : 'none';
-  document.getElementById('btnPNG').style.display = sel.length ? 'flex' : 'none';
+  var _canExp = MA.can('exportar','mantenimiento');
+  document.getElementById('btnExport').style.display = (sel.length && _canExp) ? 'flex' : 'none';
+  document.getElementById('btnPNG').style.display = (sel.length && _canExp) ? 'flex' : 'none';
 
   if(!sel.length) {
     document.getElementById('content').innerHTML = `
@@ -643,7 +647,7 @@ function renderMain() {
         <div class="empty-icon">📋</div>
         <h3>Sin equipos seleccionados</h3>
         <p>Presiona "+ Seleccionar equipos" para elegir qué equipos se trabajarán en este período.</p>
-        <button class="btn btn-primary" onclick="openSelEquipos()">＋ Seleccionar equipos</button>
+        <button class="btn btn-primary mant-edit-btn" onclick="openSelEquipos()">＋ Seleccionar equipos</button>
       </div>`;
     updateStatusBar([]);
     return;
@@ -864,6 +868,7 @@ async function doSave() {
 let tempSel = {};
 
 function openSelEquipos() {
+  if(!MA.can('editar','mantenimiento')) { toast('Sin permisos','err'); return; }
   if(!currentSede) { toast('Selecciona una sede primero','warn'); return; }
   tempSel = {...seleccionados};
   document.getElementById('modalSubtitle').textContent = currentSede + ' · ' + currentPeriodo + ' ' + currentAnio;
@@ -1524,6 +1529,7 @@ function maVerify(payload,save){
     var ov=document.getElementById('auth-overlay');
     if(ov){ov.style.display='none';document.body.style.overflow='';}
     maRenderPill();maLogAccess(email);
+    if(!MA.can('editar','mantenimiento'))document.body.classList.add('mant-readonly'); // técnico: solo lectura
     Promise.all([loadTareas(), loadInventario()]); // Load after auth
   }).catch(function(){
     if(ldEl)ldEl.classList.remove('show');
