@@ -9,6 +9,11 @@
 <title>Inventario de Equipos – MultiAire</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+/* Acciones según rol: edición / exportación / borrado / selección masiva */
+.inv-readonly .inv-edit{display:none!important}
+.inv-noexport .inv-exp{display:none!important}
+.inv-nodel .inv-del{display:none!important}
+.inv-nobulk .inv-bulk{display:none!important}
 :root{
   --bg:#f0f4fa;--surface:#fff;--surface2:#f5f8ff;--surface3:#e8eef8;
   --border:#d0daf0;--border2:#b8cce8;
@@ -178,6 +183,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 
 </style>
 <script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -224,26 +230,26 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
     <div style="padding:8px;border-top:1px solid var(--border)"><button class="btn btn-sm btn-bl" onclick="rf()">✕ Limpiar filtros</button></div>
     <div class="sa">
       <div class="sec" style="padding:0 0 6px">Acciones</div>
-      <button class="btn btn-p btn-bl" onclick="openNew()">+ Nuevo equipo</button>
-      <button class="btn btn-bl" style="color:#7c5cfc;border-color:#3a2a6a;background:var(--orange-pale)" onclick="exportPDF()">📄 Exportar PDF</button>
-      <button class="btn btn-e btn-bl" onclick="openExport()">⬇ Exportar etiquetas</button>
-      <button class="btn btn-g btn-bl" onclick="sync()">↻ Sincronizar Sheets</button>
+      <button class="btn btn-p btn-bl inv-edit" id="btn-new-eq" onclick="openNew()">+ Nuevo equipo</button>
+      <button class="btn btn-bl inv-exp" id="btn-pdf-eq" style="color:#7c5cfc;border-color:#3a2a6a;background:var(--orange-pale)" onclick="exportPDF()">📄 Exportar PDF</button>
+      <button class="btn btn-e btn-bl inv-exp" id="btn-lbl-eq" onclick="openExport()">⬇ Exportar etiquetas</button>
+      <button class="btn btn-g btn-bl" onclick="sync()">↻ Recargar</button>
     </div>
   </div>
   <div class="main">
     <div class="toolbar">
       <input type="text" id="search" placeholder="Buscar descripción, modelo, serie..." oninput="af()">
-      <button class="btn btn-sm" onclick="selAll()">☑ Todo</button>
-      <button class="btn btn-sm" onclick="desel()">☐ Ninguno</button>
+      <button class="btn btn-sm inv-bulk" onclick="selAll()">☑ Todo</button>
+      <button class="btn btn-sm inv-bulk" onclick="desel()">☐ Ninguno</button>
       <span class="cnt" id="cnt">— equipos</span>
     </div>
-    <div class="selbar" id="selbar">
+    <div class="selbar inv-bulk" id="selbar">
       <input type="checkbox" onchange="toggleAll(this.checked)">
       <span class="selcnt" id="selcnt">0 seleccionados</span>
-      <button class="btn btn-sm btn-e" onclick="expSel()">⬇ Exportar etiquetas</button>
-      <button class="btn btn-sm btn-d" onclick="delSel()">🗑 Eliminar</button>
+      <button class="btn btn-sm btn-e inv-exp" onclick="expSel()">⬇ Exportar etiquetas</button>
+      <button class="btn btn-sm btn-d inv-del" onclick="delSel()">🗑 Eliminar</button>
     </div>
-    <div class="tw" id="tw"><div class="empty"><div class="empty-icon">⟳</div>Cargando desde Google Sheets...</div></div>
+    <div class="tw" id="tw"><div class="empty"><div class="empty-icon">⟳</div>Cargando inventario...</div></div>
   </div>
 </div>
 
@@ -262,7 +268,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
     </div>
     <div class="ma">
       <button class="btn" onclick="cm()">Cancelar</button>
-      <button class="btn btn-p" id="sbtn" onclick="saveItem()">Guardar en Sheets</button>
+      <button class="btn btn-p" id="sbtn" onclick="saveItem()">Guardar equipo</button>
     </div>
   </div>
 </div>
@@ -330,7 +336,7 @@ async function gasPost(body) {
 
 // ── SYNC ──────────────────────────────────────────────────────────────────────
 async function sync() {
-  setPill('loading','⟳ Sincronizando...');
+  setPill('loading','⟳ Recargando...');
   try {
     const rows = await gasGet();
     data = rows
@@ -345,7 +351,7 @@ async function sync() {
   } catch(e) {
     setPill('err','✗ Sin conexión');
     toast('Error: ' + e.message,'err');
-    document.getElementById('tw').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>No se pudo conectar con Google Sheets.<br><small style="color:var(--muted)">'+e.message+'</small></div>';
+    document.getElementById('tw').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>No se pudo cargar el inventario.<br><small style="color:var(--muted)">'+e.message+'</small></div>';
   }
 }
 
@@ -424,12 +430,12 @@ function rf(){['fSede','fEquipo','fArea','fMarca'].forEach(id=>document.getEleme
 function rt() {
   const tw=document.getElementById('tw');
   if(!filtered.length){tw.innerHTML='<div class="empty"><div class="empty-icon">🔍</div>Sin resultados con los filtros actuales</div>';return;}
-  tw.innerHTML='<table><thead><tr><th style="width:32px"><input type="checkbox" onchange="toggleAll(this.checked)"></th><th onclick="sb(\'eq_id\')" style="color:#00cc66">EQ_ID</th><th onclick="sb(\'sede\')">SEDE</th><th onclick="sb(\'equipo\')">TIPO</th><th onclick="sb(\'descripcion\')">DESCRIPCIÓN</th><th onclick="sb(\'area\')">ÁREA</th><th onclick="sb(\'marca\')">MARCA</th><th onclick="sb(\'modelo\')">MODELO</th><th>SERIE</th><th style="width:90px">ACCIONES</th></tr></thead><tbody id="tbody"></tbody></table>';
+  tw.innerHTML='<table><thead><tr><th class="inv-bulk" style="width:32px"><input type="checkbox" onchange="toggleAll(this.checked)"></th><th onclick="sb(\'eq_id\')" style="color:#00cc66">EQ_ID</th><th onclick="sb(\'sede\')">SEDE</th><th onclick="sb(\'equipo\')">TIPO</th><th onclick="sb(\'descripcion\')">DESCRIPCIÓN</th><th onclick="sb(\'area\')">ÁREA</th><th onclick="sb(\'marca\')">MARCA</th><th onclick="sb(\'modelo\')">MODELO</th><th>SERIE</th><th style="width:90px">ACCIONES</th></tr></thead><tbody id="tbody"></tbody></table>';
   const tb=document.getElementById('tbody');
   filtered.forEach(r=>{
     const is=selected.has(r.row),tr=document.createElement('tr');
     if(is)tr.classList.add('sel');
-    tr.innerHTML='<td><input type="checkbox"'+(is?' checked':'')+' onchange="togRow('+r.row+',this.checked)" onclick="event.stopPropagation()"></td><td class="mono" style="color:#00cc66;font-size:10px">'+esc(r.eq_id)+'</td><td><span class="badge">'+esc(r.sede)+'</span></td><td style="color:#aaa">'+esc(r.equipo)+'</td><td style="font-weight:500">'+esc(r.descripcion)+'</td><td style="color:var(--muted2)">'+esc(r.area)+'</td><td>'+esc(r.marca)+'</td><td class="mono">'+esc(r.modelo)+'</td><td class="mono" style="color:var(--muted)">'+esc(r.serie)+'</td><td><button class="btn btn-sm" onclick="editItem('+r.row+');event.stopPropagation()">✎</button> <button class="btn btn-sm btn-d" onclick="delItem('+r.row+');event.stopPropagation()">✕</button></td>';
+    tr.innerHTML='<td class="inv-bulk"><input type="checkbox"'+(is?' checked':'')+' onchange="togRow('+r.row+',this.checked)" onclick="event.stopPropagation()"></td><td class="mono" style="color:#00cc66;font-size:10px">'+esc(r.eq_id)+'</td><td><span class="badge">'+esc(r.sede)+'</span></td><td style="color:#aaa">'+esc(r.equipo)+'</td><td style="font-weight:500">'+esc(r.descripcion)+'</td><td style="color:var(--muted2)">'+esc(r.area)+'</td><td>'+esc(r.marca)+'</td><td class="mono">'+esc(r.modelo)+'</td><td class="mono" style="color:var(--muted)">'+esc(r.serie)+'</td><td>'+(MA.can('editar','inventario')?'<button class="btn btn-sm" onclick="editItem('+r.row+');event.stopPropagation()">✎</button> ':'')+(MA.can('borrar')?'<button class="btn btn-sm btn-d" onclick="delItem('+r.row+');event.stopPropagation()">✕</button>':'')+'</td>';
     tr.onclick=()=>togRow(r.row,!selected.has(r.row));
     tb.appendChild(tr);
   });
@@ -444,6 +450,7 @@ function us(){document.getElementById('sTotal').textContent=data.length;document
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 async function openNew(){
+  if(!MA.can('editar','inventario')){toast('Sin permisos','err');return;}
   editRow=null;
   document.getElementById('mtitle').textContent='Nuevo equipo';
   document.getElementById('sbtn').textContent='Guardar';
@@ -508,6 +515,7 @@ function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;editRow=ro
 function cm(){document.getElementById('mov').classList.remove('open');}
 
 async function saveItem(){
+  if(!MA.can('editar','inventario')){toast('Sin permisos','err');return;}
   const sede=document.getElementById('f_sede').value.trim(), desc=document.getElementById('f_desc').value.trim();
   if(!sede||!desc){toast('Sede y descripción son obligatorios','err');return;}
   const btn=document.getElementById('sbtn');
@@ -535,6 +543,7 @@ async function saveItem(){
 }
 
 async function delItem(row){
+  if(!MA.can('borrar')){toast('Solo el super admin puede eliminar','err');return;}
   const r=data.find(x=>x.row===row);
   if(!confirm('¿Eliminar "'+r?.descripcion+'" de '+r?.sede+'?'))return;
   try{await gasPost({action:'delete',rowNum:row});toast('Eliminado ✓','ok');await sync();}
@@ -542,8 +551,9 @@ async function delItem(row){
 }
 
 async function delSel(){
+  if(!MA.can('borrar')){toast('Solo el super admin puede eliminar','err');return;}
   if(!selected.size)return;
-  if(!confirm('¿Eliminar '+selected.size+' equipos de Google Sheets?'))return;
+  if(!confirm('¿Eliminar '+selected.size+' equipos del inventario?'))return;
   try{
     for(const row of [...selected].sort((a,b)=>b-a)){await gasPost({action:'delete',rowNum:row});await new Promise(r=>setTimeout(r,200));}
     selected.clear();toast('Eliminados ✓','ok');await sync();
@@ -551,7 +561,7 @@ async function delSel(){
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────
-function openExport(){document.getElementById('ec1').textContent=filtered.length;document.getElementById('ec2').textContent=selected.size;document.getElementById('ec3').textContent=data.length;document.getElementById('epanel').classList.add('open');}
+function openExport(){if(!MA.can('exportar','inventario')){toast('Sin permisos para exportar','err');return;}document.getElementById('ec1').textContent=filtered.length;document.getElementById('ec2').textContent=selected.size;document.getElementById('ec3').textContent=data.length;document.getElementById('epanel').classList.add('open');}
 function ce(){document.getElementById('epanel').classList.remove('open');}
 function gr(){const s=document.querySelector('input[name=esc]:checked').value;if(s==='selected')return data.filter(r=>selected.has(r.row));if(s==='all')return[...data];return[...filtered];}
 function expCat(){const sede=document.getElementById('ebSede').value,tipo=document.getElementById('ebTipo').value;let rows=[...data];if(sede)rows=rows.filter(r=>r.sede===sede);if(tipo)rows=rows.filter(r=>r.equipo===tipo);if(!rows.length){toast('Sin resultados','err');return;}runExp(rows,'etiquetas_'+[sede,tipo].filter(Boolean).join('_')+'.zip');}
@@ -559,6 +569,7 @@ function doExp(){const rows=gr();if(!rows.length){toast('Sin equipos','err');ret
 function expSel(){const rows=data.filter(r=>selected.has(r.row));if(!rows.length){toast('Selecciona equipos primero','err');return;}runExp(rows,'etiquetas_seleccion.zip');}
 
 async function runExp(rows,fname){
+  if(!MA.can('exportar','inventario')){toast('Sin permisos para exportar','err');return;}
   toast('Generando '+rows.length+' etiquetas...','warn');
   try{const b=await genZip(rows);dlb(b,fname);toast(rows.length+' etiquetas ✓','ok');ce();}
   catch(e){toast('Error: '+e.message,'err');}
@@ -595,9 +606,11 @@ function toast(msg,type='ok'){const el=document.getElementById('toast');el.textC
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 document.addEventListener('change',e=>{if(e.target.name==='esc'){document.querySelectorAll('.eopt').forEach(el=>el.classList.remove('act'));e.target.closest('.eopt').classList.add('act');}});
 
-sync();
+// sync() inicial eliminado: los datos se cargan tras autenticación (en maVerify),
+// para no leer 'inventario' antes del gate de acceso por apps[].
 
 function exportPDF() {
+  if(!MA.can('exportar','inventario')){ toast('Sin permisos para exportar','err'); return; }
   const rows = filtered; // whatever is currently filtered
   if(!rows.length){ toast('Sin equipos en la vista actual','err'); return; }
 
@@ -824,20 +837,24 @@ function maVerify(payload,save){
       }
     }
     var appsMap=data.apps||{};
-    if(['ADMIN','SUPER_ADMIN'].indexOf(rol)===-1){
-      var userApps=appsMap[email]||[];
-      if(userApps.indexOf(MA_APP)===-1){
-        if(ldEl)ldEl.classList.remove('show');
-        if(errEl){errEl.textContent='Sin acceso a esta sección ('+MA_APP+'). Contacta al administrador.';errEl.classList.add('show');}
-        sessionStorage.removeItem('ma_user');return;
-      }
+    var userApps=appsMap[email]||[];
+    maUser={email:email,name:payload.name||email,picture:payload.picture||'',rol:rol,apps:userApps};
+    MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
+    if(!MA.canEnter(MA_APP)){
+      if(ldEl)ldEl.classList.remove('show');
+      sessionStorage.removeItem('ma_user');maUser=null;MA.setUser(null);
+      MA.showNoAccess('Inventario de Equipos');return;
     }
-    maUser={email:email,name:payload.name||email,picture:payload.picture||'',rol:rol};
     if(save)sessionStorage.setItem('ma_user',JSON.stringify(maUser));
     if(ldEl)ldEl.classList.remove('show');
     var ov=document.getElementById('auth-overlay');
     if(ov){ov.style.display='none';document.body.style.overflow='';}
     maRenderPill();maLogAccess(email);
+    // Acciones según rol (técnico solo lee): clases en el body que ocultan los controles
+    if(!MA.can('editar','inventario'))document.body.classList.add('inv-readonly');
+    if(!MA.can('exportar','inventario'))document.body.classList.add('inv-noexport');
+    if(!MA.can('borrar'))document.body.classList.add('inv-nodel');
+    if(!MA.can('exportar','inventario')&&!MA.can('borrar'))document.body.classList.add('inv-nobulk');
     sync(); // Load data after auth
   }).catch(function(){
     if(ldEl)ldEl.classList.remove('show');
@@ -868,11 +885,10 @@ function maRenderPill(){
   var n=maUser.name||maUser.email;
   try{n=decodeURIComponent(escape(n));}catch(e){}
   var init=n.split(' ').map(function(x){return x[0];}).join('').substring(0,2).toUpperCase();
-  var isAdmin=maUser.rol==='ADMIN'||maUser.rol==='SUPER_ADMIN';
   var avatarHtml=maUser.picture
     ?'<img class="user-avatar" src="'+maUser.picture+'" alt="'+n+'">'
     :'<div class="user-avatar-init">'+init+'</div>';
-  var adminItem=isAdmin
+  var adminItem=MA.isSuperAdmin()
     ?'<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-divider"></div>'
     :'';
   pill.innerHTML=avatarHtml+'<span class="user-name">'+n+'</span>'
@@ -949,8 +965,9 @@ function maRemoveEmail(email){
   }).then(function(){maRenderAdmin();});
 }
 function maSaveUsers(users){
+  if(!MA.can('gestionUsuarios')) return;
   maEmails={emails:users.map(function(u){return u.email;}),roles:Object.fromEntries(users.map(function(u){return [u.email,u.rol];}))}
-  return (async()=>{ const {setDoc,doc,getDocs,collection,deleteDoc,writeBatch}=window.__fb; const b=writeBatch(window.__db); const ex=await getDocs(collection(window.__db,'usuarios')); ex.docs.forEach(d=>b.delete(d.ref)); users.forEach(u=>b.set(doc(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:u.rol||'USUARIO'})); await b.commit(); })().catch(function(){});
+  return (async()=>{ const {setDoc,doc,getDocs,collection,deleteDoc,writeBatch}=window.__fb; const b=writeBatch(window.__db); const ex=await getDocs(collection(window.__db,'usuarios')); const _apps={}; ex.docs.forEach(d=>{_apps[d.id]=(d.data().apps)||[];}); ex.docs.forEach(d=>b.delete(d.ref)); users.forEach(u=>b.set(doc(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:(MA.isSystemSuper(u.email)?'SUPER_ADMIN':(u.rol||'USUARIO')),apps:_apps[u.email.toLowerCase()]||[]})); await b.commit(); })().catch(function(){});
 }
 function maToggleRole(email){
   maGetEmails().then(function(data){
@@ -1028,6 +1045,7 @@ function changeUserRolByEl(sel) { changeUserRol(sel.getAttribute('data-email'), 
 function removeUserAccessByEl(btn) { removeUserAccess(btn.getAttribute('data-email')); }
 
 async function addUserAccess() {
+  if(!MA.can('gestionUsuarios')) return;
   const email = document.getElementById('new-user-email')?.value?.trim()?.toLowerCase();
   const rol = document.getElementById('new-user-rol')?.value || 'USUARIO';
   if (!email || !email.includes('@')) { alert('Ingresa un email válido'); return; }
@@ -1035,7 +1053,7 @@ async function addUserAccess() {
   
   try {
     const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'usuarios', email), { email, rol });
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol }, { merge: true });
     accessUsers.push({ email, rol });
     accessUsers.sort((a,b) => a.email.localeCompare(b.email));
     document.getElementById('new-user-email').value = '';
@@ -1047,6 +1065,8 @@ async function addUserAccess() {
 }
 
 async function removeUserAccess(email) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email)){ alert('No se puede eliminar a un super admin del sistema'); return; }
   if (!confirm('¿Eliminar acceso de ' + email + '?')) return;
   try {
     const { deleteDoc, doc } = window.__fb;
@@ -1059,9 +1079,11 @@ async function removeUserAccess(email) {
 }
 
 async function changeUserRol(email, newRol) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email) && newRol!=='SUPER_ADMIN'){ alert('No se puede degradar a un super admin del sistema'); return; }
   try {
     const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol });
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol }, { merge: true });
     const u = accessUsers.find(u => u.email === email);
     if (u) u.rol = newRol;
     sessionStorage.removeItem('ma_emails');
@@ -1075,7 +1097,7 @@ var MA_ROLES = ['TECNICO','SUPERVISOR','ADMIN','SUPER_ADMIN'];
 var MA_ROL_COLORS = {TECNICO:'#1a9e5a',SUPERVISOR:'#6b3fa0',ADMIN:'#1B3F8B',SUPER_ADMIN:'#d4621a'};
 var MA_ROL_BGS    = {TECNICO:'#f0faf5',SUPERVISOR:'#f3eeff',ADMIN:'#e8eef8',SUPER_ADMIN:'#fff3eb'};
 function openAccessPanel() {
-  if (!maUser || ['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol) === -1) return;
+  if (!MA.isSuperAdmin()) { toast('Solo el super admin gestiona accesos','err'); return; }
   var menu = document.getElementById('user-menu');
   if (menu) menu.classList.remove('open');
   window.__db.collection('usuarios').get().then(function(snap) {
@@ -1093,7 +1115,11 @@ function maRenderAccessPanel() {
     {id:'inventario',    label:'\u{1F4E6} Inv'},
     {id:'mantenimiento', label:'\u{1F527} Mant'},
     {id:'itinerario',    label:'\u{1F5D3} Iti'},
-    {id:'insumos',       label:'\u{1F9F0} Ins'}
+    {id:'insumos',       label:'\u{1F9F0} Ins'},
+    {id:'asistencia',    label:'\u{1F551} Asis'},
+    {id:'comprobantes',  label:'\u{1F9FE} Comp'},
+    {id:'proveedores',   label:'\u{1F3E2} Prov'},
+    {id:'observaciones', label:'\u{1F4CB} Obs'}
   ];
   list.innerHTML = maAccessUsers.map(function(u) {
     var isMe = maUser && u.email === maUser.email;
@@ -1134,6 +1160,7 @@ function maRenderAccessPanel() {
 }
 
 function maToggleApp(cb) {
+  if(!MA.can('gestionUsuarios')){ cb.checked = !cb.checked; return; }
   var email = cb.getAttribute('data-email');
   var app = cb.getAttribute('data-app');
   var u = maAccessUsers.find(function(x){ return x.email === email; });
@@ -1149,6 +1176,8 @@ function maToggleApp(cb) {
   }).catch(function(e) { alert('Error: ' + e.message); cb.checked = !cb.checked; });
 }
 function maChangeRol(email, rol) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(rol!=='SUPER_ADMIN'){ var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   window.__db.collection('usuarios').doc(email).update({rol: rol}).then(function() {
     var u = maAccessUsers.find(function(x){ return x.email === email; });
     if (u) u.rol = rol;
@@ -1157,6 +1186,8 @@ function maChangeRol(email, rol) {
   }).catch(function(e) { alert('Error: ' + e.message); });
 }
 function maDeleteUser(email) {
+  if(!MA.can('gestionUsuarios')) return;
+  { var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   if (!confirm('\xBFEliminar acceso de ' + email + '?')) return;
   window.__db.collection('usuarios').doc(email).delete().then(function() {
     maAccessUsers = maAccessUsers.filter(function(x){ return x.email !== email; });
@@ -1165,6 +1196,7 @@ function maDeleteUser(email) {
   }).catch(function(e) { alert('Error: ' + e.message); });
 }
 function maAddUser() {
+  if(!MA.can('gestionUsuarios')) return;
   var email = (document.getElementById('ma-new-email').value || '').trim().toLowerCase();
   var rol = document.getElementById('ma-new-rol').value;
   if (!email || email.indexOf('@') === -1) { alert('Email inv\xE1lido'); return; }

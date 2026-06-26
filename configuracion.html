@@ -219,6 +219,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -505,19 +506,16 @@ function maVerify(payload, save) {
       }
     }
     var appsMap = data.apps || {};
-    maUser = { email: email, name: payload.name || email, picture: payload.picture || '', rol: rol };
+    maUser = { email: email, name: payload.name || email, picture: payload.picture || '', rol: rol, apps: appsMap[email] || [] };
+    MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
     if (save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
     if (ldEl) ldEl.classList.remove('show');
 
-    // Check admin
-    if (['ADMIN','SUPER_ADMIN'].indexOf(rol) === -1) {
-      if (adminOnlyEl) adminOnlyEl.classList.add('show');
-      // Show overlay but disable editing
+    // Configuración (backup/restauración, maestros, usuarios) es SOLO del super admin.
+    // El resto ni siquiera carga los datos sensibles.
+    if (!MA.isSuperAdmin()) {
       document.getElementById('auth-overlay').style.display = 'none';
-      document.body.style.overflow = '';
-      maRenderPill();
-      loadTareas(false);
-      loadMaestros();
+      MA.showNoAccess('Configuración');
       return;
     }
 
@@ -558,8 +556,7 @@ function maRenderPill() {
   var n = maUser.name || maUser.email;
   try { n = decodeURIComponent(escape(n)); } catch(e) {}
   var init = n.split(' ').map(function(x) { return x[0]; }).join('').substring(0, 2).toUpperCase();
-  var isAdmin = maUser.rol === 'ADMIN' || maUser.rol === 'SUPER_ADMIN';
-  var adminItem = isAdmin ? '<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-divider"></div>' : '';
+  var adminItem = MA.isSuperAdmin() ? '<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-divider"></div>' : '';
   pill.innerHTML = (maUser.picture ? '<img class="user-avatar" src="' + maUser.picture + '">' : '<div class="user-avatar-init">' + init + '</div>')
     + '<span class="user-name">' + n + '</span>'
     + '<div class="user-menu" id="user-menu">'
@@ -749,7 +746,7 @@ function onDrop(e, targetIdx) {
 
 // ── SAVE ──────────────────────────────────────────────────────────────────────
 async function saveTareas() {
-  if (!maUser || ['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol) === -1) { toast('Solo admins pueden guardar', 'err'); return; }
+  if (!MA.can('config')) { toast('La configuración es solo del super admin', 'err'); return; }
   document.getElementById('loading').classList.add('show');
   const rows = [];
   Object.keys(tareasData).forEach(tipo => {
@@ -847,6 +844,7 @@ function removeUserAccessByEl(btn) {
 }
 
 async function addUserAccess() {
+  if(!MA.can('gestionUsuarios')) return;
   const email = document.getElementById('new-user-email')?.value?.trim()?.toLowerCase();
   const rol = document.getElementById('new-user-rol')?.value || 'USUARIO';
   if (!email || !email.includes('@')) { alert('Ingresa un email válido'); return; }
@@ -854,7 +852,7 @@ async function addUserAccess() {
   
   try {
     const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'usuarios', email), { email, rol });
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol }, { merge: true });
     accessUsers.push({ email, rol });
     accessUsers.sort((a,b) => a.email.localeCompare(b.email));
     document.getElementById('new-user-email').value = '';
@@ -866,6 +864,8 @@ async function addUserAccess() {
 }
 
 async function removeUserAccess(email) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email)){ alert('No se puede eliminar a un super admin del sistema'); return; }
   if (!confirm('¿Eliminar acceso de ' + email + '?')) return;
   try {
     const { deleteDoc, doc } = window.__fb;
@@ -878,9 +878,11 @@ async function removeUserAccess(email) {
 }
 
 async function changeUserRol(email, newRol) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email) && newRol!=='SUPER_ADMIN'){ alert('No se puede degradar a un super admin del sistema'); return; }
   try {
     const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol });
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol }, { merge: true });
     const u = accessUsers.find(u => u.email === email);
     if (u) u.rol = newRol;
     sessionStorage.removeItem('ma_emails');
@@ -902,6 +904,7 @@ window.addEventListener('beforeunload', function(e) {
 
 // ── EXPORT BACKUP ─────────────────────────────────────────────────────────────
 async function exportBackup() {
+  if (!MA.can('backup')) { toast('El backup es solo del super admin', 'err'); return; }
   const btn = document.getElementById('export-btn');
   btn.disabled = true;
   btn.textContent = '⏳ Generando...';
@@ -1204,7 +1207,7 @@ async function processZip(file) {
 
 async function confirmImport() {
   if (!pendingImport) return;
-  if (!maUser || ['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol) === -1) { toast('Solo admins pueden importar', 'err'); return; }
+  if (!MA.can('backup')) { toast('Restaurar el backup es solo del super admin', 'err'); return; }
 
   const mode = document.querySelector('input[name="import-mode"]:checked').value;
   const confirmMsg = mode === 'replace'
@@ -1255,6 +1258,7 @@ async function confirmImport() {
   }
 
   async function batchWrite(col, rows, mapFn) {
+    if(!MA.can('backup')) return;
     const {writeBatch:_wb,doc:_doc,collection:_col,getDocs:_dg}=window.__fb;
     if(mode==='replace'){const _b=_wb(window.__db);const _ex=await _dg(_col(window.__db,col));_ex.docs.forEach(d=>_b.delete(d.ref));await _b.commit();}
     let b=_wb(window.__db), n=0;
@@ -1360,27 +1364,27 @@ async function confirmImport() {
     if (pendingImport.files['usuarios.csv']) {
       addLog('👥 Importando usuarios...', 'info');
       const rows = parseCSV(pendingImport.files['usuarios.csv']);
-      const users = rows.map(r => ({ email: r.EMAIL, rol: r.ROL || 'USUARIO' }));
+      const users = rows.map(r => ({ email: r.EMAIL, rol: r.ROL || 'USUARIO', apps: r.APPS ? r.APPS.split('|').filter(Boolean) : [] }));
       if (mode === 'merge') {
-        // Merge: add new users only
+        // Merge: add new users only (preservando apps[] de los existentes)
         const {getDocs:_dg3,collection:_col3}=window.__fb;
         const _uSnap=await _dg3(_col3(window.__db,'usuarios'));
         const _uData=_uSnap.docs.map(d=>d.data());
-        const existing={emails:_uData.map(u=>u.email),roles:Object.fromEntries(_uData.map(u=>[u.email,u.rol||'USUARIO']))};
+        const existing={emails:_uData.map(u=>u.email),roles:Object.fromEntries(_uData.map(u=>[u.email,u.rol||'USUARIO'])),apps:Object.fromEntries(_uData.map(u=>[u.email,u.apps||[]]))};
         const existingEmails = existing.emails || [];
         const newUsers = users.filter(u => !existingEmails.includes(u.email));
         if (newUsers.length > 0) {
-          const allUsers = existingEmails.map(e => ({ email: e, rol: existing.roles[e] || 'USUARIO' }));
+          const allUsers = existingEmails.map(e => ({ email: e, rol: existing.roles[e] || 'USUARIO', apps: existing.apps[e] || [] }));
           const {writeBatch:_wb4,doc:_doc4,collection:_col4,getDocs:_dg4}=window.__fb;
           const _b4=_wb4(window.__db);
-          [...allUsers,...newUsers].forEach(u=>{_b4.set(_doc4(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:u.rol||'USUARIO'});});
+          [...allUsers,...newUsers].forEach(u=>{_b4.set(_doc4(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:u.rol||'USUARIO',apps:u.apps||[]});});
           await _b4.commit();
         }
         addLog('✓ Usuarios fusionados (' + newUsers.length + ' nuevos)', 'ok');
       } else {
         const {writeBatch:wb,doc:wd,collection:wc,getDocs:wg}=window.__fb;
     const wb1=wb(window.__db); const ex=await wg(wc(window.__db,'usuarios')); ex.docs.forEach(d=>wb1.delete(d.ref));
-    users.forEach(u=>wb1.set(wd(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:u.rol||'USUARIO'}));
+    users.forEach(u=>wb1.set(wd(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:u.rol||'USUARIO',apps:u.apps||[]}));
     await wb1.commit();
         addLog('✓ Usuarios reemplazados (' + users.length + ' usuarios)', 'ok');
       }
@@ -1659,7 +1663,7 @@ function compressSquare(file, size, quality) {
 // al "Guardar cambios". No usa Firebase Storage (evita el plan Blaze).
 async function setPersonalFoto(i, file) {
   if (!file) return;
-  if (!maUser || ['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol) === -1) { toast('Solo admins pueden subir fotos', 'err'); return; }
+  if (!MA.can('config')) { toast('La configuración es solo del super admin', 'err'); return; }
   const p = maestrosData.personal[i];
   if (!p) return;
   if (!/^image\//.test(file.type)) { toast('El archivo no es una imagen', 'err'); return; }
@@ -1835,7 +1839,7 @@ function switchMaestroTab(tab) {
 }
 
 async function saveMaestros() {
-  if (!maUser || ['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol) === -1) { toast('Solo admins pueden guardar', 'err'); return; }
+  if (!MA.can('config')) { toast('La configuración es solo del super admin', 'err'); return; }
   document.getElementById('loading').classList.add('show');
   try {
     // Save personal
@@ -1879,7 +1883,7 @@ var MA_ROL_COLORS = {TECNICO:'#1a9e5a',SUPERVISOR:'#6b3fa0',ADMIN:'#1B3F8B',SUPE
 var MA_ROL_BGS    = {TECNICO:'#f0faf5',SUPERVISOR:'#f3eeff',ADMIN:'#e8eef8',SUPER_ADMIN:'#fff3eb'};
 
 function openAccessPanel() {
-  if (!maUser || ['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol) === -1) return;
+  if (!MA.isSuperAdmin()) return;
   var menu = document.getElementById('user-menu');
   if (menu) menu.classList.remove('open');
   window.__db.collection('usuarios').get().then(function(snap) {
@@ -1901,7 +1905,11 @@ function maRenderAccessPanel() {
     {id:'inventario',    label:'\u{1F4E6} Inv'},
     {id:'mantenimiento', label:'\u{1F527} Mant'},
     {id:'itinerario',    label:'\u{1F5D3} Iti'},
-    {id:'insumos',       label:'\u{1F9F0} Ins'}
+    {id:'insumos',       label:'\u{1F9F0} Ins'},
+    {id:'asistencia',    label:'\u{1F551} Asis'},
+    {id:'comprobantes',  label:'\u{1F9FE} Comp'},
+    {id:'proveedores',   label:'\u{1F3E2} Prov'},
+    {id:'observaciones', label:'\u{1F4CB} Obs'}
   ];
   list.innerHTML = maAccessUsers.map(function(u) {
     var isMe = maUser && u.email === maUser.email;
@@ -1942,6 +1950,7 @@ function maRenderAccessPanel() {
 }
 
 function maToggleApp(cb) {
+  if(!MA.can('gestionUsuarios')){ cb.checked = !cb.checked; return; }
   var email = cb.getAttribute('data-email');
   var app = cb.getAttribute('data-app');
   var u = maAccessUsers.find(function(x){ return x.email === email; });
@@ -1958,6 +1967,8 @@ function maToggleApp(cb) {
 }
 
 function maChangeRol(email, rol) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(rol!=='SUPER_ADMIN'){ var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   window.__db.collection('usuarios').doc(email).update({rol: rol}).then(function() {
     var u = maAccessUsers.find(function(x){ return x.email === email; });
     if (u) { u.rol = rol; }
@@ -1967,6 +1978,8 @@ function maChangeRol(email, rol) {
 }
 
 function maDeleteUser(email) {
+  if(!MA.can('gestionUsuarios')) return;
+  { var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   if (!confirm('\xBFEliminar acceso de ' + email + '?')) return;
   window.__db.collection('usuarios').doc(email).delete().then(function() {
     maAccessUsers = maAccessUsers.filter(function(x){ return x.email !== email; });
@@ -1976,6 +1989,7 @@ function maDeleteUser(email) {
 }
 
 function maAddUser() {
+  if(!MA.can('gestionUsuarios')) return;
   var email = (document.getElementById('ma-new-email').value || '').trim().toLowerCase();
   var rol   = document.getElementById('ma-new-rol').value;
   if (!email || email.indexOf('@') === -1) { alert('Ingresa un email v\xE1lido'); return; }

@@ -9,6 +9,10 @@
 <title>MultiAire – Itinerario</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+/* Solo-lectura: oculta acciones de edición/exportación/borrado según el rol */
+.iti-readonly .iti-edit{display:none!important}
+.iti-noexport .iti-export{display:none!important}
+.iti-nodel .iti-del{display:none!important}
 :root{
   --bg:#f0f4fa;--surface:#fff;--surface2:#f5f8ff;--surface3:#e8eef8;
   --border:#d0daf0;--border2:#b8cce8;
@@ -200,6 +204,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 }
 </style>
 <script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -243,7 +248,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
     <div class="sb-body">
       <div class="sb-label">Fecha</div>
       <input type="date" class="sb-input" id="fecha-input" onchange="loadFecha(this.value)">
-      <button class="btn btn-primary" style="width:100%;margin-bottom:8px" onclick="nuevoItinerario()">+ Nuevo itinerario</button>
+      <button class="btn btn-primary iti-edit" style="width:100%;margin-bottom:8px" onclick="nuevoItinerario()">+ Nuevo itinerario</button>
       <button class="btn" style="width:100%" onclick="loadFecha(document.getElementById('fecha-input').value)">🔄 Recargar</button>
     </div>
     <div class="sb-section">Recientes</div>
@@ -273,7 +278,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveItinerario()">💾 Guardar itinerario</button>
+      <button class="btn btn-primary iti-edit" onclick="saveItinerario()">💾 Guardar itinerario</button>
     </div>
   </div>
 </div>
@@ -408,20 +413,23 @@ function maVerify(payload, save) {
       }
     }
     var appsMap = data.apps || {};
-    if (['ADMIN','SUPER_ADMIN'].indexOf(rol) === -1) {
-      var userApps = appsMap[email] || [];
-      if (userApps.indexOf(MA_APP) === -1) {
-        if (ldEl) ldEl.classList.remove('show');
-        if (errEl) { errEl.textContent = 'Sin acceso a esta sección (' + MA_APP + '). Contacta al administrador.'; errEl.classList.add('show'); }
-        sessionStorage.removeItem('ma_user'); return;
-      }
+    var userApps = appsMap[email] || [];
+    maUser = { email, name: payload.name || email, picture: payload.picture || '', rol: rol, apps: userApps };
+    MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
+    // Gate de entrada por módulo: admins entran a todo; el resto necesita MA_APP en apps[].
+    if (!MA.canEnter(MA_APP)) {
+      if (ldEl) ldEl.classList.remove('show');
+      sessionStorage.removeItem('ma_user'); maUser = null; MA.setUser(null);
+      MA.showNoAccess('Itinerario'); return;
     }
-    maUser = { email, name: payload.name || email, picture: payload.picture || '', rol: rol };
     if (save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
     if (ldEl) ldEl.classList.remove('show');
     document.getElementById('auth-overlay').style.display = 'none';
     document.body.style.overflow = '';
     maRenderPill();
+    if(!MA.can('editar','itinerario'))document.body.classList.add('iti-readonly'); // técnico: solo lectura
+    if(!MA.can('exportar','itinerario'))document.body.classList.add('iti-noexport');
+    if(!MA.can('borrar'))document.body.classList.add('iti-nodel'); // borrar = solo super
     init();
   }).catch(function() {
     if (ldEl) ldEl.classList.remove('show');
@@ -452,8 +460,7 @@ function maRenderPill() {
   let n = maUser.name || maUser.email;
   try { n = decodeURIComponent(escape(n)); } catch(e) {}
   const init = n.split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase();
-  const isAdmin = maUser.rol === 'ADMIN' || maUser.rol === 'SUPER_ADMIN';
-  const adminItem = isAdmin ? '<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-divider"></div>' : '';
+  const adminItem = MA.isSuperAdmin() ? '<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-divider"></div>' : '';
   pill.innerHTML = (maUser.picture ? `<img class="user-avatar" src="${maUser.picture}">` : `<div class="user-avatar-init">${init}</div>`)
     + `<span class="user-name">${n}</span>`
     + `<div class="user-menu" id="user-menu">`
@@ -646,7 +653,7 @@ function renderItinerario(iti, bloques, fecha) {
           <div class="iti-title-meta">Sin itinerario registrado</div>
         </div>
         <div class="iti-actions">
-          <button class="btn btn-primary" onclick="nuevoItinerario()">+ Crear itinerario</button>
+          <button class="btn btn-primary iti-edit" onclick="nuevoItinerario()">+ Crear itinerario</button>
         </div>
       </div>
       <div class="empty-iti">
@@ -680,11 +687,11 @@ function renderItinerario(iti, bloques, fecha) {
         ${versionsHtml}
       </div>
       <div class="iti-actions">
-        <button class="btn" onclick="exportPNG()" title="Exportar PNG">🖼 PNG</button>
-        <button class="btn" onclick="exportPDF()" title="Exportar PDF">📄 PDF</button>
-        <button class="btn" onclick="exportWhatsApp()" title="Enviar WhatsApp">💬 WhatsApp</button>
-        <button class="btn btn-danger" onclick="openDeleteModal()" title="Eliminar">🗑 Eliminar</button>
-        <button class="btn btn-primary" onclick="editarItinerario()">✏️ Editar / Nueva versión</button>
+        <button class="btn iti-export" onclick="exportPNG()" title="Exportar PNG">🖼 PNG</button>
+        <button class="btn iti-export" onclick="exportPDF()" title="Exportar PDF">📄 PDF</button>
+        <button class="btn iti-export" onclick="exportWhatsApp()" title="Enviar WhatsApp">💬 WhatsApp</button>
+        <button class="btn btn-danger iti-del" onclick="openDeleteModal()" title="Eliminar">🗑 Eliminar</button>
+        <button class="btn btn-primary iti-edit" onclick="editarItinerario()">✏️ Editar / Nueva versión</button>
       </div>
     </div>
     ${iti.obsGenerales ? `<div class="obs-box"><div class="obs-label">Anotaciones generales</div>${iti.obsGenerales}</div>` : ''}
@@ -730,6 +737,7 @@ function renderBloqueCard(b, i) {
 
 // ── NUEVO / EDITAR ITINERARIO ─────────────────────────────────────────────────
 function nuevoItinerario() {
+  if(!MA.can('editar','itinerario')){ toast('Sin permisos', 'err'); return; }
   const fecha = document.getElementById('fecha-input').value || new Date().toISOString().slice(0,10);
   const d = new Date(fecha + 'T12:00:00');
   editBloques = [newBloque()];
@@ -738,6 +746,7 @@ function nuevoItinerario() {
 }
 
 function editarItinerario() {
+  if(!MA.can('editar','itinerario')){ toast('Sin permisos', 'err'); return; }
   if (!currentIti) return;
   const fecha = document.getElementById('fecha-input').value;
   const d = new Date(fecha + 'T12:00:00');
@@ -845,7 +854,7 @@ function renderModal(fecha, d, iti) {
     });
 
     let html = '<div class="bloque-form-item" id="bloque-form-' + i + '">';
-    html += '<div class="bloque-form-num">BLOQUE ' + (i+1) + ' <button class="remove-bloque" onclick="removeBloque(' + i + ')" title="Eliminar bloque">✕</button></div>';
+    html += '<div class="bloque-form-num">BLOQUE ' + (i+1) + ' <button class="remove-bloque iti-edit" onclick="removeBloque(' + i + ')" title="Eliminar bloque">✕</button></div>';
     html += '<div class="form-grid">';
     // Tienda options con selected
     const tOpts = '<option value="">' + (b.idTienda ? '' : 'Seleccionar...') + '</option>'
@@ -881,7 +890,7 @@ function renderModal(fecha, d, iti) {
     + '</div>'
     + '<div class="bloque-sep">Bloques de trabajo</div>'
     + '<div id="bloques-forms">' + editBloques.map(function(b, i) { return bloqueFormHtml(b, i); }).join('') + '</div>'
-    + '<button class="btn btn-orange" onclick="addBloque()" style="width:100%;margin-top:4px">+ Agregar bloque</button>'
+    + '<button class="btn btn-orange iti-edit" onclick="addBloque()" style="width:100%;margin-top:4px">+ Agregar bloque</button>'
     + '<input type="hidden" id="modal-fecha" value="' + fecha + '">'
     + '<input type="hidden" id="modal-version" value="' + version + '">'
     + '<input type="hidden" id="modal-id-iti" value="' + idIti + '">'
@@ -924,6 +933,7 @@ function removeBloque(i) {
 }
 
 async function saveItinerario() {
+  if(!MA.can('editar','itinerario')){ toast('Sin permisos', 'err'); return; }
   const fecha = document.getElementById('modal-fecha').value;
   const version = parseInt(document.getElementById('modal-version').value);
   const idIti = document.getElementById('modal-id-iti').value;
@@ -1079,6 +1089,7 @@ function closeModal() {
 
 // ── DELETE ────────────────────────────────────────────────────────────────────
 function openDeleteModal() {
+  if(!MA.can('borrar')){ toast('Solo el super admin puede eliminar', 'err'); return; }
   if (!currentIti) return;
   document.getElementById('delete-version-label').textContent = 'Eliminar versión v' + currentIti.version;
   document.getElementById('modal-delete').classList.add('open');
@@ -1089,6 +1100,7 @@ function closeDeleteModal() {
 }
 
 async function deleteVersion() {
+  if(!MA.can('borrar')){ toast('Solo el super admin puede eliminar', 'err'); return; }
   if (!currentIti) return;
   if (!confirm('¿Eliminar la versión v' + currentIti.version + ' del itinerario ' + currentIti.id + '?')) return;
   closeDeleteModal();
@@ -1116,6 +1128,7 @@ async function deleteVersion() {
 }
 
 async function deleteAllVersions() {
+  if(!MA.can('borrar')){ toast('Solo el super admin puede eliminar', 'err'); return; }
   if (!currentIti) return;
   if (!confirm('¿Eliminar TODAS las versiones del itinerario ' + currentIti.id + '? Esta acción no se puede deshacer.')) return;
   closeDeleteModal();
@@ -1144,6 +1157,7 @@ async function deleteAllVersions() {
 
 // ── EXPORT WHATSAPP ───────────────────────────────────────────────────────────
 function exportWhatsApp() {
+  if(!MA.can('exportar','itinerario')){ toast('Sin permisos para exportar', 'err'); return; }
   if (!currentIti) return;
   const fecha = document.getElementById('fecha-input').value;
   const d = new Date(fecha + 'T12:00:00');
@@ -1189,6 +1203,7 @@ function exportWhatsApp() {
 
 // ── EXPORT PNG ────────────────────────────────────────────────────────────────
 async function exportPNG() {
+  if(!MA.can('exportar','itinerario')){ toast('Sin permisos para exportar', 'err'); return; }
   if (!currentIti) return;
   toast('Generando PNG...', '');
 
@@ -1226,6 +1241,7 @@ async function exportPNG() {
 
 // ── EXPORT PDF ────────────────────────────────────────────────────────────────
 async function exportPDF() {
+  if(!MA.can('exportar','itinerario')){ toast('Sin permisos para exportar', 'err'); return; }
   if (!currentIti) return;
   toast('Generando PDF...', '');
 
@@ -1432,6 +1448,7 @@ function removeUserAccessByEl(btn) {
 }
 
 async function addUserAccess() {
+  if(!MA.can('gestionUsuarios')) return;
   const email = document.getElementById('new-user-email')?.value?.trim()?.toLowerCase();
   const rol = document.getElementById('new-user-rol')?.value || 'USUARIO';
   if (!email || !email.includes('@')) { alert('Ingresa un email válido'); return; }
@@ -1439,7 +1456,7 @@ async function addUserAccess() {
   
   try {
     const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'usuarios', email), { email, rol });
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol }, { merge: true });
     accessUsers.push({ email, rol });
     accessUsers.sort((a,b) => a.email.localeCompare(b.email));
     document.getElementById('new-user-email').value = '';
@@ -1451,6 +1468,8 @@ async function addUserAccess() {
 }
 
 async function removeUserAccess(email) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email)){ alert('No se puede eliminar a un super admin del sistema'); return; }
   if (!confirm('¿Eliminar acceso de ' + email + '?')) return;
   try {
     const { deleteDoc, doc } = window.__fb;
@@ -1463,9 +1482,11 @@ async function removeUserAccess(email) {
 }
 
 async function changeUserRol(email, newRol) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email) && newRol!=='SUPER_ADMIN'){ alert('No se puede degradar a un super admin del sistema'); return; }
   try {
     const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol });
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol }, { merge: true });
     const u = accessUsers.find(u => u.email === email);
     if (u) u.rol = newRol;
     sessionStorage.removeItem('ma_emails');
@@ -1487,7 +1508,7 @@ var MA_ROL_COLORS = {TECNICO:'#1a9e5a',SUPERVISOR:'#6b3fa0',ADMIN:'#1B3F8B',SUPE
 var MA_ROL_BGS    = {TECNICO:'#f0faf5',SUPERVISOR:'#f3eeff',ADMIN:'#e8eef8',SUPER_ADMIN:'#fff3eb'};
 
 function openAccessPanel() {
-  if (!maUser || ['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol) === -1) return;
+  if (!MA.isSuperAdmin()) { toast('Solo el super admin gestiona accesos', 'err'); return; }
   var menu = document.getElementById('user-menu');
   if (menu) menu.classList.remove('open');
   window.__db.collection('usuarios').get().then(function(snap) {
@@ -1509,7 +1530,11 @@ function maRenderAccessPanel() {
     {id:'inventario',    label:'\u{1F4E6} Inv'},
     {id:'mantenimiento', label:'\u{1F527} Mant'},
     {id:'itinerario',    label:'\u{1F5D3} Iti'},
-    {id:'insumos',       label:'\u{1F9F0} Ins'}
+    {id:'insumos',       label:'\u{1F9F0} Ins'},
+    {id:'asistencia',    label:'\u{1F551} Asis'},
+    {id:'comprobantes',  label:'\u{1F9FE} Comp'},
+    {id:'proveedores',   label:'\u{1F3E2} Prov'},
+    {id:'observaciones', label:'\u{1F4CB} Obs'}
   ];
   list.innerHTML = maAccessUsers.map(function(u) {
     var isMe = maUser && u.email === maUser.email;
@@ -1550,6 +1575,7 @@ function maRenderAccessPanel() {
 }
 
 function maToggleApp(cb) {
+  if(!MA.can('gestionUsuarios')){ cb.checked = !cb.checked; return; }
   var email = cb.getAttribute('data-email');
   var app = cb.getAttribute('data-app');
   var u = maAccessUsers.find(function(x){ return x.email === email; });
@@ -1566,6 +1592,8 @@ function maToggleApp(cb) {
 }
 
 function maChangeRol(email, rol) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(rol!=='SUPER_ADMIN'){ var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   window.__db.collection('usuarios').doc(email).update({rol: rol}).then(function() {
     var u = maAccessUsers.find(function(x){ return x.email === email; });
     if (u) { u.rol = rol; }
@@ -1575,6 +1603,8 @@ function maChangeRol(email, rol) {
 }
 
 function maDeleteUser(email) {
+  if(!MA.can('gestionUsuarios')) return;
+  { var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   if (!confirm('\xBFEliminar acceso de ' + email + '?')) return;
   window.__db.collection('usuarios').doc(email).delete().then(function() {
     maAccessUsers = maAccessUsers.filter(function(x){ return x.email !== email; });
@@ -1584,6 +1614,7 @@ function maDeleteUser(email) {
 }
 
 function maAddUser() {
+  if(!MA.can('gestionUsuarios')) return;
   var email = (document.getElementById('ma-new-email').value || '').trim().toLowerCase();
   var rol   = document.getElementById('ma-new-rol').value;
   if (!email || email.indexOf('@') === -1) { alert('Ingresa un email v\xE1lido'); return; }
@@ -1614,14 +1645,14 @@ document.addEventListener('click', function(e) {
         ¿Qué deseas eliminar?
       </p>
       <div style="display:flex;flex-direction:column;gap:10px">
-        <button class="btn" onclick="deleteVersion()" style="justify-content:flex-start;gap:12px;padding:14px 16px">
+        <button class="btn iti-del" onclick="deleteVersion()" style="justify-content:flex-start;gap:12px;padding:14px 16px">
           <span style="font-size:18px">📄</span>
           <div style="text-align:left">
             <div style="font-weight:700;color:var(--accent)" id="delete-version-label">Eliminar esta versión</div>
             <div style="font-size:11px;color:var(--muted2)">Solo elimina la versión actual del itinerario</div>
           </div>
         </button>
-        <button class="btn btn-danger" onclick="deleteAllVersions()" style="justify-content:flex-start;gap:12px;padding:14px 16px">
+        <button class="btn btn-danger iti-del" onclick="deleteAllVersions()" style="justify-content:flex-start;gap:12px;padding:14px 16px">
           <span style="font-size:18px">🗑</span>
           <div style="text-align:left">
             <div style="font-weight:700">Eliminar todo el día</div>

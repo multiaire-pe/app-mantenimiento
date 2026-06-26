@@ -9,6 +9,9 @@
 <title>MultiAire – Mantenimiento</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+/* Modo solo-lectura (TECNICO): oculta botones de edición; las casillas de tareas no responden */
+.mant-readonly .mant-edit-btn{display:none!important}
+.mant-readonly .tarea-cb{pointer-events:none;opacity:.55}
 :root{
   --bg:#f0f4fa;--surface:#fff;--surface2:#f5f8ff;--surface3:#e8eef8;
   --border:#d0daf0;--border2:#b8cce8;
@@ -285,6 +288,7 @@ option{background:#fff}
 .back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
 </style>
 <script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -365,7 +369,7 @@ option{background:#fff}
     </div>
 
     <div class="sb-actions">
-      <button class="btn btn-primary btn-block" onclick="openSelEquipos()" id="btnSelEq" disabled>
+      <button class="btn btn-primary btn-block mant-edit-btn" onclick="openSelEquipos()" id="btnSelEq" disabled>
         ＋ Seleccionar equipos
       </button>
     </div>
@@ -377,7 +381,7 @@ option{background:#fff}
         <div class="toolbar-title" id="toolbarTitle">—</div>
         <div class="toolbar-sub" id="toolbarSub">—</div>
       </div>
-      <button class="btn btn-sm" style="margin-left:auto" onclick="openSelEquipos()">✎ Editar equipos</button>
+      <button class="btn btn-sm mant-edit-btn" style="margin-left:auto" onclick="openSelEquipos()">✎ Editar equipos</button>
     </div>
 
     <div class="tab-nav" id="tabNav" style="display:none">
@@ -510,8 +514,8 @@ window.onload = async () => {
   const periodos = ['ENE-FEB','ENE-FEB','MAR-ABR','MAR-ABR','MAY-JUN','MAY-JUN','JUL-AGO','JUL-AGO','SEP-OCT','SEP-OCT','NOV-DIC','NOV-DIC'];
   document.getElementById('selPeriodo').value = periodos[m];
 
-  // Run tareas and inventario in parallel for faster load
-  await Promise.all([loadTareas(), loadInventario()]);
+  // La carga de datos (tareas + inventario) ocurre SOLO tras autenticarse y pasar
+  // el gate de acceso, dentro de maVerify (no aquí, para no leer Firestore antes del gate).
 };
 
 async function loadInventario() {
@@ -552,7 +556,7 @@ async function loadInventario() {
     setPill('ok', '✓ Conectado · ' + allEquipos.length + ' equipos');
   } catch(e) {
     setPill('err', '✗ Sin conexión');
-    toast('No se pudo conectar con Google Sheets', 'err');
+    toast('No se pudo cargar el inventario', 'err');
   }
 }
 
@@ -633,8 +637,9 @@ function renderMain() {
   document.getElementById('tabNav').style.display = 'flex';
   document.getElementById('toolbarTitle').textContent = currentSede;
   document.getElementById('toolbarSub').textContent = currentPeriodo + ' ' + currentAnio + ' · ' + sel.length + ' equipos seleccionados';
-  document.getElementById('btnExport').style.display = sel.length ? 'flex' : 'none';
-  document.getElementById('btnPNG').style.display = sel.length ? 'flex' : 'none';
+  var _canExp = MA.can('exportar','mantenimiento');
+  document.getElementById('btnExport').style.display = (sel.length && _canExp) ? 'flex' : 'none';
+  document.getElementById('btnPNG').style.display = (sel.length && _canExp) ? 'flex' : 'none';
 
   if(!sel.length) {
     document.getElementById('content').innerHTML = `
@@ -642,7 +647,7 @@ function renderMain() {
         <div class="empty-icon">📋</div>
         <h3>Sin equipos seleccionados</h3>
         <p>Presiona "+ Seleccionar equipos" para elegir qué equipos se trabajarán en este período.</p>
-        <button class="btn btn-primary" onclick="openSelEquipos()">＋ Seleccionar equipos</button>
+        <button class="btn btn-primary mant-edit-btn" onclick="openSelEquipos()">＋ Seleccionar equipos</button>
       </div>`;
     updateStatusBar([]);
     return;
@@ -762,6 +767,7 @@ function updateStatusBar(stats) {
 
 // ── CHECKBOX HANDLERS ────────────────────────────────────────────────────────
 function toggleSoloMarcar(eqId, checked) {
+  if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   tareaStatus[eqId] = checked;
   markDirty(eqId);
   renderMain();
@@ -769,6 +775,7 @@ function toggleSoloMarcar(eqId, checked) {
 }
 
 function toggleTarea(eqId, idx, checked) {
+  if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   if(!tareaStatus[eqId]) tareaStatus[eqId] = {};
   tareaStatus[eqId][idx] = checked;
   markDirty(eqId);
@@ -835,6 +842,7 @@ function scheduleSave() {
 }
 
 async function doSave() {
+  if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   const key = currentSede + '|' + currentPeriodo + '|' + currentAnio;
   const ind = document.getElementById('savingInd');
   try {
@@ -860,6 +868,7 @@ async function doSave() {
 let tempSel = {};
 
 function openSelEquipos() {
+  if(!MA.can('editar','mantenimiento')) { toast('Sin permisos','err'); return; }
   if(!currentSede) { toast('Selecciona una sede primero','warn'); return; }
   tempSel = {...seleccionados};
   document.getElementById('modalSubtitle').textContent = currentSede + ' · ' + currentPeriodo + ' ' + currentAnio;
@@ -931,6 +940,7 @@ function closeSelEquipos() {
 }
 
 async function saveEquipoSelection() {
+  if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   seleccionados = {...tempSel};
   closeSelEquipos();
   renderMain();
@@ -939,6 +949,7 @@ async function saveEquipoSelection() {
 
 // ── EXPORT WHATSAPP ───────────────────────────────────────────────────────────
 function exportWhatsApp() {
+  if(!MA.can('exportar','mantenimiento')){ toast('Sin permisos para exportar','err'); return; }
   const equiposSel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
   const byTipo = {};
   equiposSel.forEach(e => {
@@ -1169,6 +1180,7 @@ function switchTab(tab) {
 
 // ── EXPORT PNG ────────────────────────────────────────────────────────────────
 function exportPDF() {
+  if(!MA.can('exportar','mantenimiento')){ toast('Sin permisos para exportar','err'); return; }
   const sel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
   if(!sel.length){ toast('Sin equipos seleccionados','warn'); return; }
   toast('Generando PDF...','warn');
@@ -1504,20 +1516,20 @@ function maVerify(payload,save){
       }
     }
     var appsMap=data.apps||{};
-    if(['ADMIN','SUPER_ADMIN'].indexOf(rol)===-1){
-      var userApps=appsMap[email]||[];
-      if(userApps.indexOf(MA_APP)===-1){
-        if(ldEl)ldEl.classList.remove('show');
-        if(errEl){errEl.textContent='Sin acceso a esta sección ('+MA_APP+'). Contacta al administrador.';errEl.classList.add('show');}
-        sessionStorage.removeItem('ma_user');return;
-      }
+    var userApps=appsMap[email]||[];
+    maUser={email:email,name:payload.name||email,picture:payload.picture||'',rol:rol,apps:userApps};
+    MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
+    if(!MA.canEnter(MA_APP)){
+      if(ldEl)ldEl.classList.remove('show');
+      sessionStorage.removeItem('ma_user');maUser=null;MA.setUser(null);
+      MA.showNoAccess('Mantenimiento');return;
     }
-    maUser={email:email,name:payload.name||email,picture:payload.picture||'',rol:rol};
     if(save)sessionStorage.setItem('ma_user',JSON.stringify(maUser));
     if(ldEl)ldEl.classList.remove('show');
     var ov=document.getElementById('auth-overlay');
     if(ov){ov.style.display='none';document.body.style.overflow='';}
     maRenderPill();maLogAccess(email);
+    if(!MA.can('editar','mantenimiento'))document.body.classList.add('mant-readonly'); // técnico: solo lectura
     Promise.all([loadTareas(), loadInventario()]); // Load after auth
   }).catch(function(){
     if(ldEl)ldEl.classList.remove('show');
@@ -1548,11 +1560,10 @@ function maRenderPill(){
   var n=maUser.name||maUser.email;
   try{n=decodeURIComponent(escape(n));}catch(e){}
   var init=n.split(' ').map(function(x){return x[0];}).join('').substring(0,2).toUpperCase();
-  var isAdmin=maUser.rol==='ADMIN'||maUser.rol==='SUPER_ADMIN';
   var avatarHtml=maUser.picture
     ?'<img class="user-avatar" src="'+maUser.picture+'" alt="'+n+'">'
     :'<div class="user-avatar-init">'+init+'</div>';
-  var adminItem=isAdmin
+  var adminItem=MA.isSuperAdmin()
     ?'<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-divider"></div>'
     :'';
   pill.innerHTML=avatarHtml+'<span class="user-name">'+n+'</span>'
@@ -1629,6 +1640,7 @@ function maRemoveEmail(email){
   }).then(function(){maRenderAdmin();});
 }
 function maSaveUsers(users){
+  if(!MA.can('gestionUsuarios')) return;
   maEmails={emails:users.map(function(u){return u.email;}),roles:Object.fromEntries(users.map(function(u){return [u.email,u.rol];}))}
   return Promise.resolve().catch(function(){});
 }
@@ -1710,6 +1722,7 @@ function changeUserRolByEl(sel) { changeUserRol(sel.getAttribute('data-email'), 
 function removeUserAccessByEl(btn) { removeUserAccess(btn.getAttribute('data-email')); }
 
 async function addUserAccess() {
+  if(!MA.can('gestionUsuarios')) return;
   const email = document.getElementById('new-user-email')?.value?.trim()?.toLowerCase();
   const rol = document.getElementById('new-user-rol')?.value || 'USUARIO';
   if (!email || !email.includes('@')) { alert('Ingresa un email válido'); return; }
@@ -1717,7 +1730,7 @@ async function addUserAccess() {
   
   try {
     const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'usuarios', email), { email, rol });
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol }, { merge: true });
     accessUsers.push({ email, rol });
     accessUsers.sort((a,b) => a.email.localeCompare(b.email));
     document.getElementById('new-user-email').value = '';
@@ -1729,6 +1742,8 @@ async function addUserAccess() {
 }
 
 async function removeUserAccess(email) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email)){ alert('No se puede eliminar a un super admin del sistema'); return; }
   if (!confirm('¿Eliminar acceso de ' + email + '?')) return;
   try {
     const { deleteDoc, doc } = window.__fb;
@@ -1741,9 +1756,11 @@ async function removeUserAccess(email) {
 }
 
 async function changeUserRol(email, newRol) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email) && newRol!=='SUPER_ADMIN'){ alert('No se puede degradar a un super admin del sistema'); return; }
   try {
     const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol });
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol }, { merge: true });
     const u = accessUsers.find(u => u.email === email);
     if (u) u.rol = newRol;
     sessionStorage.removeItem('ma_emails');
@@ -1758,7 +1775,7 @@ var MA_ROLES = ['TECNICO','SUPERVISOR','ADMIN','SUPER_ADMIN'];
 var MA_ROL_COLORS = {TECNICO:'#1a9e5a',SUPERVISOR:'#6b3fa0',ADMIN:'#1B3F8B',SUPER_ADMIN:'#d4621a'};
 var MA_ROL_BGS    = {TECNICO:'#f0faf5',SUPERVISOR:'#f3eeff',ADMIN:'#e8eef8',SUPER_ADMIN:'#fff3eb'};
 function openAccessPanel() {
-  if (!maUser || ['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol) === -1) return;
+  if (!MA.isSuperAdmin()) { toast('Solo el super admin gestiona accesos','err'); return; }
   var menu = document.getElementById('user-menu');
   if (menu) menu.classList.remove('open');
   window.__db.collection('usuarios').get().then(function(snap) {
@@ -1778,7 +1795,11 @@ function maRenderAccessPanel() {
     {id:'inventario',    label:'\u{1F4E6} Inv'},
     {id:'mantenimiento', label:'\u{1F527} Mant'},
     {id:'itinerario',    label:'\u{1F5D3} Iti'},
-    {id:'insumos',       label:'\u{1F9F0} Ins'}
+    {id:'insumos',       label:'\u{1F9F0} Ins'},
+    {id:'asistencia',    label:'\u{1F551} Asis'},
+    {id:'comprobantes',  label:'\u{1F9FE} Comp'},
+    {id:'proveedores',   label:'\u{1F3E2} Prov'},
+    {id:'observaciones', label:'\u{1F4CB} Obs'}
   ];
   list.innerHTML = maAccessUsers.map(function(u) {
     var isMe = maUser && u.email === maUser.email;
@@ -1819,6 +1840,7 @@ function maRenderAccessPanel() {
 }
 
 function maToggleApp(cb) {
+  if(!MA.can('gestionUsuarios')){ cb.checked = !cb.checked; return; }
   var email = cb.getAttribute('data-email');
   var app = cb.getAttribute('data-app');
   var u = maAccessUsers.find(function(x){ return x.email === email; });
@@ -1834,6 +1856,8 @@ function maToggleApp(cb) {
   }).catch(function(e) { alert('Error: ' + e.message); cb.checked = !cb.checked; });
 }
 function maChangeRol(email, rol) {
+  if(!MA.can('gestionUsuarios')) return;
+  if(rol!=='SUPER_ADMIN'){ var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   window.__db.collection('usuarios').doc(email).update({rol: rol}).then(function() {
     var u = maAccessUsers.find(function(x){ return x.email === email; });
     if (u) u.rol = rol;
@@ -1842,6 +1866,8 @@ function maChangeRol(email, rol) {
   }).catch(function(e) { alert('Error: ' + e.message); });
 }
 function maDeleteUser(email) {
+  if(!MA.can('gestionUsuarios')) return;
+  { var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   if (!confirm('\xBFEliminar acceso de ' + email + '?')) return;
   window.__db.collection('usuarios').doc(email).delete().then(function() {
     maAccessUsers = maAccessUsers.filter(function(x){ return x.email !== email; });
@@ -1850,6 +1876,7 @@ function maDeleteUser(email) {
   }).catch(function(e) { alert('Error: ' + e.message); });
 }
 function maAddUser() {
+  if(!MA.can('gestionUsuarios')) return;
   var email = (document.getElementById('ma-new-email').value || '').trim().toLowerCase();
   var rol = document.getElementById('ma-new-rol').value;
   if (!email || email.indexOf('@') === -1) { alert('Email inv\xE1lido'); return; }
