@@ -350,25 +350,15 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
     </div>
     <div class="section-body">
       <div class="maestros-tabs">
-        <button class="maestros-tab active" onclick="switchMaestroTab('personal')">Personal</button>
-        <button class="maestros-tab" onclick="switchMaestroTab('tiendas')">Tiendas</button>
+        <button class="maestros-tab active" onclick="switchMaestroTab('tiendas')">Tiendas</button>
         <button class="maestros-tab" onclick="switchMaestroTab('grupos')">Grupos / Tipo de trabajo</button>
         <button class="maestros-tab" onclick="switchMaestroTab('feriados')">Feriados</button>
       </div>
 
-      <!-- PERSONAL -->
-      <div class="maestros-panel active" id="panel-personal">
-        <div class="maestros-list" id="personal-list">Cargando...</div>
-        <div class="add-maestro-row">
-          <input type="text" id="new-per-nombre" placeholder="Nombre completo...">
-          <input type="text" id="new-per-cargo" placeholder="Cargo (ej: TÉCNICO)" style="max-width:160px">
-          <input type="text" inputmode="numeric" id="new-per-telefono" placeholder="987798615" style="max-width:140px" title="Solo 9 dígitos — se agrega prefijo 51 automáticamente" autocomplete="off">
-          <button class="btn btn-orange" onclick="addPersonal()">+ Agregar</button>
-        </div>
-      </div>
+      <!-- El editor de personal se movió al módulo dedicado Personal (personal.html). -->
 
       <!-- TIENDAS -->
-      <div class="maestros-panel" id="panel-tiendas">
+      <div class="maestros-panel active" id="panel-tiendas">
         <div class="maestros-list" id="tiendas-list">Cargando...</div>
         <div class="add-maestro-row">
           <input type="text" id="new-tie-tienda" placeholder="Nombre de tienda...">
@@ -1535,34 +1525,23 @@ const FERIADOS_CONFIG_DEFAULT = [
   {nombre:'Navidad',               fecha:'2026-12-25'},
 ];
 
-let maestrosData = { personal: [], tiendas: [], grupos: [], feriados: [] };
+let maestrosData = { tiendas: [], grupos: [], feriados: [] };
 let maestrosChanged = false;
 
 async function loadMaestros() {
   try {
     const { getDocs, collection } = window.__fb;
-    const [pSnap, tSnap, gSnap, fSnap] = await Promise.all([
-      getDocs(collection(window.__db, 'maestros_personal')),
+    // El personal se administra en personal.html (módulo Personal); aquí solo tiendas/grupos/feriados.
+    const [tSnap, gSnap, fSnap] = await Promise.all([
       getDocs(collection(window.__db, 'maestros_tiendas')),
       getDocs(collection(window.__db, 'maestros_grupos')),
       getDocs(collection(window.__db, 'maestros_feriados')),
     ]);
     const d = {
-      personal: pSnap.docs.map(dd => dd.data()),
       tiendas: tSnap.docs.map(dd => dd.data()),
       grupos: gSnap.docs.map(dd => dd.data()),
       feriados: fSnap.docs.map(dd => dd.data()),
     };
-    // Include ALL personal/tiendas from sheet (activo or not)
-    maestrosData.personal = (d.personal || []).map((p, i) => ({
-      id: String(p.id || ('PER' + String(i+1).padStart(3,'0'))).trim(),
-      nombre: String(p.nombre || '').trim(),
-      cargo: String(p.cargo || 'TÉCNICO').trim(),
-      telefono: String(p.telefono || '').trim(),
-      foto: String(p.foto || '').trim(),
-      activo: String(p.activo || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI',
-      recibeAvisos: (p.recibeAvisos === true || String(p.recibeAvisos || '').trim().toUpperCase() === 'SI')
-    })).filter(p => p.nombre);
     maestrosData.tiendas = (d.tiendas || []).map((t, i) => ({
       id: String(t.id || ('TIE' + String(i+1).padStart(3,'0'))).trim(),
       cliente: String(t.cliente || '').trim(),
@@ -1590,7 +1569,6 @@ async function loadMaestros() {
       maestrosData.feriados = [...maestrosData.feriados, ..._defs].sort((a, b) => a.fecha.localeCompare(b.fecha));
       maestrosChanged = true;
     }
-    renderPersonal();
     renderTiendas();
     renderGrupos();
     renderFeriados();
@@ -1614,11 +1592,6 @@ function cargoColor(cargo) {
   return colors[hash % colors.length];
 }
 
-function cargoBadgeHtml(cargo) {
-  const c = cargoColor(cargo);
-  return `<span class="cargo-badge" style="background:${c.bg};color:${c.color};border:1px solid ${c.border}">${cargo}</span>`;
-}
-
 function grupoColor(grupo) {
   const g = (grupo||'').toUpperCase();
   if (g.includes('PREVENT')) return {bg:'#f0faf5',color:'#1a9e5a',border:'#b0e0c8'};
@@ -1628,115 +1601,10 @@ function grupoColor(grupo) {
   return cargoColor(grupo);
 }
 
-function renderPersonal() {
-  const list = document.getElementById('personal-list');
-  if (!maestrosData.personal.length) { list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Sin personal registrado</div>'; return; }
-  list.innerHTML = maestrosData.personal.map((p, i) => `
-    <div class="maestro-item ${p.activo==='NO'?'inactive':''}">
-      <div class="per-avatar" title="${p.foto?'Foto cargada':'Sin foto'}">${p.foto?`<img src="${p.foto}" alt="">`:`<span>${(p.nombre||'?').trim().charAt(0).toUpperCase()}</span>`}</div>
-      <input class="maestro-input" type="text" value="${p.nombre}" onchange="updatePersonal(${i},'nombre',this.value)" placeholder="Nombre completo">
-      <input class="maestro-cargo" type="text" value="${p.cargo}" onchange="updatePersonal(${i},'cargo',this.value)" placeholder="Cargo" title="Cargo del trabajador">
-      <input class="maestro-cargo" type="text" value="${(p.telefono||'').replace(/^51/,'')}" readonly placeholder="—" title="Solo lectura — gestiona los teléfonos (multi-país) en el módulo Personal para no desincronizar el expediente" style="width:130px;opacity:.7;cursor:not-allowed" autocomplete="off">
-      ${cargoBadgeHtml(p.cargo)}
-      <label class="maestro-foto-btn" for="per-foto-${i}" title="Subir / cambiar foto">📷</label>
-      <input type="file" id="per-foto-${i}" accept="image/*" style="display:none" onchange="setPersonalFoto(${i}, this.files[0]); this.value='';">
-      <label class="maestro-foto-btn cam-only-mobile" for="per-foto-cam-${i}" title="Tomar foto">📸</label>
-      <input type="file" id="per-foto-cam-${i}" accept="image/*" capture="environment" style="display:none" onchange="setPersonalFoto(${i}, this.files[0]); this.value='';">
-      <button class="maestro-toggle" onclick="toggleAviso(${i})" title="${p.recibeAvisos?'📣 Recibe avisos del bot de WhatsApp':'🔕 No recibe avisos del bot'}" style="${p.recibeAvisos?'color:var(--orange-dark)':'opacity:.45'}">${p.recibeAvisos?'📣':'🔕'}</button>
-      <button class="maestro-toggle" onclick="togglePersonal(${i})" title="${p.activo==='SI'?'Desactivar':'Activar'}">${p.activo==='SI'?'✅':'⭕'}</button>
-      <button class="maestro-del" onclick="deletePersonal(${i})" title="Eliminar">✕</button>
-    </div>`).join('');
-}
-
-// Comprime una imagen a un cuadrado de `size`px (recorte centrado) → dataURL JPEG (base64)
-function compressSquare(file, size, quality) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const side = Math.min(img.width, img.height);
-        const sx = (img.width - side) / 2;
-        const sy = (img.height - side) / 2;
-        const canvas = document.createElement('canvas');
-        canvas.width = size; canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.onerror = () => reject(new Error('Imagen inválida'));
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-// Guarda la foto como base64 (dataURL) en el campo `foto` — se persiste en Firestore
-// al "Guardar cambios". No usa Firebase Storage (evita el plan Blaze).
-async function setPersonalFoto(i, file) {
-  if (!file) return;
-  if (!MA.can('config')) { toast('La configuración es solo del super admin', 'err'); return; }
-  const p = maestrosData.personal[i];
-  if (!p) return;
-  if (!/^image\//.test(file.type)) { toast('El archivo no es una imagen', 'err'); return; }
-  try {
-    toast('Procesando foto...');
-    const dataUrl = await compressSquare(file, 320, 0.8);
-    maestrosData.personal[i].foto = dataUrl;
-    maestrosChanged = true;
-    renderPersonal();
-    toast('Foto lista — recuerda Guardar cambios', 'ok');
-  } catch(e) {
-    toast('Error procesando foto: ' + (e.message || e), 'err');
-  }
-}
-
-function normalizeTel(v) {
-  v = v.trim();
-  if (/^\d{9}$/.test(v)) return '51' + v;
-  return v;
-}
-
-function updatePersonal(i, field, value) {
-  maestrosData.personal[i][field] = field === 'telefono' ? normalizeTel(value) : value;
-  maestrosChanged = true;
-  if (field === 'cargo') renderPersonal();
-}
-
-function togglePersonal(i) {
-  maestrosData.personal[i].activo = maestrosData.personal[i].activo === 'SI' ? 'NO' : 'SI';
-  maestrosChanged = true;
-  renderPersonal();
-}
-
-// 📣 Recibe avisos del bot de WhatsApp (al registrarse una observación). Necesita teléfono.
-function toggleAviso(i) {
-  maestrosData.personal[i].recibeAvisos = !maestrosData.personal[i].recibeAvisos;
-  maestrosChanged = true;
-  renderPersonal();
-}
-
-function deletePersonal(i) {
-  if (!confirm('¿Eliminar a ' + maestrosData.personal[i].nombre + '?')) return;
-  maestrosData.personal.splice(i, 1);
-  maestrosChanged = true;
-  renderPersonal();
-}
-
-function addPersonal() {
-  const nombre = document.getElementById('new-per-nombre').value.trim().toUpperCase();
-  const cargo = document.getElementById('new-per-cargo').value.trim().toUpperCase() || 'TÉCNICO';
-  const telefono = normalizeTel(document.getElementById('new-per-telefono').value);
-  if (!nombre) { toast('Ingresa un nombre', 'err'); return; }
-  const newId = 'PER' + String(Date.now()).slice(-6);
-  maestrosData.personal.push({ id: newId, nombre, cargo, telefono, foto: '', activo: 'SI', recibeAvisos: false });
-  maestrosChanged = true;
-  document.getElementById('new-per-nombre').value = '';
-  document.getElementById('new-per-cargo').value = '';
-  document.getElementById('new-per-telefono').value = '';
-  renderPersonal();
-}
+// El editor de personal (renderPersonal/addPersonal/setPersonalFoto/updatePersonal/
+// togglePersonal/toggleAviso/deletePersonal/normalizeTel/compressSquare) se movió al
+// módulo dedicado personal.html (Expediente del Colaborador). Aquí solo quedan
+// Tiendas/Grupos/Feriados + el backup/restore de maestros_personal.
 
 function renderTiendas() {
   const list = document.getElementById('tiendas-list');
@@ -1855,18 +1723,9 @@ async function saveMaestros() {
   if (!MA.can('config')) { toast('La configuración es solo del super admin', 'err'); return; }
   document.getElementById('loading').classList.add('show');
   try {
-    // Save personal
+    // El personal ya NO se guarda aquí: se administra en personal.html (módulo Personal).
+    // Esta pantalla guarda solo tiendas/grupos/feriados.
     const { writeBatch, doc, collection, getDocs } = window.__fb;
-    const b1 = writeBatch(window.__db);
-    const ex1 = await getDocs(collection(window.__db,'maestros_personal'));
-    // Solo borra los colaboradores ELIMINADOS de la lista; los que siguen se actualizan con
-    // {merge:true} para NO pisar los campos del expediente (telefonos[]/correos[]/identidad/
-    // laboral/operativo) que administra personal.html. (Antes: delete-all + recrear con 8 campos
-    // → destruía esos campos al guardar desde aquí.)
-    const _idsPers = new Set(maestrosData.personal.map(p=>p.id));
-    ex1.docs.forEach(d=>{ if(!_idsPers.has(d.id)) b1.delete(d.ref); });
-    maestrosData.personal.forEach(p=>{b1.set(doc(window.__db,'maestros_personal',p.id),{id:p.id,nombre:p.nombre,cargo:p.cargo,telefono:p.telefono||'',foto:p.foto||'',activo:p.activo,recibeAvisos:!!p.recibeAvisos,obs:''},{merge:true});});
-    await b1.commit();
     // Save tiendas
     const b2 = writeBatch(window.__db);
     const ex2 = await getDocs(collection(window.__db,'maestros_tiendas'));
