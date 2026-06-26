@@ -40,7 +40,9 @@ service cloud.firestore {
     }
 
     // ── Maestros y configuración: lectura autorizada; escritura SOLO super ──
-    match /maestros_personal/{doc} { allow read: if authorized(); allow write: if isSuper(); }
+    // maestros_personal: expediente del colaborador (módulo personal.html). ADMIN/SUPER crean y
+    // editan; borrar = solo super. (El resto de maestros sigue siendo escritura solo-super.)
+    match /maestros_personal/{doc} { allow read: if authorized(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
     match /maestros_tiendas/{doc}  { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_grupos/{doc}   { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_feriados/{doc} { allow read: if authorized(); allow write: if isSuper(); }

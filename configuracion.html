@@ -947,10 +947,13 @@ async function exportBackup() {
     zip.file('asistencia.csv', [asistHeaders.join(','), ...asistRows].join('\n'));
 
     // 2. Maestros personal CSV
-    const persHeaders = ['ID','NOMBRE','CARGO','TELEFONO','ACTIVO','FOTO','RECIBE_AVISOS'];
+    // Columna JSON = documento COMPLETO → respalda los campos del expediente (telefonos[]/
+    // correos[]/identidad/laboral/operativo) sin enumerar cada uno. Las columnas legibles se
+    // conservan para compatibilidad y lectura humana.
+    const persHeaders = ['ID','NOMBRE','CARGO','TELEFONO','ACTIVO','FOTO','RECIBE_AVISOS','JSON'];
     const persRows = persSnap.docs.map(d => {
       const r = d.data();
-      return [r.id||d.id, r.nombre||'', r.cargo||'', r.telefono||'', r.activo||'SI', r.foto||'', (r.recibeAvisos?'SI':'NO')].map(escapeCSV).join(',');
+      return [r.id||d.id, r.nombre||'', r.cargo||'', r.telefono||'', r.activo||'SI', r.foto||'', (r.recibeAvisos?'SI':'NO'), JSON.stringify(r)].map(escapeCSV).join(',');
     });
     zip.file('maestros_personal.csv', [persHeaders.join(','), ...persRows].join('\n'));
 
@@ -1257,7 +1260,8 @@ async function confirmImport() {
       .map(r => { const o = {}; headers.forEach((h, i) => o[h] = (r[i] || '').trim()); return o; });
   }
 
-  async function batchWrite(col, rows, mapFn) {
+  async function batchWrite(col, rows, mapFn, opts) {
+    opts = opts || {};
     if(!MA.can('backup')) return;
     const {writeBatch:_wb,doc:_doc,collection:_col,getDocs:_dg}=window.__fb;
     if(mode==='replace'){const _b=_wb(window.__db);const _ex=await _dg(_col(window.__db,col));_ex.docs.forEach(d=>_b.delete(d.ref));await _b.commit();}
@@ -1266,7 +1270,10 @@ async function confirmImport() {
       const data=mapFn(r);
       const docId=data._docId||data.id;
       delete data._docId;
-      b.set(_doc(window.__db,col,docId),data);
+      // opts.merge → set con merge: en modo "Fusionar" (sin delete-all) NO pisa los campos del
+      // expediente que no vienen en el CSV (clave para maestros_personal con backups viejos).
+      if(opts.merge) b.set(_doc(window.__db,col,docId),data,{merge:true});
+      else           b.set(_doc(window.__db,col,docId),data);
       n++;if(n%400===0){await b.commit();b=_wb(window.__db);}
     }
     if(n%400!==0)await b.commit();
@@ -1290,7 +1297,13 @@ async function confirmImport() {
     if (pendingImport.files['maestros_personal.csv']) {
       addLog('👤 Importando personal...', 'info');
       const rows = parseCSV(pendingImport.files['maestros_personal.csv']);
-      await batchWrite('maestros_personal', rows, r => ({id:r.ID, nombre:r.NOMBRE, cargo:r.CARGO, telefono:r.TELEFONO||'', activo:r.ACTIVO||'SI', foto:r.FOTO||'', recibeAvisos:String(r.RECIBE_AVISOS||'').toUpperCase()==='SI', obs:''}));
+      await batchWrite('maestros_personal', rows, r => {
+        // Backups nuevos traen la columna JSON con el doc completo (expediente) → base fiel.
+        // Las columnas legibles mandan sobre los 8 campos base. Backups viejos sin JSON: 8 campos.
+        let base = {};
+        if (r.JSON) { try { base = JSON.parse(r.JSON); } catch(e) { base = {}; addLog('⚠️ JSON inválido en una fila de personal — se importan solo los 8 campos legacy (merge, no destructivo)', 'info'); } }
+        return {...base, id:r.ID, nombre:r.NOMBRE, cargo:r.CARGO, telefono:r.TELEFONO||'', activo:r.ACTIVO||'SI', foto:r.FOTO||'', recibeAvisos:String(r.RECIBE_AVISOS||'').toUpperCase()==='SI', obs:(base.obs||'')};
+      }, {merge:true});
       addLog('✓ Personal importado (' + rows.length + ' colaboradores)', 'ok');
     }
 
@@ -1623,7 +1636,7 @@ function renderPersonal() {
       <div class="per-avatar" title="${p.foto?'Foto cargada':'Sin foto'}">${p.foto?`<img src="${p.foto}" alt="">`:`<span>${(p.nombre||'?').trim().charAt(0).toUpperCase()}</span>`}</div>
       <input class="maestro-input" type="text" value="${p.nombre}" onchange="updatePersonal(${i},'nombre',this.value)" placeholder="Nombre completo">
       <input class="maestro-cargo" type="text" value="${p.cargo}" onchange="updatePersonal(${i},'cargo',this.value)" placeholder="Cargo" title="Cargo del trabajador">
-      <input class="maestro-cargo" type="text" inputmode="numeric" value="${(p.telefono||'').replace(/^51/,'')}" onchange="updatePersonal(${i},'telefono',this.value)" placeholder="—" title="Solo 9 dígitos — se agrega prefijo 51 automáticamente" style="width:130px" autocomplete="off">
+      <input class="maestro-cargo" type="text" value="${(p.telefono||'').replace(/^51/,'')}" readonly placeholder="—" title="Solo lectura — gestiona los teléfonos (multi-país) en el módulo Personal para no desincronizar el expediente" style="width:130px;opacity:.7;cursor:not-allowed" autocomplete="off">
       ${cargoBadgeHtml(p.cargo)}
       <label class="maestro-foto-btn" for="per-foto-${i}" title="Subir / cambiar foto">📷</label>
       <input type="file" id="per-foto-${i}" accept="image/*" style="display:none" onchange="setPersonalFoto(${i}, this.files[0]); this.value='';">
@@ -1846,8 +1859,13 @@ async function saveMaestros() {
     const { writeBatch, doc, collection, getDocs } = window.__fb;
     const b1 = writeBatch(window.__db);
     const ex1 = await getDocs(collection(window.__db,'maestros_personal'));
-    ex1.docs.forEach(d=>b1.delete(d.ref));
-    maestrosData.personal.forEach(p=>{b1.set(doc(window.__db,'maestros_personal',p.id),{id:p.id,nombre:p.nombre,cargo:p.cargo,telefono:p.telefono||'',foto:p.foto||'',activo:p.activo,recibeAvisos:!!p.recibeAvisos,obs:''});});
+    // Solo borra los colaboradores ELIMINADOS de la lista; los que siguen se actualizan con
+    // {merge:true} para NO pisar los campos del expediente (telefonos[]/correos[]/identidad/
+    // laboral/operativo) que administra personal.html. (Antes: delete-all + recrear con 8 campos
+    // → destruía esos campos al guardar desde aquí.)
+    const _idsPers = new Set(maestrosData.personal.map(p=>p.id));
+    ex1.docs.forEach(d=>{ if(!_idsPers.has(d.id)) b1.delete(d.ref); });
+    maestrosData.personal.forEach(p=>{b1.set(doc(window.__db,'maestros_personal',p.id),{id:p.id,nombre:p.nombre,cargo:p.cargo,telefono:p.telefono||'',foto:p.foto||'',activo:p.activo,recibeAvisos:!!p.recibeAvisos,obs:''},{merge:true});});
     await b1.commit();
     // Save tiendas
     const b2 = writeBatch(window.__db);
