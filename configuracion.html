@@ -288,6 +288,9 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
           <div class="backup-files">
             <div class="backup-file"><span></span>asistencia.csv</div>
             <div class="backup-file"><span></span>maestros_personal.csv</div>
+            <div class="backup-file"><span></span>personal_confidencial.csv</div>
+            <div class="backup-file"><span></span>personal_eventos.csv</div>
+            <div class="backup-file"><span></span>personal_documentos.csv</div>
             <div class="backup-file"><span></span>maestros_tiendas.csv</div>
             <div class="backup-file"><span></span>maestros_grupos.csv</div>
             <div class="backup-file"><span></span>maestros_feriados.csv</div>
@@ -901,11 +904,12 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
       window.__db.collection('personal_eventos').get(),
+      window.__db.collection('personal_documentos').get(),
       window.__db.collection('maestros_tiendas').get(),
       window.__db.collection('maestros_grupos').get(),
       window.__db.collection('maestros_feriados').get(),
@@ -964,6 +968,14 @@ async function exportBackup() {
       return [d.id, r.personalId||'', r.tipo||'', r.fecha||'', r.titulo||'', r.detalle||'', JSON.stringify(r)].map(escapeCSV).join(',');
     });
     zip.file('personal_eventos.csv', [eventosHeaders.join(','), ...eventosRows].join('\n'));
+
+    // 2d. Personal documentos (legajo + certificaciones) CSV — N docs por persona. JSON = doc completo.
+    const docsHeaders = ['ID','PERSONAL_ID','CATEGORIA','TIPO','NOMBRE','ENTIDAD','FECHA','VENCE','URL','JSON'];
+    const docsRows = docsSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.personalId||'', r.categoria||'', r.tipo||'', r.nombre||'', r.entidad||'', r.fecha||'', r.vence||'', r.url||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('personal_documentos.csv', [docsHeaders.join(','), ...docsRows].join('\n'));
 
     // 3. Maestros tiendas CSV
     const tienHeaders = ['ID','CLIENTE','TIENDA','SEDE','ACTIVO'];
@@ -1195,7 +1207,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1337,6 +1349,18 @@ async function confirmImport() {
         return {...base, _docId:r.ID, personalId:r.PERSONAL_ID||base.personalId||'', tipo:r.TIPO||'', fecha:r.FECHA||'', titulo:r.TITULO||'', detalle:r.DETALLE||''};
       }, {merge:true});
       addLog('✓ Historial importado (' + rows.length + ' eventos)', 'ok');
+    }
+
+    // 2d. Personal documentos (legajo + certificaciones). Doc id auto (_docId). JSON = doc completo.
+    if (pendingImport.files['personal_documentos.csv']) {
+      addLog('📎 Importando legajo...', 'info');
+      const rows = parseCSV(pendingImport.files['personal_documentos.csv']);
+      await batchWrite('personal_documentos', rows, r => {
+        let base = {};
+        if (r.JSON) { try { base = JSON.parse(r.JSON); } catch(e) { base = {}; } }
+        return {...base, _docId:r.ID, personalId:r.PERSONAL_ID||base.personalId||'', categoria:r.CATEGORIA||'', tipo:r.TIPO||'', nombre:r.NOMBRE||'', entidad:r.ENTIDAD||'', fecha:r.FECHA||'', vence:r.VENCE||'', url:r.URL||''};
+      }, {merge:true});
+      addLog('✓ Legajo importado (' + rows.length + ' documentos)', 'ok');
     }
 
     // 3. Maestros tiendas

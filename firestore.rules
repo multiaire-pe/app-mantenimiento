@@ -49,6 +49,9 @@ service cloud.firestore {
     // personal_eventos: timeline/historial del colaborador (ingreso/ascenso/sanción/vacaciones…).
     // Sensible (incluye sanciones) → read SOLO admin; crear/editar admin; borrar solo super.
     match /personal_eventos/{doc} { allow read: if isAdmin(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
+    // personal_documentos: legajo (contratos/DNI/certificaciones con vencimiento; archivo en Drive
+    // por enlace). Sensible → read solo ADMIN; crear/editar ADMIN; borrar solo super.
+    match /personal_documentos/{doc} { allow read: if isAdmin(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
     match /maestros_tiendas/{doc}  { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_grupos/{doc}   { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_feriados/{doc} { allow read: if authorized(); allow write: if isSuper(); }

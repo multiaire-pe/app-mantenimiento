@@ -572,6 +572,13 @@ tr:hover td{background:var(--surface2)}
       <button type="button" class="btn btn-sm" id="pers-btn-nuevo-evento" onclick="openNuevoEvento()">＋ Agregar evento</button>
     </div>
 
+    <!-- LEGAJO Y CERTIFICACIONES (colección personal_documentos; solo al editar) -->
+    <div class="fieldset" id="pers-fieldset-legajo" style="display:none">
+      <div class="fieldset-legend">📎 Legajo y certificaciones</div>
+      <div id="pers-docs-list" style="margin-bottom:10px"><span style="font-size:11px;color:var(--muted)">—</span></div>
+      <button type="button" class="btn btn-sm" id="pers-btn-nuevo-doc" onclick="openNuevoDoc()">＋ Agregar documento / certificación</button>
+    </div>
+
     <div class="modal-foot">
       <button class="btn btn-red" id="btn-del-pers" onclick="deletePers()" style="margin-right:auto;display:none">🗑 Eliminar</button>
       <button class="btn" onclick="closeModal('modal-pers')">Cancelar</button>
@@ -607,6 +614,55 @@ tr:hover td{background:var(--surface2)}
     <div class="modal-foot">
       <button class="btn" onclick="closeModal('modal-evento')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveEvento()">💾 Guardar evento</button>
+    </div>
+  </div>
+</div>
+
+<!-- SUB-MODAL: NUEVO DOCUMENTO / CERTIFICACIÓN DEL LEGAJO -->
+<div class="modal-overlay" id="modal-doc" onclick="if(event.target===this)closeModal('modal-doc')">
+  <div class="modal" style="width:520px">
+    <h2>📎 Documento / certificación</h2>
+    <div class="modal-sub">El archivo vive en Drive: súbelo y pega aquí el enlace. Si tiene vencimiento, se mostrará un aviso cuando esté por vencer.</div>
+    <input type="hidden" id="doc-personalId">
+    <div class="form-row">
+      <div class="form-group" style="flex:0 0 170px">
+        <label class="form-label">Categoría</label>
+        <select id="doc-categoria" class="form-select" onchange="onDocCategoriaChange()">
+          <option value="DOCUMENTO">Documento</option>
+          <option value="CERTIFICACION">Certificación</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo <span style="color:var(--orange)">*</span></label>
+        <input type="text" id="doc-tipo" class="form-input" list="dl-doc-tipos" placeholder="Contrato / DNI / EMO / SCTR…" autocomplete="off">
+        <datalist id="dl-doc-tipos"></datalist>
+      </div>
+    </div>
+    <div class="form-group" style="min-width:0;margin-top:10px">
+      <label class="form-label">Nombre / descripción</label>
+      <input type="text" id="doc-nombre" class="form-input" placeholder="Ej.: Contrato 2026 / Trabajo en altura" autocomplete="off">
+    </div>
+    <div class="form-row" style="margin-top:10px">
+      <div class="form-group">
+        <label class="form-label">Entidad emisora</label>
+        <input type="text" id="doc-entidad" class="form-input" placeholder="Clínica / SENATI / …" autocomplete="off">
+      </div>
+      <div class="form-group" style="flex:0 0 150px">
+        <label class="form-label">Fecha emisión</label>
+        <input type="date" id="doc-fecha" class="form-input">
+      </div>
+      <div class="form-group" style="flex:0 0 150px">
+        <label class="form-label">Vence</label>
+        <input type="date" id="doc-vence" class="form-input">
+      </div>
+    </div>
+    <div class="form-group" style="min-width:0;margin-top:10px">
+      <label class="form-label">Enlace en Drive</label>
+      <input type="url" id="doc-url" class="form-input" placeholder="https://drive.google.com/…" autocomplete="off">
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-doc')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveDoc()">💾 Guardar</button>
     </div>
   </div>
 </div>
@@ -1137,6 +1193,8 @@ function resetModal(){
   _persFoto = ''; paintFoto();
   _eventos = []; renderEventos();
   document.getElementById('pers-fieldset-historial').style.display = 'none';
+  _docs = []; renderDocs();
+  document.getElementById('pers-fieldset-legajo').style.display = 'none';
 }
 
 function openNewPers(){
@@ -1184,6 +1242,8 @@ function openEditPers(id){
     loadConfidencial(p.id);
     document.getElementById('pers-fieldset-historial').style.display = '';
     loadEventos(p.id);
+    document.getElementById('pers-fieldset-legajo').style.display = '';
+    loadDocs(p.id);
   }
   // repeaters
   const tels = telsDe(p); document.getElementById('pers-tels').innerHTML = '';
@@ -1311,6 +1371,96 @@ async function deleteEvento(id){
     _eventos = _eventos.filter(e=>e.id!==id);
     renderEventos();
     toast('Evento eliminado','ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+// ── LEGAJO Y CERTIFICACIONES (colección personal_documentos; read/escritura = isAdmin) ──
+let _docs = [];
+const DOC_TIPOS = {
+  DOCUMENTO: ['CONTRATO','DNI','CARNET DE EXTRANJERÍA','CV','FOTOCHECK','DECLARACIÓN JURADA','OTRO'],
+  CERTIFICACION: ['EMO (examen médico)','SCTR','TRABAJO EN ALTURA','ELÉCTRICO','IZAJE','MANEJO DEFENSIVO','INDUCCIÓN','LICENCIA DE CONDUCIR','OTRO']
+};
+function onDocCategoriaChange(){
+  const cat = val('doc-categoria');
+  const dl = document.getElementById('dl-doc-tipos');
+  if(dl) dl.innerHTML = (DOC_TIPOS[cat]||[]).map(t=>`<option value="${esc(t)}">`).join('');
+}
+// Estado de vencimiento: null (sin fecha) | VENCIDO | POR_VENCER (≤30 días) | VIGENTE
+function estadoVencimiento(vence){
+  if(!vence) return null;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const v = new Date(vence+'T00:00:00');
+  if(isNaN(v)) return null;
+  const dias = Math.round((v - hoy)/86400000);
+  if(dias < 0)   return {k:'VENCIDO',    txt:'Vencido',          bg:'var(--red-bg)',    col:'var(--red)',    bd:'var(--red-border)'};
+  if(dias <= 30) return {k:'POR_VENCER', txt:'Vence en '+dias+'d', bg:'var(--yellow-bg)', col:'var(--yellow)', bd:'var(--yellow-border)'};
+  return            {k:'VIGENTE',    txt:'Vigente',          bg:'var(--green-bg)',  col:'var(--green)',  bd:'var(--green-border)'};
+}
+async function loadDocs(id){
+  _docs = [];
+  try{
+    const snap = await db.collection('personal_documentos').where('personalId','==',id).get();
+    _docs = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    _docs.sort((a,b)=>(a.categoria||'').localeCompare(b.categoria||'')||(a.tipo||'').localeCompare(b.tipo||''));
+  }catch(e){ /* sin permiso o error: legajo vacío, no rompe el resto */ }
+  renderDocs();
+}
+function renderDocs(){
+  const box = document.getElementById('pers-docs-list');
+  if(!box) return;
+  if(!_docs.length){ box.innerHTML = '<span style="font-size:11px;color:var(--muted)">Sin documentos ni certificaciones.</span>'; return; }
+  const canDel = MA.can('borrar');
+  box.innerHTML = _docs.map(d=>{
+    const est = estadoVencimiento(d.vence);
+    const badge = est ? `<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:10px;background:${est.bg};color:${est.col};border:1px solid ${est.bd};white-space:nowrap">${esc(est.txt)}</span>` : '';
+    const link = d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--blue);text-decoration:none;white-space:nowrap">📄 abrir</a>` : '';
+    const del = canDel ? `<button class="rep-del" style="padding:3px 7px;flex:0 0 auto" onclick="deleteDoc('${esc(d.id)}')" title="Eliminar">✕</button>` : '';
+    const ico = d.categoria==='CERTIFICACION' ? '📜' : '📄';
+    return `<div style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:var(--accent)">${ico} ${esc(d.tipo||'')}${d.nombre?(' · '+esc(d.nombre)):''}</div>
+        <div style="font-size:10px;color:var(--muted2)">${esc(d.entidad||'')}${d.vence?(' · vence '+esc(d.vence)):''}</div>
+      </div>
+      ${badge}${link}${del}
+    </div>`;
+  }).join('');
+}
+function openNuevoDoc(){
+  if(!isPersAdmin()){ toast('Sin permisos','err'); return; }
+  const id = val('pers-id');
+  if(!id){ toast('Guarda primero el colaborador','err'); return; }
+  setVal('doc-personalId', id);
+  setVal('doc-categoria','DOCUMENTO'); onDocCategoriaChange();
+  ['doc-tipo','doc-nombre','doc-entidad','doc-fecha','doc-vence','doc-url'].forEach(x=>setVal(x,''));
+  document.getElementById('modal-doc').classList.add('open');
+}
+async function saveDoc(){
+  if(!isPersAdmin()){ toast('Sin permisos','err'); return; }
+  const personalId = val('doc-personalId'), tipo = val('doc-tipo').trim();
+  if(!personalId) return;
+  if(!tipo){ toast('El tipo es obligatorio','err'); return; }
+  const doc = {
+    personalId, categoria: val('doc-categoria'), tipo,
+    nombre: val('doc-nombre').trim(), entidad: val('doc-entidad').trim(),
+    fecha: val('doc-fecha'), vence: val('doc-vence'), url: val('doc-url').trim(),
+    createdAt: new Date().toISOString(), createdBy: maUser?.email || ''
+  };
+  try{
+    const ref = await db.collection('personal_documentos').add(doc);
+    _docs.push({id:ref.id, ...doc});
+    _docs.sort((a,b)=>(a.categoria||'').localeCompare(b.categoria||'')||(a.tipo||'').localeCompare(b.tipo||''));
+    closeModal('modal-doc'); renderDocs();
+    toast('Documento agregado ✓','ok');
+  }catch(e){ toast('Error al guardar: '+e.message,'err'); }
+}
+async function deleteDoc(id){
+  if(!MA.can('borrar')){ toast('Solo el super admin puede eliminar','err'); return; }
+  if(!confirm('¿Eliminar este documento/certificación del legajo?')) return;
+  try{
+    await db.collection('personal_documentos').doc(id).delete();
+    _docs = _docs.filter(d=>d.id!==id);
+    renderDocs();
+    toast('Documento eliminado','ok');
   }catch(e){ toast('Error: '+e.message,'err'); }
 }
 
