@@ -967,7 +967,7 @@ function maRemoveEmail(email){
 function maSaveUsers(users){
   if(!MA.can('gestionUsuarios')) return;
   maEmails={emails:users.map(function(u){return u.email;}),roles:Object.fromEntries(users.map(function(u){return [u.email,u.rol];}))}
-  return (async()=>{ const {setDoc,doc,getDocs,collection,deleteDoc,writeBatch}=window.__fb; const b=writeBatch(window.__db); const ex=await getDocs(collection(window.__db,'usuarios')); const _apps={}; ex.docs.forEach(d=>{_apps[d.id]=(d.data().apps)||[];}); ex.docs.forEach(d=>b.delete(d.ref)); users.forEach(u=>b.set(doc(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:u.rol||'USUARIO',apps:_apps[u.email.toLowerCase()]||[]})); await b.commit(); })().catch(function(){});
+  return (async()=>{ const {setDoc,doc,getDocs,collection,deleteDoc,writeBatch}=window.__fb; const b=writeBatch(window.__db); const ex=await getDocs(collection(window.__db,'usuarios')); const _apps={}; ex.docs.forEach(d=>{_apps[d.id]=(d.data().apps)||[];}); ex.docs.forEach(d=>b.delete(d.ref)); users.forEach(u=>b.set(doc(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:(MA.isSystemSuper(u.email)?'SUPER_ADMIN':(u.rol||'USUARIO')),apps:_apps[u.email.toLowerCase()]||[]})); await b.commit(); })().catch(function(){});
 }
 function maToggleRole(email){
   maGetEmails().then(function(data){
@@ -1066,6 +1066,7 @@ async function addUserAccess() {
 
 async function removeUserAccess(email) {
   if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email)){ alert('No se puede eliminar a un super admin del sistema'); return; }
   if (!confirm('¿Eliminar acceso de ' + email + '?')) return;
   try {
     const { deleteDoc, doc } = window.__fb;
@@ -1079,6 +1080,7 @@ async function removeUserAccess(email) {
 
 async function changeUserRol(email, newRol) {
   if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email) && newRol!=='SUPER_ADMIN'){ alert('No se puede degradar a un super admin del sistema'); return; }
   try {
     const { setDoc, doc } = window.__fb;
     await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol }, { merge: true });
@@ -1175,6 +1177,7 @@ function maToggleApp(cb) {
 }
 function maChangeRol(email, rol) {
   if(!MA.can('gestionUsuarios')) return;
+  if(rol!=='SUPER_ADMIN'){ var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   window.__db.collection('usuarios').doc(email).update({rol: rol}).then(function() {
     var u = maAccessUsers.find(function(x){ return x.email === email; });
     if (u) u.rol = rol;
@@ -1184,6 +1187,7 @@ function maChangeRol(email, rol) {
 }
 function maDeleteUser(email) {
   if(!MA.can('gestionUsuarios')) return;
+  { var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   if (!confirm('\xBFEliminar acceso de ' + email + '?')) return;
   window.__db.collection('usuarios').doc(email).delete().then(function() {
     maAccessUsers = maAccessUsers.filter(function(x){ return x.email !== email; });

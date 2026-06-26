@@ -19,8 +19,10 @@ service cloud.firestore {
     function userPath() { return /databases/$(database)/documents/usuarios/$(em()); }
     function hasDoc() { return signedIn() && exists(userPath()); }
     function uData() { return get(userPath()).data; }
-    // El dueño es super admin aunque su doc aún no exista (igual que MA_ADM en la app).
-    function isSuperEmail() { return signedIn() && em() == 'marchenaangulojoseluis@gmail.com'; }
+    // Super admins "del sistema": super aunque su doc aún no exista / diga otra cosa.
+    function isSuperEmail() {
+      return signedIn() && (em() == 'marchenaangulojoseluis@gmail.com' || em() == 'plataforma@multiaire.com.pe');
+    }
     function authorized() { return isSuperEmail() || hasDoc(); }
     function rol() { return hasDoc() ? uData().rol : ''; }
     function uApps() { return hasDoc() ? uData().get('apps', []) : []; }

@@ -1469,6 +1469,7 @@ async function addUserAccess() {
 
 async function removeUserAccess(email) {
   if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email)){ alert('No se puede eliminar a un super admin del sistema'); return; }
   if (!confirm('¿Eliminar acceso de ' + email + '?')) return;
   try {
     const { deleteDoc, doc } = window.__fb;
@@ -1482,6 +1483,7 @@ async function removeUserAccess(email) {
 
 async function changeUserRol(email, newRol) {
   if(!MA.can('gestionUsuarios')) return;
+  if(MA.isSystemSuper(email) && newRol!=='SUPER_ADMIN'){ alert('No se puede degradar a un super admin del sistema'); return; }
   try {
     const { setDoc, doc } = window.__fb;
     await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol }, { merge: true });
@@ -1591,6 +1593,7 @@ function maToggleApp(cb) {
 
 function maChangeRol(email, rol) {
   if(!MA.can('gestionUsuarios')) return;
+  if(rol!=='SUPER_ADMIN'){ var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   window.__db.collection('usuarios').doc(email).update({rol: rol}).then(function() {
     var u = maAccessUsers.find(function(x){ return x.email === email; });
     if (u) { u.rol = rol; }
@@ -1601,6 +1604,7 @@ function maChangeRol(email, rol) {
 
 function maDeleteUser(email) {
   if(!MA.can('gestionUsuarios')) return;
+  { var _g=MA.puedeQuitarSuper(email, maAccessUsers); if(!_g.ok){ alert(_g.motivo); return; } }
   if (!confirm('\xBFEliminar acceso de ' + email + '?')) return;
   window.__db.collection('usuarios').doc(email).delete().then(function() {
     maAccessUsers = maAccessUsers.filter(function(x){ return x.email !== email; });

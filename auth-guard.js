@@ -18,8 +18,29 @@
 window.MA = (function () {
   'use strict';
 
-  var SUPER_ADMIN_EMAIL = 'marchenaangulojoseluis@gmail.com';
+  // Super admins "del sistema": SIEMPRE son SUPER_ADMIN por código (pase lo que
+  // pase en Firestore) y NO se pueden degradar/eliminar desde el panel. Garantizan
+  // que nunca haya cero super admins.
+  var SUPER_ADMIN_EMAILS = ['marchenaangulojoseluis@gmail.com', 'plataforma@multiaire.com.pe'];
+  var SUPER_ADMIN_EMAIL = SUPER_ADMIN_EMAILS[0]; // compat
   var ROLES = ['TECNICO', 'SUPERVISOR', 'ADMIN', 'SUPER_ADMIN'];
+
+  function lc(e) { return (e || '').toLowerCase(); }
+  // ¿Es un super admin del sistema (hardcodeado, intocable)?
+  function isSystemSuper(email) { return SUPER_ADMIN_EMAILS.indexOf(lc(email)) !== -1; }
+  // Rol efectivo de un doc de usuario (los del sistema cuentan siempre como SUPER_ADMIN).
+  function effRol(u) { return (u && isSystemSuper(u.email)) ? 'SUPER_ADMIN' : ((u && u.rol) || 'USUARIO'); }
+  // ¿Se puede QUITAR el super (degradar o eliminar) a este email? users = lista de
+  // docs {email, rol} del panel. Devuelve { ok, motivo }. Regla: los del sistema no
+  // se tocan; y nunca se puede quedar con cero super admins.
+  function puedeQuitarSuper(targetEmail, users) {
+    if (isSystemSuper(targetEmail)) return { ok: false, motivo: 'Es un super admin del sistema (protegido por código).' };
+    var quedan = (users || []).filter(function (u) {
+      return effRol(u) === 'SUPER_ADMIN' && lc(u.email) !== lc(targetEmail);
+    }).length;
+    if (quedan < 1) return { ok: false, motivo: 'Debe quedar al menos un super admin.' };
+    return { ok: true };
+  }
 
   // Capacidades reservadas SOLO a SUPER_ADMIN.
   //  • 'backup' = respaldo/restauración COMPLETA del sistema (configuracion.html).
@@ -32,9 +53,8 @@ window.MA = (function () {
 
   function setUser(u) {
     _user = u || null;
-    // Refuerzo defensivo: el creador siempre es SUPER_ADMIN aunque Firestore
-    // aún no lo refleje (cada página ya lo hace, pero no dependemos de ello).
-    if (_user && (_user.email || '').toLowerCase() === SUPER_ADMIN_EMAIL) {
+    // Los super admins del sistema son SUPER_ADMIN aunque Firestore diga otra cosa.
+    if (_user && isSystemSuper(_user.email)) {
       _user.rol = 'SUPER_ADMIN';
     }
     return _user;
@@ -94,6 +114,7 @@ window.MA = (function () {
     setUser: setUser, getUser: getUser, rol: rol, apps: apps,
     isSuperAdmin: isSuperAdmin, isAdmin: isAdmin,
     canEnter: canEnter, can: can, showNoAccess: showNoAccess,
-    ROLES: ROLES, SUPER_ADMIN_EMAIL: SUPER_ADMIN_EMAIL
+    isSystemSuper: isSystemSuper, effRol: effRol, puedeQuitarSuper: puedeQuitarSuper,
+    ROLES: ROLES, SUPER_ADMIN_EMAIL: SUPER_ADMIN_EMAIL, SUPER_ADMIN_EMAILS: SUPER_ADMIN_EMAILS
   };
 })();

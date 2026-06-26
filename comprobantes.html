@@ -998,6 +998,7 @@ async function toggleAppAccess(cb){
 
 async function changeUserRol(email, rol){
   if(!MA.can('gestionUsuarios')){ toast('Solo el super admin gestiona accesos','err'); return; }
+  if(rol!=='SUPER_ADMIN'){ const _g=MA.puedeQuitarSuper(email, accessUsers); if(!_g.ok){ toast(_g.motivo,'err'); return; } }
   try{
     await db.collection('usuarios').doc(email).update({rol});
     const u = accessUsers.find(x => x.email === email);
@@ -1009,6 +1010,7 @@ async function changeUserRol(email, rol){
 
 async function deleteAccessUser(email){
   if(!MA.can('gestionUsuarios')){ toast('Solo el super admin gestiona accesos','err'); return; }
+  { const _g=MA.puedeQuitarSuper(email, accessUsers); if(!_g.ok){ toast(_g.motivo,'err'); return; } }
   if(!confirm(`¿Eliminar acceso de ${email}?`)) return;
   try{
     await db.collection('usuarios').doc(email).delete();
