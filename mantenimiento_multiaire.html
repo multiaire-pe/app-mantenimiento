@@ -285,6 +285,7 @@ option{background:#fff}
 .back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
 </style>
 <script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -510,8 +511,8 @@ window.onload = async () => {
   const periodos = ['ENE-FEB','ENE-FEB','MAR-ABR','MAR-ABR','MAY-JUN','MAY-JUN','JUL-AGO','JUL-AGO','SEP-OCT','SEP-OCT','NOV-DIC','NOV-DIC'];
   document.getElementById('selPeriodo').value = periodos[m];
 
-  // Run tareas and inventario in parallel for faster load
-  await Promise.all([loadTareas(), loadInventario()]);
+  // La carga de datos (tareas + inventario) ocurre SOLO tras autenticarse y pasar
+  // el gate de acceso, dentro de maVerify (no aquí, para no leer Firestore antes del gate).
 };
 
 async function loadInventario() {
@@ -762,6 +763,7 @@ function updateStatusBar(stats) {
 
 // ── CHECKBOX HANDLERS ────────────────────────────────────────────────────────
 function toggleSoloMarcar(eqId, checked) {
+  if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   tareaStatus[eqId] = checked;
   markDirty(eqId);
   renderMain();
@@ -769,6 +771,7 @@ function toggleSoloMarcar(eqId, checked) {
 }
 
 function toggleTarea(eqId, idx, checked) {
+  if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   if(!tareaStatus[eqId]) tareaStatus[eqId] = {};
   tareaStatus[eqId][idx] = checked;
   markDirty(eqId);
@@ -835,6 +838,7 @@ function scheduleSave() {
 }
 
 async function doSave() {
+  if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   const key = currentSede + '|' + currentPeriodo + '|' + currentAnio;
   const ind = document.getElementById('savingInd');
   try {
@@ -931,6 +935,7 @@ function closeSelEquipos() {
 }
 
 async function saveEquipoSelection() {
+  if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   seleccionados = {...tempSel};
   closeSelEquipos();
   renderMain();
@@ -939,6 +944,7 @@ async function saveEquipoSelection() {
 
 // ── EXPORT WHATSAPP ───────────────────────────────────────────────────────────
 function exportWhatsApp() {
+  if(!MA.can('exportar','mantenimiento')){ toast('Sin permisos para exportar','err'); return; }
   const equiposSel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
   const byTipo = {};
   equiposSel.forEach(e => {
@@ -1169,6 +1175,7 @@ function switchTab(tab) {
 
 // ── EXPORT PNG ────────────────────────────────────────────────────────────────
 function exportPDF() {
+  if(!MA.can('exportar','mantenimiento')){ toast('Sin permisos para exportar','err'); return; }
   const sel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
   if(!sel.length){ toast('Sin equipos seleccionados','warn'); return; }
   toast('Generando PDF...','warn');
@@ -1504,15 +1511,14 @@ function maVerify(payload,save){
       }
     }
     var appsMap=data.apps||{};
-    if(['ADMIN','SUPER_ADMIN'].indexOf(rol)===-1){
-      var userApps=appsMap[email]||[];
-      if(userApps.indexOf(MA_APP)===-1){
-        if(ldEl)ldEl.classList.remove('show');
-        if(errEl){errEl.textContent='Sin acceso a esta sección ('+MA_APP+'). Contacta al administrador.';errEl.classList.add('show');}
-        sessionStorage.removeItem('ma_user');return;
-      }
+    var userApps=appsMap[email]||[];
+    maUser={email:email,name:payload.name||email,picture:payload.picture||'',rol:rol,apps:userApps};
+    MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
+    if(!MA.canEnter(MA_APP)){
+      if(ldEl)ldEl.classList.remove('show');
+      if(errEl){errEl.textContent='Sin acceso a esta sección ('+MA_APP+'). Contacta al administrador.';errEl.classList.add('show');}
+      sessionStorage.removeItem('ma_user');maUser=null;MA.setUser(null);return;
     }
-    maUser={email:email,name:payload.name||email,picture:payload.picture||'',rol:rol};
     if(save)sessionStorage.setItem('ma_user',JSON.stringify(maUser));
     if(ldEl)ldEl.classList.remove('show');
     var ov=document.getElementById('auth-overlay');
@@ -1548,11 +1554,10 @@ function maRenderPill(){
   var n=maUser.name||maUser.email;
   try{n=decodeURIComponent(escape(n));}catch(e){}
   var init=n.split(' ').map(function(x){return x[0];}).join('').substring(0,2).toUpperCase();
-  var isAdmin=maUser.rol==='ADMIN'||maUser.rol==='SUPER_ADMIN';
   var avatarHtml=maUser.picture
     ?'<img class="user-avatar" src="'+maUser.picture+'" alt="'+n+'">'
     :'<div class="user-avatar-init">'+init+'</div>';
-  var adminItem=isAdmin
+  var adminItem=MA.isSuperAdmin()
     ?'<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-divider"></div>'
     :'';
   pill.innerHTML=avatarHtml+'<span class="user-name">'+n+'</span>'
@@ -1629,6 +1634,7 @@ function maRemoveEmail(email){
   }).then(function(){maRenderAdmin();});
 }
 function maSaveUsers(users){
+  if(!MA.can('gestionUsuarios')) return;
   maEmails={emails:users.map(function(u){return u.email;}),roles:Object.fromEntries(users.map(function(u){return [u.email,u.rol];}))}
   return Promise.resolve().catch(function(){});
 }
@@ -1710,6 +1716,7 @@ function changeUserRolByEl(sel) { changeUserRol(sel.getAttribute('data-email'), 
 function removeUserAccessByEl(btn) { removeUserAccess(btn.getAttribute('data-email')); }
 
 async function addUserAccess() {
+  if(!MA.can('gestionUsuarios')) return;
   const email = document.getElementById('new-user-email')?.value?.trim()?.toLowerCase();
   const rol = document.getElementById('new-user-rol')?.value || 'USUARIO';
   if (!email || !email.includes('@')) { alert('Ingresa un email válido'); return; }
@@ -1717,7 +1724,7 @@ async function addUserAccess() {
   
   try {
     const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'usuarios', email), { email, rol });
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol }, { merge: true });
     accessUsers.push({ email, rol });
     accessUsers.sort((a,b) => a.email.localeCompare(b.email));
     document.getElementById('new-user-email').value = '';
@@ -1729,6 +1736,7 @@ async function addUserAccess() {
 }
 
 async function removeUserAccess(email) {
+  if(!MA.can('gestionUsuarios')) return;
   if (!confirm('¿Eliminar acceso de ' + email + '?')) return;
   try {
     const { deleteDoc, doc } = window.__fb;
@@ -1741,9 +1749,10 @@ async function removeUserAccess(email) {
 }
 
 async function changeUserRol(email, newRol) {
+  if(!MA.can('gestionUsuarios')) return;
   try {
     const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol });
+    await setDoc(doc(window.__db, 'usuarios', email), { email, rol: newRol }, { merge: true });
     const u = accessUsers.find(u => u.email === email);
     if (u) u.rol = newRol;
     sessionStorage.removeItem('ma_emails');
@@ -1758,7 +1767,7 @@ var MA_ROLES = ['TECNICO','SUPERVISOR','ADMIN','SUPER_ADMIN'];
 var MA_ROL_COLORS = {TECNICO:'#1a9e5a',SUPERVISOR:'#6b3fa0',ADMIN:'#1B3F8B',SUPER_ADMIN:'#d4621a'};
 var MA_ROL_BGS    = {TECNICO:'#f0faf5',SUPERVISOR:'#f3eeff',ADMIN:'#e8eef8',SUPER_ADMIN:'#fff3eb'};
 function openAccessPanel() {
-  if (!maUser || ['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol) === -1) return;
+  if (!MA.isSuperAdmin()) { toast('Solo el super admin gestiona accesos','err'); return; }
   var menu = document.getElementById('user-menu');
   if (menu) menu.classList.remove('open');
   window.__db.collection('usuarios').get().then(function(snap) {
@@ -1778,7 +1787,11 @@ function maRenderAccessPanel() {
     {id:'inventario',    label:'\u{1F4E6} Inv'},
     {id:'mantenimiento', label:'\u{1F527} Mant'},
     {id:'itinerario',    label:'\u{1F5D3} Iti'},
-    {id:'insumos',       label:'\u{1F9F0} Ins'}
+    {id:'insumos',       label:'\u{1F9F0} Ins'},
+    {id:'asistencia',    label:'\u{1F551} Asis'},
+    {id:'comprobantes',  label:'\u{1F9FE} Comp'},
+    {id:'proveedores',   label:'\u{1F3E2} Prov'},
+    {id:'observaciones', label:'\u{1F4CB} Obs'}
   ];
   list.innerHTML = maAccessUsers.map(function(u) {
     var isMe = maUser && u.email === maUser.email;
@@ -1819,6 +1832,7 @@ function maRenderAccessPanel() {
 }
 
 function maToggleApp(cb) {
+  if(!MA.can('gestionUsuarios')){ cb.checked = !cb.checked; return; }
   var email = cb.getAttribute('data-email');
   var app = cb.getAttribute('data-app');
   var u = maAccessUsers.find(function(x){ return x.email === email; });
@@ -1834,6 +1848,7 @@ function maToggleApp(cb) {
   }).catch(function(e) { alert('Error: ' + e.message); cb.checked = !cb.checked; });
 }
 function maChangeRol(email, rol) {
+  if(!MA.can('gestionUsuarios')) return;
   window.__db.collection('usuarios').doc(email).update({rol: rol}).then(function() {
     var u = maAccessUsers.find(function(x){ return x.email === email; });
     if (u) u.rol = rol;
@@ -1842,6 +1857,7 @@ function maChangeRol(email, rol) {
   }).catch(function(e) { alert('Error: ' + e.message); });
 }
 function maDeleteUser(email) {
+  if(!MA.can('gestionUsuarios')) return;
   if (!confirm('\xBFEliminar acceso de ' + email + '?')) return;
   window.__db.collection('usuarios').doc(email).delete().then(function() {
     maAccessUsers = maAccessUsers.filter(function(x){ return x.email !== email; });
@@ -1850,6 +1866,7 @@ function maDeleteUser(email) {
   }).catch(function(e) { alert('Error: ' + e.message); });
 }
 function maAddUser() {
+  if(!MA.can('gestionUsuarios')) return;
   var email = (document.getElementById('ma-new-email').value || '').trim().toLowerCase();
   var rol = document.getElementById('ma-new-rol').value;
   if (!email || email.indexOf('@') === -1) { alert('Email inv\xE1lido'); return; }

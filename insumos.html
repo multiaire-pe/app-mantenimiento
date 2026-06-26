@@ -1288,6 +1288,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 </div>
 
 <script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -1311,7 +1312,7 @@ function maSignOut(){firebase.auth().signOut().then(()=>{sessionStorage.removeIt
 // TECNICO: solo solicita salidas/transferencias (van a aprobación)
 const PERMS = {
   SUPER_ADMIN: { crearItem:1,editarItem:1,eliminarItem:1,entrada:1,salida:1,transferencia:1,aprobar:1,paquetes:1,editarMov:1,eliminarMov:1,solicitarSalida:1,solicitarTransf:1 },
-  ADMIN:       { crearItem:1,editarItem:1,eliminarItem:1,entrada:1,salida:1,transferencia:1,aprobar:1,paquetes:1,editarMov:1,eliminarMov:1,solicitarSalida:1,solicitarTransf:1 },
+  ADMIN:       { crearItem:1,editarItem:1,eliminarItem:0,entrada:1,salida:1,transferencia:1,aprobar:1,paquetes:1,editarMov:1,eliminarMov:0,solicitarSalida:1,solicitarTransf:1 },
   SUPERVISOR:  { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:1,transferencia:1,aprobar:1,paquetes:0,editarMov:0,eliminarMov:0,solicitarSalida:1,solicitarTransf:1 },
   TECNICO:     { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:0,transferencia:0,aprobar:0,paquetes:0,editarMov:0,eliminarMov:0,solicitarSalida:1,solicitarTransf:1 },
 };
@@ -1383,6 +1384,13 @@ async function maVerify(payload,save){
       if(snap.data().rol!=='SUPER_ADMIN'){try{db.collection('usuarios').doc(email).set({email:email,rol:'SUPER_ADMIN',apps:[]},{merge:true});}catch(e){}}
     }
     if(!PERMS[maUser.rol])maUser.rol='TECNICO';
+    MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
+    // Gate de entrada por módulo: admins entran a todo; el resto necesita 'insumos' en apps[].
+    if(!MA.canEnter('insumos')){
+      if(ldEl)ldEl.classList.remove('show');
+      if(errEl){errEl.textContent='Sin acceso a la sección Insumos. Contacta al administrador.';errEl.classList.add('show');}
+      sessionStorage.removeItem('ma_user');maUser=null;MA.setUser(null);return;
+    }
     if(save)sessionStorage.setItem('ma_user',JSON.stringify(maUser));
     if(ldEl)ldEl.classList.remove('show');
     document.getElementById('auth-overlay').style.display='none';
@@ -1404,7 +1412,7 @@ function renderUserPill(){
   const init=n.split(' ').map(x=>x[0]).join('').substring(0,2).toUpperCase();
   const avatar=maUser.picture?`<img class="user-avatar-img" src="${maUser.picture}">`:`<div class="user-avatar-init">${init}</div>`;
   const rolBadge=`<span class="role-badge role-${maUser.rol}">${maUser.rol.replace('_',' ')}</span>`;
-  const adminItem=can('aprobar')||maUser.rol==='ADMIN'||maUser.rol==='SUPER_ADMIN'?`<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-div"></div>`:'';
+  const adminItem=MA.isSuperAdmin()?`<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-div"></div>`:'';
   pill.innerHTML=avatar+`<span class="user-pname">${n}</span>`
     +`<div class="user-menu" id="user-menu">`
     +`<div class="user-menu-head">${maUser.email} ${rolBadge}</div>`
@@ -1429,6 +1437,7 @@ document.addEventListener('click',e=>{
 // ── PANEL DE ACCESOS ─────────────────────────────────────────────────────────
 let accessUsers=[];
 async function openAccessPanel(){
+  if(!MA.isSuperAdmin()){ toast('Solo el super admin gestiona accesos','err'); return; }
   document.getElementById('user-menu')?.classList.remove('open');
   const snap=await db.collection('usuarios').get();
   accessUsers=snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -1443,7 +1452,11 @@ function renderAccessPanel(){
     {id:'inventario',label:'\u{1F4E6} Inv'},
     {id:'mantenimiento',label:'\u{1F527} Mant'},
     {id:'itinerario',label:'\u{1F5D3} Iti'},
-    {id:'insumos',label:'\u{1F9F0} Ins'}
+    {id:'insumos',label:'\u{1F9F0} Ins'},
+    {id:'asistencia',label:'\u{1F551} Asis'},
+    {id:'comprobantes',label:'\u{1F9FE} Comp'},
+    {id:'proveedores',label:'\u{1F3E2} Prov'},
+    {id:'observaciones',label:'\u{1F4CB} Obs'}
   ];
   const iAmSuperAdmin=maUser&&maUser.rol==='SUPER_ADMIN';
   list.innerHTML=accessUsers.map(u=>{
@@ -1482,6 +1495,7 @@ function renderAccessPanel(){
 }
 
 async function toggleAppForUser(cb){
+  if(!MA.can('gestionUsuarios')){ cb.checked=!cb.checked; return; }
   const email=cb.getAttribute('data-email');
   const app=cb.getAttribute('data-app');
   const u=accessUsers.find(x=>x.email===email);
@@ -1501,6 +1515,7 @@ async function toggleAppForUser(cb){
   }
 }
 async function changeUserRol(email,rol){
+  if(!MA.can('gestionUsuarios')) return;
   try{
     await db.collection('usuarios').doc(email).update({rol});
     const u=accessUsers.find(x=>x.email===email);if(u)u.rol=rol;
@@ -1508,6 +1523,7 @@ async function changeUserRol(email,rol){
   }catch(e){toast('Error: '+e.message,'err');}
 }
 async function deleteUser(email){
+  if(!MA.can('gestionUsuarios')) return;
   if(!confirm(`¿Eliminar acceso de ${email}?`))return;
   try{
     await db.collection('usuarios').doc(email).delete();
@@ -1516,6 +1532,7 @@ async function deleteUser(email){
   }catch(e){toast('Error: '+e.message,'err');}
 }
 async function addUser(){
+  if(!MA.can('gestionUsuarios')) return;
   const email=document.getElementById('new-user-email').value.trim().toLowerCase();
   const rol=document.getElementById('new-user-rol').value;
   if(!email||!email.includes('@')){toast('Email inválido','err');return;}
@@ -1869,6 +1886,7 @@ function renderMovimientos(){
 
 // Resetear stock de un ítem a 0 en todas las sedes (para correcciones manuales)
 async function resetStockItem(itemId,nombre){
+  if(!can('eliminarItem')){toast('Solo el super admin puede eliminar','err');return;}
   const instanciasDelTipo = instanciasData.filter(i => i.itemId === itemId);
   if(!confirm(`¿Eliminar todas las instancias de "${nombre}"?\nSe eliminarán ${instanciasDelTipo.length} instancia(s). Esta acción no se puede deshacer.`))return;
   try{
@@ -2009,6 +2027,7 @@ function openModalInsumo(id){
 }
 
 async function saveInsumo(){
+  if(!can('crearItem')&&!can('editarItem')){toast('Sin permisos','err');return;}
   const nombre=document.getElementById('fi-nombre').value.trim().toUpperCase();
   const codigo=document.getElementById('fi-codigo').value.trim().toUpperCase();
   if(!nombre){toast('Nombre obligatorio','err');return;}
@@ -2053,6 +2072,7 @@ async function saveInsumo(){
 }
 
 async function deleteInsumo(id,nombre){
+  if(!can('eliminarItem')){toast('Solo el super admin puede eliminar','err');return;}
   if(!confirm(`¿Eliminar "${nombre}"?`))return;
   try{
     await db.collection('insumos_catalogo').doc(id).delete();
@@ -2092,6 +2112,7 @@ function showMsg(msg, tipo) {
   setTimeout(() => el.classList.remove('show'), 3400);
 }
 async function cargarDatosPrueba() {
+  if(!MA.isSuperAdmin()){toast('Solo el super admin','err');return;}
   if (!confirm('¿Cargar datos de prueba?\nSe crearán ítems, instancias y paquetes en Firebase.')) return;
   showMsg('Cargando datos...');
   try {
@@ -2185,6 +2206,7 @@ async function cargarDatosPrueba() {
 }
 
 async function resetearBaseDatos() {
+  if(!MA.isSuperAdmin()){toast('Solo el super admin','err');return;}
   if (!confirm('⚠️ RESETEAR BASE DE DATOS\n\nEsto eliminará PERMANENTEMENTE:\n• Todo el catálogo de ítems\n• Todas las instancias\n• Todos los movimientos\n\n¿Estás seguro?')) return;
   if (!confirm('Segunda confirmación — ¿seguro que quieres borrar TODO?')) return;
   const toastEl = document.getElementById('toast');
@@ -2223,6 +2245,7 @@ function openQRModal(id) {
 }
 
 async function exportQRLabel() {
+  if(!MA.can('exportar','insumos')){ toast('Sin permisos para exportar','err'); return; }
   const id = currentQRItemId;
   const inst = instanciasData.find(x => x.id === id);
   const item = inst ? catalogoData.find(x => x.id === inst.itemId) : catalogoData.find(x => x.id === id);
@@ -2237,6 +2260,7 @@ async function exportQRLabel() {
   link.click();
 }
 async function exportQRLabel_OLD() {
+  if(!MA.can('exportar','insumos')){ toast('Sin permisos para exportar','err'); return; }
   const item = catalogoData.find(x => x.id === currentQRItemId);
   if (!item) return;
   const canvas = document.createElement('canvas');
@@ -2523,6 +2547,7 @@ async function previewInstancias() {
 }
 
 async function saveEntrada() {
+  if(!can('entrada')){toast('Sin permisos','err');return;}
   const btn = document.querySelector('#modal-entrada .btn-primary');
   if (btn && btn.disabled) return;
   if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
@@ -2613,6 +2638,7 @@ function onSalidaInstanciaChange() {
 }
 
 async function saveSalida() {
+  if(!can('salida')){toast('Sin permisos','err');return;}
   const btn = document.querySelector('#modal-salida .btn-primary');
   if (btn && btn.disabled) return;
   if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
@@ -2738,6 +2764,7 @@ function openMovFoto(movId, tipo) {
 }
 
 async function saveSalidaLote() {
+  if(!can('salida')){toast('Sin permisos','err');return;}
   const btn = document.getElementById('btn-save-lote');
   if (btn && btn.disabled) return;
   const esBaja = currentLoteTipo === 'BAJA';
@@ -2830,6 +2857,7 @@ function onTransfLoteTipoChange() {
 }
 
 async function saveTransfLote() {
+  if(!can('transferencia')){toast('Sin permisos','err');return;}
   const btn = document.getElementById('btn-save-transf-lote');
   if (btn && btn.disabled) return;
   const transferSede = document.getElementById('ftl-chk-sede').checked;
@@ -3115,6 +3143,7 @@ function _cmDownloadBlob(blob, filename) {
 }
 
 async function descargarPlantillaInsumos() {
+  if(!MA.can('exportar','insumos')){ toast('Sin permisos para exportar', 'err'); return; }
   if (typeof XLSX === 'undefined' || typeof JSZip === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
   // Hojas vacías (solo encabezados + menús desplegables); los ejemplos van en la hoja Instrucciones
   try {
@@ -3124,6 +3153,7 @@ async function descargarPlantillaInsumos() {
 }
 
 async function exportarBaseInsumos() {
+  if(!MA.can('exportar','insumos')){ toast('Sin permisos para exportar', 'err'); return; }
   if (typeof XLSX === 'undefined' || typeof JSZip === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
   const catRows = catalogoData.map(c => [c.nombre||'', c.categoria||'', c.unidad||'', c.codigo||'', c.marca||'', c.modelo||'', c.stockMin??0, c.tipoCantidad||'UNIDAD']);
   const instRows = instanciasData.map(i => [i.id, i.itemId||'', i.nombre||'', i.sede||'', i.estado||'DISPONIBLE', i.responsable||'', i.notas||'', (i.nivel!==undefined?i.nivel:'')]);
@@ -3135,6 +3165,7 @@ async function exportarBaseInsumos() {
 
 // Manual en PDF (jsPDF) — guía paso a paso para aprender/enseñar la carga masiva
 function descargarManualCargaMasiva() {
+  if(!MA.can('exportar','insumos')){ toast('Sin permisos para exportar','err'); return; }
   if (!(window.jspdf && window.jspdf.jsPDF)) { toast('PDF no disponible — reintenta', 'err'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -3207,6 +3238,7 @@ function _cmSheetRows(wb, nombreHoja) {
 }
 
 async function onCargaMasivaFile(file) {
+  if (!MA.can('importMasiva')) { toast('La importación masiva es solo del super admin', 'err'); return; }
   if (!file) return;
   if (typeof XLSX === 'undefined') { toast('Librería Excel no cargó — reintenta', 'err'); return; }
   document.getElementById('cm-file-name').textContent = file.name;
@@ -3303,6 +3335,7 @@ function _cmRenderPreview() {
 }
 
 async function confirmarImportInsumos() {
+  if (!MA.can('importMasiva')) { toast('La importación masiva es solo del super admin', 'err'); return; }
   if (!_cmImport) return;
   const r = _cmImport, btn = document.getElementById('cm-confirm-btn');
   const totalCat = r.cat.nuevos.length + r.cat.upd.length, totalInst = r.inst.nuevos.length + r.inst.upd.length;
@@ -3430,6 +3463,7 @@ function onTransfInstanciaChange() {
 }
 
 async function saveTransferencia() {
+  if(!can('transferencia')){toast('Sin permisos','err');return;}
   const btn = document.querySelector('#modal-transf .btn-primary');
   if (btn && btn.disabled) return;
   if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
@@ -3591,6 +3625,7 @@ async function generateInstQRCanvas(instId) {
 }
 
 async function exportInstQRZip() {
+  if(!MA.can('exportar','insumos')){ toast('Sin permisos para exportar', 'err'); return; }
   if (selectedInstQRIds.size === 0) { toast('Selecciona al menos una instancia', 'warn'); return; }
   toast('Generando etiquetas...', '');
   const zip = new JSZip();
@@ -3613,6 +3648,7 @@ async function exportInstQRZip() {
 // CSV para impresión por lotes en Phomemo (Print Master / Labelife): columnas CODIGO, NOMBRE.
 // Si no hay selección, exporta TODAS las instancias. BOM UTF-8 para que Excel/Phomemo lean bien acentos.
 function exportInstCSVPhomemo() {
+  if(!MA.can('exportar','insumos')){ toast('Sin permisos para exportar', 'err'); return; }
   const ids = selectedInstQRIds.size ? [...selectedInstQRIds] : instanciasData.map(i => i.id);
   if (!ids.length) { toast('No hay instancias para exportar', 'warn'); return; }
   const esc = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -3704,6 +3740,7 @@ function _abrirSelectorExport(){
   document.getElementById('modal-export-mat').classList.add('open');
 }
 function doExportMat(fmt){
+  if(!MA.can('exportar','insumos')){ toast('Sin permisos para exportar', 'err'); return; }
   if(!_exportMat) return;
   _exportMat.conFotos = !!document.getElementById('exmat-fotos')?.checked;
   closeModal('modal-export-mat');
@@ -3927,6 +3964,7 @@ function closeInstFotoLightbox(){
 
 // Sube/reemplaza la foto de la instancia (colección aparte insumos_instancias_fotos)
 async function setInstanciaFoto(file) {
+  if(!can('editarItem')){toast('Sin permisos','err');return;}
   if (!file || !editingInstanciaId) return;
   if (!/^image\//.test(file.type)) { toast('El archivo no es una imagen', 'err'); return; }
   try {
@@ -3944,6 +3982,7 @@ async function setInstanciaFoto(file) {
 }
 
 async function removeInstanciaFoto() {
+  if(!can('editarItem')){toast('Sin permisos','err');return;}
   if (!editingInstanciaId || !instFotos[editingInstanciaId]) return;
   if (!confirm('¿Quitar la foto de esta instancia?')) return;
   try {
@@ -3956,6 +3995,7 @@ async function removeInstanciaFoto() {
 }
 
 function openEditInstancia(instId) {
+  if(!can('editarItem')){toast('Sin permisos','err');return;}
   const inst = instanciasData.find(x => x.id === instId);
   if (!inst) return;
   editingInstanciaId = instId;
@@ -3974,6 +4014,7 @@ function openEditInstancia(instId) {
 }
 
 async function updateInstancia() {
+  if(!can('editarItem')){toast('Sin permisos','err');return;}
   if (!editingInstanciaId) return;
   const sede = document.getElementById('fe-inst-sede').value;
   const estado = document.getElementById('fe-inst-estado').value;
@@ -4016,6 +4057,7 @@ async function updateInstancia() {
 }
 
 async function deleteInstancia() {
+  if(!can('eliminarItem')){toast('Solo el super admin puede eliminar','err');return;}
   if (!editingInstanciaId) return;
   if (!confirm('¿Eliminar esta instancia?')) return;
   try {
@@ -4169,6 +4211,7 @@ function setLabelFmt(fmt) {
 }
 
 async function exportSelectedQRZip() {
+  if(!MA.can('exportar','insumos')){ toast('Sin permisos para exportar', 'err'); return; }
   if (selectedQRIds.size === 0) { toast('Selecciona al menos un ítem', 'warn'); return; }
   toast('Generando etiquetas...', '');
   const zip = new JSZip();
@@ -4195,6 +4238,7 @@ let editingMovId = null;
 // Elimina en cascada movimientos POSTERIORES que referencien una instancia
 // Excluye: el movimiento actual, ENTRADAs (origen), SOLICITUDes ya procesadas
 async function eliminarMovsCascada(instIds, excludeMovId, fromFecha=null) {
+  if(!can('eliminarMov')){toast('Sin permisos','err');return;}
   const excludeMov = movimientosData.find(x => x.id === excludeMovId);
   const refFecha = fromFecha || (excludeMov?.fecha ? (excludeMov.fecha.toDate ? excludeMov.fecha.toDate() : new Date(excludeMov.fecha)) : new Date(0));
   const movsACascada = movimientosData.filter(m => {
@@ -4223,6 +4267,7 @@ async function eliminarMovsCascada(instIds, excludeMovId, fromFecha=null) {
 }
 
 async function revertirMovimiento(movId) {
+  if(!can('eliminarMov')){toast('Sin permisos','err');return;}
   const mov = movimientosData.find(x => x.id === movId);
   if (!mov) return;
   const tipoLabel = {ENTRADA:'entrada',SALIDA:'salida',BAJA:'baja',TRANSFERENCIA:'transferencia',ACTUALIZACION:'actualización'}[mov.tipo] || mov.tipo;
@@ -4461,6 +4506,7 @@ async function editarMovimiento(movId) {
 }
 
 async function guardarEdicionMovimiento() {
+  if(!can('editarMov')){toast('Sin permisos','err');return;}
   if (!editingMovId) return;
   const mov = movimientosData.find(x => x.id === editingMovId);
   if (!mov) return;
@@ -4631,6 +4677,7 @@ function onSolicitudTransfTipoChange() {
 }
 
 async function saveSolicitud() {
+  if(!can('solicitarSalida')&&!can('solicitarTransf')){toast('Sin permisos','err');return;}
   const btn = document.querySelector('#modal-solicitud .btn-primary');
   if (btn && btn.disabled) return;
   if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Enviando...'; }
@@ -4662,6 +4709,7 @@ async function saveSolicitud() {
     instId = document.getElementById('fsol-instancia').value;
     if (!instId) { toast('Selecciona una instancia', 'err'); return; }
   }
+  let movData_extra = {};
   if (esPaquete) {
     // Recoger instancias seleccionadas
     const checked = [...document.querySelectorAll('#fsol-pkg-insts input[type=checkbox]:checked')].map(cb=>cb.value);
@@ -4678,7 +4726,6 @@ async function saveSolicitud() {
     if (!inst) { toast('Instancia no encontrada', 'err'); return; }
     itemId = inst.itemId; itemNombre = inst.nombre; sede = inst.sede;
   }
-  let movData_extra = {};
   try {
     // Construir movData limpio sin campos undefined
     const movData = {
@@ -4707,6 +4754,7 @@ async function saveSolicitud() {
 }
 
 async function aprobarSolicitud(movId) {
+  if(!can('aprobar')){toast('Sin permisos','err');return;}
   const mov = movimientosData.find(x => x.id === movId);
   if (!mov) return;
   try {
@@ -4773,6 +4821,7 @@ let aprobandoPkgMovId = null;
 let apkgInstanciasSeleccionadas = new Set();
 
 function abrirAprobacionPaquete(movId) {
+  if(!can('aprobar')){toast('Sin permisos','err');return;}
   const mov = movimientosData.find(x => x.id === movId);
   if (!mov) return;
   aprobandoPkgMovId = movId;
@@ -4844,6 +4893,7 @@ function renderApkgInstSeleccionadas() {
 }
 
 async function confirmarAprobacionPaquete() {
+  if(!can('aprobar')){toast('Sin permisos','err');return;}
   const btn = document.querySelector('#modal-aprobar-pkg .btn-primary');
   if (btn && btn.disabled) return;
   if (btn) { btn.disabled=true; btn._origText=btn.textContent; btn.textContent='⏳ Creando...'; }
@@ -4883,6 +4933,7 @@ async function confirmarAprobacionPaquete() {
 }
 
 function rechazarSolicitud(movId) {
+  if(!can('aprobar')){toast('Sin permisos','err');return;}
   const mov = movimientosData.find(x => x.id === movId);
   if (!mov) return;
   rechazandoMovId = movId;
@@ -4892,6 +4943,7 @@ function rechazarSolicitud(movId) {
 }
 
 async function confirmarRechazo() {
+  if(!can('aprobar')){toast('Sin permisos','err');return;}
   const motivo = document.getElementById('rechazar-motivo').value.trim();
   if (!motivo) { toast('El motivo es obligatorio', 'err'); return; }
   try {
@@ -4966,17 +5018,18 @@ function renderPaquetes() {
         <button class="btn btn-sm" onclick="exportMaterialPaquete('${pkg.id}')" title="Exportar material del paquete (CSV)">⬇ Material</button>
         ${canEdit?`<button class="btn btn-sm" onclick="openModalPaquete('${pkg.id}')">✏️ Editar</button>`:''}
         <button class="btn btn-sm" onclick="openModalTransfPaquete('${pkg.id}')">🔄 Transferir</button>
-        ${canEdit?`<button class="btn btn-sm btn-red" onclick="deletePaquete('${pkg.id}')">🗑</button>`:''}
+        ${MA.can('borrar')?`<button class="btn btn-sm btn-red" onclick="deletePaquete('${pkg.id}')">🗑</button>`:''}
       </div>
     </div>`;
   }).join('');
 }
 
 function openModalPaquete(id) {
+  if(!can('paquetes')){toast('Sin permisos','err');return;}
   editingPaqueteId = id || null;
   pkgInstanciasSeleccionadas = new Set();
   document.getElementById('modal-pkg-title').textContent = id ? '✏️ Editar paquete' : '🎒 Nuevo paquete';
-  document.getElementById('fpkg-btn-delete').style.display = id ? 'inline-flex' : 'none';
+  document.getElementById('fpkg-btn-delete').style.display = (id && MA.can('borrar')) ? 'inline-flex' : 'none';
   document.getElementById('fpkg-sede').innerHTML = sedeOpts(false);
   const pOpts = '<option value="">—</option>' + personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
   document.getElementById('fpkg-responsable').innerHTML = pOpts;
@@ -5069,6 +5122,7 @@ function renderPkgInstSeleccionadas() {
 }
 
 async function savePaquete() {
+  if(!can('paquetes')){toast('Sin permisos','err');return;}
   const nombre = document.getElementById('fpkg-nombre').value.trim().toUpperCase();
   const sede = document.getElementById('fpkg-sede').value;
   if (!nombre) { toast('Nombre obligatorio','err'); return; }
@@ -5125,6 +5179,7 @@ async function savePaquete() {
 }
 
 async function deletePaquete(pkgId) {
+  if(!MA.can('borrar')){toast('Solo el super admin puede eliminar','err');return;}
   const id = pkgId || editingPaqueteId;
   if (!id) return;
   const pkg = paquetesData.find(x=>x.id===id);
@@ -5183,6 +5238,7 @@ function onPkgTransfTipoChange() {
 
 let _savingPkgTransf = false;
 async function saveTransfPaquete() {
+  if(!can('transferencia')){toast('Sin permisos','err');return;}
   if (_savingPkgTransf) return;
   _savingPkgTransf = true;
   const btnConfirmar = document.querySelector('#modal-pkg-transf .btn-primary');

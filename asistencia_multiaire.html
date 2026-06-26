@@ -111,6 +111,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .badge-permiso{background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-border)}
 .supervisor-mode .sidebar{display:none}
 .supervisor-mode #modal-edit-reg .btn-danger,.supervisor-mode #modal-edit-reg .btn-primary{display:none}
+.no-delete #modal-edit-reg .btn-danger{display:none}
 /* HISTORIAL */
 .hist-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;box-shadow:var(--shadow)}
 .hist-filter-input{background:var(--surface2);border:1.5px solid var(--border);color:var(--accent);font-family:var(--font);font-size:12px;padding:7px 10px;border-radius:6px;outline:none}
@@ -215,6 +216,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 </style>
 <script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -621,15 +623,16 @@ function maVerify(payload,save) {
       }
     }
     var appsMap=data.apps||{};
-    if(['ADMIN','SUPER_ADMIN','SUPERVISOR'].indexOf(rol)===-1){
-      var userApps=appsMap[email]||[];
-      if(userApps.indexOf(MA_APP)===-1){
-        if(ldEl)ldEl.classList.remove('show');
-        if(errEl){errEl.textContent='Sin acceso a esta sección. Contacta al administrador.';errEl.classList.add('show');}
-        sessionStorage.removeItem('ma_user');return;
-      }
+    var userApps=appsMap[email]||[];
+    maUser={email,name:payload.name||email,picture:payload.picture||'',rol,apps:userApps};
+    MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
+    // Gate de entrada por módulo: admins entran a todo; el resto (incl. SUPERVISOR)
+    // necesita 'asistencia' en su apps[].
+    if(!MA.canEnter(MA_APP)){
+      if(ldEl)ldEl.classList.remove('show');
+      if(errEl){errEl.textContent='Sin acceso a esta sección ('+MA_APP+'). Contacta al administrador.';errEl.classList.add('show');}
+      sessionStorage.removeItem('ma_user');maUser=null;MA.setUser(null);return;
     }
-    maUser={email,name:payload.name||email,picture:payload.picture||'',rol};
     if(save)sessionStorage.setItem('ma_user',JSON.stringify(maUser));
     if(ldEl)ldEl.classList.remove('show');
     document.getElementById('auth-overlay').style.display='none';
@@ -666,8 +669,7 @@ function maRenderPill() {
   let n=maUser.name||maUser.email;
   try{n=decodeURIComponent(escape(n));}catch(e){}
   const init=n.split(' ').map(x=>x[0]).join('').substring(0,2).toUpperCase();
-  const isAdmin=maUser.rol==='ADMIN'||maUser.rol==='SUPER_ADMIN';
-  const adminItem=isAdmin?'<div class="user-menu-divider"></div><button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button>':'';
+  const adminItem=MA.isSuperAdmin()?'<div class="user-menu-divider"></div><button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button>':'';
   pill.innerHTML=(maUser.picture?`<img class="user-avatar" src="${maUser.picture}">`:`<div class="user-avatar-init">${init}</div>`)
     +`<span class="user-name">${n}</span>`
     +`<div class="user-menu" id="user-menu">`
@@ -701,7 +703,11 @@ async function init() {
 }
 
 function applyRoleRestrictions() {
-  if(maUser?.rol==='SUPERVISOR')document.body.classList.add('supervisor-mode');
+  // Modo solo-lectura (oculta sidebar + botones del modal) para quien NO puede
+  // editar asistencia (p.ej. TECNICO). El SUPERVISOR con la app SÍ opera.
+  if(!MA.can('editar','asistencia'))document.body.classList.add('supervisor-mode');
+  // Borrar registros es solo del super admin: oculta el botón Eliminar al resto.
+  if(!MA.can('borrar'))document.body.classList.add('no-delete');
 }
 
 // ── UTILS ─────────────────────────────────────────────────────────────────────
@@ -959,6 +965,7 @@ function renderTodayTable() {
 }
 
 async function registrar(tipo) {
+  if(!MA.can('editar','asistencia')){toast('Sin permisos','err');return;}
   if(!selectedColabId){toast('Selecciona un colaborador primero','err');return;}
   const colab=allColabs.find(c=>c.id===selectedColabId);
   if(!colab)return;
@@ -994,6 +1001,7 @@ async function registrar(tipo) {
 }
 
 async function registrarEstado(estado) {
+  if(!MA.can('editar','asistencia')){toast('Sin permisos','err');return;}
   if(!selectedColabId){toast('Selecciona un colaborador primero','err');return;}
   const colab=allColabs.find(c=>c.id===selectedColabId);
   if(!colab)return;
@@ -1033,7 +1041,7 @@ function openEditReg(regId,colabId,nombre,cargo,fecha) {
     fillEditModal(reg,fecha);
   }
   document.getElementById('modal-edit-reg').classList.add('open');
-  if(maUser?.rol==='SUPERVISOR'){
+  if(!MA.can('editar','asistencia')){
     ['edit-reg-entrada','edit-reg-salida','edit-reg-estado','edit-reg-he-manual','edit-reg-he-is-manual','edit-reg-obs'].forEach(id=>{const el=document.getElementById(id);if(el)el.disabled=true;});
   }
 }
@@ -1064,6 +1072,7 @@ function updateHeAutoInfo() {
 function closeEditReg(){document.getElementById('modal-edit-reg').classList.remove('open');editRegData=null;}
 
 async function saveEditReg() {
+  if(!MA.can('editar','asistencia')){toast('Sin permisos','err');return;}
   if(!editRegData)return;
   const{regId,colabId,fecha}=editRegData;
   const colab=allColabs.find(c=>c.id===colabId);
@@ -1091,6 +1100,7 @@ async function saveEditReg() {
 }
 
 async function deleteReg() {
+  if(!MA.can('borrar')){toast('Solo el super admin puede eliminar','err');return;}
   const regId=document.getElementById('edit-reg-id').value;
   if(!regId){closeEditReg();return;}
   if(!confirm('¿Eliminar este registro?'))return;
@@ -1322,6 +1332,7 @@ async function loadResumen() {
 
 // ── EXPORTACIONES ─────────────────────────────────────────────────────────────
 function exportTAPDF() {
+  if(!MA.can('exportar','asistencia')){toast('Sin permisos para exportar','err');return;}
   const content=document.getElementById('ta-content').innerHTML;
   if(!content||content.includes('empty-state')){toast('Genera la vista primero','err');return;}
   const w=window.open('','_blank');
@@ -1332,6 +1343,7 @@ function exportTAPDF() {
 }
 
 async function exportESPDF() {
+  if(!MA.can('exportar','asistencia')){toast('Sin permisos para exportar','err');return;}
   const desde=document.getElementById('es-desde').value;
   const hasta=document.getElementById('es-hasta').value;
   const colabFiltro=document.getElementById('es-colab').value;
@@ -1445,6 +1457,7 @@ async function exportESPDF() {
 }
 
 async function exportESExcel() {
+  if(!MA.can('exportar','asistencia')){toast('Sin permisos para exportar','err');return;}
   const desde=document.getElementById('es-desde').value;
   const hasta=document.getElementById('es-hasta').value;
   const colabFiltro=document.getElementById('es-colab').value;
@@ -1572,6 +1585,7 @@ async function ausenciasData() {
 }
 
 async function exportAusenciasPDF() {
+  if(!MA.can('exportar','asistencia')){toast('Sin permisos para exportar','err');return;}
   const d=await ausenciasData();
   if(!d){toast('Selecciona el rango de fechas primero','err');return;}
   const{desde,hasta,grupo,diasLab,colabs,ausencias}=d;
@@ -1765,7 +1779,7 @@ var MA_ROL_COLORS={TECNICO:'#1a9e5a',SUPERVISOR:'#6b3fa0',ADMIN:'#1B3F8B',SUPER_
 var MA_ROL_BGS={TECNICO:'#f0faf5',SUPERVISOR:'#f3eeff',ADMIN:'#e8eef8',SUPER_ADMIN:'#fff3eb'};
 
 function openAccessPanel() {
-  if(!maUser||['ADMIN','SUPER_ADMIN'].indexOf(maUser.rol)===-1)return;
+  if(!MA.isSuperAdmin()){toast('Solo el super admin gestiona accesos','err');return;}
   var menu=document.getElementById('user-menu');if(menu)menu.classList.remove('open');
   window.__db.collection('usuarios').get().then(function(snap){
     maAccessUsers=snap.docs.map(function(d){return Object.assign({id:d.id},d.data());});
@@ -1778,7 +1792,7 @@ function maRenderAccessPanel(){
   var list=document.getElementById('ma-access-list');
   if(!maAccessUsers.length){list.innerHTML='<div style="text-align:center;color:#8a9ab8;font-size:12px;padding:16px">Sin usuarios</div>';return;}
   var iAmSuperAdmin=maUser&&maUser.rol==='SUPER_ADMIN';
-  var ALL_APPS=[{id:'inventario',label:'📦 Inv'},{id:'mantenimiento',label:'🔧 Mant'},{id:'itinerario',label:'🗓 Iti'},{id:'insumos',label:'🧰 Ins'},{id:'asistencia',label:'🕐 Asist'}];
+  var ALL_APPS=[{id:'inventario',label:'📦 Inv'},{id:'mantenimiento',label:'🔧 Mant'},{id:'itinerario',label:'🗓 Iti'},{id:'insumos',label:'🧰 Ins'},{id:'asistencia',label:'🕐 Asist'},{id:'comprobantes',label:'🧾 Comp'},{id:'proveedores',label:'🏢 Prov'},{id:'observaciones',label:'📋 Obs'}];
   list.innerHTML=maAccessUsers.map(function(u){
     var isMe=maUser&&u.email===maUser.email,rol=u.rol||'TECNICO',isSuperTarget=rol==='SUPER_ADMIN',isAdminOrSuper=rol==='ADMIN'||rol==='SUPER_ADMIN';
     var canEdit=!isMe&&(isSuperTarget?iAmSuperAdmin:true),canDelete=!isMe&&(isSuperTarget?iAmSuperAdmin:true);
@@ -1792,10 +1806,10 @@ function maRenderAccessPanel(){
     return'<div style="padding:10px 0;border-bottom:1px solid #e8eef8;font-size:12px"><div style="display:flex;align-items:center;gap:10px"><div style="flex:1;font-family:monospace;font-size:11px;color:#1a2540">'+u.email+meMark+superMark+'</div><select data-email="'+u.email+'" onchange="maChangeRol(this.dataset.email,this.value)" '+(canEdit?'':'disabled ')+'style="'+selStyle+'">'+opts+'</select>'+(canDelete?'<button data-email="'+u.email+'" onclick="maDeleteUser(this.dataset.email)" style="background:none;border:1px solid #f0c0c8;color:#d63344;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px">🗑</button>':'<span style="width:34px"></span>')+'</div>'+appsHtml+'</div>';
   }).join('');
 }
-function maToggleApp(cb){var email=cb.getAttribute('data-email'),app=cb.getAttribute('data-app'),u=maAccessUsers.find(function(x){return x.email===email;});if(!u)return;if(!u.apps)u.apps=[];if(cb.checked){if(u.apps.indexOf(app)===-1)u.apps.push(app);}else{u.apps=u.apps.filter(function(a){return a!==app;});}window.__db.collection('usuarios').doc(email).update({apps:u.apps}).then(function(){sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');}).catch(function(e){alert('Error: '+e.message);cb.checked=!cb.checked;});}
-function maChangeRol(email,rol){window.__db.collection('usuarios').doc(email).update({rol:rol}).then(function(){var u=maAccessUsers.find(function(x){return x.email===email;});if(u)u.rol=rol;sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');maRenderAccessPanel();}).catch(function(e){alert('Error: '+e.message);});}
-function maDeleteUser(email){if(!confirm('¿Eliminar acceso de '+email+'?'))return;window.__db.collection('usuarios').doc(email).delete().then(function(){maAccessUsers=maAccessUsers.filter(function(x){return x.email!==email;});sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');maRenderAccessPanel();}).catch(function(e){alert('Error: '+e.message);});}
-function maAddUser(){var email=(document.getElementById('ma-new-email').value||'').trim().toLowerCase(),rol=document.getElementById('ma-new-rol').value;if(!email||email.indexOf('@')===-1){alert('Ingresa un email válido');return;}if(maAccessUsers.find(function(u){return u.email===email;})){alert('Este usuario ya existe');return;}window.__db.collection('usuarios').doc(email).set({email:email,rol:rol,apps:[]}).then(function(){maAccessUsers.push({email:email,rol:rol,apps:[]});document.getElementById('ma-new-email').value='';sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');maRenderAccessPanel();}).catch(function(e){alert('Error: '+e.message);});}
+function maToggleApp(cb){if(!MA.can('gestionUsuarios')){cb.checked=!cb.checked;return;}var email=cb.getAttribute('data-email'),app=cb.getAttribute('data-app'),u=maAccessUsers.find(function(x){return x.email===email;});if(!u)return;if(!u.apps)u.apps=[];if(cb.checked){if(u.apps.indexOf(app)===-1)u.apps.push(app);}else{u.apps=u.apps.filter(function(a){return a!==app;});}window.__db.collection('usuarios').doc(email).update({apps:u.apps}).then(function(){sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');}).catch(function(e){alert('Error: '+e.message);cb.checked=!cb.checked;});}
+function maChangeRol(email,rol){if(!MA.can('gestionUsuarios'))return;window.__db.collection('usuarios').doc(email).update({rol:rol}).then(function(){var u=maAccessUsers.find(function(x){return x.email===email;});if(u)u.rol=rol;sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');maRenderAccessPanel();}).catch(function(e){alert('Error: '+e.message);});}
+function maDeleteUser(email){if(!MA.can('gestionUsuarios'))return;if(!confirm('¿Eliminar acceso de '+email+'?'))return;window.__db.collection('usuarios').doc(email).delete().then(function(){maAccessUsers=maAccessUsers.filter(function(x){return x.email!==email;});sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');maRenderAccessPanel();}).catch(function(e){alert('Error: '+e.message);});}
+function maAddUser(){if(!MA.can('gestionUsuarios'))return;var email=(document.getElementById('ma-new-email').value||'').trim().toLowerCase(),rol=document.getElementById('ma-new-rol').value;if(!email||email.indexOf('@')===-1){alert('Ingresa un email válido');return;}if(maAccessUsers.find(function(u){return u.email===email;})){alert('Este usuario ya existe');return;}window.__db.collection('usuarios').doc(email).set({email:email,rol:rol,apps:[]}).then(function(){maAccessUsers.push({email:email,rol:rol,apps:[]});document.getElementById('ma-new-email').value='';sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');maRenderAccessPanel();}).catch(function(e){alert('Error: '+e.message);});}
 document.addEventListener('click',function(e){var ov=document.getElementById('ma-access-overlay');if(ov&&e.target===ov)maCloseAccessPanel();});
 </script>
 </body>

@@ -37,6 +37,7 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 .role-SUPER_ADMIN{background:#fff3eb;color:var(--orange-dark)}
 .role-ADMIN{background:#e8eef8;color:var(--blue)}
 .role-SUPERVISOR{background:var(--purple-bg);color:var(--purple)}
+.role-TECNICO{background:#f0faf5;color:#1a9e5a}
 
 /* ── USER PILL ────────────────────────────────────────────────────────────── */
 .user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative}
@@ -215,8 +216,8 @@ tr:hover td{background:var(--surface2)}
         </select>
         <label class="form-input" style="display:inline-flex;align-items:center;gap:6px;width:auto;min-width:160px;cursor:pointer;color:var(--muted2)" title="Filtrar por fecha"><span style="font-size:14px">📅</span><span style="font-size:12px;white-space:nowrap">Fecha:</span><input type="date" id="obs-f-fecha" style="border:0;background:transparent;outline:0;font:inherit;color:var(--text,#1a2540);flex:1;min-width:0;padding:0" onchange="renderObsTable()"></label>
         <button class="btn btn-sm" onclick="clearObsFilters()" title="Limpiar filtros">✕ Limpiar</button>
-        <button class="btn btn-sm btn-green" onclick="exportObsExcel()">⬇ Excel</button>
-        <button class="btn btn-sm btn-green" onclick="exportObsPDF()">⬇ PDF</button>
+        <button class="btn btn-sm btn-green" id="btn-export-xls" onclick="exportObsExcel()" style="display:none">⬇ Excel</button>
+        <button class="btn btn-sm btn-green" id="btn-export-pdf" onclick="exportObsPDF()" style="display:none">⬇ PDF</button>
         <button class="btn btn-sm btn-primary" id="btn-new-obs" onclick="openNewObs()" style="display:none">＋ Nueva observación</button>
       </div>
     </div>
@@ -423,14 +424,16 @@ tr:hover td{background:var(--surface2)}
   <div class="modal">
     <h2>⚙️ Gestión de accesos</h2>
     <div class="modal-sub">
-      <strong>SUPERVISOR</strong> — solo lectura en todas las apps<br>
-      <strong>ADMIN</strong> — gestión completa<br>
-      <strong>SUPER_ADMIN</strong> — acceso total sin restricciones
+      <strong>TECNICO</strong> — solo lectura<br>
+      <strong>SUPERVISOR</strong> — opera (crea/edita/aprueba) en las apps habilitadas<br>
+      <strong>ADMIN</strong> — opera y aprueba todo; sin acciones críticas<br>
+      <strong>SUPER_ADMIN</strong> — acceso total, incl. borrar/backup/usuarios
     </div>
     <div id="access-list" style="max-height:340px;overflow-y:auto;margin-bottom:14px"></div>
     <div style="display:flex;gap:8px;margin-bottom:4px;flex-wrap:wrap">
       <input type="text" class="form-input" id="new-user-email" placeholder="nuevo@email.com" style="flex:1;min-width:180px">
       <select class="form-select" id="new-user-rol">
+        <option value="TECNICO">TECNICO</option>
         <option value="SUPERVISOR">SUPERVISOR</option>
         <option value="ADMIN">ADMIN</option>
         <option value="SUPER_ADMIN">SUPER ADMIN</option>
@@ -446,6 +449,7 @@ tr:hover td{background:var(--surface2)}
 <div class="toast" id="toast"></div>
 
 <script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -528,8 +532,10 @@ async function maVerify(payload, save){
       picture: payload.picture || fsData.picture || '',
       ...fsData,
       name: payload.name || fsData.nombre || fsData.name || email,
+      apps: fsData.apps || [],
     };
     if(maUser.email === MA_ADM) maUser.rol = 'SUPER_ADMIN';
+    MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
     if(save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
     if(ldEl) ldEl.classList.remove('show');
     document.getElementById('auth-overlay').style.display = 'none';
@@ -555,11 +561,11 @@ function renderUserPill(){
     : `<div class="user-avatar-init">${init}</div>`;
   const rol      = maUser.rol || 'ADMIN';
   const rolBadge = `<span class="role-badge role-${rol}">${rol.replace('_',' ')}</span>`;
-  const isAdmin = rol === 'ADMIN' || rol === 'SUPER_ADMIN';
-  const adminItem = isAdmin
-    ? `<button class="user-menu-item" onclick="openGuiaPanel()">🤖 Guía del bot</button>`
-      + `<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-div"></div>`
-    : '';
+  const guiaItem = MA.isSuperAdmin()
+    ? `<button class="user-menu-item" onclick="openGuiaPanel()">🤖 Guía del bot</button>` : '';
+  const accItem = MA.isSuperAdmin()
+    ? `<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button>` : '';
+  const adminItem = (guiaItem || accItem) ? (guiaItem + accItem + `<div class="user-menu-div"></div>`) : '';
   pill.innerHTML = avatar
     + `<span class="user-pname">${n}</span>`
     + `<div class="user-menu" id="user-menu">`
@@ -604,7 +610,8 @@ function closeModal(id){ document.getElementById(id)?.classList.remove('open'); 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  MANTA DE OBSERVACIONES — Ripley (colección Firestore `manta_observaciones`)
 //  Maestro de equipos en `manta_equipos` · fotos base64 en `manta_observaciones_fotos`
-//  ADMIN / SUPER_ADMIN editan · SUPERVISOR solo lectura
+//  ADMIN/SUPER_ADMIN y SUPERVISOR (con la app habilitada) crean/editan ·
+//  TECNICO solo lectura · borrar solo SUPER_ADMIN (ver auth-guard.js)
 // ═══════════════════════════════════════════════════════════════════════════════
 let observaciones = [];        // log de observaciones (1 doc = 1 observación)
 let obsInventario = [];        // inventario real: [{eqId, sede, cliente, tipo, nombre, area}] (557 equipos)
@@ -616,17 +623,35 @@ let _obsFotoVal   = null;      // foto mostrada en el modal (dataURL o null)
 let _obsFotoDirty = false;     // true si la foto cambió en esta edición
 const OBS_ESTADOS = ['PENDIENTE','EN_PROCESO','OK'];
 
+// Crear/editar observaciones: ADMIN/SUPER_ADMIN siempre; SUPERVISOR si tiene
+// 'observaciones' en su apps[]. (Borrar y editar la guía van por su propio gate.)
 function isObsAdmin(){
-  const rol = maUser?.rol || '';
-  return rol === 'ADMIN' || rol === 'SUPER_ADMIN';
+  return MA.can('editar', 'observaciones');
 }
 function hoyISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
 // ── APP INIT ──────────────────────────────────────────────────────────────────
 function initApp(){
+  // Gate de entrada por módulo: admins entran a todo; el resto necesita
+  // 'observaciones' en su apps[]. Sin acceso, no se cargan datos.
+  if(!MA.canEnter('observaciones')){
+    document.getElementById('main-page').style.display = 'none';
+    const ov = document.getElementById('auth-overlay');
+    const gb = document.getElementById('g-btn');
+    const err = document.getElementById('auth-err');
+    if(gb) gb.style.display = 'none';
+    if(err){ err.textContent = 'Sin acceso a la sección Observaciones. Contacta al administrador.'; err.classList.add('show'); }
+    if(ov){ ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+    return;
+  }
   if(isObsAdmin()){
     const b = document.getElementById('btn-new-obs');
     if(b) b.style.display = 'inline-flex';
+  }
+  if(MA.can('exportar','observaciones')){
+    ['btn-export-xls','btn-export-pdf'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.style.display = 'inline-flex';
+    });
   }
   loadAll();
 }
@@ -931,7 +956,7 @@ function openEditObs(id){
   document.getElementById('obs-observacion').value = o.observacion || '';
   _obsFotoVal = obsFotos[o.id] || null; _obsFotoDirty=false; refreshObsFotoPreview();
   setObsModalReadonly(!admin);
-  document.getElementById('btn-del-obs').style.display = admin ? 'inline-flex' : 'none';
+  document.getElementById('btn-del-obs').style.display = MA.can('borrar') ? 'inline-flex' : 'none';
   document.getElementById('modal-obs').classList.add('open');
 }
 
@@ -992,7 +1017,7 @@ async function saveObs(){
 
 // ── DELETE ────────────────────────────────────────────────────────────────────
 async function deleteObs(){
-  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  if(!MA.can('borrar')){ toast('Solo el super admin puede eliminar', 'err'); return; }
   const id = document.getElementById('obs-id').value;
   if(!id) return;
   const o = observaciones.find(x => x.id === id);
@@ -1013,6 +1038,7 @@ const sedeDe = (o) => o.sede || String(o.tienda||'').replace(/^RIPLEY\s+/i,'');
 const obsDeEquipo = (eq) => observaciones.filter(o => (o.eqId && o.eqId===eq.eqId)
   || (!o.eqId && o.equipo===eq.nombre && sedeDe(o)===eq.sede));
 function exportObsExcel(){
+  if(!MA.can('exportar','observaciones')){ toast('Sin permisos para exportar', 'err'); return; }
   // Sábana completa del inventario (557 equipos): cada equipo con sus observaciones o "Sin observaciones.".
   // Fecha + hora real de registro (createdAt), en horario de Lima.
   const fmtReg = o => o.createdAt ? new Date(o.createdAt).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
@@ -1039,6 +1065,7 @@ function exportObsExcel(){
 
 // ── EXPORT PDF (jsPDF) — agrupado por tienda y equipo ────────────────────────────
 function exportObsPDF(){
+  if(!MA.can('exportar','observaciones')){ toast('Sin permisos para exportar', 'err'); return; }
   if(!(window.jspdf && window.jspdf.jsPDF)){ toast('PDF no disponible — reintenta', 'err'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({unit:'mm', format:'a4'});
@@ -1092,7 +1119,7 @@ function guiaSlug(s){
 }
 
 async function openGuiaPanel(){
-  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  if(!MA.isSuperAdmin()){ toast('Solo el super admin puede editar la guía del bot', 'err'); return; }
   document.getElementById('user-menu')?.classList.remove('open');
   const list = document.getElementById('guia-list');
   list.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:12px">Cargando…</div>';
@@ -1129,7 +1156,7 @@ function renderGuiaList(){
 }
 
 function openGuiaEdit(id){
-  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  if(!MA.isSuperAdmin()){ toast('Solo el super admin puede editar la guía del bot', 'err'); return; }
   const g = id ? guiaList.find(x => x.id === id) : null;
   document.getElementById('guia-edit-title').textContent = g ? '✎ Editar tema' : '＋ Nuevo tema';
   document.getElementById('guia-id').value       = g ? g.id : '';
@@ -1144,7 +1171,7 @@ function openGuiaEdit(id){
 }
 
 async function saveGuia(){
-  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  if(!MA.isSuperAdmin()){ toast('Solo el super admin puede editar la guía del bot', 'err'); return; }
   const id       = document.getElementById('guia-id').value;
   const titulo   = document.getElementById('guia-titulo').value.trim();
   const orden    = parseInt(document.getElementById('guia-orden').value, 10) || 0;
@@ -1181,7 +1208,7 @@ async function saveGuia(){
 }
 
 async function deleteGuia(){
-  if(!isObsAdmin()){ toast('Sin permisos', 'err'); return; }
+  if(!MA.isSuperAdmin()){ toast('Solo el super admin puede editar la guía del bot', 'err'); return; }
   const id = document.getElementById('guia-id').value;
   if(!id) return;
   const g = guiaList.find(x => x.id===id);
@@ -1207,9 +1234,10 @@ const ALL_APPS = [
   {id:'proveedores',   label:'🏢 Prov'},
   {id:'observaciones', label:'📋 Obs'},
 ];
-const ROLES = ['SUPERVISOR','ADMIN','SUPER_ADMIN'];
+const ROLES = ['TECNICO','SUPERVISOR','ADMIN','SUPER_ADMIN'];
 
 async function openAccessPanel(){
+  if(!MA.isSuperAdmin()){ toast('Solo el super admin gestiona accesos','err'); return; }
   document.getElementById('user-menu')?.classList.remove('open');
   try{
     const snap = await db.collection('usuarios').get();
@@ -1263,6 +1291,7 @@ function renderAccessPanel(){
 }
 
 async function toggleAppAccess(cb){
+  if(!MA.can('gestionUsuarios')){ cb.checked = !cb.checked; return; }
   const email = cb.getAttribute('data-email');
   const app   = cb.getAttribute('data-app');
   const u     = accessUsers.find(x => x.email === email);
@@ -1279,6 +1308,7 @@ async function toggleAppAccess(cb){
 }
 
 async function changeUserRol(email, rol){
+  if(!MA.can('gestionUsuarios')){ toast('Solo el super admin gestiona accesos','err'); return; }
   try{
     await db.collection('usuarios').doc(email).update({rol});
     const u = accessUsers.find(x => x.email === email);
@@ -1289,6 +1319,7 @@ async function changeUserRol(email, rol){
 }
 
 async function deleteAccessUser(email){
+  if(!MA.can('gestionUsuarios')){ toast('Solo el super admin gestiona accesos','err'); return; }
   if(!confirm(`¿Eliminar acceso de ${email}?`)) return;
   try{
     await db.collection('usuarios').doc(email).delete();
@@ -1299,6 +1330,7 @@ async function deleteAccessUser(email){
 }
 
 async function addAccessUser(){
+  if(!MA.can('gestionUsuarios')){ toast('Solo el super admin gestiona accesos','err'); return; }
   const email = document.getElementById('new-user-email').value.trim().toLowerCase();
   const rol   = document.getElementById('new-user-rol').value;
   if(!email || !email.includes('@')){ toast('Email inválido', 'err'); return; }

@@ -37,6 +37,7 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 .role-SUPER_ADMIN{background:#fff3eb;color:var(--orange-dark)}
 .role-ADMIN{background:#e8eef8;color:var(--blue)}
 .role-SUPERVISOR{background:var(--purple-bg);color:var(--purple)}
+.role-TECNICO{background:#f0faf5;color:#1a9e5a}
 
 /* ── USER PILL ────────────────────────────────────────────────────────────── */
 .user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative}
@@ -184,7 +185,7 @@ tr:hover td{background:var(--surface2)}
                oninput="renderProvTable()" autocomplete="off">
       </div>
       <div class="prov-toolbar-actions">
-        <button class="btn btn-sm btn-green" onclick="exportProveedores()">⬇ Exportar Excel</button>
+        <button class="btn btn-sm btn-green" id="btn-export-prov" onclick="exportProveedores()" style="display:none">⬇ Exportar Excel</button>
         <button class="btn btn-sm btn-primary" id="btn-new-prov" onclick="openNewProv()" style="display:none">＋ Nuevo proveedor</button>
       </div>
     </div>
@@ -332,14 +333,16 @@ tr:hover td{background:var(--surface2)}
   <div class="modal">
     <h2>⚙️ Gestión de accesos</h2>
     <div class="modal-sub">
-      <strong>SUPERVISOR</strong> — solo lectura en todas las apps<br>
-      <strong>ADMIN</strong> — gestión completa<br>
-      <strong>SUPER_ADMIN</strong> — acceso total sin restricciones
+      <strong>TECNICO</strong> — solo lectura<br>
+      <strong>SUPERVISOR</strong> — opera (crea/edita/aprueba) en las apps habilitadas<br>
+      <strong>ADMIN</strong> — opera y aprueba todo; sin acciones críticas<br>
+      <strong>SUPER_ADMIN</strong> — acceso total, incl. borrar/exportar/backup/usuarios
     </div>
     <div id="access-list" style="max-height:340px;overflow-y:auto;margin-bottom:14px"></div>
     <div style="display:flex;gap:8px;margin-bottom:4px;flex-wrap:wrap">
       <input type="text" class="form-input" id="new-user-email" placeholder="nuevo@email.com" style="flex:1;min-width:180px">
       <select class="form-select" id="new-user-rol">
+        <option value="TECNICO">TECNICO</option>
         <option value="SUPERVISOR">SUPERVISOR</option>
         <option value="ADMIN">ADMIN</option>
         <option value="SUPER_ADMIN">SUPER ADMIN</option>
@@ -355,6 +358,7 @@ tr:hover td{background:var(--surface2)}
 <div class="toast" id="toast"></div>
 
 <script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -436,8 +440,10 @@ async function maVerify(payload, save){
       picture: payload.picture || fsData.picture || '',
       ...fsData,
       name: payload.name || fsData.nombre || fsData.name || email,
+      apps: fsData.apps || [],
     };
     if(maUser.email === MA_ADM) maUser.rol = 'SUPER_ADMIN';
+    MA.setUser(maUser); // política de roles centralizada (auth-guard.js)
     if(save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
     if(ldEl) ldEl.classList.remove('show');
     document.getElementById('auth-overlay').style.display = 'none';
@@ -463,8 +469,7 @@ function renderUserPill(){
     : `<div class="user-avatar-init">${init}</div>`;
   const rol      = maUser.rol || 'ADMIN';
   const rolBadge = `<span class="role-badge role-${rol}">${rol.replace('_',' ')}</span>`;
-  const isAdmin = rol === 'ADMIN' || rol === 'SUPER_ADMIN';
-  const adminItem = isAdmin
+  const adminItem = MA.isSuperAdmin()
     ? `<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-div"></div>`
     : '';
   pill.innerHTML = avatar
@@ -510,21 +515,39 @@ function closeModal(id){ document.getElementById(id)?.classList.remove('open'); 
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  PROVEEDORES — CRUD (colección Firestore `proveedores`)
-//  ADMIN / SUPER_ADMIN editan · SUPERVISOR solo lectura
+//  ADMIN/SUPER_ADMIN y SUPERVISOR (con la app habilitada) crean/editan ·
+//  TECNICO solo lectura · borrar/exportar solo SUPER_ADMIN (ver auth-guard.js)
 // ═══════════════════════════════════════════════════════════════════════════════
 let proveedores = [];
 const PROV_FIELDS = ['ruc','razonSocial','nombreComercial','rubro','telefono','email','contacto','direccion','condicionesPago','banco','cuenta','notas'];
 
+// Crear/editar proveedores: ADMIN/SUPER_ADMIN siempre; SUPERVISOR si tiene
+// 'proveedores' en su apps[]. (Borrar y exportar van por su propio gate.)
 function isProvAdmin(){
-  const rol = maUser?.rol || '';
-  return rol === 'ADMIN' || rol === 'SUPER_ADMIN';
+  return MA.can('editar', 'proveedores');
 }
 
 // ── APP INIT ──────────────────────────────────────────────────────────────────
 function initApp(){
+  // Gate de entrada por módulo: admins entran a todo; el resto necesita
+  // 'proveedores' en su apps[]. Sin acceso, no se cargan datos.
+  if(!MA.canEnter('proveedores')){
+    document.getElementById('main-page').style.display = 'none';
+    const ov = document.getElementById('auth-overlay');
+    const gb = document.getElementById('g-btn');
+    const err = document.getElementById('auth-err');
+    if(gb) gb.style.display = 'none';
+    if(err){ err.textContent = 'Sin acceso a la sección Proveedores. Contacta al administrador.'; err.classList.add('show'); }
+    if(ov){ ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+    return;
+  }
   if(isProvAdmin()){
     const b = document.getElementById('btn-new-prov');
     if(b) b.style.display = 'inline-flex';
+  }
+  if(MA.can('exportar','proveedores')){
+    const e = document.getElementById('btn-export-prov');
+    if(e) e.style.display = 'inline-flex';
   }
   loadProveedores();
 }
@@ -613,7 +636,7 @@ function openEditProv(id){
   PROV_FIELDS.forEach(f => { const el = document.getElementById('prov-'+f); if(el) el.value = p[f] || ''; });
   document.getElementById('prov-activo').value = (p.activo || 'SI');
   setProvModalReadonly(!admin);
-  document.getElementById('btn-del-prov').style.display = admin ? 'inline-flex' : 'none';
+  document.getElementById('btn-del-prov').style.display = MA.can('borrar') ? 'inline-flex' : 'none';
   document.getElementById('modal-prov').classList.add('open');
 }
 
@@ -656,7 +679,7 @@ async function saveProv(){
 
 // ── DELETE ────────────────────────────────────────────────────────────────────
 async function deleteProv(){
-  if(!isProvAdmin()){ toast('Sin permisos', 'err'); return; }
+  if(!MA.can('borrar')){ toast('Solo el super admin puede eliminar', 'err'); return; }
   const id = document.getElementById('prov-id').value;
   if(!id) return;
   const p = proveedores.find(x => x.id === id);
@@ -672,6 +695,7 @@ async function deleteProv(){
 
 // ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
 function exportProveedores(){
+  if(!MA.can('exportar','proveedores')){ toast('Sin permisos para exportar', 'err'); return; }
   if(!proveedores.length){ toast('Sin proveedores para exportar', 'err'); return; }
   const data = [
     ['RUC','RAZÓN SOCIAL','NOMBRE COMERCIAL','RUBRO','TELÉFONO','EMAIL','CONTACTO','DIRECCIÓN','CONDICIONES DE PAGO','BANCO','CUENTA / CCI','NOTAS','ACTIVO'],
@@ -704,9 +728,10 @@ const ALL_APPS = [
   {id:'proveedores',   label:'🏢 Prov'},
   {id:'observaciones', label:'📋 Obs'},
 ];
-const ROLES = ['SUPERVISOR','ADMIN','SUPER_ADMIN'];
+const ROLES = ['TECNICO','SUPERVISOR','ADMIN','SUPER_ADMIN'];
 
 async function openAccessPanel(){
+  if(!MA.isSuperAdmin()){ toast('Solo el super admin gestiona accesos','err'); return; }
   document.getElementById('user-menu')?.classList.remove('open');
   try{
     const snap = await db.collection('usuarios').get();
@@ -760,6 +785,7 @@ function renderAccessPanel(){
 }
 
 async function toggleAppAccess(cb){
+  if(!MA.can('gestionUsuarios')){ cb.checked = !cb.checked; return; }
   const email = cb.getAttribute('data-email');
   const app   = cb.getAttribute('data-app');
   const u     = accessUsers.find(x => x.email === email);
@@ -776,6 +802,7 @@ async function toggleAppAccess(cb){
 }
 
 async function changeUserRol(email, rol){
+  if(!MA.can('gestionUsuarios')){ toast('Solo el super admin gestiona accesos','err'); return; }
   try{
     await db.collection('usuarios').doc(email).update({rol});
     const u = accessUsers.find(x => x.email === email);
@@ -786,6 +813,7 @@ async function changeUserRol(email, rol){
 }
 
 async function deleteAccessUser(email){
+  if(!MA.can('gestionUsuarios')){ toast('Solo el super admin gestiona accesos','err'); return; }
   if(!confirm(`¿Eliminar acceso de ${email}?`)) return;
   try{
     await db.collection('usuarios').doc(email).delete();
@@ -796,6 +824,7 @@ async function deleteAccessUser(email){
 }
 
 async function addAccessUser(){
+  if(!MA.can('gestionUsuarios')){ toast('Solo el super admin gestiona accesos','err'); return; }
   const email = document.getElementById('new-user-email').value.trim().toLowerCase();
   const rol   = document.getElementById('new-user-rol').value;
   if(!email || !email.includes('@')){ toast('Email inválido', 'err'); return; }
