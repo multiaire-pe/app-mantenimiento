@@ -430,6 +430,27 @@ tr:hover td{background:var(--surface2)}
           </label>
         </div>
       </div>
+      <div class="form-row" style="margin-top:10px">
+        <div class="form-group" style="flex:0 0 230px">
+          <label class="form-label">Asistencia</label>
+          <select id="pers-regimenAsist" class="form-select" onchange="togglePersHorarioFijo()">
+            <option value="MARCA">Marca entrada/salida</option>
+            <option value="FIJO">Horario fijo (no marca)</option>
+            <option value="NO_MARCA">No marca (sin control)</option>
+          </select>
+        </div>
+        <div class="form-group" id="pers-horfijo-entrada-wrap" style="flex:0 0 150px;display:none">
+          <label class="form-label">Entrada (fija)</label>
+          <input type="time" id="pers-horfijo-entrada" class="form-input" value="08:30">
+        </div>
+        <div class="form-group" id="pers-horfijo-salida-wrap" style="flex:0 0 150px;display:none">
+          <label class="form-label">Salida (fija)</label>
+          <input type="time" id="pers-horfijo-salida" class="form-input" value="18:00">
+        </div>
+        <div class="form-group" id="pers-horfijo-hint" style="display:none">
+          <span style="font-size:10px;color:var(--muted2);padding:8px 0;line-height:1.4">Jornada habitual L–V. Estándar 8:30–18:00; el sábado se calcula a media jornada. Edítalo si difiere (p.ej. 11:00–18:30).</span>
+        </div>
+      </div>
     </div>
 
     <!-- OPERATIVO -->
@@ -941,6 +962,18 @@ function toggleLic(){
   document.getElementById('pers-licVence').disabled = !on;
 }
 
+// Régimen de asistencia: MARCA (marca entrada/salida, bot/app) · FIJO (horario fijo, se completa
+// solo) · NO_MARCA (sin control). El bloque de horario fijo solo se muestra para FIJO.
+function togglePersHorarioFijo(){
+  const fijo = val('pers-regimenAsist') === 'FIJO';
+  ['pers-horfijo-entrada-wrap','pers-horfijo-salida-wrap','pers-horfijo-hint'].forEach(id => {
+    const el = document.getElementById(id); if(el) el.style.display = fijo ? '' : 'none';
+  });
+}
+// Hora "HH:MM" <-> decimal (8.5 = 08:30), el formato que usa asistencia_registros.
+function hhmmToDec(s){ const m = /^(\d{1,2}):(\d{2})$/.exec(String(s||'').trim()); if(!m) return null; const h=+m[1], mn=+m[2]; return (h<=23 && mn<=59) ? (h + mn/60) : null; }
+function decToHHMM(d){ if(d==null||d==='') return ''; d=Number(d); if(!isFinite(d)) return ''; let h=Math.floor(d), mn=Math.round((d-h)*60); if(mn>=60){ h+=Math.floor(mn/60); mn%=60; } return String(h).padStart(2,'0')+':'+String(mn).padStart(2,'0'); }
+
 // Jefe directo (select del propio personal)
 function fillJefeSelect(excludeId){
   const sel = document.getElementById('pers-jefeId');
@@ -953,7 +986,7 @@ function fillJefeSelect(excludeId){
 
 // ── MODAL: form fill / read ─────────────────────────────────────────────────────
 function setModalReadonly(ro){
-  const ids = ['pers-nombre','pers-tipoDoc','pers-numDoc','pers-activo','pers-fechaNacimiento','pers-genero','pers-nacionalidad','pers-estadoCivil','pers-direccion','pers-emgNombre','pers-emgParentesco','pers-emgTelefono','pers-cargo','pers-area','pers-estadoLaboral','pers-fechaIngreso','pers-fechaCese','pers-tipoContrato','pers-sedeBase','pers-jefeId','pers-recibeAvisos','pers-rolOperativo','pers-vehiculo','pers-licTiene','pers-licCat','pers-licVence','pers-notas','pers-comp-input'];
+  const ids = ['pers-nombre','pers-tipoDoc','pers-numDoc','pers-activo','pers-fechaNacimiento','pers-genero','pers-nacionalidad','pers-estadoCivil','pers-direccion','pers-emgNombre','pers-emgParentesco','pers-emgTelefono','pers-cargo','pers-area','pers-estadoLaboral','pers-fechaIngreso','pers-fechaCese','pers-tipoContrato','pers-sedeBase','pers-jefeId','pers-recibeAvisos','pers-regimenAsist','pers-horfijo-entrada','pers-horfijo-salida','pers-rolOperativo','pers-vehiculo','pers-licTiene','pers-licCat','pers-licVence','pers-notas','pers-comp-input'];
   ids.forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = ro; });
   document.querySelectorAll('#modal-pers .rep-row select, #modal-pers .rep-row input').forEach(el=>el.disabled=ro);
   ['pers-tel-add','pers-correo-add','pers-foto-up-lbl','pers-foto-cam-lbl'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display = ro?'none':''; });
@@ -995,6 +1028,7 @@ function resetModal(){
   setVal('pers-fechaIngreso',''); setVal('pers-fechaCese',''); setVal('pers-tipoContrato','');
   setVal('pers-sedeBase',''); setVal('pers-rolOperativo',''); setVal('pers-vehiculo','');
   document.getElementById('pers-recibeAvisos').checked = false;
+  setVal('pers-regimenAsist','MARCA'); setVal('pers-horfijo-entrada','08:30'); setVal('pers-horfijo-salida','18:00'); togglePersHorarioFijo();
   document.getElementById('pers-licTiene').checked = false;
   setVal('pers-licCat',''); setVal('pers-licVence',''); toggleLic();
   setVal('pers-notas','');
@@ -1036,6 +1070,11 @@ function openEditPers(id){
   setVal('pers-tipoContrato', p.tipoContrato); setVal('pers-sedeBase', p.sedeBase);
   setVal('pers-rolOperativo', p.rolOperativo); setVal('pers-vehiculo', p.vehiculo);
   document.getElementById('pers-recibeAvisos').checked = (p.recibeAvisos===true || String(p.recibeAvisos||'').toUpperCase()==='SI');
+  setVal('pers-regimenAsist', p.regimenAsistencia || 'MARCA');
+  const _hf = p.horarioFijo || {};
+  setVal('pers-horfijo-entrada', _hf.entrada!=null ? decToHHMM(_hf.entrada) : '08:30');
+  setVal('pers-horfijo-salida',  _hf.salida!=null  ? decToHHMM(_hf.salida)  : '18:00');
+  togglePersHorarioFijo();
   const lic = p.licenciaConducir||{};
   document.getElementById('pers-licTiene').checked = !!lic.tiene;
   setVal('pers-licCat', lic.categoria); setVal('pers-licVence', lic.vence); toggleLic();
@@ -1108,6 +1147,10 @@ async function savePers(){
     sedeBase: val('pers-sedeBase').trim().toUpperCase(),
     jefeId: val('pers-jefeId'),
     recibeAvisos: document.getElementById('pers-recibeAvisos').checked,
+    regimenAsistencia: val('pers-regimenAsist'),
+    horarioFijo: val('pers-regimenAsist')==='FIJO'
+      ? { entrada: hhmmToDec(val('pers-horfijo-entrada')), salida: hhmmToDec(val('pers-horfijo-salida')) }
+      : null,
     rolOperativo: val('pers-rolOperativo'),
     vehiculo: val('pers-vehiculo').trim(),
     competencias: _comp.slice(),
