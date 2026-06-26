@@ -9,3 +9,6 @@ ESTADO_ACTUAL.md
 !firebase-config.js
 !vercel.json
 !package.json
+.firebaserc
+firestore.rules
+firebase.json

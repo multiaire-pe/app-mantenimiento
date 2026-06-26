@@ -1,0 +1,80 @@
+rules_version = '2';
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Reglas de seguridad de Firestore — MultiAire (Carril B del modelo de roles)
+//  Imponen el modelo SERVER-SIDE (auth-guard.js es solo UX). Proyecto: multiaire-fee43.
+//
+//  Modelo: SUPER_ADMIN (por email o rol) = todo; ADMIN = crea/edita lo operativo;
+//  SUPERVISOR = crea/edita en las apps de su apps[]; TECNICO = solo lectura.
+//  Borrado, gestión de usuarios, maestros y configuración = SOLO super.
+//
+//  El bot de WhatsApp y los scripts de migración usan el Admin SDK (service account),
+//  que IGNORA estas reglas — no se ven afectados.
+// ═══════════════════════════════════════════════════════════════════════════════
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers (sin ciclos: authorized/uData no se llaman entre sí) ──────────────
+    function signedIn() { return request.auth != null; }
+    function em() { return request.auth.token.email; }
+    function userPath() { return /databases/$(database)/documents/usuarios/$(em()); }
+    function hasDoc() { return signedIn() && exists(userPath()); }
+    function uData() { return get(userPath()).data; }
+    // El dueño es super admin aunque su doc aún no exista (igual que MA_ADM en la app).
+    function isSuperEmail() { return signedIn() && em() == 'marchenaangulojoseluis@gmail.com'; }
+    function authorized() { return isSuperEmail() || hasDoc(); }
+    function rol() { return hasDoc() ? uData().rol : ''; }
+    function uApps() { return hasDoc() ? uData().get('apps', []) : []; }
+    function isSuper() { return isSuperEmail() || rol() == 'SUPER_ADMIN'; }
+    function isAdmin() { return isSuper() || rol() == 'ADMIN'; }
+    function canEnter(app) { return isAdmin() || (app in uApps()); }
+    // Crear/editar en una app: admin/super siempre; supervisor con la app; técnico no.
+    function canWrite(app) { return isAdmin() || (rol() == 'SUPERVISOR' && canEnter(app)); }
+
+    // ── usuarios: cualquier autorizado lee (la app cachea roles/apps); SOLO super escribe.
+    //    Esto cierra la escalada de privilegios (auto-asignarse SUPER_ADMIN). ──
+    match /usuarios/{doc} {
+      allow read:  if authorized();
+      allow write: if isSuper();
+    }
+
+    // ── Maestros y configuración: lectura autorizada; escritura SOLO super ──
+    match /maestros_personal/{doc} { allow read: if authorized(); allow write: if isSuper(); }
+    match /maestros_tiendas/{doc}  { allow read: if authorized(); allow write: if isSuper(); }
+    match /maestros_grupos/{doc}   { allow read: if authorized(); allow write: if isSuper(); }
+    match /maestros_feriados/{doc} { allow read: if authorized(); allow write: if isSuper(); }
+    match /tareas_config/{doc}     { allow read: if authorized(); allow write: if isSuper(); }
+    match /manta_guia/{doc}        { allow read: if authorized(); allow write: if isSuper(); }
+    match /manta_equipos/{doc}     { allow read: if authorized(); allow write: if isSuper(); }
+
+    // ── Datos operativos: lectura autorizada; crear/editar según rol+app; borrar SOLO super ──
+    match /inventario/{doc}                { allow read: if authorized(); allow create, update: if canWrite('inventario');    allow delete: if isSuper(); }
+    match /asistencia_registros/{doc}      { allow read: if authorized(); allow create, update: if canWrite('asistencia');    allow delete: if isSuper(); }
+    match /proveedores/{doc}               { allow read: if authorized(); allow create, update: if canWrite('proveedores');   allow delete: if isSuper(); }
+    match /mantenimiento/{doc}             { allow read: if authorized(); allow create, update: if canWrite('mantenimiento'); allow delete: if isSuper(); }
+    match /bd_itinerarios/{doc}            { allow read: if authorized(); allow create, update: if canWrite('itinerario');    allow delete: if isSuper(); }
+    match /bd_bloques/{doc}                { allow read: if authorized(); allow create, update: if canWrite('itinerario');    allow delete: if isSuper(); }
+    match /manta_observaciones/{doc}       { allow read: if authorized(); allow create, update: if canWrite('observaciones'); allow delete: if isSuper(); }
+    match /manta_observaciones_fotos/{doc} { allow read: if authorized(); allow create, update: if canWrite('observaciones'); allow delete: if isSuper(); }
+    match /insumos_catalogo/{doc}          { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
+    match /insumos_instancias/{doc}        { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
+    match /insumos_paquetes/{doc}          { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
+    match /insumos_movimientos/{doc}       { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
+    match /insumos_instancias_fotos/{doc}  { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
+    match /insumos_movimientos_fotos/{doc} { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
+
+    // ── Catch-all ────────────────────────────────────────────────────────────────
+    //  OJO: en Firestore los `match` se combinan con OR. Si este catch-all diera
+    //  `write: authorized()`, ANULARÍA las reglas granulares de arriba (cualquier
+    //  autorizado podría escribir cualquier colección). Por eso:
+    //   • read  = autorizado  → no rompe colecciones no listadas (siguen legibles
+    //                            solo por personal); las wa_* del bot caen aquí
+    //                            (legibles por personal, NO escribibles desde el
+    //                            cliente; el bot las escribe vía Admin SDK).
+    //   • write = false       → toda escritura debe pasar por una regla específica
+    //                            de arriba; nada se escribe "por defecto".
+    match /{document=**} {
+      allow read:  if authorized();
+      allow write: if false;
+    }
+  }
+}
