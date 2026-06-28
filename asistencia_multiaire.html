@@ -1792,7 +1792,7 @@ function maRenderAccessPanel(){
   var list=document.getElementById('ma-access-list');
   if(!maAccessUsers.length){list.innerHTML='<div style="text-align:center;color:#8a9ab8;font-size:12px;padding:16px">Sin usuarios</div>';return;}
   var iAmSuperAdmin=maUser&&maUser.rol==='SUPER_ADMIN';
-  var ALL_APPS=[{id:'inventario',label:'📦 Inv'},{id:'mantenimiento',label:'🔧 Mant'},{id:'itinerario',label:'🗓 Iti'},{id:'insumos',label:'🧰 Ins'},{id:'asistencia',label:'🕐 Asist'},{id:'comprobantes',label:'🧾 Comp'},{id:'proveedores',label:'🏢 Prov'},{id:'observaciones',label:'📋 Obs'}];
+  var ALL_APPS=[{id:'inventario',label:'📦 Inv'},{id:'mantenimiento',label:'🔧 Mant'},{id:'itinerario',label:'🗓 Iti'},{id:'insumos',label:'🧰 Ins'},{id:'asistencia',label:'🕐 Asist'},{id:'comprobantes',label:'🧾 Comp'},{id:'proveedores',label:'🏢 Prov'},{id:'observaciones',label:'📋 Obs'},{id:'personal',label:'👥 Pers'}];
   list.innerHTML=maAccessUsers.map(function(u){
     var isMe=maUser&&u.email===maUser.email,rol=u.rol||'TECNICO',isSuperTarget=rol==='SUPER_ADMIN',isAdminOrSuper=rol==='ADMIN'||rol==='SUPER_ADMIN';
     var canEdit=!isMe&&(isSuperTarget?iAmSuperAdmin:true),canDelete=!isMe&&(isSuperTarget?iAmSuperAdmin:true);

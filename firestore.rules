@@ -40,7 +40,18 @@ service cloud.firestore {
     }
 
     // ── Maestros y configuración: lectura autorizada; escritura SOLO super ──
-    match /maestros_personal/{doc} { allow read: if authorized(); allow write: if isSuper(); }
+    // maestros_personal: expediente del colaborador (módulo personal.html). ADMIN/SUPER crean y
+    // editan; borrar = solo super. (El resto de maestros sigue siendo escritura solo-super.)
+    match /maestros_personal/{doc} { allow read: if authorized(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
+    // personal_confidencial: sueldo/tarifa + datos bancarios. SOLO ADMIN/SUPER pueden LEER y
+    // escribir (sensible → lectura NO es 'authorized'; supervisor/técnico no lo ven).
+    match /personal_confidencial/{doc} { allow read, write: if isAdmin(); }
+    // personal_eventos: timeline/historial del colaborador (ingreso/ascenso/sanción/vacaciones…).
+    // Sensible (incluye sanciones) → read SOLO admin; crear/editar admin; borrar solo super.
+    match /personal_eventos/{doc} { allow read: if isAdmin(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
+    // personal_documentos: legajo (contratos/DNI/certificaciones con vencimiento; archivo en Drive
+    // por enlace). Sensible → read solo ADMIN; crear/editar ADMIN; borrar solo super.
+    match /personal_documentos/{doc} { allow read: if isAdmin(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
     match /maestros_tiendas/{doc}  { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_grupos/{doc}   { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_feriados/{doc} { allow read: if authorized(); allow write: if isSuper(); }
@@ -64,18 +75,23 @@ service cloud.firestore {
     match /insumos_instancias_fotos/{doc}  { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     match /insumos_movimientos_fotos/{doc} { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
 
-    // ── Catch-all ────────────────────────────────────────────────────────────────
-    //  OJO: en Firestore los `match` se combinan con OR. Si este catch-all diera
-    //  `write: authorized()`, ANULARÍA las reglas granulares de arriba (cualquier
-    //  autorizado podría escribir cualquier colección). Por eso:
-    //   • read  = autorizado  → no rompe colecciones no listadas (siguen legibles
-    //                            solo por personal); las wa_* del bot caen aquí
-    //                            (legibles por personal, NO escribibles desde el
-    //                            cliente; el bot las escribe vía Admin SDK).
-    //   • write = false       → toda escritura debe pasar por una regla específica
-    //                            de arriba; nada se escribe "por defecto".
+    // ── Colecciones transitorias del bot de WhatsApp: el bot las escribe vía Admin SDK
+    //    (ignora reglas); desde el cliente NO se escriben. Se declaran explícitas para
+    //    poder cerrar el catch-all de lectura en fail-closed sin romper su lectura. ──
+    match /wa_mensajes/{doc}       { allow read: if authorized(); allow write: if false; }
+    match /wa_sesiones/{doc}       { allow read: if authorized(); allow write: if false; }
+    match /wa_sesiones_fotos/{doc} { allow read: if authorized(); allow write: if false; }
+    match /wa_ultima_obs/{doc}     { allow read: if authorized(); allow write: if false; }
+
+    // ── Catch-all (FAIL-CLOSED) ────────────────────────────────────────────────────
+    //  OJO: en Firestore los `match` se combinan con OR — un allow más amplio aquí
+    //  ANULA las reglas granulares de arriba (no existe "deny"). Por eso read y write
+    //  van en `false`: una colección NO es legible ni escribible hasta darle una regla
+    //  explícita arriba. Así datos sensibles (p.ej. personal_confidencial, restringido a
+    //  isAdmin) NO quedan legibles "por defecto" para cualquier autorizado. Todas las
+    //  colecciones que el cliente lee ya tienen su regla read explícita arriba.
     match /{document=**} {
-      allow read:  if authorized();
+      allow read:  if false;
       allow write: if false;
     }
   }

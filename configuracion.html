@@ -288,6 +288,9 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
           <div class="backup-files">
             <div class="backup-file"><span></span>asistencia.csv</div>
             <div class="backup-file"><span></span>maestros_personal.csv</div>
+            <div class="backup-file"><span></span>personal_confidencial.csv</div>
+            <div class="backup-file"><span></span>personal_eventos.csv</div>
+            <div class="backup-file"><span></span>personal_documentos.csv</div>
             <div class="backup-file"><span></span>maestros_tiendas.csv</div>
             <div class="backup-file"><span></span>maestros_grupos.csv</div>
             <div class="backup-file"><span></span>maestros_feriados.csv</div>
@@ -350,25 +353,15 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
     </div>
     <div class="section-body">
       <div class="maestros-tabs">
-        <button class="maestros-tab active" onclick="switchMaestroTab('personal')">Personal</button>
-        <button class="maestros-tab" onclick="switchMaestroTab('tiendas')">Tiendas</button>
+        <button class="maestros-tab active" onclick="switchMaestroTab('tiendas')">Tiendas</button>
         <button class="maestros-tab" onclick="switchMaestroTab('grupos')">Grupos / Tipo de trabajo</button>
         <button class="maestros-tab" onclick="switchMaestroTab('feriados')">Feriados</button>
       </div>
 
-      <!-- PERSONAL -->
-      <div class="maestros-panel active" id="panel-personal">
-        <div class="maestros-list" id="personal-list">Cargando...</div>
-        <div class="add-maestro-row">
-          <input type="text" id="new-per-nombre" placeholder="Nombre completo...">
-          <input type="text" id="new-per-cargo" placeholder="Cargo (ej: TÉCNICO)" style="max-width:160px">
-          <input type="text" inputmode="numeric" id="new-per-telefono" placeholder="987798615" style="max-width:140px" title="Solo 9 dígitos — se agrega prefijo 51 automáticamente" autocomplete="off">
-          <button class="btn btn-orange" onclick="addPersonal()">+ Agregar</button>
-        </div>
-      </div>
+      <!-- El editor de personal se movió al módulo dedicado Personal (personal.html). -->
 
       <!-- TIENDAS -->
-      <div class="maestros-panel" id="panel-tiendas">
+      <div class="maestros-panel active" id="panel-tiendas">
         <div class="maestros-list" id="tiendas-list">Cargando...</div>
         <div class="add-maestro-row">
           <input type="text" id="new-tie-tienda" placeholder="Nombre de tienda...">
@@ -911,9 +904,12 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
+      window.__db.collection('personal_confidencial').get(),
+      window.__db.collection('personal_eventos').get(),
+      window.__db.collection('personal_documentos').get(),
       window.__db.collection('maestros_tiendas').get(),
       window.__db.collection('maestros_grupos').get(),
       window.__db.collection('maestros_feriados').get(),
@@ -947,12 +943,39 @@ async function exportBackup() {
     zip.file('asistencia.csv', [asistHeaders.join(','), ...asistRows].join('\n'));
 
     // 2. Maestros personal CSV
-    const persHeaders = ['ID','NOMBRE','CARGO','TELEFONO','ACTIVO','FOTO','RECIBE_AVISOS'];
+    // Columna JSON = documento COMPLETO → respalda los campos del expediente (telefonos[]/
+    // correos[]/identidad/laboral/operativo) sin enumerar cada uno. Las columnas legibles se
+    // conservan para compatibilidad y lectura humana.
+    const persHeaders = ['ID','NOMBRE','CARGO','TELEFONO','ACTIVO','FOTO','RECIBE_AVISOS','JSON'];
     const persRows = persSnap.docs.map(d => {
       const r = d.data();
-      return [r.id||d.id, r.nombre||'', r.cargo||'', r.telefono||'', r.activo||'SI', r.foto||'', (r.recibeAvisos?'SI':'NO')].map(escapeCSV).join(',');
+      return [r.id||d.id, r.nombre||'', r.cargo||'', r.telefono||'', r.activo||'SI', r.foto||'', (r.recibeAvisos?'SI':'NO'), JSON.stringify(r)].map(escapeCSV).join(',');
     });
     zip.file('maestros_personal.csv', [persHeaders.join(','), ...persRows].join('\n'));
+
+    // 2b. Personal confidencial CSV (sueldo/banco; el backup completo es solo super). JSON = doc completo.
+    const confidHeaders = ['ID','SUELDO','MONEDA','PERIODICIDAD','BANCO','CUENTA','CCI','JSON'];
+    const confidRows = confidSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.sueldo??'', r.moneda||'', r.periodicidad||'', r.banco||'', r.cuentaNumero||'', r.cci||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('personal_confidencial.csv', [confidHeaders.join(','), ...confidRows].join('\n'));
+
+    // 2c. Personal eventos (timeline) CSV — N docs por persona. JSON = doc completo.
+    const eventosHeaders = ['ID','PERSONAL_ID','TIPO','FECHA','TITULO','DETALLE','JSON'];
+    const eventosRows = eventosSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.personalId||'', r.tipo||'', r.fecha||'', r.titulo||'', r.detalle||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('personal_eventos.csv', [eventosHeaders.join(','), ...eventosRows].join('\n'));
+
+    // 2d. Personal documentos (legajo + certificaciones) CSV — N docs por persona. JSON = doc completo.
+    const docsHeaders = ['ID','PERSONAL_ID','CATEGORIA','TIPO','NOMBRE','ENTIDAD','FECHA','VENCE','URL','JSON'];
+    const docsRows = docsSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.personalId||'', r.categoria||'', r.tipo||'', r.nombre||'', r.entidad||'', r.fecha||'', r.vence||'', r.url||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('personal_documentos.csv', [docsHeaders.join(','), ...docsRows].join('\n'));
 
     // 3. Maestros tiendas CSV
     const tienHeaders = ['ID','CLIENTE','TIENDA','SEDE','ACTIVO'];
@@ -1184,7 +1207,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1257,7 +1280,8 @@ async function confirmImport() {
       .map(r => { const o = {}; headers.forEach((h, i) => o[h] = (r[i] || '').trim()); return o; });
   }
 
-  async function batchWrite(col, rows, mapFn) {
+  async function batchWrite(col, rows, mapFn, opts) {
+    opts = opts || {};
     if(!MA.can('backup')) return;
     const {writeBatch:_wb,doc:_doc,collection:_col,getDocs:_dg}=window.__fb;
     if(mode==='replace'){const _b=_wb(window.__db);const _ex=await _dg(_col(window.__db,col));_ex.docs.forEach(d=>_b.delete(d.ref));await _b.commit();}
@@ -1266,7 +1290,10 @@ async function confirmImport() {
       const data=mapFn(r);
       const docId=data._docId||data.id;
       delete data._docId;
-      b.set(_doc(window.__db,col,docId),data);
+      // opts.merge → set con merge: en modo "Fusionar" (sin delete-all) NO pisa los campos del
+      // expediente que no vienen en el CSV (clave para maestros_personal con backups viejos).
+      if(opts.merge) b.set(_doc(window.__db,col,docId),data,{merge:true});
+      else           b.set(_doc(window.__db,col,docId),data);
       n++;if(n%400===0){await b.commit();b=_wb(window.__db);}
     }
     if(n%400!==0)await b.commit();
@@ -1290,8 +1317,50 @@ async function confirmImport() {
     if (pendingImport.files['maestros_personal.csv']) {
       addLog('👤 Importando personal...', 'info');
       const rows = parseCSV(pendingImport.files['maestros_personal.csv']);
-      await batchWrite('maestros_personal', rows, r => ({id:r.ID, nombre:r.NOMBRE, cargo:r.CARGO, telefono:r.TELEFONO||'', activo:r.ACTIVO||'SI', foto:r.FOTO||'', recibeAvisos:String(r.RECIBE_AVISOS||'').toUpperCase()==='SI', obs:''}));
+      await batchWrite('maestros_personal', rows, r => {
+        // Backups nuevos traen la columna JSON con el doc completo (expediente) → base fiel.
+        // Las columnas legibles mandan sobre los 8 campos base. Backups viejos sin JSON: 8 campos.
+        let base = {};
+        if (r.JSON) { try { base = JSON.parse(r.JSON); } catch(e) { base = {}; addLog('⚠️ JSON inválido en una fila de personal — se importan solo los 8 campos legacy (merge, no destructivo)', 'info'); } }
+        return {...base, id:r.ID, nombre:r.NOMBRE, cargo:r.CARGO, telefono:r.TELEFONO||'', activo:r.ACTIVO||'SI', foto:r.FOTO||'', recibeAvisos:String(r.RECIBE_AVISOS||'').toUpperCase()==='SI', obs:(base.obs||'')};
+      }, {merge:true});
       addLog('✓ Personal importado (' + rows.length + ' colaboradores)', 'ok');
+    }
+
+    // 2b. Personal confidencial (sueldo/banco). Doc id = personalId. JSON = doc completo.
+    if (pendingImport.files['personal_confidencial.csv']) {
+      addLog('🔒 Importando datos confidenciales...', 'info');
+      const rows = parseCSV(pendingImport.files['personal_confidencial.csv']);
+      await batchWrite('personal_confidencial', rows, r => {
+        let base = {};
+        if (r.JSON) { try { base = JSON.parse(r.JSON); } catch(e) { base = {}; } }
+        return {...base, _docId:r.ID, personalId:r.ID, sueldo:(r.SUELDO!==''&&r.SUELDO!=null)?+r.SUELDO:null, moneda:r.MONEDA||'', periodicidad:r.PERIODICIDAD||'', banco:r.BANCO||'', cuentaNumero:r.CUENTA||'', cci:r.CCI||''};
+      }, {merge:true});
+      addLog('✓ Confidencial importado (' + rows.length + ' registros)', 'ok');
+    }
+
+    // 2c. Personal eventos (timeline). Doc id auto (_docId). JSON = doc completo.
+    if (pendingImport.files['personal_eventos.csv']) {
+      addLog('📅 Importando historial...', 'info');
+      const rows = parseCSV(pendingImport.files['personal_eventos.csv']);
+      await batchWrite('personal_eventos', rows, r => {
+        let base = {};
+        if (r.JSON) { try { base = JSON.parse(r.JSON); } catch(e) { base = {}; } }
+        return {...base, _docId:r.ID, personalId:r.PERSONAL_ID||base.personalId||'', tipo:r.TIPO||'', fecha:r.FECHA||'', titulo:r.TITULO||'', detalle:r.DETALLE||''};
+      }, {merge:true});
+      addLog('✓ Historial importado (' + rows.length + ' eventos)', 'ok');
+    }
+
+    // 2d. Personal documentos (legajo + certificaciones). Doc id auto (_docId). JSON = doc completo.
+    if (pendingImport.files['personal_documentos.csv']) {
+      addLog('📎 Importando legajo...', 'info');
+      const rows = parseCSV(pendingImport.files['personal_documentos.csv']);
+      await batchWrite('personal_documentos', rows, r => {
+        let base = {};
+        if (r.JSON) { try { base = JSON.parse(r.JSON); } catch(e) { base = {}; } }
+        return {...base, _docId:r.ID, personalId:r.PERSONAL_ID||base.personalId||'', categoria:r.CATEGORIA||'', tipo:r.TIPO||'', nombre:r.NOMBRE||'', entidad:r.ENTIDAD||'', fecha:r.FECHA||'', vence:r.VENCE||'', url:r.URL||''};
+      }, {merge:true});
+      addLog('✓ Legajo importado (' + rows.length + ' documentos)', 'ok');
     }
 
     // 3. Maestros tiendas
@@ -1522,34 +1591,23 @@ const FERIADOS_CONFIG_DEFAULT = [
   {nombre:'Navidad',               fecha:'2026-12-25'},
 ];
 
-let maestrosData = { personal: [], tiendas: [], grupos: [], feriados: [] };
+let maestrosData = { tiendas: [], grupos: [], feriados: [] };
 let maestrosChanged = false;
 
 async function loadMaestros() {
   try {
     const { getDocs, collection } = window.__fb;
-    const [pSnap, tSnap, gSnap, fSnap] = await Promise.all([
-      getDocs(collection(window.__db, 'maestros_personal')),
+    // El personal se administra en personal.html (módulo Personal); aquí solo tiendas/grupos/feriados.
+    const [tSnap, gSnap, fSnap] = await Promise.all([
       getDocs(collection(window.__db, 'maestros_tiendas')),
       getDocs(collection(window.__db, 'maestros_grupos')),
       getDocs(collection(window.__db, 'maestros_feriados')),
     ]);
     const d = {
-      personal: pSnap.docs.map(dd => dd.data()),
       tiendas: tSnap.docs.map(dd => dd.data()),
       grupos: gSnap.docs.map(dd => dd.data()),
       feriados: fSnap.docs.map(dd => dd.data()),
     };
-    // Include ALL personal/tiendas from sheet (activo or not)
-    maestrosData.personal = (d.personal || []).map((p, i) => ({
-      id: String(p.id || ('PER' + String(i+1).padStart(3,'0'))).trim(),
-      nombre: String(p.nombre || '').trim(),
-      cargo: String(p.cargo || 'TÉCNICO').trim(),
-      telefono: String(p.telefono || '').trim(),
-      foto: String(p.foto || '').trim(),
-      activo: String(p.activo || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI',
-      recibeAvisos: (p.recibeAvisos === true || String(p.recibeAvisos || '').trim().toUpperCase() === 'SI')
-    })).filter(p => p.nombre);
     maestrosData.tiendas = (d.tiendas || []).map((t, i) => ({
       id: String(t.id || ('TIE' + String(i+1).padStart(3,'0'))).trim(),
       cliente: String(t.cliente || '').trim(),
@@ -1577,7 +1635,6 @@ async function loadMaestros() {
       maestrosData.feriados = [...maestrosData.feriados, ..._defs].sort((a, b) => a.fecha.localeCompare(b.fecha));
       maestrosChanged = true;
     }
-    renderPersonal();
     renderTiendas();
     renderGrupos();
     renderFeriados();
@@ -1601,11 +1658,6 @@ function cargoColor(cargo) {
   return colors[hash % colors.length];
 }
 
-function cargoBadgeHtml(cargo) {
-  const c = cargoColor(cargo);
-  return `<span class="cargo-badge" style="background:${c.bg};color:${c.color};border:1px solid ${c.border}">${cargo}</span>`;
-}
-
 function grupoColor(grupo) {
   const g = (grupo||'').toUpperCase();
   if (g.includes('PREVENT')) return {bg:'#f0faf5',color:'#1a9e5a',border:'#b0e0c8'};
@@ -1615,115 +1667,10 @@ function grupoColor(grupo) {
   return cargoColor(grupo);
 }
 
-function renderPersonal() {
-  const list = document.getElementById('personal-list');
-  if (!maestrosData.personal.length) { list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Sin personal registrado</div>'; return; }
-  list.innerHTML = maestrosData.personal.map((p, i) => `
-    <div class="maestro-item ${p.activo==='NO'?'inactive':''}">
-      <div class="per-avatar" title="${p.foto?'Foto cargada':'Sin foto'}">${p.foto?`<img src="${p.foto}" alt="">`:`<span>${(p.nombre||'?').trim().charAt(0).toUpperCase()}</span>`}</div>
-      <input class="maestro-input" type="text" value="${p.nombre}" onchange="updatePersonal(${i},'nombre',this.value)" placeholder="Nombre completo">
-      <input class="maestro-cargo" type="text" value="${p.cargo}" onchange="updatePersonal(${i},'cargo',this.value)" placeholder="Cargo" title="Cargo del trabajador">
-      <input class="maestro-cargo" type="text" inputmode="numeric" value="${(p.telefono||'').replace(/^51/,'')}" onchange="updatePersonal(${i},'telefono',this.value)" placeholder="—" title="Solo 9 dígitos — se agrega prefijo 51 automáticamente" style="width:130px" autocomplete="off">
-      ${cargoBadgeHtml(p.cargo)}
-      <label class="maestro-foto-btn" for="per-foto-${i}" title="Subir / cambiar foto">📷</label>
-      <input type="file" id="per-foto-${i}" accept="image/*" style="display:none" onchange="setPersonalFoto(${i}, this.files[0]); this.value='';">
-      <label class="maestro-foto-btn cam-only-mobile" for="per-foto-cam-${i}" title="Tomar foto">📸</label>
-      <input type="file" id="per-foto-cam-${i}" accept="image/*" capture="environment" style="display:none" onchange="setPersonalFoto(${i}, this.files[0]); this.value='';">
-      <button class="maestro-toggle" onclick="toggleAviso(${i})" title="${p.recibeAvisos?'📣 Recibe avisos del bot de WhatsApp':'🔕 No recibe avisos del bot'}" style="${p.recibeAvisos?'color:var(--orange-dark)':'opacity:.45'}">${p.recibeAvisos?'📣':'🔕'}</button>
-      <button class="maestro-toggle" onclick="togglePersonal(${i})" title="${p.activo==='SI'?'Desactivar':'Activar'}">${p.activo==='SI'?'✅':'⭕'}</button>
-      <button class="maestro-del" onclick="deletePersonal(${i})" title="Eliminar">✕</button>
-    </div>`).join('');
-}
-
-// Comprime una imagen a un cuadrado de `size`px (recorte centrado) → dataURL JPEG (base64)
-function compressSquare(file, size, quality) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const side = Math.min(img.width, img.height);
-        const sx = (img.width - side) / 2;
-        const sy = (img.height - side) / 2;
-        const canvas = document.createElement('canvas');
-        canvas.width = size; canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      };
-      img.onerror = () => reject(new Error('Imagen inválida'));
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-// Guarda la foto como base64 (dataURL) en el campo `foto` — se persiste en Firestore
-// al "Guardar cambios". No usa Firebase Storage (evita el plan Blaze).
-async function setPersonalFoto(i, file) {
-  if (!file) return;
-  if (!MA.can('config')) { toast('La configuración es solo del super admin', 'err'); return; }
-  const p = maestrosData.personal[i];
-  if (!p) return;
-  if (!/^image\//.test(file.type)) { toast('El archivo no es una imagen', 'err'); return; }
-  try {
-    toast('Procesando foto...');
-    const dataUrl = await compressSquare(file, 320, 0.8);
-    maestrosData.personal[i].foto = dataUrl;
-    maestrosChanged = true;
-    renderPersonal();
-    toast('Foto lista — recuerda Guardar cambios', 'ok');
-  } catch(e) {
-    toast('Error procesando foto: ' + (e.message || e), 'err');
-  }
-}
-
-function normalizeTel(v) {
-  v = v.trim();
-  if (/^\d{9}$/.test(v)) return '51' + v;
-  return v;
-}
-
-function updatePersonal(i, field, value) {
-  maestrosData.personal[i][field] = field === 'telefono' ? normalizeTel(value) : value;
-  maestrosChanged = true;
-  if (field === 'cargo') renderPersonal();
-}
-
-function togglePersonal(i) {
-  maestrosData.personal[i].activo = maestrosData.personal[i].activo === 'SI' ? 'NO' : 'SI';
-  maestrosChanged = true;
-  renderPersonal();
-}
-
-// 📣 Recibe avisos del bot de WhatsApp (al registrarse una observación). Necesita teléfono.
-function toggleAviso(i) {
-  maestrosData.personal[i].recibeAvisos = !maestrosData.personal[i].recibeAvisos;
-  maestrosChanged = true;
-  renderPersonal();
-}
-
-function deletePersonal(i) {
-  if (!confirm('¿Eliminar a ' + maestrosData.personal[i].nombre + '?')) return;
-  maestrosData.personal.splice(i, 1);
-  maestrosChanged = true;
-  renderPersonal();
-}
-
-function addPersonal() {
-  const nombre = document.getElementById('new-per-nombre').value.trim().toUpperCase();
-  const cargo = document.getElementById('new-per-cargo').value.trim().toUpperCase() || 'TÉCNICO';
-  const telefono = normalizeTel(document.getElementById('new-per-telefono').value);
-  if (!nombre) { toast('Ingresa un nombre', 'err'); return; }
-  const newId = 'PER' + String(Date.now()).slice(-6);
-  maestrosData.personal.push({ id: newId, nombre, cargo, telefono, foto: '', activo: 'SI', recibeAvisos: false });
-  maestrosChanged = true;
-  document.getElementById('new-per-nombre').value = '';
-  document.getElementById('new-per-cargo').value = '';
-  document.getElementById('new-per-telefono').value = '';
-  renderPersonal();
-}
+// El editor de personal (renderPersonal/addPersonal/setPersonalFoto/updatePersonal/
+// togglePersonal/toggleAviso/deletePersonal/normalizeTel/compressSquare) se movió al
+// módulo dedicado personal.html (Expediente del Colaborador). Aquí solo quedan
+// Tiendas/Grupos/Feriados + el backup/restore de maestros_personal.
 
 function renderTiendas() {
   const list = document.getElementById('tiendas-list');
@@ -1842,13 +1789,9 @@ async function saveMaestros() {
   if (!MA.can('config')) { toast('La configuración es solo del super admin', 'err'); return; }
   document.getElementById('loading').classList.add('show');
   try {
-    // Save personal
+    // El personal ya NO se guarda aquí: se administra en personal.html (módulo Personal).
+    // Esta pantalla guarda solo tiendas/grupos/feriados.
     const { writeBatch, doc, collection, getDocs } = window.__fb;
-    const b1 = writeBatch(window.__db);
-    const ex1 = await getDocs(collection(window.__db,'maestros_personal'));
-    ex1.docs.forEach(d=>b1.delete(d.ref));
-    maestrosData.personal.forEach(p=>{b1.set(doc(window.__db,'maestros_personal',p.id),{id:p.id,nombre:p.nombre,cargo:p.cargo,telefono:p.telefono||'',foto:p.foto||'',activo:p.activo,recibeAvisos:!!p.recibeAvisos,obs:''});});
-    await b1.commit();
     // Save tiendas
     const b2 = writeBatch(window.__db);
     const ex2 = await getDocs(collection(window.__db,'maestros_tiendas'));

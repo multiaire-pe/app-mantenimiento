@@ -1799,7 +1799,8 @@ function maRenderAccessPanel() {
     {id:'asistencia',    label:'\u{1F551} Asis'},
     {id:'comprobantes',  label:'\u{1F9FE} Comp'},
     {id:'proveedores',   label:'\u{1F3E2} Prov'},
-    {id:'observaciones', label:'\u{1F4CB} Obs'}
+    {id:'observaciones', label:'\u{1F4CB} Obs'},
+    {id:'personal',      label:'\u{1F465} Pers'}
   ];
   list.innerHTML = maAccessUsers.map(function(u) {
     var isMe = maUser && u.email === maUser.email;

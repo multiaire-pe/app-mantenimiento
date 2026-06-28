@@ -1456,7 +1456,8 @@ function renderAccessPanel(){
     {id:'asistencia',label:'\u{1F551} Asis'},
     {id:'comprobantes',label:'\u{1F9FE} Comp'},
     {id:'proveedores',label:'\u{1F3E2} Prov'},
-    {id:'observaciones',label:'\u{1F4CB} Obs'}
+    {id:'observaciones',label:'\u{1F4CB} Obs'},
+    {id:'personal',label:'\u{1F465} Pers'}
   ];
   const iAmSuperAdmin=maUser&&maUser.rol==='SUPER_ADMIN';
   list.innerHTML=accessUsers.map(u=>{
@@ -2215,7 +2216,7 @@ async function resetearBaseDatos() {
   const showMsg = (msg) => { if(toastEl){ toastEl.textContent=msg; toastEl.className='toast show'; setTimeout(()=>toastEl.classList.remove('show'),3000); }};
   try {
     showMsg('Reseteando...');
-    const colecciones = ['insumos_catalogo','insumos_instancias','insumos_movimientos','insumos_stock','insumos_paquetes'];
+    const colecciones = ['insumos_catalogo','insumos_instancias','insumos_movimientos','insumos_paquetes']; // 'insumos_stock' retirada: colección legacy inexistente (el catch-all fail-closed la bloquea)
     for (const col of colecciones) {
       const snap = await db.collection(col).get();
       for (const doc of snap.docs) await doc.ref.delete();
