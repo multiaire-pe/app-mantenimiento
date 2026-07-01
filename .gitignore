@@ -5,3 +5,6 @@ package-lock.json
 _chat.txt
 .claude/settings.local.json
 import_whatsapp.html
+
+# Firebase emulator/admin debug logs
+firebase-debug.log

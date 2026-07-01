@@ -19,6 +19,8 @@ import { manejarMensaje } from './_lib/conversacion.js';
 import { guardarObservacion } from './_lib/escritura.js';
 import { descargarMedia } from './_lib/media.js';
 import { notificarSupervisores } from './_lib/avisos.js';
+import { decidirFlujo } from './_lib/router.js';
+import { manejarAsistencia } from './_lib/asistencia.js';
 
 // Necesitamos el body CRUDO (bytes exactos) para validar la firma HMAC → desactivamos
 // el parser automático de Vercel.
@@ -108,28 +110,42 @@ async function procesarMensaje(msg) {
       console.log('[whatsapp] número no reconocido:', msg.from);
       await enviarTexto(msg.from,
         '👋 Hola. No reconozco este número en el sistema de MultiAire. ' +
-        'Pídele al administrador que registre tu número (en el personal) para poder usar el bot de observaciones.');
+        'Pídele al administrador que registre tu número (en el personal) para poder usar el bot.');
       return;
     }
 
     // Texto del mensaje (o pie de la foto).
     const texto = msg.text?.body || msg.image?.caption || '';
 
-    // Fase 5: si es una imagen, la descargamos para que el bot la "vea" (Gemini) y la adjunte.
+    // Ubicación compartida (marcaje de asistencia): WhatsApp la entrega en msg.location.
+    let ubicacion = null;
+    if (msg.type === 'location' && msg.location) {
+      ubicacion = { lat: Number(msg.location.latitude), lng: Number(msg.location.longitude) };
+    }
+
+    // Si es una imagen, la descargamos (sirve de foto para observaciones o de selfie para asistencia).
     let imagenB64 = null, mime = null;
     if (msg.type === 'image' && msg.image?.id) {
       const media = await descargarMedia(msg.image.id);
       if (media) { imagenB64 = media.base64; mime = media.mime; }
     }
 
-    // Tipos no soportados (audio, documento, ubicación…) y sin texto → pedir texto o foto.
-    if (!texto && !imagenB64 && msg.type && msg.type !== 'text') {
+    // Tipos no soportados (audio, documento…) sin contenido útil → orientar al técnico.
+    if (!texto && !imagenB64 && !ubicacion && msg.type && msg.type !== 'text') {
       await enviarTexto(msg.from,
-        '📝 Por ahora mándame la observación en *texto* o como *foto* (con o sin descripción).');
+        '📝 Mándame una *observación* (texto o foto), o para marcar tu asistencia escribe *entrada*/*salida* y comparte tu *ubicación* 📍.');
       return;
     }
 
-    console.log('[whatsapp] mensaje de', tecnico.nombre, `(${tecnico.id})`, '·', msg.type, '·', texto || '(sin texto)', imagenB64 ? '· 📷' : '');
+    console.log('[whatsapp] mensaje de', tecnico.nombre, `(${tecnico.id})`, '·', msg.type, '·', texto || '(sin texto)', imagenB64 ? '· 📷' : '', ubicacion ? '· 📍' : '');
+
+    // ¿Este mensaje es de asistencia (marcaje) o de observaciones?
+    const flujo = await decidirFlujo({ from: msg.from, tipo: msg.type, texto });
+    if (flujo === 'asistencia') {
+      const resp = await manejarAsistencia({ tecnico, from: msg.from, texto, ubicacion, imagenB64, mime });
+      if (resp) await enviarTexto(msg.from, resp);
+      return;
+    }
 
     // Motor conversacional (Fase 4) + escritura con foto + aviso a supervisores (Fase 5).
     const respuesta = await manejarMensaje({
