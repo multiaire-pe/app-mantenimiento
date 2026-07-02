@@ -215,7 +215,7 @@ Script Python `importar_asistencia.py`:
 - Jose Marchena: horario fijo 11:00–18:30, heManual=true, horasExtra=0
 
 ## Roles de usuario
-- `SUPER_ADMIN` — acceso total (marchenaangulojoseluis@gmail.com)
+- `SUPER_ADMIN` — acceso total (marchenaangulojoseluis@gmail.com; Adrián: alta pendiente en `usuarios` — ver Trabajo colaborativo)
 - `ADMIN` — gestión completa
 - `SUPERVISOR` — solo lectura
 
@@ -272,6 +272,17 @@ Dominios activos en Firebase Auth:
 Todos los dominios de Cloudflare tunnel fueron eliminados.
 
 > **Dominio corporativo `app.multiaire.com.pe`**: el subdominio se sirve por **CNAME** (no se delegan los nameservers del dominio a Vercel — el correo corporativo vive en cPanel de ChileCL). Apunta al proyecto Vercel `app-mantenimiento` (producción/main = la misma deployment que `multiaire-peru-app.vercel.app`). SSL emitido por Vercel.
+
+## Trabajo colaborativo (José + Adrián)
+
+Equipo de dos: **José** (Mac, admin del repo/org) y **Adrián** (GitHub `Adro3004`, laptop Windows, colaborador con push). Ambos trabajan con Claude Code.
+
+- **Ramas:** `main` = producción VIVA (bots de WhatsApp + Firestore real) — **solo José mergea a main**, siempre tras Council (`/auditar`). `develop` = integración. Toda tarea = rama `feature/<tarea>` desde `develop` → PR a `develop`.
+- **Territorio por módulos:** nunca dos personas editando el mismo `.html` a la vez (archivos monolíticos → merges dolorosos). El reparto vigente vive en el Tablero de equipo.
+- **Tablero de equipo:** nota `Tablero de equipo.md` en el vault compartido **"Cerebro MultiAire"** (Google Drive, accesible vía MCP `obsidian-cerebro`). Al empezar una tarea → registrar fila en *En curso* (quién/módulo/rama); al abrir PR → moverla a *Listo para revisar*; decisiones nuevas → anotarlas en *Acordado*.
+- **Datos (crítico):** hay UN solo Firestore y es el de producción. Backup desde `configuracion.html` antes de migraciones/cargas masivas; toda colección nueva se agrega al backup (regla vigente); avisar en el tablero antes de tocar maestros (personal, tiendas, insumos).
+- **PRs chicos y frecuentes:** una tarea = un PR. Autorevisión con `/code-review` antes de abrirlo; José pasa el Council antes de mergear a develop.
+- **Validación:** probar en la URL de develop (deploy automático al pushear; ver sección Deploy), no asumir que local basta.
 
 ## Changelog
 
@@ -443,3 +454,4 @@ Todos los dominios de Cloudflare tunnel fueron eliminados.
 | 2026-07-01 | **Asistencia — vista de evidencia** (`asistencia_multiaire.html`). El modal de edición de un registro muestra la **evidencia del bot** (`renderEvidencia`): por marcaje (entrada/salida) la **selfie** (miniatura → lightbox `selfie-lightbox`), 🏪 sede, hora, badge geo (✓ en la sede · N m / ⚠️ fuera de radio · N m / sin coordenadas) y ⚠️ *fuera de plan*, con link 🗺️ a la ubicación; las selfies se cargan de `asistencia_registros_fotos` por id al abrir. La fila del día muestra un 📱 cuando el registro tiene evidencia de marcaje (o `origen==='WHATSAPP'`). |
 | 2026-07-01 | **Asistencia — auditoría Codex (Council) + endurecimiento.** El bot pasó por 3 rondas de auditoría independiente (RECHAZADO → APROBADO CON OBSERVACIONES). Fixes aplicados: (1) `construirRegistro` ENTRADA fuerza estado A + obs limpia + HE auto (no hereda de un DM/P/F previo); (2) prioridad del **router** = sesión asistencia → sesión obs → ubicación → texto (una ubicación ya no corta una observación en curso); (3) `RE_ASISTENCIA` reescrito para no dar falsos positivos ("salida de aire", "entrada principal", "marca Carrier") y sí captar "salí/ya salí" — usa lookahead `(?![a-z])` en vez de `\b` por los acentos ("llegué"); (4) `plan_dia` soporta `personal[]` de **objetos** `{id,nombre}` (formato real, itinerario.html:955) + 5º asignado; (5) `renderEvidencia` sin XSS (valida selfie `data:image/...`, coacciona coords a `Number`); (6) editar un registro del bot preserva la evidencia (`merge` si sigue en estado A; overwrite si pasa a DM/P/F); (7) `fecha.js` capa la hora a 23.5 (no `24`). **Anti-duplicados:** app **y** bot crean registros nuevos con el **mismo doc id determinístico `AST-<colabId>-<fecha>`** → imposible duplicar un registro del mismo colab+fecha (cierra la carrera de concurrencia). `origen` a nivel de registro es preciso en casos mixtos (entrada app + salida bot). Editor de tiendas escapa sus inputs (`escAttr`). Suite `migrar_db/test_asistencia.mjs` **54/54**. |
 | 2026-07-02 | **Asistencia — geo CERRADA + bot a PRODUCCIÓN (merge develop→main).** Las coordenadas de las 13 sedes en `maestros_tiendas` quedaron **ajustadas y testeadas en campo por el equipo** (se cargaron directo por el editor 📍 Geo de `configuracion.html`; la **fuente de verdad es Firestore**, no los scripts) con radios **intencionales de 1000 m** por tienda y **500 m** en la oficina (con radio amplio la bandera *fuera de radio* casi no salta en falso; el default 250 m de `geo.js` ya no aplica a ninguna sede). `migrar_db/update_geo_tiendas.js` (que tenía coords de OSM ya superadas) quedó **neutralizado como snapshot 2026-07-02** de los valores vivos —correrlo re-escribe lo mismo, inocuo— y `migrar_db/check_geo_tiendas.js` (solo lectura) verifica Firestore vs snapshot: **13/13 OK**. Con la geo cerrada y el núcleo auditado (Codex APROBADO, suite 54/54) se hizo **merge a main con orden explícita del usuario** → el bot de asistencia queda en producción en el mismo webhook del de observaciones. Pendiente: **prueba en vivo del marcaje** (técnico régimen `MARCA` con plan del día). |
+| 2026-07-02 | **Setup colaborativo:** Adrián (`Adro3004`) invitado al repo con permiso push; nueva sección **Trabajo colaborativo** en CLAUDE.md (ramas, territorio por módulos, tablero, reglas de datos); **Tablero de equipo** creado en el vault compartido "Cerebro MultiAire" (Drive). Alta SUPER_ADMIN de Adrián en `usuarios` pendiente de definir su cuenta Google (la app usa login con Google). |
