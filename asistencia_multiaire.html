@@ -472,6 +472,10 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
         <div class="field-label">Comentario</div>
         <input type="text" class="field-input" id="edit-reg-obs" placeholder="Opcional...">
       </div>
+      <div class="field-group" id="edit-reg-evidencia" style="display:none">
+        <div class="field-label">📍 Evidencia de marcaje (WhatsApp)</div>
+        <div id="edit-reg-evidencia-body" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-danger btn-sm" onclick="deleteReg()">🗑 Eliminar</button>
@@ -480,6 +484,11 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
       <button class="btn btn-primary" onclick="saveEditReg()">Guardar</button>
     </div>
   </div>
+</div>
+
+<!-- LIGHTBOX SELFIE -->
+<div class="overlay" id="selfie-lightbox" style="z-index:1000;align-items:center;justify-content:center" onclick="this.classList.remove('open')">
+  <img id="selfie-lightbox-img" src="" alt="selfie" style="max-width:92vw;max-height:88vh;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.5)">
 </div>
 
 <!-- MODAL GESTIÓN COLABORADORES -->
@@ -947,8 +956,9 @@ function renderTodayTable() {
     const _heVal=heStr!=='—'?parseFloat(heStr):null;
     const heColor=_heVal==null?'color:var(--muted)':_heVal<0?'color:var(--red);font-weight:700':_heVal>0?'color:var(--orange);font-weight:700':'color:var(--muted)';
     const manualBadge=heManual?'<span class="he-manual-badge">M</span>':'';
+    const waBadge=reg&&(reg.marcajeEntrada||reg.marcajeSalida||reg.origen==='WHATSAPP')?' <span title="Marcado por WhatsApp con ubicación y selfie" style="font-size:11px">📱</span>':'';
     return`<div class="table-row" onclick="openEditReg(${regId},'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo||'')}','${todayKey()}')">
-      <div style="font-size:13px;font-weight:600">${escHtml(c.nombre)}</div>
+      <div style="font-size:13px;font-weight:600">${escHtml(c.nombre)}${waBadge}</div>
       <div style="overflow:hidden"><span class="badge" style="font-size:10px;background:var(--surface3);color:var(--muted2);border:1px solid var(--border);max-width:100%;overflow:hidden;text-overflow:ellipsis;display:inline-block" title="${escHtml(c.cargo||'')}">${escHtml(c.cargo||'—')}</span></div>
       <div class="td-hora">${entStr}</div>
       <div class="td-hora">${salStr}</div>
@@ -984,7 +994,7 @@ async function registrar(tipo) {
       if(existing&&existing.horaEntrada!=null){loading.classList.remove('show');toast(`${colab.nombre} ya tiene entrada registrada (${decimalToHora(existing.horaEntrada)})`,'err');return;}
       const data={colabId:selectedColabId,nombre:colab.nombre,cargo:colab.cargo||'',fecha,horaEntrada:horaDecimal,horaSalida:null,estado:'A',observacion:obs,heManual:false,horasExtra:null,registradoPor:maUser?.email||'',timestamp:new Date().toISOString()};
       if(existing){await window.__db.collection('asistencia_registros').doc(existing.id).set({...existing,...data});}
-      else{const ref=window.__db.collection('asistencia_registros').doc();await ref.set({...data,id:ref.id});}
+      else{const _id='AST-'+selectedColabId+'-'+fecha;await window.__db.collection('asistencia_registros').doc(_id).set({...data,id:_id});}
       toast(`✓ Entrada registrada para ${colab.nombre}`,'ok');
     } else {
       if(!existing||existing.horaEntrada==null){loading.classList.remove('show');toast(`${colab.nombre} no tiene entrada registrada`,'err');return;}
@@ -1015,8 +1025,9 @@ async function registrarEstado(estado) {
     const regsDelDia=await loadRegsByFecha(fecha);
     const existing=regsDelDia.find(r=>r.colabId===selectedColabId);
     const data={colabId:selectedColabId,nombre:colab.nombre,cargo:colab.cargo||'',fecha,horaEntrada:null,horaSalida:null,estado,observacion:labels[estado]||estado,heManual:false,horasExtra:null,registradoPor:maUser?.email||'',timestamp:new Date().toISOString()};
-    if(existing){await window.__db.collection('asistencia_registros').doc(existing.id).set({...existing,...data});}
-    else{const ref=window.__db.collection('asistencia_registros').doc();await ref.set({...data,id:ref.id});}
+    // DM/Permiso/Falta ya no es asistencia → overwrite completo (descarta origen/evidencia del bot si la había), igual que saveEditReg al pasar a no-A.
+    if(existing){await window.__db.collection('asistencia_registros').doc(existing.id).set({...data,id:existing.id});}
+    else{const _id='AST-'+selectedColabId+'-'+fecha;await window.__db.collection('asistencia_registros').doc(_id).set({...data,id:_id});}
     toast(`✓ ${colab.nombre} → ${labels[estado]}`,'ok');
     if(fecha===todayKey())await loadTodayData();
   } catch(e){toast('Error: '+e.message,'err');}
@@ -1057,6 +1068,49 @@ function fillEditModal(reg,fecha) {
   // Auto info
   const autoHe=calcHorasExtra(reg?.horaEntrada,reg?.horaSalida,fecha);
   document.getElementById('edit-reg-he-auto-info').textContent=autoHe!=null?`Automático: ${autoHe.toFixed(1)}h`:'Automático: sin datos de entrada/salida';
+  renderEvidencia(reg);
+}
+
+// Muestra la evidencia del bot de asistencia (ubicación + distancia + banderas + selfie).
+async function renderEvidencia(reg){
+  const box=document.getElementById('edit-reg-evidencia');
+  const body=document.getElementById('edit-reg-evidencia-body');
+  const marcajes=[['ENTRADA',reg&&reg.marcajeEntrada],['SALIDA',reg&&reg.marcajeSalida]].filter(m=>m[1]);
+  if(!reg||!marcajes.length){box.style.display='none';body.innerHTML='';return;}
+  box.style.display='';
+  // Cargar selfies (colección aparte, doc id = id del registro).
+  let fotos={};
+  try{const snap=await window.__db.collection('asistencia_registros_fotos').doc(reg.id).get();if(snap.exists)fotos=snap.data()||{};}catch(_){}
+  const esFotoValida=(f)=>typeof f==='string'&&/^data:image\/(jpe?g|png|webp);base64,[A-Za-z0-9+/=\s]+$/.test(f);
+  const numOrNull=(v)=>{const n=Number(v);return Number.isFinite(n)?n:null;};
+  body.innerHTML=marcajes.map(([tipo,m])=>{
+    const fotoRaw=tipo==='ENTRADA'?fotos.fotoEntrada:fotos.fotoSalida;
+    const foto=esFotoValida(fotoRaw)?fotoRaw:null;
+    const lat=numOrNull(m.lat), lng=numOrNull(m.lng), dist=numOrNull(m.distancia);
+    const dentro=m.dentroRadio===true;
+    const geoBadge=m.geovalidada===false
+      ?'<span class="badge" style="background:var(--surface3);color:var(--muted2)">sin coordenadas</span>'
+      :dentro
+        ?`<span class="badge badge-dentro">✓ en la sede${dist!=null?` · ${dist} m`:''}</span>`
+        :`<span class="badge badge-ausente">⚠️ fuera de radio${dist!=null?` · ${dist} m`:''}</span>`;
+    const planBadge=m.fueraDePlan?' <span class="badge badge-permiso">⚠️ fuera de plan</span>':'';
+    const mapa=(lat!=null&&lng!=null)?`<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" rel="noopener" style="text-decoration:none;font-size:12px">🗺️ ver ubicación</a>`:'';
+    const selfie=foto?`<img src="${foto}" onclick="openSelfieLightbox(this.src)" style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--border)">`:'<div style="width:64px;height:64px;border-radius:8px;background:var(--surface3);display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:11px">s/f</div>';
+    return `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+      ${selfie}
+      <div style="flex:1;font-size:12px;line-height:1.6">
+        <div style="font-weight:700">${tipo==='ENTRADA'?'🟢 Entrada':'🔴 Salida'} ${m.hora?`· ${escHtml(m.hora)}`:''}</div>
+        <div>🏪 ${escHtml(m.sede||'—')}${planBadge}</div>
+        <div style="margin-top:2px">${geoBadge}</div>
+        ${mapa}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openSelfieLightbox(src){
+  document.getElementById('selfie-lightbox-img').src=src;
+  document.getElementById('selfie-lightbox').classList.add('open');
 }
 
 function updateHeAutoInfo() {
@@ -1090,8 +1144,11 @@ async function saveEditReg() {
   loading.classList.add('show');
   try {
     const data={colabId,nombre:colab.nombre,cargo:colab.cargo||'',fecha,horaEntrada,horaSalida,estado,observacion:obs,heManual:heIsManual,horasExtra,registradoPor:maUser?.email||'',timestamp:new Date().toISOString()};
-    if(regId){await window.__db.collection('asistencia_registros').doc(regId).set({...data,id:regId});}
-    else{const ref=window.__db.collection('asistencia_registros').doc();await ref.set({...data,id:ref.id});}
+    // Si sigue siendo asistencia (estado A) → merge:true para PRESERVAR la evidencia del bot (origen,
+    // marcajeEntrada/Salida). Si el admin lo convierte a DM/Permiso/Falta → overwrite completo: la
+    // evidencia geolocalizada ya no aplica y se descarta (evita badge/selfie de un día que ya no es asistencia).
+    if(regId){const ref=window.__db.collection('asistencia_registros').doc(regId); if(estado==='A'){await ref.set({...data,id:regId},{merge:true});}else{await ref.set({...data,id:regId});}}
+    else{const _id='AST-'+colabId+'-'+fecha;await window.__db.collection('asistencia_registros').doc(_id).set({...data,id:_id});}
     toast('✓ Registro guardado','ok');
     closeEditReg();
     await refreshCurrentTab();

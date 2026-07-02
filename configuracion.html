@@ -311,6 +311,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>manta_observaciones.csv</div>
             <div class="backup-file"><span></span>manta_observaciones_fotos.csv</div>
             <div class="backup-file"><span></span>manta_guia.csv</div>
+            <div class="backup-file"><span></span>asistencia_registros_fotos.csv</div>
           </div>
           <button class="btn btn-primary" onclick="exportBackup()" id="export-btn" style="width:100%">
             ⬇ Descargar ZIP
@@ -904,7 +905,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
@@ -930,15 +931,18 @@ async function exportBackup() {
       window.__db.collection('manta_observaciones').get(),
       window.__db.collection('manta_observaciones_fotos').get(),
       window.__db.collection('manta_guia').get(),
+      window.__db.collection('asistencia_registros_fotos').get(),
     ]);
 
     const zip = new JSZip();
 
     // 1. Asistencia registros CSV
-    const asistHeaders = ['ID','COLAB_ID','NOMBRE','CARGO','FECHA','HORA_ENTRADA','HORA_SALIDA','ESTADO','OBSERVACION','HE_MANUAL','HORAS_EXTRA','REGISTRADO_POR','TIMESTAMP'];
+    const asistHeaders = ['ID','COLAB_ID','NOMBRE','CARGO','FECHA','HORA_ENTRADA','HORA_SALIDA','ESTADO','OBSERVACION','HE_MANUAL','HORAS_EXTRA','REGISTRADO_POR','TIMESTAMP','ORIGEN','EVIDENCIA'];
     const asistRows = asistSnap.docs.map(d => {
       const r = d.data();
-      return [r.id||d.id, r.colabId||'', r.nombre||'', r.cargo||'', r.fecha||'', r.horaEntrada??'', r.horaSalida??'', r.estado||'', r.observacion||'', r.heManual?'1':'0', r.horasExtra??'', r.registradoPor||'', r.timestamp||''].map(escapeCSV).join(',');
+      // EVIDENCIA (JSON) preserva los campos del bot de asistencia (marcaje geolocalizado) que no tienen columna propia.
+      const evid = (r.marcajeEntrada || r.marcajeSalida) ? JSON.stringify({ marcajeEntrada: r.marcajeEntrada || null, marcajeSalida: r.marcajeSalida || null }) : '';
+      return [r.id||d.id, r.colabId||'', r.nombre||'', r.cargo||'', r.fecha||'', r.horaEntrada??'', r.horaSalida??'', r.estado||'', r.observacion||'', r.heManual?'1':'0', r.horasExtra??'', r.registradoPor||'', r.timestamp||'', r.origen||'', evid].map(escapeCSV).join(',');
     });
     zip.file('asistencia.csv', [asistHeaders.join(','), ...asistRows].join('\n'));
 
@@ -978,10 +982,10 @@ async function exportBackup() {
     zip.file('personal_documentos.csv', [docsHeaders.join(','), ...docsRows].join('\n'));
 
     // 3. Maestros tiendas CSV
-    const tienHeaders = ['ID','CLIENTE','TIENDA','SEDE','ACTIVO'];
+    const tienHeaders = ['ID','CLIENTE','TIENDA','SEDE','ACTIVO','LATITUD','LONGITUD','RADIO','OBS'];
     const tienRows = tienSnap.docs.map(d => {
       const r = d.data();
-      return [r.id||d.id, r.cliente||'', r.tienda||'', r.sede||'', r.activo||'SI'].map(escapeCSV).join(',');
+      return [r.id||d.id, r.cliente||'', r.tienda||'', r.sede||'', r.activo||'SI', r.latitud??'', r.longitud??'', r.radio??'', r.obs||''].map(escapeCSV).join(',');
     });
     zip.file('maestros_tiendas.csv', [tienHeaders.join(','), ...tienRows].join('\n'));
 
@@ -1134,6 +1138,14 @@ async function exportBackup() {
     });
     zip.file('manta_observaciones_fotos.csv', [mObsFotoHeaders.join(','), ...mObsFotoRows].join('\n'));
 
+    // Asistencia — selfies del bot (base64; colección aparte, doc id = id del registro)
+    const asisFotoHeaders = ['ID','FOTO_ENTRADA','FOTO_SALIDA'];
+    const asisFotoRows = asisFotoSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.fotoEntrada||'', r.fotoSalida||''].map(escapeCSV).join(',');
+    });
+    zip.file('asistencia_registros_fotos.csv', [asisFotoHeaders.join(','), ...asisFotoRows].join('\n'));
+
     // 18. Manta — guía del bot (checklist por tipo de hallazgo; arrays unidos por |)
     const mGuiaHeaders = ['ID','TIPO','TITULO','PALABRAS_CLAVE','CHECKLIST','ORDEN','ACTIVO','ORIGEN'];
     const mGuiaRows = mGuiaSnap.docs.map(d => {
@@ -1207,7 +1219,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1304,12 +1316,17 @@ async function confirmImport() {
     if (pendingImport.files['asistencia.csv']) {
       addLog('🕐 Importando asistencia...', 'info');
       const rows = parseCSV(pendingImport.files['asistencia.csv']);
-      await batchWrite('asistencia_registros', rows, r => ({
-        id:r.ID, colabId:r.COLAB_ID, nombre:r.NOMBRE, cargo:r.CARGO, fecha:r.FECHA,
-        horaEntrada:r.HORA_ENTRADA!==''?+r.HORA_ENTRADA:null, horaSalida:r.HORA_SALIDA!==''?+r.HORA_SALIDA:null,
-        estado:r.ESTADO, observacion:r.OBSERVACION, heManual:r.HE_MANUAL==='1',
-        horasExtra:r.HORAS_EXTRA!==''?+r.HORAS_EXTRA:null, registradoPor:r.REGISTRADO_POR, timestamp:r.TIMESTAMP
-      }));
+      await batchWrite('asistencia_registros', rows, r => {
+        const base = {
+          id:r.ID, colabId:r.COLAB_ID, nombre:r.NOMBRE, cargo:r.CARGO, fecha:r.FECHA,
+          horaEntrada:r.HORA_ENTRADA!==''?+r.HORA_ENTRADA:null, horaSalida:r.HORA_SALIDA!==''?+r.HORA_SALIDA:null,
+          estado:r.ESTADO, observacion:r.OBSERVACION, heManual:r.HE_MANUAL==='1',
+          horasExtra:r.HORAS_EXTRA!==''?+r.HORAS_EXTRA:null, registradoPor:r.REGISTRADO_POR, timestamp:r.TIMESTAMP
+        };
+        if (r.ORIGEN) base.origen = r.ORIGEN;
+        if (r.EVIDENCIA) { try { const ev = JSON.parse(r.EVIDENCIA); if (ev.marcajeEntrada) base.marcajeEntrada = ev.marcajeEntrada; if (ev.marcajeSalida) base.marcajeSalida = ev.marcajeSalida; } catch(_){} }
+        return base;
+      });
       addLog('✓ Asistencia importada (' + rows.length + ' registros)', 'ok');
     }
 
@@ -1367,7 +1384,7 @@ async function confirmImport() {
     if (pendingImport.files['maestros_tiendas.csv']) {
       addLog('🏪 Importando tiendas...', 'info');
       const rows = parseCSV(pendingImport.files['maestros_tiendas.csv']);
-      await batchWrite('maestros_tiendas', rows, r => ({id:r.ID, cliente:r.CLIENTE, tienda:r.TIENDA, sede:r.SEDE, activo:r.ACTIVO||'SI', obs:''}));
+      await batchWrite('maestros_tiendas', rows, r => ({id:r.ID, cliente:r.CLIENTE, tienda:r.TIENDA, sede:r.SEDE, activo:r.ACTIVO||'SI', latitud:r.LATITUD!==''&&r.LATITUD!=null?Number(r.LATITUD):null, longitud:r.LONGITUD!==''&&r.LONGITUD!=null?Number(r.LONGITUD):null, radio:r.RADIO!==''&&r.RADIO!=null?Number(r.RADIO):250, obs:r.OBS||''}));
       addLog('✓ Tiendas importadas (' + rows.length + ' tiendas)', 'ok');
     }
 
@@ -1560,6 +1577,15 @@ async function confirmImport() {
       addLog('✓ Guía del bot importada (' + rows.length + ')', 'ok');
     }
 
+    // Asistencia — selfies del bot (base64)
+    if (pendingImport.files['asistencia_registros_fotos.csv']) {
+      addLog('📷 Importando selfies de asistencia...', 'info');
+      const rows = parseCSV(pendingImport.files['asistencia_registros_fotos.csv']);
+      const conFoto = rows.filter(r => r.FOTO_ENTRADA || r.FOTO_SALIDA);
+      await batchWrite('asistencia_registros_fotos', conFoto, r => { const o={_docId:r.ID, registroId:r.ID}; if(r.FOTO_ENTRADA)o.fotoEntrada=r.FOTO_ENTRADA; if(r.FOTO_SALIDA)o.fotoSalida=r.FOTO_SALIDA; return o; });
+      addLog('✓ Selfies de asistencia importadas (' + conFoto.length + ')', 'ok');
+    }
+
     addLog('✅ Importación completada', 'ok');
     toast('Importación completada ✓', 'ok');
     pendingImport = null;
@@ -1613,7 +1639,11 @@ async function loadMaestros() {
       cliente: String(t.cliente || '').trim(),
       tienda: String(t.tienda || '').trim(),
       sede: String(t.sede || '').trim(),
-      activo: String(t.activo || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI'
+      activo: String(t.activo || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI',
+      latitud: t.latitud != null && t.latitud !== '' ? Number(t.latitud) : null,
+      longitud: t.longitud != null && t.longitud !== '' ? Number(t.longitud) : null,
+      radio: t.radio != null && t.radio !== '' ? Number(t.radio) : null,
+      obs: String(t.obs || '')
     })).filter(t => t.tienda);
     maestrosData.grupos = (d.grupos || []).map((g, i) => ({
       id: String(g.id || ('GRP' + String(i+1).padStart(3,'0'))).trim(),
@@ -1672,20 +1702,49 @@ function grupoColor(grupo) {
 // módulo dedicado personal.html (Expediente del Colaborador). Aquí solo quedan
 // Tiendas/Grupos/Feriados + el backup/restore de maestros_personal.
 
+// Escapa un valor para insertarlo con seguridad dentro de un atributo HTML (evita romper value="..."/href).
+function escAttr(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
 function renderTiendas() {
   const list = document.getElementById('tiendas-list');
   if (!maestrosData.tiendas.length) { list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Sin tiendas registradas</div>'; return; }
-  list.innerHTML = maestrosData.tiendas.map((t, i) => `
-    <div class="maestro-item ${t.activo==='NO'?'inactive':''}">
-      <input class="maestro-input" type="text" value="${t.tienda}" onchange="updateTienda(${i},'tienda',this.value)" placeholder="Nombre tienda" style="flex:2">
-      <input class="maestro-cargo" type="text" value="${t.sede}" onchange="updateTienda(${i},'sede',this.value)" placeholder="Sede">
-      <input class="maestro-cargo" type="text" value="${t.cliente}" onchange="updateTienda(${i},'cliente',this.value)" placeholder="Cliente">
-      <button class="maestro-toggle" onclick="toggleTienda(${i})" title="${t.activo==='SI'?'Desactivar':'Activar'}">${t.activo==='SI'?'✅':'⭕'}</button>
-      <button class="maestro-del" onclick="deleteTienda(${i})" title="Eliminar">✕</button>
-    </div>`).join('');
+  list.innerHTML = maestrosData.tiendas.map((t, i) => {
+    const tieneGeo = t.latitud != null && t.longitud != null;
+    const coordVal = tieneGeo ? `${t.latitud}, ${t.longitud}` : '';
+    return `
+    <div class="maestro-item ${t.activo==='NO'?'inactive':''}" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <input class="maestro-input" type="text" value="${escAttr(t.tienda)}" onchange="updateTienda(${i},'tienda',this.value)" placeholder="Nombre tienda" style="flex:2">
+        <input class="maestro-cargo" type="text" value="${escAttr(t.sede)}" onchange="updateTienda(${i},'sede',this.value)" placeholder="Sede">
+        <input class="maestro-cargo" type="text" value="${escAttr(t.cliente)}" onchange="updateTienda(${i},'cliente',this.value)" placeholder="Cliente">
+        <button class="maestro-toggle" onclick="toggleTienda(${i})" title="${t.activo==='SI'?'Desactivar':'Activar'}">${t.activo==='SI'?'✅':'⭕'}</button>
+        <button class="maestro-del" onclick="deleteTienda(${i})" title="Eliminar">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;padding-left:2px">
+        <span style="color:var(--muted);min-width:48px" title="Para el bot de asistencia geolocalizada">📍 Geo</span>
+        <input class="maestro-cargo" type="text" value="${escAttr(coordVal)}" onchange="updateTiendaGeo(${i},this.value)" placeholder="lat, long (pega de Google Maps)" style="flex:2;min-width:190px">
+        <input class="maestro-cargo" type="number" value="${t.radio!=null?t.radio:250}" onchange="updateTienda(${i},'radio',this.value)" placeholder="radio" style="width:80px" title="Radio de marcaje en metros (por defecto 250)">
+        <span style="color:var(--muted)">m</span>
+        ${tieneGeo
+          ? `<a href="https://www.google.com/maps?q=${t.latitud},${t.longitud}" target="_blank" rel="noopener" style="text-decoration:none" title="Ver/verificar en el mapa">🗺️ ver</a>`
+          : '<span style="color:var(--orange)">⚠️ sin ubicación</span>'}
+      </div>
+    </div>`;
+  }).join('');
 }
 
-function updateTienda(i, field, value) { maestrosData.tiendas[i][field] = value; maestrosChanged = true; }
+function updateTienda(i, field, value) {
+  if (field === 'radio') { const n = parseInt(value, 10); maestrosData.tiendas[i].radio = Number.isFinite(n) && n > 0 ? n : null; }
+  else maestrosData.tiendas[i][field] = value;
+  maestrosChanged = true;
+}
+// Pega "lat, long" (formato de Google Maps: clic derecho → copiar coordenadas) y lo separa.
+function updateTiendaGeo(i, value) {
+  const m = String(value).trim().match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) { maestrosData.tiendas[i].latitud = null; maestrosData.tiendas[i].longitud = null; }
+  else { maestrosData.tiendas[i].latitud = parseFloat(m[1]); maestrosData.tiendas[i].longitud = parseFloat(m[2]); }
+  maestrosChanged = true; renderTiendas();
+}
 function toggleTienda(i) { maestrosData.tiendas[i].activo = maestrosData.tiendas[i].activo === 'SI' ? 'NO' : 'SI'; maestrosChanged = true; renderTiendas(); }
 function deleteTienda(i) { if (!confirm('¿Eliminar tienda?')) return; maestrosData.tiendas.splice(i, 1); maestrosChanged = true; renderTiendas(); }
 function addTienda() {
@@ -1694,7 +1753,7 @@ function addTienda() {
   const cliente = document.getElementById('new-tie-cliente').value.trim().toUpperCase();
   if (!tienda) { toast('Ingresa el nombre de la tienda', 'err'); return; }
   const newId = 'TIE' + String(Date.now()).slice(-6);
-  maestrosData.tiendas.push({ id: newId, tienda, sede, cliente, activo: 'SI' });
+  maestrosData.tiendas.push({ id: newId, tienda, sede, cliente, activo: 'SI', latitud: null, longitud: null, radio: 250, obs: '' });
   maestrosChanged = true;
   document.getElementById('new-tie-tienda').value = '';
   document.getElementById('new-tie-sede').value = '';
@@ -1796,7 +1855,7 @@ async function saveMaestros() {
     const b2 = writeBatch(window.__db);
     const ex2 = await getDocs(collection(window.__db,'maestros_tiendas'));
     ex2.docs.forEach(d=>b2.delete(d.ref));
-    maestrosData.tiendas.forEach(t=>{b2.set(doc(window.__db,'maestros_tiendas',t.id),{id:t.id,cliente:t.cliente,tienda:t.tienda,sede:t.sede,activo:t.activo,obs:''});});
+    maestrosData.tiendas.forEach(t=>{b2.set(doc(window.__db,'maestros_tiendas',t.id),{id:t.id,cliente:t.cliente,tienda:t.tienda,sede:t.sede,activo:t.activo,latitud:t.latitud??null,longitud:t.longitud??null,radio:t.radio??250,obs:t.obs||''});});
     await b2.commit();
     // Save grupos
     const b3 = writeBatch(window.__db);
