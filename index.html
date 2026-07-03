@@ -259,6 +259,9 @@ try{
   db            = firebase.firestore();
   window.__auth = firebase.auth();
   window.__prov = new firebase.auth.GoogleAuthProvider();
+  // Selector de cuenta siempre: sin esto, tras un "Acceso denegado" Google
+  // reutiliza la misma cuenta en silencio y no se puede probar con otra.
+  window.__prov.setCustomParameters({prompt: 'select_account'});
   window.__fb   = {
     onAuthStateChanged: (auth, cb) => firebase.auth().onAuthStateChanged(cb),
     signInWithPopup:    (auth, prov) => firebase.auth().signInWithPopup(prov),
@@ -276,6 +279,12 @@ let maUser = null;
 (function(){
   function waitForFirebase(){
     if(window.__auth && window.__fb){
+      // Si venimos de un signInWithRedirect fallido (fallback de popup bloqueado),
+      // el error solo se entera aquí — sin esto se volvería al login sin causa visible.
+      window.__auth.getRedirectResult().catch(function(e){
+        maShowLogin();
+        maShowError('Error al iniciar sesión: ' + e.message);
+      });
       window.__fb.onAuthStateChanged(window.__auth, function(user){
         if(user && !window._maInitDone){
           window._maInitDone = true;
@@ -332,6 +341,10 @@ async function maVerify(payload, save){
   if(errEl) errEl.classList.remove('show');
   function denied(){
     if(ldEl) ldEl.classList.remove('show');
+    // Cerrar la sesión de Firebase: sin esto el usuario denegado queda logueado
+    // y cada recarga vuelve a auto-login → denegado (bucle sin salida). Quien no
+    // está en `usuarios` tampoco puede usar los módulos, así que no se pierde nada.
+    try{ window.__fb.signOut().catch(function(){}); }catch(_){}
     maShowLogin();
     maShowError('Acceso denegado para ' + email + '. Contacta al administrador.');
   }

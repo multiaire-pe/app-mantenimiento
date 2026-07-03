@@ -131,7 +131,10 @@ window.MA = (function () {
   try {
     if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
     if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
-    if (!/^\/[^/]*$/.test(location.pathname)) return; // solo apps servidas en la raíz: en subrutas tipo GitHub Pages (/repo/), replaceState('/') cambia la base de los href relativos y rompe la navegación
+    // Solo la raíz o páginas .html servidas en la raíz: en subrutas tipo GitHub
+    // Pages (/repo/ y también /repo sin slash, que redirige a /repo/),
+    // replaceState('/') cambia la base de los href relativos y rompe la navegación.
+    if (location.pathname !== '/' && !/^\/[^/]+\.html?$/i.test(location.pathname)) return;
     if (location.pathname !== '/' || location.search || location.hash) {
       history.replaceState(null, '', '/');
     }
