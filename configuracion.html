@@ -27,8 +27,6 @@ body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height
 /* HEADER */
 header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
 .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;color:#fff}
-.logo span{color:rgba(255,255,255,.5);font-weight:300}
-.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0}
 .back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:8px;white-space:nowrap;margin-left:auto}
 .back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
 .user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative;}
@@ -139,7 +137,6 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 @media(max-width:768px){
   main{padding:20px 16px}
   header{padding:0 12px;height:48px;gap:8px}
-  .logo span{display:none}
   .user-name{display:none}
   .user-pill{padding:2px;border-radius:50%}
   .user-avatar,.user-avatar-init,.user-avatar-img{width:32px;height:32px}
@@ -249,7 +246,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 <body>
 
 <header>
-  <div class="logo"><div class="logo-dot"></div>MultiAire <span>/ Configuración</span></div>
+  <div class="logo">Configuración</div>
   <div style="flex:1"></div>
   <div id="user-pill" class="user-pill" style="display:none" onclick="maOpenAdmin()"></div>
   <a href="index.html" class="back-link">← Inicio</a>
