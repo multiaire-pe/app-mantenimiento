@@ -20,11 +20,10 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;font-size:14px}
 header{background:var(--blue);padding:0 24px;height:56px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
-.logo{display:flex;align-items:center;gap:10px}
-.logo-text{font-weight:700;font-size:17px;letter-spacing:.03em;color:#fff}
-.logo-text span{color:rgba(255,255,255,.5);font-weight:300}
-.logo-plate{background:#fff;border-radius:8px;padding:4px 10px;display:flex;align-items:center;flex-shrink:0}
-.logo-plate img{height:22px;width:auto;display:block}
+.logo{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center}
+.logo-text{font-weight:700;font-size:19px;letter-spacing:.03em;color:#fff}
+.brand{margin-bottom:28px}
+.brand img{height:72px;width:auto;display:block}
 .header-badge{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7);margin-left:auto}
 .live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#4ddd88;margin-right:5px;animation:blink 2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
@@ -91,11 +90,17 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 .role-ADMIN{background:var(--blue-pale);color:var(--blue)}
 .role-SUPERVISOR{background:#f3edfc;color:#7a4bd6}
 .role-TECNICO{background:#f0faf5;color:var(--green)}
+@media(max-width:900px){
+  /* el título centrado es absoluto (fuera del flujo): sin esto, en 769-900px el
+     badge + un nombre largo en el pill pueden pisarlo (hallazgo del Council) */
+  .header-badge{display:none}
+}
 @media(max-width:768px){
   main{padding:20px 16px 36px}
   .grid{grid-template-columns:1fr}
   header{padding:0 16px;gap:8px}
-  .logo-text{display:none}
+  .logo-text{font-size:16px}
+  .brand img{height:56px}
   footer{padding:12px 16px;flex-wrap:wrap}
   .user-pname{display:none}
   .user-pill{padding:2px;border-radius:50%}
@@ -109,8 +114,7 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 <body>
 <header>
   <div class="logo">
-    <div class="logo-plate"><img src="logo-multiaire.png" alt="MultiAire"></div>
-    <div class="logo-text"><span>Panel de Gestión</span></div>
+    <div class="logo-text">Panel de Gestión</div>
   </div>
   <div class="header-badge"><span class="live-dot"></span>Sistema activo</div>
   <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
@@ -126,6 +130,7 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
   </div>
 </div>
 <main id="main-page" style="display:none">
+  <div class="brand"><img src="logo-multiaire.png" alt="MultiAire"></div>
   <div class="section-label">Apps disponibles</div>
   <div class="grid">
     <a class="card active-blue" data-app="inventario" href="inventario_multiaire.html">
