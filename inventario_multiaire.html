@@ -435,6 +435,20 @@ function usb(){const b=document.getElementById('selbar');b.classList.toggle('on'
 function us(){document.getElementById('sTotal').textContent=data.length;document.getElementById('sSedes').textContent=new Set(data.map(r=>r.sede)).size;document.getElementById('sTipos').textContent=new Set(data.map(r=>r.equipo)).size;}
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
+// Sedes válidas del formulario: MAESTROS_TIENDAS activas (cacheado por sesión).
+// La usan openNew, editItem y saveItem (validación) — hallazgo del Council:
+// editar sin haber abierto "Nuevo" dejaba sedesForm vacío.
+async function cargarSedesMaestros(){
+  if(sedesForm.length) return;
+  try{
+    const { getDocs, collection } = window.__fb;
+    const mSnap = await getDocs(collection(window.__db, 'maestros_tiendas'));
+    const tiendas = mSnap.docs.map(d => d.data()).filter(t => String(t.activo).trim().toUpperCase() !== 'NO');
+    sedesForm = [...new Set(tiendas.map(t => t.sede).filter(Boolean))].sort();
+    if (sedesForm.length) dl('dl_sede_form', sedesForm);
+  }catch(e){ /* fallback: dl_sede_form ya trae las sedes de los datos (pf) */ }
+}
+
 async function openNew(){
   if(!MA.can('editar','inventario')){toast('Sin permisos','err');return;}
   editRow=null;
@@ -446,19 +460,13 @@ async function openNew(){
   });
 
   try {
-    // Load maestros (tiendas) + tareas (tipos) in parallel from config
+    // Load sedes (maestros) + tareas (tipos) in parallel from config
     const { getDocs, collection } = window.__fb;
-    const [mSnap, tSnap] = await Promise.all([
-      getDocs(collection(window.__db, 'maestros_tiendas')),
+    const [, tSnap] = await Promise.all([
+      cargarSedesMaestros(),
       getDocs(collection(window.__db, 'tareas_config'))
     ]);
-    const mRes = { tiendas: mSnap.docs.map(d => d.data()) };
     const tRes = { tareas: Object.fromEntries(tSnap.docs.map(d => [d.data().tipo, d.data().tareas])) };
-
-    // Populate sede datalist from MAESTROS_TIENDAS (input con búsqueda)
-    const tiendas = (mRes.tiendas || []).filter(t => String(t.activo).trim().toUpperCase() !== 'NO');
-    sedesForm = [...new Set(tiendas.map(t => t.sede).filter(Boolean))].sort();
-    if (sedesForm.length) dl('dl_sede_form', sedesForm);
 
     // Populate tipo selector from TAREAS_CONFIG + existing data
     const formTipo = document.getElementById('f_equipo');
@@ -479,7 +487,7 @@ async function openNew(){
 
   document.getElementById('mov').classList.add('open');
 }
-function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;document.getElementById('f_equipo').value=r.equipo;document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('mov').classList.add('open');}
+function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;document.getElementById('f_equipo').value=r.equipo;document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('mov').classList.add('open');}
 function cm(){document.getElementById('mov').classList.remove('open');}
 
 async function saveItem(){
@@ -489,6 +497,7 @@ async function saveItem(){
   if(!sede||!desc){toast('Sede y descripción son obligatorios','err');return;}
   // La sede es texto libre con datalist: debe corresponder a una sede real
   // (maestros_tiendas activas o alguna ya usada en el inventario)
+  await cargarSedesMaestros();
   const sedesOk=[...new Set([...sedesForm,...data.map(x=>x.sede).filter(Boolean)])];
   const canon=sedesOk.find(s=>s.toLowerCase()===sede.toLowerCase());
   if(!canon){toast('Sede no válida: elígela de la lista de sugerencias','err');return;}
