@@ -221,7 +221,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 <div class="app">
   <div class="sidebar">
     <div class="sec">Filtros</div>
-    <div class="fg"><div class="fl">Sede</div><select id="fSede" onchange="af()"><option value="">Todas las sedes</option></select></div>
+    <div class="fg"><div class="fl">Sede</div><input type="text" id="fSede" list="dl_sede" placeholder="Todas — escribe para buscar" oninput="af()"><datalist id="dl_sede"></datalist></div>
     <div class="fg"><div class="fl">Tipo de equipo</div><select id="fEquipo" onchange="af()"><option value="">Todos los tipos</option></select></div>
     <div class="fg"><div class="fl">Área</div><select id="fArea" onchange="af()"><option value="">Todas las áreas</option></select></div>
     <div class="fg"><div class="fl">Marca</div><select id="fMarca" onchange="af()"><option value="">Todas las marcas</option></select></div>
@@ -256,7 +256,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
   <div class="modal">
     <h2 id="mtitle">Nuevo equipo</h2>
     <div class="fg2">
-      <div class="fgg"><label>Sede *</label><select id="f_sede"><option value="">Seleccionar sede...</option></select></div>
+      <div class="fgg"><label>Sede *</label><input type="text" id="f_sede" list="dl_sede_form" placeholder="Escribe para buscar la sede..."><datalist id="dl_sede_form"></datalist></div>
       <div class="fgg"><label>Tipo *</label><select id="f_equipo"><option value="">Seleccionar tipo...</option></select></div>
       <div class="fgg full"><label>Descripción *</label><input type="text" id="f_desc" placeholder="Ej: AA Fan Coil 16"></div>
       <div class="fgg full"><label>Área / Ubicación</label><input type="text" id="f_area" placeholder="Ej: Almacén, Azotea..."></div>
@@ -299,7 +299,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 
 <script>
 
-let data=[], filtered=[], selected=new Set(), sortCol='sede', sortAsc=true, editRow=null;
+let data=[], filtered=[], selected=new Set(), sortCol='sede', sortAsc=true, editRow=null, sedesForm=[];
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function gasGet() {
@@ -359,31 +359,8 @@ function setPill(t,m){const el=document.getElementById('pill');el.className='pil
 function pf() {
   const u = f => [...new Set(data.map(r=>r[f]).filter(Boolean))].sort();
 
-  // Build grouped sede options by cliente — for filter AND form
-  const byCliente = {};
-  data.forEach(r => {
-    const c = r.cliente || 'RIPLEY';
-    if (!byCliente[c]) byCliente[c] = new Set();
-    if (r.sede) byCliente[c].add(r.sede);
-  });
-
-  function buildSedeSelect(el, firstLabel) {
-    if (!el) return;
-    el.innerHTML = '<option value="">' + firstLabel + '</option>';
-    Object.keys(byCliente).sort().forEach(cliente => {
-      const grp = document.createElement('optgroup');
-      grp.label = cliente;
-      [...byCliente[cliente]].sort().forEach(sede => {
-        const opt = document.createElement('option');
-        opt.value = sede; opt.textContent = sede;
-        grp.appendChild(opt);
-      });
-      el.appendChild(grp);
-    });
-  }
-
-  buildSedeSelect(document.getElementById('fSede'), 'Todas las sedes');
-  buildSedeSelect(document.getElementById('f_sede'), 'Seleccionar sede...');
+  dl('dl_sede', u('sede'));
+  if (!sedesForm.length) dl('dl_sede_form', u('sede'));  // fallback hasta que openModal cargue maestros
 
   // Tipo — filter select + form select (from existing data + TAREAS config)
   fs('fEquipo', u('equipo'), 'Todos los tipos');
@@ -402,19 +379,30 @@ function pf() {
   fs('ebSede',u('sede'),'Por sede...'); fs('ebTipo',u('equipo'),'Por tipo...');
   dl('dl_marca',u('marca'));
 }
-function fs(id,arr,ph){const el=document.getElementById(id),cur=el.value;el.innerHTML='<option value="">'+ph+'</option>'+arr.map(v=>'<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+'</option>').join('');}
+function fs(id,arr,ph){const el=document.getElementById(id),cur=el.value;const a=(cur&&!arr.includes(cur))?[cur,...arr]:arr;el.innerHTML='<option value="">'+ph+'</option>'+a.map(v=>'<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+'</option>').join('');}
 function dl(id,arr){document.getElementById(id).innerHTML=arr.map(v=>'<option value="'+esc(v)+'">').join('');}
 
 function af() {
-  const sede=document.getElementById('fSede').value, equipo=document.getElementById('fEquipo').value,
+  const sede=document.getElementById('fSede').value.toLowerCase().trim(), equipo=document.getElementById('fEquipo').value,
         area=document.getElementById('fArea').value, marca=document.getElementById('fMarca').value,
         q=document.getElementById('search').value.toLowerCase().trim();
-  filtered=data.filter(r=>{
-    if(sede&&r.sede!==sede)return false; if(equipo&&r.equipo!==equipo)return false;
-    if(area&&r.area!==area)return false; if(marca&&r.marca!==marca)return false;
+  // sede es búsqueda por texto (substring); el resto, igualdad exacta.
+  // skip = campo que se excluye, para calcular las opciones en cascada de ese campo.
+  const pass=(r,skip)=>{
+    if(skip!=='sede'&&sede&&!r.sede.toLowerCase().includes(sede))return false;
+    if(skip!=='equipo'&&equipo&&r.equipo!==equipo)return false;
+    if(skip!=='area'&&area&&r.area!==area)return false;
+    if(skip!=='marca'&&marca&&r.marca!==marca)return false;
     if(q){const h=[r.eq_id,r.descripcion,r.modelo,r.serie,r.sede,r.equipo,r.area,r.marca].join(' ').toLowerCase();if(!h.includes(q))return false;}
     return true;
-  });
+  };
+  filtered=data.filter(r=>pass(r,null));
+  // Filtros en cascada: cada control ofrece solo los valores coherentes con los DEMÁS filtros
+  const opts=f=>[...new Set(data.filter(r=>pass(r,f)).map(r=>r[f]).filter(Boolean))].sort();
+  fs('fEquipo',opts('equipo'),'Todos los tipos');
+  fs('fArea',opts('area'),'Todas las áreas');
+  fs('fMarca',opts('marca'),'Todas las marcas');
+  dl('dl_sede',opts('sede'));
   filtered.sort((a,b)=>{const av=(a[sortCol]||'').toLowerCase(),bv=(b[sortCol]||'').toLowerCase();return sortAsc?av.localeCompare(bv):bv.localeCompare(av);});
   rt(); document.getElementById('cnt').textContent=filtered.length+' equipos';
   document.getElementById('ec1').textContent=filtered.length;
@@ -447,6 +435,20 @@ function usb(){const b=document.getElementById('selbar');b.classList.toggle('on'
 function us(){document.getElementById('sTotal').textContent=data.length;document.getElementById('sSedes').textContent=new Set(data.map(r=>r.sede)).size;document.getElementById('sTipos').textContent=new Set(data.map(r=>r.equipo)).size;}
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
+// Sedes válidas del formulario: MAESTROS_TIENDAS activas (cacheado por sesión).
+// La usan openNew, editItem y saveItem (validación) — hallazgo del Council:
+// editar sin haber abierto "Nuevo" dejaba sedesForm vacío.
+async function cargarSedesMaestros(){
+  if(sedesForm.length) return;
+  try{
+    const { getDocs, collection } = window.__fb;
+    const mSnap = await getDocs(collection(window.__db, 'maestros_tiendas'));
+    const tiendas = mSnap.docs.map(d => d.data()).filter(t => String(t.activo).trim().toUpperCase() !== 'NO');
+    sedesForm = [...new Set(tiendas.map(t => t.sede).filter(Boolean))].sort();
+    if (sedesForm.length) dl('dl_sede_form', sedesForm);
+  }catch(e){ /* fallback: dl_sede_form ya trae las sedes de los datos (pf) */ }
+}
+
 async function openNew(){
   if(!MA.can('editar','inventario')){toast('Sin permisos','err');return;}
   editRow=null;
@@ -458,37 +460,13 @@ async function openNew(){
   });
 
   try {
-    // Load maestros (tiendas) + tareas (tipos) in parallel from config
+    // Load sedes (maestros) + tareas (tipos) in parallel from config
     const { getDocs, collection } = window.__fb;
-    const [mSnap, tSnap] = await Promise.all([
-      getDocs(collection(window.__db, 'maestros_tiendas')),
+    const [, tSnap] = await Promise.all([
+      cargarSedesMaestros(),
       getDocs(collection(window.__db, 'tareas_config'))
     ]);
-    const mRes = { tiendas: mSnap.docs.map(d => d.data()) };
     const tRes = { tareas: Object.fromEntries(tSnap.docs.map(d => [d.data().tipo, d.data().tareas])) };
-
-    // Populate sede selector from MAESTROS_TIENDAS grouped by cliente
-    const formSede = document.getElementById('f_sede');
-    if (formSede) {
-      const tiendas = (mRes.tiendas || []).filter(t => String(t.activo).trim().toUpperCase() !== 'NO');
-      const byCliente = {};
-      tiendas.forEach(t => {
-        const c = t.cliente || 'RIPLEY';
-        if (!byCliente[c]) byCliente[c] = [];
-        byCliente[c].push(t.sede);
-      });
-      formSede.innerHTML = '<option value="">Seleccionar sede...</option>';
-      Object.keys(byCliente).sort().forEach(cliente => {
-        const grp = document.createElement('optgroup');
-        grp.label = cliente;
-        [...new Set(byCliente[cliente])].sort().forEach(sede => {
-          const o = document.createElement('option');
-          o.value = sede; o.textContent = sede;
-          grp.appendChild(o);
-        });
-        formSede.appendChild(grp);
-      });
-    }
 
     // Populate tipo selector from TAREAS_CONFIG + existing data
     const formTipo = document.getElementById('f_equipo');
@@ -509,13 +487,21 @@ async function openNew(){
 
   document.getElementById('mov').classList.add('open');
 }
-function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;document.getElementById('f_equipo').value=r.equipo;document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('mov').classList.add('open');}
+function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;document.getElementById('f_equipo').value=r.equipo;document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('mov').classList.add('open');}
 function cm(){document.getElementById('mov').classList.remove('open');}
 
 async function saveItem(){
   if(!MA.can('editar','inventario')){toast('Sin permisos','err');return;}
-  const sede=document.getElementById('f_sede').value.trim(), desc=document.getElementById('f_desc').value.trim();
+  let sede=document.getElementById('f_sede').value.trim();
+  const desc=document.getElementById('f_desc').value.trim();
   if(!sede||!desc){toast('Sede y descripción son obligatorios','err');return;}
+  // La sede es texto libre con datalist: debe corresponder a una sede real
+  // (maestros_tiendas activas o alguna ya usada en el inventario)
+  await cargarSedesMaestros();
+  const sedesOk=[...new Set([...sedesForm,...data.map(x=>x.sede).filter(Boolean)])];
+  const canon=sedesOk.find(s=>s.toLowerCase()===sede.toLowerCase());
+  if(!canon){toast('Sede no válida: elígela de la lista de sugerencias','err');return;}
+  sede=canon;
   const btn=document.getElementById('sbtn');
   btn.disabled=true;btn.innerHTML='<span class="spin"></span> Guardando...';
   // Auto-generate EQ_ID for new items
@@ -601,7 +587,7 @@ async function genZip(rows){if(!window.JSZip)await ls('https://cdnjs.cloudflare.
 function ls(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
 function dlb(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);}
 function toast(msg,type='ok'){const el=document.getElementById('toast');el.textContent=msg;el.className='toast show '+type;setTimeout(()=>el.classList.remove('show'),3500);}
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 document.addEventListener('change',e=>{if(e.target.name==='esc'){document.querySelectorAll('.eopt').forEach(el=>el.classList.remove('act'));e.target.closest('.eopt').classList.add('act');}});
 
 // sync() inicial eliminado: los datos se cargan tras autenticación (en maVerify),
@@ -612,14 +598,15 @@ function exportPDF() {
   const rows = filtered; // whatever is currently filtered
   if(!rows.length){ toast('Sin equipos en la vista actual','err'); return; }
 
-  // Detect current filters for title
-  const sede = document.getElementById('fSede').value || 'Todas las sedes';
+  // Detect current filters for title — esc(): sede y search son texto libre
+  // del usuario y todo esto se interpola en el HTML del document.write
+  const sede = esc(document.getElementById('fSede').value || 'Todas las sedes');
   const tipo = document.getElementById('fEquipo').value || '';
   const area = document.getElementById('fArea').value || '';
   const marca = document.getElementById('fMarca').value || '';
   const search = document.getElementById('search').value || '';
 
-  const filtroDesc = [tipo, area, marca, search].filter(Boolean).join(' · ') || 'Todos los tipos';
+  const filtroDesc = esc([tipo, area, marca, search].filter(Boolean).join(' · ') || 'Todos los tipos');
   const now = new Date();
   const dateStr = now.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
 
@@ -646,7 +633,7 @@ function exportPDF() {
     secHtml += `
       <div style="margin-bottom:20px;break-inside:avoid">
         <div style="background:#1e3a5f;color:#fff;padding:8px 14px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.05em;display:flex;align-items:center;justify-content:space-between">
-          <span>${tipo}</span>
+          <span>${esc(tipo)}</span>
           <span style="opacity:.7;font-size:11px">${eqs.length} equipo${eqs.length!==1?'s':''}</span>
         </div>
         <table style="width:100%;border-collapse:collapse;border:1px solid #dde;border-top:none;border-radius:0 0 6px 6px;overflow:hidden">
@@ -714,7 +701,7 @@ function exportPDF() {
     ${Object.entries(byTipo).map(([t,e])=>`
     <div style="background:#f8f9fc;border:1px solid #dde;border-radius:8px;padding:10px 16px;text-align:center">
       <div style="font-size:20px;font-weight:900;color:#333">${e.length}</div>
-      <div style="font-size:9px;color:#666;text-transform:uppercase;letter-spacing:.06em">${t}</div>
+      <div style="font-size:9px;color:#666;text-transform:uppercase;letter-spacing:.06em">${esc(t)}</div>
     </div>`).join('')}
   </div>
 
