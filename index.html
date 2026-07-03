@@ -72,14 +72,49 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 .card:nth-child(3){animation-delay:.14s}.card:nth-child(4){animation-delay:.19s}
 .card:nth-child(5){animation-delay:.24s}.card:nth-child(6){animation-delay:.29s}
 @keyframes fadeup{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+/* ── AUTH OVERLAY (mismo scaffold que los módulos) ── */
+#auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:36px 32px;max-width:380px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
+.auth-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px}
+.auth-logo-dot{width:10px;height:10px;border-radius:50%;background:var(--orange)}
+.auth-logo-text{font-weight:700;font-size:20px;color:var(--blue)}
+.auth-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px}
+.auth-sub{font-size:12px;color:var(--muted);margin-bottom:24px;line-height:1.5}
+.auth-err{margin-top:14px;padding:10px 14px;background:#fdeef0;border:1px solid #f2c6cc;border-radius:8px;font-size:12px;color:#d63344;display:none;line-height:1.5;text-align:left}
+.auth-err.show{display:block}
+.auth-loading{font-size:12px;color:var(--muted);margin-top:10px;display:none}
+.auth-loading.show{display:block}
+/* ── USER PILL ── */
+.user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative}
+.user-pill:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.1)}
+.user-avatar-init{width:26px;height:26px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.user-avatar-img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.user-pname{font-size:11px;color:rgba(255,255,255,.85);font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1.5px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);min-width:200px;overflow:hidden;z-index:999;cursor:default}
+.user-menu.open{display:block}
+.user-menu-head{padding:10px 14px 6px;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.user-menu-item{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;color:var(--text);cursor:pointer;background:none;border:none;width:100%;text-align:left;font-family:var(--font);transition:background .15s}
+.user-menu-item:hover{background:var(--bg)}
+.user-menu-item.danger{color:#d63344}
+.user-menu-item.danger:hover{background:#fdeef0}
+.user-menu-div{height:1px;background:var(--border);margin:4px 0}
+.role-badge{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700}
+.role-SUPER_ADMIN{background:var(--orange-pale);color:var(--orange-dark)}
+.role-ADMIN{background:var(--blue-pale);color:var(--blue)}
+.role-SUPERVISOR{background:#f3edfc;color:#7a4bd6}
+.role-TECNICO{background:#f0faf5;color:var(--green)}
 @media(max-width:768px){
   main{padding:20px 16px 36px}
   .hero{padding:20px 18px}
   .hero h1{font-size:20px}
   .grid{grid-template-columns:1fr}
-  header{padding:0 16px}
+  header{padding:0 16px;gap:8px}
   .infobar{gap:16px}
   footer{padding:12px 16px;flex-wrap:wrap}
+  .user-pname{display:none}
+  .user-pill{padding:2px;border-radius:50%}
+  .user-avatar-init,.user-avatar-img{width:32px;height:32px}
+  .auth-card{padding:24px 14px}
 }
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
@@ -92,8 +127,19 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
     <div class="logo-text">MultiAire <span>/ Gestión</span></div>
   </div>
   <div class="header-badge"><span class="live-dot"></span>Sistema activo</div>
+  <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
 </header>
-<main>
+<div id="auth-overlay" style="display:none">
+  <div class="auth-card">
+    <div class="auth-logo"><div class="auth-logo-dot"></div><div class="auth-logo-text">MultiAire</div></div>
+    <div class="auth-title">Panel de Gestión</div>
+    <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada para entrar al panel.</div>
+    <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="auth-loading" id="auth-loading"></div>
+  </div>
+</div>
+<main id="main-page" style="display:none">
   <div class="hero">
     <div class="hero-label">Panel principal · MultiAire</div>
     <h1>Bienvenido al <span class="hero-orange">sistema</span><br>de gestión</h1>
@@ -101,67 +147,68 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
   </div>
   <div class="section-label">Apps disponibles</div>
   <div class="grid">
-    <a class="card active-blue" href="inventario_multiaire.html">
+    <a class="card active-blue" data-app="inventario" href="inventario_multiaire.html">
       <div class="card-icon-wrap icon-blue">📦</div>
       <div class="card-title">Inv. Equipos <span class="card-tag tag-blue">ACTIVA</span></div>
       <div class="card-desc">Gestiona el inventario de equipos de aire acondicionado por sede. Agrega, edita y filtra equipos en tiempo real.</div>
-      <div class="card-footer"><span class="card-meta">inventario_multiaire.html</span><span class="card-arrow">→</span></div>
+      <div class="card-footer"><span class="card-meta">inventario</span><span class="card-arrow">→</span></div>
     </a>
-    <a class="card active-orange" href="mantenimiento_multiaire.html">
+    <a class="card active-orange" data-app="mantenimiento" href="mantenimiento_multiaire.html">
       <div class="card-icon-wrap icon-orange">🔧</div>
       <div class="card-title">Mantenimiento <span class="card-tag tag-orange">ACTIVA</span></div>
       <div class="card-desc">Registra y gestiona tareas de mantenimiento preventivo y correctivo por equipo. Guarda historial de intervenciones.</div>
-      <div class="card-footer"><span class="card-meta">mantenimiento_multiaire.html</span><span class="card-arrow">→</span></div>
+      <div class="card-footer"><span class="card-meta">mantenimiento</span><span class="card-arrow">→</span></div>
     </a>
-    <a class="card active-blue" href="itinerario.html">
+    <a class="card active-blue" data-app="itinerario" href="itinerario.html">
       <div class="card-icon-wrap icon-blue">🗓️</div>
       <div class="card-title">Itinerario <span class="card-tag tag-blue">ACTIVA</span></div>
       <div class="card-desc">Planifica y gestiona los itinerarios diarios del equipo técnico por tienda y tipo de trabajo.</div>
-      <div class="card-footer"><span class="card-meta">itinerario.html</span><span class="card-arrow">→</span></div>
+      <div class="card-footer"><span class="card-meta">itinerario</span><span class="card-arrow">→</span></div>
     </a>
-    <a id="card-insumos" class="card active-blue" href="insumos.html">
+    <a id="card-insumos" class="card active-blue" data-app="insumos" href="insumos.html">
       <div class="card-icon-wrap icon-blue">🧰</div>
       <div class="card-title">Insumos <span class="card-tag tag-blue">ACTIVA</span></div>
       <div class="card-desc">Controla el stock central de insumos y herramientas. Registra entradas, salidas y transferencias entre sedes con historial completo.</div>
-      <div class="card-footer"><span class="card-meta">insumos.html</span><span class="card-arrow">→</span></div>
+      <div class="card-footer"><span class="card-meta">insumos</span><span class="card-arrow">→</span></div>
     </a>
-    <a id="card-asistencia" class="card active-blue" href="asistencia_multiaire.html">
+    <a id="card-asistencia" class="card active-blue" data-app="asistencia" href="asistencia_multiaire.html">
       <div class="card-icon-wrap icon-blue">🕐</div>
       <div class="card-title">Asistencia <span class="card-tag tag-blue">ACTIVA</span></div>
       <div class="card-desc">Registra entradas y salidas de colaboradores. Vista del día en tiempo real, historial filtrable y gestión del equipo.</div>
-      <div class="card-footer"><span class="card-meta">asistencia_multiaire.html</span><span class="card-arrow">→</span></div>
+      <div class="card-footer"><span class="card-meta">asistencia</span><span class="card-arrow">→</span></div>
     </a>
-    <a id="card-comprobantes" class="card active-blue" href="comprobantes.html">
+    <a id="card-comprobantes" class="card active-blue" data-app="comprobantes" href="comprobantes.html">
       <div class="card-icon-wrap icon-blue">🧾</div>
       <div class="card-title">Rendición de Caja <span class="card-tag tag-blue">ACTIVA</span></div>
       <div class="card-desc">Fotografía facturas y boletas, extrae los datos automáticamente con IA (Gemini) y exporta a Excel.</div>
-      <div class="card-footer"><span class="card-meta">comprobantes.html</span><span class="card-arrow">→</span></div>
+      <div class="card-footer"><span class="card-meta">comprobantes</span><span class="card-arrow">→</span></div>
     </a>
-    <a id="card-proveedores" class="card active-blue" href="proveedores.html">
+    <a id="card-proveedores" class="card active-blue" data-app="proveedores" href="proveedores.html">
       <div class="card-icon-wrap icon-blue">🏢</div>
       <div class="card-title">Proveedores <span class="card-tag tag-blue">ACTIVA</span></div>
       <div class="card-desc">Directorio de proveedores: RUC, razón social, rubro, contacto y condiciones de pago. Búsqueda, alta/edición y exportación a Excel.</div>
-      <div class="card-footer"><span class="card-meta">proveedores.html</span><span class="card-arrow">→</span></div>
+      <div class="card-footer"><span class="card-meta">proveedores</span><span class="card-arrow">→</span></div>
     </a>
-    <a id="card-observaciones" class="card active-blue" href="observaciones.html">
+    <a id="card-observaciones" class="card active-blue" data-app="observaciones" href="observaciones.html">
       <div class="card-icon-wrap icon-blue">📋</div>
       <div class="card-title">Observaciones <span class="card-tag tag-blue">ACTIVA</span></div>
       <div class="card-desc">Manta de observaciones de mantenimiento (Ripley): hallazgos por tienda y equipo, con estado, foto y exportación a Excel/PDF.</div>
-      <div class="card-footer"><span class="card-meta">observaciones.html</span><span class="card-arrow">→</span></div>
+      <div class="card-footer"><span class="card-meta">observaciones</span><span class="card-arrow">→</span></div>
     </a>
-    <a id="card-personal" class="card active-blue" href="personal.html">
+    <a id="card-personal" class="card active-blue" data-app="personal" href="personal.html">
       <div class="card-icon-wrap icon-blue">👥</div>
       <div class="card-title">Personal <span class="card-tag tag-blue">ACTIVA</span></div>
       <div class="card-desc">Expediente del personal: identidad, contacto multi-país (teléfonos y correos), datos laborales y operativos de cada colaborador. Búsqueda y exportación.</div>
-      <div class="card-footer"><span class="card-meta">personal.html</span><span class="card-arrow">→</span></div>
+      <div class="card-footer"><span class="card-meta">personal</span><span class="card-arrow">→</span></div>
     </a>
-    <a class="card active-orange" href="configuracion.html">
+    <a class="card active-orange" data-app="configuracion" href="configuracion.html">
       <div class="card-icon-wrap icon-orange">⚙️</div>
       <div class="card-title">Configuración <span class="card-tag tag-orange">ACTIVA</span></div>
       <div class="card-desc">Gestiona tareas de mantenimiento por equipo, tiempos, pesos y permisos del sistema.</div>
-      <div class="card-footer"><span class="card-meta">configuracion.html</span><span class="card-arrow">→</span></div>
+      <div class="card-footer"><span class="card-meta">configuracion</span><span class="card-arrow">→</span></div>
     </a>
   </div>
+  <div id="grid-empty" style="display:none;background:var(--surface);border:1.5px dashed var(--border);border-radius:12px;padding:32px;text-align:center;color:var(--muted);font-size:13px;margin-bottom:36px">Tu usuario aún no tiene apps asignadas. Contacta al administrador para que te habilite el acceso.</div>
   <div class="section-label">Información del sistema</div>
   <div class="infobar">
     <div class="info-item"><span class="info-key">Repositorio</span><span class="info-val"><a href="https://github.com/marchenaangulojoseluis-dev/app-mantenimiento" target="_blank">GitHub →</a></span></div>
@@ -178,6 +225,11 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
   <span class="footer-logo">Sistema de Gestión de Equipos</span>
   <span class="footer-time" id="clock">—</span>
 </footer>
+<script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleString('es-PE',{weekday:'short',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
 tick();setInterval(tick,1000);
@@ -195,6 +247,191 @@ if(!isDev){
     tag.className='card-tag tag-gray';
   });
 }
+
+// ── FIREBASE / AUTH ───────────────────────────────────────────────────────────
+// Mismo scaffold que los módulos (ver proveedores.html). El panel de apps exige
+// login ANTES de mostrar las tarjetas; como la sesión de Firebase persiste en el
+// dominio, entrar a cualquier módulo después ya no vuelve a pedir login.
+// (A los super admins del sistema los fuerza MA.setUser — no se duplica aquí.)
+let db = null;
+try{
+  firebase.initializeApp(window.__firebaseConfig);
+  db            = firebase.firestore();
+  window.__auth = firebase.auth();
+  window.__prov = new firebase.auth.GoogleAuthProvider();
+  // Selector de cuenta siempre: sin esto, tras un "Acceso denegado" Google
+  // reutiliza la misma cuenta en silencio y no se puede probar con otra.
+  window.__prov.setCustomParameters({prompt: 'select_account'});
+  window.__fb   = {
+    onAuthStateChanged: (auth, cb) => firebase.auth().onAuthStateChanged(cb),
+    signInWithPopup:    (auth, prov) => firebase.auth().signInWithPopup(prov),
+    signOut:            () => firebase.auth().signOut(),
+  };
+}catch(e){
+  // CDN de Firebase bloqueado/caído: sin auth no hay panel — avisar en vez de
+  // dejar header y footer solos sin explicación.
+  maShowOverlay();
+  maShowError('No se pudo cargar el sistema de autenticación (' + e.message + '). Revisa tu conexión e intenta de nuevo.');
+}
+
+let maUser = null;
+
+(function(){
+  function waitForFirebase(){
+    if(window.__auth && window.__fb){
+      // Si venimos de un signInWithRedirect fallido (fallback de popup bloqueado),
+      // el error solo se entera aquí — sin esto se volvería al login sin causa visible.
+      window.__auth.getRedirectResult().catch(function(e){
+        maShowLogin();
+        maShowError('Error al iniciar sesión: ' + e.message);
+      });
+      window.__fb.onAuthStateChanged(window.__auth, function(user){
+        if(user && !window._maInitDone){
+          window._maInitDone = true;
+          maVerify({email:user.email, name:user.displayName, picture:user.photoURL}, true);
+        } else if(!user && !window._maInitDone){
+          window._maInitDone = true;
+          maShowLogin();
+        }
+      });
+    } else { setTimeout(waitForFirebase, 50); }
+  }
+  if(db) waitForFirebase();
+})();
+
+function maShowOverlay(){
+  var ov = document.getElementById('auth-overlay');
+  if(ov){ ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+}
+function maShowError(msg){
+  var errEl = document.getElementById('auth-err');
+  if(errEl){ errEl.textContent = msg; errEl.classList.add('show'); }
+}
+function maShowLogin(){
+  maShowOverlay();
+  var btn = document.getElementById('g-btn');
+  if(btn){ btn.innerHTML = '<button onclick="maFirebaseSignIn()" style="display:flex;align-items:center;gap:10px;padding:10px 20px;border:1.5px solid #d0daf0;border-radius:8px;background:#fff;font-family:IBM Plex Sans,sans-serif;font-size:14px;cursor:pointer;font-weight:500"><img src=\'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg\' width=18>Continuar con Google</button>'; }
+}
+
+async function maFirebaseSignIn(){
+  try{
+    const result = await window.__fb.signInWithPopup(window.__auth, window.__prov);
+    maVerify({email:result.user.email, name:result.user.displayName, picture:result.user.photoURL}, true);
+  }catch(e){
+    if(e && e.code === 'auth/popup-blocked'){
+      // Brave bloquea el popup (nota 2026-06-21 en CLAUDE.md): caer al flujo por
+      // redirect; al volver del redirect, onAuthStateChanged retoma solo.
+      try{ await firebase.auth().signInWithRedirect(window.__prov); return; }
+      catch(e2){ e = e2; }
+    }
+    maShowError('Error al iniciar sesión: ' + e.message);
+  }
+}
+
+async function maVerify(payload, save){
+  var email = (payload.email || '').toLowerCase();
+  var ldEl  = document.getElementById('auth-loading');
+  var errEl = document.getElementById('auth-err');
+  // Overlay SIN botón mientras se verifica: con el botón activo un clic durante
+  // el roundtrip a Firestore dispararía un segundo popup en paralelo.
+  maShowOverlay();
+  var btn = document.getElementById('g-btn');
+  if(btn) btn.innerHTML = '';
+  if(ldEl){ ldEl.textContent = 'Verificando acceso...'; ldEl.classList.add('show'); }
+  if(errEl) errEl.classList.remove('show');
+  function denied(){
+    if(ldEl) ldEl.classList.remove('show');
+    // Cerrar la sesión de Firebase: sin esto el usuario denegado queda logueado
+    // y cada recarga vuelve a auto-login → denegado (bucle sin salida). Quien no
+    // está en `usuarios` tampoco puede usar los módulos, así que no se pierde nada.
+    try{ window.__fb.signOut().catch(function(){}); }catch(_){}
+    maShowLogin();
+    maShowError('Acceso denegado para ' + email + '. Contacta al administrador.');
+  }
+  try{
+    const snap = await db.collection('usuarios').doc(email).get();
+    var fsData;
+    if(snap.exists){ fsData = snap.data(); }
+    else if(MA.isSystemSuper(email)){ fsData = { rol: 'SUPER_ADMIN', apps: [] }; } // garantía: el super del sistema entra aunque su doc no exista
+    else { denied(); return; }
+    maUser = {
+      email,
+      ...fsData,
+      name:    payload.name    || fsData.nombre  || fsData.name || email,
+      picture: payload.picture || fsData.picture || '',
+      apps:    fsData.apps     || [],
+    };
+    MA.setUser(maUser); // política de roles centralizada (fuerza SUPER_ADMIN a los supers del sistema)
+    if(save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
+    if(ldEl) ldEl.classList.remove('show');
+    document.getElementById('auth-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    document.getElementById('main-page').style.display = 'block';
+    renderUserPill();
+    applyCardAccess();
+  }catch(e){
+    if(ldEl) ldEl.classList.remove('show');
+    // firestore.rules: un logueado SIN alta en `usuarios` no puede leer su propio
+    // doc (permission-denied) — es "no estás dado de alta", no un error técnico.
+    if(e && e.code === 'permission-denied'){ denied(); return; }
+    maShowLogin();
+    maShowError('Error: ' + e.message);
+  }
+}
+
+// Tarjetas según el gate REAL de cada módulo (auth-guard.js como única fuente):
+// entrada por apps[] (canEnter), salvo los módulos con gate propio más estricto.
+// Fail-closed: una card sin data-app conocido no se muestra.
+var CARD_GATES = {
+  configuracion: function(){ return MA.can('config'); },               // solo SUPER_ADMIN (gate interno de configuracion.html)
+  comprobantes:  function(){ return MA.can('editar','comprobantes'); } // TECNICO no entra (gate de entrada de comprobantes.html)
+};
+function applyCardAccess(){
+  var visibles = 0;
+  document.querySelectorAll('.grid .card').forEach(function(c){
+    var app = c.getAttribute('data-app');
+    var ok  = !!app && (CARD_GATES[app] ? CARD_GATES[app]() : MA.canEnter(app));
+    c.style.display = ok ? '' : 'none';
+    if(ok) visibles++;
+  });
+  var empty = document.getElementById('grid-empty');
+  if(empty) empty.style.display = visibles ? 'none' : 'block';
+}
+
+function esc(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderUserPill(){
+  const pill = document.getElementById('user-pill');
+  if(!pill || !maUser) return;
+  const n    = maUser.name || maUser.email; // ya normalizado en maVerify
+  const init = n.split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase();
+  const avatar = maUser.picture
+    ? `<img class="user-avatar-img" src="${esc(maUser.picture)}">`
+    : `<div class="user-avatar-init">${esc(init)}</div>`;
+  const rol = MA.rol(); // rol efectivo (sin rol en el doc → 'USUARIO', fail-closed)
+  pill.innerHTML = avatar
+    + `<span class="user-pname">${esc(n)}</span>`
+    + `<div class="user-menu" id="user-menu">`
+    + `<div class="user-menu-head">${esc(maUser.email)} <span class="role-badge role-${esc(rol)}">${esc(rol.replace('_',' '))}</span></div>`
+    + `<div class="user-menu-div"></div>`
+    + `<button class="user-menu-item danger" onclick="maSignOut()">→ Cerrar sesión</button>`
+    + `</div>`;
+  pill.style.display = 'flex';
+}
+function toggleUserMenu(){
+  const m = document.getElementById('user-menu');
+  if(m) m.classList.toggle('open');
+}
+function maSignOut(){
+  firebase.auth().signOut().then(() => { sessionStorage.removeItem('ma_user'); location.reload(); });
+}
+document.addEventListener('click', e => {
+  const pill = document.getElementById('user-pill');
+  const menu = document.getElementById('user-menu');
+  if(menu && pill && !pill.contains(e.target)) menu.classList.remove('open');
+});
 </script>
 </body>
 </html>
