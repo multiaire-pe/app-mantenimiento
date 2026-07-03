@@ -23,17 +23,12 @@ header{background:var(--blue);padding:0 24px;height:56px;display:flex;align-item
 .logo{display:flex;align-items:center;gap:10px}
 .logo-text{font-weight:700;font-size:17px;letter-spacing:.03em;color:#fff}
 .logo-text span{color:rgba(255,255,255,.5);font-weight:300}
-.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0}
+.logo-plate{background:#fff;border-radius:8px;padding:4px 10px;display:flex;align-items:center;flex-shrink:0}
+.logo-plate img{height:22px;width:auto;display:block}
 .header-badge{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.7);margin-left:auto}
 .live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#4ddd88;margin-right:5px;animation:blink 2s infinite}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 main{flex:1;padding:36px 24px 48px;max-width:960px;width:100%;margin:0 auto}
-.hero{margin-bottom:36px;padding:28px 32px;background:var(--blue);border-radius:16px;position:relative;overflow:hidden;box-shadow:var(--shadow-lg)}
-.hero::before{content:'';position:absolute;right:-40px;top:-40px;width:220px;height:220px;border-radius:50%;background:rgba(244,121,32,.18);pointer-events:none}
-.hero-label{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.55);letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px}
-.hero h1{font-size:26px;font-weight:700;color:#fff;letter-spacing:-.02em;line-height:1.2;margin-bottom:6px}
-.hero p{color:rgba(255,255,255,.65);font-size:13px;line-height:1.6;max-width:420px}
-.hero-orange{color:var(--orange)}
 .section-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:12px}
 .section-label::after{content:'';flex:1;height:1px;background:var(--border)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;margin-bottom:36px}
@@ -58,12 +53,6 @@ main{flex:1;padding:36px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 .card-meta{font-family:var(--mono);font-size:10px;color:var(--muted)}
 .card-arrow{font-size:16px;color:var(--muted);transition:transform .2s,color .2s}
 .card:hover:not(.soon) .card-arrow{transform:translateX(5px);color:var(--blue)}
-.infobar{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:16px 20px;display:flex;gap:28px;flex-wrap:wrap;box-shadow:var(--shadow)}
-.info-item{display:flex;flex-direction:column;gap:4px}
-.info-key{font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
-.info-val{font-size:12px;color:var(--text);font-weight:500}
-.info-val a{color:var(--blue);text-decoration:none;font-weight:600}
-.info-val a:hover{text-decoration:underline}
 footer{border-top:1px solid var(--border);background:var(--surface);padding:14px 24px;display:flex;align-items:center;gap:12px}
 .footer-logo{font-family:var(--mono);font-size:11px;color:var(--muted)}
 .footer-time{font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:auto}
@@ -75,9 +64,8 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 /* ── AUTH OVERLAY (mismo scaffold que los módulos) ── */
 #auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
 .auth-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:36px 32px;max-width:380px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
-.auth-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px}
-.auth-logo-dot{width:10px;height:10px;border-radius:50%;background:var(--orange)}
-.auth-logo-text{font-weight:700;font-size:20px;color:var(--blue)}
+.auth-logo{display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.auth-logo img{height:52px;width:auto}
 .auth-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px}
 .auth-sub{font-size:12px;color:var(--muted);margin-bottom:24px;line-height:1.5}
 .auth-err{margin-top:14px;padding:10px 14px;background:#fdeef0;border:1px solid #f2c6cc;border-radius:8px;font-size:12px;color:#d63344;display:none;line-height:1.5;text-align:left}
@@ -105,11 +93,9 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 .role-TECNICO{background:#f0faf5;color:var(--green)}
 @media(max-width:768px){
   main{padding:20px 16px 36px}
-  .hero{padding:20px 18px}
-  .hero h1{font-size:20px}
   .grid{grid-template-columns:1fr}
   header{padding:0 16px;gap:8px}
-  .infobar{gap:16px}
+  .logo-text{display:none}
   footer{padding:12px 16px;flex-wrap:wrap}
   .user-pname{display:none}
   .user-pill{padding:2px;border-radius:50%}
@@ -123,15 +109,15 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 <body>
 <header>
   <div class="logo">
-    <div class="logo-dot"></div>
-    <div class="logo-text">MultiAire <span>/ Gestión</span></div>
+    <div class="logo-plate"><img src="logo-multiaire.png" alt="MultiAire"></div>
+    <div class="logo-text"><span>Panel de Gestión</span></div>
   </div>
   <div class="header-badge"><span class="live-dot"></span>Sistema activo</div>
   <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
 </header>
 <div id="auth-overlay" style="display:none">
   <div class="auth-card">
-    <div class="auth-logo"><div class="auth-logo-dot"></div><div class="auth-logo-text">MultiAire</div></div>
+    <div class="auth-logo"><img src="logo-multiaire.png" alt="MultiAire"></div>
     <div class="auth-title">Panel de Gestión</div>
     <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada para entrar al panel.</div>
     <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
@@ -140,11 +126,6 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
   </div>
 </div>
 <main id="main-page" style="display:none">
-  <div class="hero">
-    <div class="hero-label">Panel principal · MultiAire</div>
-    <h1>Bienvenido al <span class="hero-orange">sistema</span><br>de gestión</h1>
-    <p>Selecciona una aplicación para comenzar. Todas las apps se sincronizan con Firebase en tiempo real.</p>
-  </div>
   <div class="section-label">Apps disponibles</div>
   <div class="grid">
     <a class="card active-blue" data-app="inventario" href="inventario_multiaire.html">
@@ -209,20 +190,13 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
     </a>
   </div>
   <div id="grid-empty" style="display:none;background:var(--surface);border:1.5px dashed var(--border);border-radius:12px;padding:32px;text-align:center;color:var(--muted);font-size:13px;margin-bottom:36px">Tu usuario aún no tiene apps asignadas. Contacta al administrador para que te habilite el acceso.</div>
-  <div class="section-label">Información del sistema</div>
-  <div class="infobar">
-    <div class="info-item"><span class="info-key">Repositorio</span><span class="info-val"><a href="https://github.com/marchenaangulojoseluis-dev/app-mantenimiento" target="_blank">GitHub →</a></span></div>
-    <div class="info-item"><span class="info-key">Versión</span><span class="info-val" id="info-version">3.3.0</span></div>
-    <div class="info-item"><span class="info-key">Backend</span><span class="info-val">Firebase Firestore</span></div>
-    <div class="info-item"><span class="info-key">Entorno</span><span class="info-val" id="info-entorno">Producción</span></div>
-    <div class="info-item"><span class="info-key">Empresa</span><span class="info-val">MultiAire</span></div>
-    <div class="info-item"><span class="info-key">Desarrollador</span><span class="info-val">José Luis Marchena</span></div>
-  </div>
 </main>
 <footer>
   <span class="footer-logo">MultiAire © 2026</span>
   <span class="footer-logo" style="opacity:.5">·</span>
   <span class="footer-logo">Sistema de Gestión de Equipos</span>
+  <span class="footer-logo" style="opacity:.5">·</span>
+  <span class="footer-logo" id="footer-ver">v3.3.0</span>
   <span class="footer-time" id="clock">—</span>
 </footer>
 <script src="firebase-config.js"></script>
@@ -234,7 +208,7 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleString('es-PE',{weekday:'short',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}
 tick();setInterval(tick,1000);
 var isDev=location.hostname.includes('develop')||location.hostname==='localhost';
-if(isDev){document.getElementById('info-version').textContent='3.3.0-dev';document.getElementById('info-entorno').textContent=location.hostname==='localhost'?'Local':'Develop';}
+if(isDev){document.getElementById('footer-ver').textContent='v3.3.0-dev · '+(location.hostname==='localhost'?'Local':'Develop');}
 if(!isDev){
   // Cards deshabilitadas en producción (vacío = todas activas). Insumos activado 2026-06-06.
   [].forEach(function(id){
