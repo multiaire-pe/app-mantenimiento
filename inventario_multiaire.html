@@ -309,6 +309,9 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 <script>
 
 let data=[], filtered=[], selected=new Set(), sortCol='sede', sortAsc=true, editRow=null, sedesForm=[];
+// sede canónica → cliente (maestros pisa a datos): al guardar, el cliente se
+// deriva de la sede elegida en vez de hardcodear RIPLEY (hallazgo del Council)
+const sedeCliente={};
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function gasGet() {
@@ -424,6 +427,7 @@ function pf() {
 
   sddGroups.fSede = sddGrupos(data.map(r=>({cliente:r.cliente, sede:r.sede})));
   if (!sedesForm.length) sddGroups.f_sede = sddGroups.fSede;  // fallback hasta que se carguen maestros
+  data.forEach(r=>{ if(r.sede && !(r.sede in sedeCliente)) sedeCliente[r.sede]=r.cliente||'RIPLEY'; });
 
   // Tipo — filter select + form select (from existing data + TAREAS config)
   fs('fEquipo', u('equipo'), 'Todos los tipos');
@@ -509,6 +513,7 @@ async function cargarSedesMaestros(){
     const tiendas = mSnap.docs.map(d => d.data()).filter(t => String(t.activo).trim().toUpperCase() !== 'NO');
     sedesForm = [...new Set(tiendas.map(t => t.sede).filter(Boolean))].sort();
     if (sedesForm.length) sddGroups.f_sede = sddGrupos(tiendas.map(t=>({cliente:t.cliente, sede:t.sede})));
+    tiendas.forEach(t=>{ if(t.sede) sedeCliente[t.sede]=t.cliente||'RIPLEY'; });  // maestros pisa a datos
   }catch(e){ /* fallback: el dropdown del form ya trae las sedes de los datos (pf) */ }
 }
 
@@ -570,7 +575,7 @@ async function saveItem(){
   // Auto-generate EQ_ID for new items
   const SEDE_MAP={'ATOCONGO':'ATO','CHORRILLOS':'CHO','COMAS':'COM','JOCKEY PLAZA':'JOC','LOS OLIVOS':'LOL','MAC PLAZA NORTE':'MAC','MIRAFLORES':'MIR','PLAZA NORTE':'PLN','PRIMAVERA':'PRI','SAN JUAN DE LURIGANCHO':'SJL','SAN MIGUEL':'SMI','SANTA ANITA':'SAN'};
   const TIPO_MAP={'CHILLER':'CHI','CORTINA DE AIRE':'CAI','ESCALERA':'ESC','EXTRACTOR':'EXT','FAN COIL':'FAN','INYECTOR':'INY','PAQUETE':'RFT','SPLIT CONSOLA':'SPL','SPLIT DUCTO':'SDU','SPLIT DECORATIVO':'SDC','TVR MINI PLUS':'TVR','UMA':'UMA','UNIDAD CONDENSADOR':'UCO','UNIDAD EVAPORADORA':'UEV'};
-  const cliente_val='RIPLEY';
+  const cliente_val=sedeCliente[sede]||'RIPLEY';
   const row=['',sede,cliente_val,document.getElementById('f_equipo').value.trim(),desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim()];
   try{
     if(editRow!==null){
