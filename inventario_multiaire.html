@@ -42,6 +42,14 @@ header{background:#1B3F8B;border-bottom:none;padding:0 24px;height:52px;display:
 .sec{padding:12px 14px 6px;font-size:10px;font-weight:700;letter-spacing:.1em;color:#1B3F8B;text-transform:uppercase}
 .fg{padding:0 8px 8px}
 .fl{font-size:10px;color:var(--muted);padding:4px 6px 2px}
+/* Dropdown de sedes agrupado por cliente (reemplaza al datalist, que no agrupa) */
+.sdd-wrap{position:relative}
+.sdd{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(27,63,139,.18);max-height:240px;overflow:auto;z-index:60}
+.sdd.open{display:block}
+.sdd-g{padding:7px 10px 3px;font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;position:sticky;top:0;background:#fff}
+.sdd-i{padding:7px 12px;font-size:12px;color:var(--accent);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sdd-i:hover{background:var(--blue-pale)}
+.sdd-empty{padding:8px 12px;font-size:11px;color:var(--muted)}
 select,input[type=text]{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:12px;padding:6px 8px;border-radius:4px;outline:none;appearance:none}
 select:focus,input:focus{border-color:var(--muted2)}
 option{background:#fff}
@@ -166,6 +174,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
   .stats{display:none}                  /* las stats (Equipos/Sedes/Tipos) sacaban la página de pantalla; el conteo ya sale en la toolbar */
   .app{flex-direction:column;height:auto}                 /* sidebar arriba, tabla abajo a todo el ancho */
   .sidebar{width:100%;min-width:0;max-height:280px;border-right:none;border-bottom:1.5px solid var(--border)}
+  .sdd{max-height:170px}  /* el sidebar móvil mide 280px: que el dropdown no lo desborde */
   .main{overflow:visible}
   .toolbar{flex-wrap:wrap}
   .toolbar input{max-width:none;flex:1 1 100%}
@@ -221,7 +230,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 <div class="app">
   <div class="sidebar">
     <div class="sec">Filtros</div>
-    <div class="fg"><div class="fl">Sede</div><input type="text" id="fSede" list="dl_sede" placeholder="Todas — escribe para buscar" oninput="af()"><datalist id="dl_sede"></datalist></div>
+    <div class="fg"><div class="fl">Sede</div><div class="sdd-wrap"><input type="text" id="fSede" placeholder="Todas — escribe para buscar" autocomplete="off" oninput="af()"><div class="sdd" id="dd_fSede"></div></div></div>
     <div class="fg"><div class="fl">Tipo de equipo</div><select id="fEquipo" onchange="af()"><option value="">Todos los tipos</option></select></div>
     <div class="fg"><div class="fl">Área</div><select id="fArea" onchange="af()"><option value="">Todas las áreas</option></select></div>
     <div class="fg"><div class="fl">Marca</div><select id="fMarca" onchange="af()"><option value="">Todas las marcas</option></select></div>
@@ -256,7 +265,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
   <div class="modal">
     <h2 id="mtitle">Nuevo equipo</h2>
     <div class="fg2">
-      <div class="fgg"><label>Sede *</label><input type="text" id="f_sede" list="dl_sede_form" placeholder="Escribe para buscar la sede..."><datalist id="dl_sede_form"></datalist></div>
+      <div class="fgg"><label>Sede *</label><div class="sdd-wrap"><input type="text" id="f_sede" placeholder="Escribe para buscar la sede..." autocomplete="off"><div class="sdd" id="dd_f_sede"></div></div></div>
       <div class="fgg"><label>Tipo *</label><select id="f_equipo"><option value="">Seleccionar tipo...</option></select></div>
       <div class="fgg full"><label>Descripción *</label><input type="text" id="f_desc" placeholder="Ej: AA Fan Coil 16"></div>
       <div class="fgg full"><label>Área / Ubicación</label><input type="text" id="f_area" placeholder="Ej: Almacén, Azotea..."></div>
@@ -373,12 +382,48 @@ async function sync() {
 
 function setPill(t,m){const el=document.getElementById('pill');el.className='pill '+t;el.textContent=m;}
 
+// ── SEDE DROPDOWN (agrupado por cliente, con búsqueda) ────────────────────────
+// El datalist nativo no agrupa: dropdown propio que muestra las sedes bajo el
+// encabezado de su cliente y filtra por el texto tipeado (sin tildes).
+const sddGroups = { fSede: [], f_sede: [] };
+function sddGrupos(pares){
+  const gm={};
+  pares.forEach(p=>{ if(!p.sede) return; const c=p.cliente||'RIPLEY'; (gm[c]=gm[c]||new Set()).add(p.sede); });
+  return Object.keys(gm).sort().map(c=>({cliente:c, sedes:[...gm[c]].sort()}));
+}
+function sddInit(inputId, onPick){
+  const inp=document.getElementById(inputId), dd=document.getElementById('dd_'+inputId);
+  const norm=s=>String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  function render(){
+    const q=norm(inp.value.trim());
+    const grupos=(sddGroups[inputId]||[])
+      .map(g=>({cliente:g.cliente, sedes:g.sedes.filter(s=>!q||norm(s).includes(q))}))
+      .filter(g=>g.sedes.length);
+    dd.innerHTML = grupos.length
+      ? grupos.map(g=>'<div class="sdd-g">'+esc(g.cliente)+'</div>'+g.sedes.map(s=>'<div class="sdd-i">'+esc(s)+'</div>').join('')).join('')
+      : '<div class="sdd-empty">Sin coincidencias</div>';
+  }
+  const open=()=>{render();dd.classList.add('open');};
+  inp.addEventListener('focus',open);
+  inp.addEventListener('input',open);           // el oninput inline (af) corre antes
+  inp.addEventListener('keydown',e=>{if(e.key==='Escape'||e.key==='Enter')dd.classList.remove('open');});
+  dd.addEventListener('pointerdown',e=>e.preventDefault());  // no robar el foco del input
+  dd.addEventListener('click',e=>{
+    const it=e.target.closest('.sdd-i'); if(!it) return;
+    inp.value=it.textContent; dd.classList.remove('open');
+    if(onPick) onPick();
+  });
+  document.addEventListener('click',e=>{ if(e.target!==inp&&!dd.contains(e.target)) dd.classList.remove('open'); });
+}
+sddInit('fSede', af);      // al elegir sede en el filtro, re-filtra
+sddInit('f_sede', null);   // en el formulario solo fija el valor
+
 // ── FILTERS ───────────────────────────────────────────────────────────────────
 function pf() {
   const u = f => [...new Set(data.map(r=>r[f]).filter(Boolean))].sort();
 
-  dl('dl_sede', u('sede'));
-  if (!sedesForm.length) dl('dl_sede_form', u('sede'));  // fallback hasta que openModal cargue maestros
+  sddGroups.fSede = sddGrupos(data.map(r=>({cliente:r.cliente, sede:r.sede})));
+  if (!sedesForm.length) sddGroups.f_sede = sddGroups.fSede;  // fallback hasta que se carguen maestros
 
   // Tipo — filter select + form select (from existing data + TAREAS config)
   fs('fEquipo', u('equipo'), 'Todos los tipos');
@@ -420,7 +465,7 @@ function af() {
   fs('fEquipo',opts('equipo'),'Todos los tipos');
   fs('fArea',opts('area'),'Todas las áreas');
   fs('fMarca',opts('marca'),'Todas las marcas');
-  dl('dl_sede',opts('sede'));
+  sddGroups.fSede = sddGrupos(data.filter(r=>pass(r,'sede')).map(r=>({cliente:r.cliente, sede:r.sede})));
   filtered.sort((a,b)=>{const av=(a[sortCol]||'').toLowerCase(),bv=(b[sortCol]||'').toLowerCase();return sortAsc?av.localeCompare(bv):bv.localeCompare(av);});
   rt(); document.getElementById('cnt').textContent=filtered.length+' equipos';
   document.getElementById('ec1').textContent=filtered.length;
@@ -463,8 +508,8 @@ async function cargarSedesMaestros(){
     const mSnap = await getDocs(collection(window.__db, 'maestros_tiendas'));
     const tiendas = mSnap.docs.map(d => d.data()).filter(t => String(t.activo).trim().toUpperCase() !== 'NO');
     sedesForm = [...new Set(tiendas.map(t => t.sede).filter(Boolean))].sort();
-    if (sedesForm.length) dl('dl_sede_form', sedesForm);
-  }catch(e){ /* fallback: dl_sede_form ya trae las sedes de los datos (pf) */ }
+    if (sedesForm.length) sddGroups.f_sede = sddGrupos(tiendas.map(t=>({cliente:t.cliente, sede:t.sede})));
+  }catch(e){ /* fallback: el dropdown del form ya trae las sedes de los datos (pf) */ }
 }
 
 async function openNew(){
