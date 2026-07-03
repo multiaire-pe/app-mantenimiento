@@ -94,6 +94,9 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
   /* el título centrado es absoluto (fuera del flujo): sin esto, en 769-900px el
      badge + un nombre largo en el pill pueden pisarlo (hallazgo del Council) */
   .header-badge{display:none}
+  /* el margin-left:auto que empuja a la derecha vive en el badge: al ocultarlo,
+     el pill caía a la izquierda y su menú (right:0) se abría fuera de pantalla */
+  .user-pill{margin-left:auto}
 }
 @media(max-width:768px){
   main{padding:20px 16px 36px}
