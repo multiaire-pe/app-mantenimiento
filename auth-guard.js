@@ -118,3 +118,22 @@ window.MA = (function () {
     ROLES: ROLES, SUPER_ADMIN_EMAIL: SUPER_ADMIN_EMAIL, SUPER_ADMIN_EMAILS: SUPER_ADMIN_EMAILS
   };
 })();
+
+// ── Máscara de URL (decisión de UX 2026-07-02) ────────────────────────────────
+// La barra de direcciones muestra siempre SOLO el dominio (app.multiaire.com.pe),
+// sin /pagina.html. Es cosmético, NO seguridad (cada módulo mantiene su gate de
+// auth + firestore.rules). Consecuencias asumidas: F5, Adelante, duplicar pestaña
+// y restaurar sesión dentro de un módulo vuelven al índice. Los deep-links SÍ
+// abren (la máscara reescribe después de cargar la página), solo que no se pueden
+// copiar de la barra. Se omite en localhost para no estorbar el desarrollo local.
+// Revertir = borrar este bloque.
+(function () {
+  try {
+    if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') return;
+    if (!/^\/[^/]*$/.test(location.pathname)) return; // solo apps servidas en la raíz: en subrutas tipo GitHub Pages (/repo/), replaceState('/') cambia la base de los href relativos y rompe la navegación
+    if (location.pathname !== '/' || location.search || location.hash) {
+      history.replaceState(null, '', '/');
+    }
+  } catch (e) { /* sin history API (iframe sandbox): se deja la URL tal cual */ }
+})();
