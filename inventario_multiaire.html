@@ -578,7 +578,7 @@ async function genZip(rows){if(!window.JSZip)await ls('https://cdnjs.cloudflare.
 function ls(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
 function dlb(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);}
 function toast(msg,type='ok'){const el=document.getElementById('toast');el.textContent=msg;el.className='toast show '+type;setTimeout(()=>el.classList.remove('show'),3500);}
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 document.addEventListener('change',e=>{if(e.target.name==='esc'){document.querySelectorAll('.eopt').forEach(el=>el.classList.remove('act'));e.target.closest('.eopt').classList.add('act');}});
 
 // sync() inicial eliminado: los datos se cargan tras autenticación (en maVerify),
@@ -589,14 +589,15 @@ function exportPDF() {
   const rows = filtered; // whatever is currently filtered
   if(!rows.length){ toast('Sin equipos en la vista actual','err'); return; }
 
-  // Detect current filters for title
-  const sede = document.getElementById('fSede').value || 'Todas las sedes';
+  // Detect current filters for title — esc(): sede y search son texto libre
+  // del usuario y todo esto se interpola en el HTML del document.write
+  const sede = esc(document.getElementById('fSede').value || 'Todas las sedes');
   const tipo = document.getElementById('fEquipo').value || '';
   const area = document.getElementById('fArea').value || '';
   const marca = document.getElementById('fMarca').value || '';
   const search = document.getElementById('search').value || '';
 
-  const filtroDesc = [tipo, area, marca, search].filter(Boolean).join(' · ') || 'Todos los tipos';
+  const filtroDesc = esc([tipo, area, marca, search].filter(Boolean).join(' · ') || 'Todos los tipos');
   const now = new Date();
   const dateStr = now.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
 
@@ -623,7 +624,7 @@ function exportPDF() {
     secHtml += `
       <div style="margin-bottom:20px;break-inside:avoid">
         <div style="background:#1e3a5f;color:#fff;padding:8px 14px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.05em;display:flex;align-items:center;justify-content:space-between">
-          <span>${tipo}</span>
+          <span>${esc(tipo)}</span>
           <span style="opacity:.7;font-size:11px">${eqs.length} equipo${eqs.length!==1?'s':''}</span>
         </div>
         <table style="width:100%;border-collapse:collapse;border:1px solid #dde;border-top:none;border-radius:0 0 6px 6px;overflow:hidden">
@@ -691,7 +692,7 @@ function exportPDF() {
     ${Object.entries(byTipo).map(([t,e])=>`
     <div style="background:#f8f9fc;border:1px solid #dde;border-radius:8px;padding:10px 16px;text-align:center">
       <div style="font-size:20px;font-weight:900;color:#333">${e.length}</div>
-      <div style="font-size:9px;color:#666;text-transform:uppercase;letter-spacing:.06em">${t}</div>
+      <div style="font-size:9px;color:#666;text-transform:uppercase;letter-spacing:.06em">${esc(t)}</div>
     </div>`).join('')}
   </div>
 
