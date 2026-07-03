@@ -25,10 +25,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height
 
 /* ── HEADER ───────────────────────────────────────────────────────────────── */
 header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
-.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);flex-shrink:0;animation:blink 2.5s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 .logo{font-weight:700;font-size:16px;letter-spacing:.03em;color:#fff;display:flex;align-items:center;gap:8px}
-.logo span{color:rgba(255,255,255,.5);font-weight:300}
 .hpill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
 .hpill.ok{color:#4ddd88;border-color:rgba(77,221,136,.4)}
 .hpill.loading{color:#ffd866;border-color:rgba(255,216,102,.4)}
@@ -154,7 +151,6 @@ tr:hover td{background:var(--surface2)}
 @media(max-width:768px){
   header{padding:0 12px;height:52px;gap:8px}
   .logo{font-size:14px}
-  .logo span{display:none}
   .hpill{display:none}
   .hactions{gap:6px}
   .user-pname{display:none}
@@ -174,8 +170,7 @@ tr:hover td{background:var(--surface2)}
 <body>
 
 <header>
-  <div class="logo-dot"></div>
-  <div class="logo">MultiAire <span>/ Observaciones</span></div>
+  <div class="logo">Observaciones</div>
   <div class="hpill loading" id="conn-pill">⟳ Conectando...</div>
   <div class="hactions">
     <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>

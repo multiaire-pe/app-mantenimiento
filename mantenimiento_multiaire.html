@@ -30,7 +30,6 @@ body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height
 /* HEADER */
 header{background:#1B3F8B;border-bottom:none;padding:0 20px;height:56px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
 .logo{font-weight:700;font-size:16px;letter-spacing:.03em;color:#fff;display:flex;align-items:center;gap:8px}
-.logo span{color:rgba(255,255,255,.5);font-weight:300}
 .hpill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
 .hpill.ok{color:#4ddd88;border-color:rgba(77,221,136,.4)}
 .hactions{margin-left:auto;display:flex;gap:8px;align-items:center}
@@ -213,7 +212,6 @@ option{background:#fff}
   header{padding:0 8px;gap:6px}
   .hpill{display:none}              /* la pill "Conectado · 557 equipos" no cabe en el header móvil */
   .hdr-lbl{display:none}            /* export icon-only: 📤 / 📄 sin texto en móvil */
-  .logo span{display:none}
   .user-name{display:none}
   header .user-pill{padding:2px;border-radius:50%}                                  /* prefijo header: gana a la regla base que está más abajo en el CSS */
   header .user-avatar,header .user-avatar-init,header .user-avatar-img{width:32px;height:32px}
@@ -319,7 +317,7 @@ option{background:#fff}
 
 <header>
   <button class="mob-menu" onclick="toggleSidebar()">☰</button>
-  <div class="logo"><div style="width:8px;height:8px;border-radius:50%;background:#F47920;flex-shrink:0"></div>MultiAire <span>/ Mantenimiento</span></div>
+  <div class="logo">Mantenimiento</div>
   <div class="hpill" id="connPill">⟳ Conectando...</div>
   <div class="saving" id="savingInd"><div class="spin"></div> <span class="hdr-lbl">Guardando...</span></div>
   <div style="flex:1"></div>
