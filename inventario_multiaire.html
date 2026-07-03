@@ -312,9 +312,27 @@ async function gasGet() {
   });
 }
 
+// Create-only: transacción que FALLA si el eq_id ya existe. Sin esto, dos
+// usuarios creando un equipo de la misma sede+tipo a la vez (o con datos
+// locales desactualizados) generaban el mismo eq_id y el segundo pisaba al
+// primero en silencio (setDoc sobreescribe).
+async function crearEquipoUnico(row) {
+  const equipo = {
+    eq_id: row[0], sede: row[1], cliente: row[2]||'RIPLEY',
+    tipo: row[3], nombre: row[4], area: row[5],
+    marca: row[6], modelo: row[7], serie: row[8]||''
+  };
+  const ref = window.__db.collection('inventario').doc(equipo.eq_id);
+  await window.__db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (snap.exists) { const e = new Error('eq_id ya existe'); e.code = 'eqid-exists'; throw e; }
+    tx.set(ref, equipo);
+  });
+}
+
 async function gasPost(body) {
   const { setDoc, deleteDoc, doc } = window.__fb;
-  if (body.action === 'save' || body.action === 'update') {
+  if (body.action === 'update') {
     const row = body.row;
     const equipo = {
       eq_id: row[0], sede: row[1], cliente: row[2]||'RIPLEY',
@@ -507,20 +525,33 @@ async function saveItem(){
   // Auto-generate EQ_ID for new items
   const SEDE_MAP={'ATOCONGO':'ATO','CHORRILLOS':'CHO','COMAS':'COM','JOCKEY PLAZA':'JOC','LOS OLIVOS':'LOL','MAC PLAZA NORTE':'MAC','MIRAFLORES':'MIR','PLAZA NORTE':'PLN','PRIMAVERA':'PRI','SAN JUAN DE LURIGANCHO':'SJL','SAN MIGUEL':'SMI','SANTA ANITA':'SAN'};
   const TIPO_MAP={'CHILLER':'CHI','CORTINA DE AIRE':'CAI','ESCALERA':'ESC','EXTRACTOR':'EXT','FAN COIL':'FAN','INYECTOR':'INY','PAQUETE':'RFT','SPLIT CONSOLA':'SPL','SPLIT DUCTO':'SDU','SPLIT DECORATIVO':'SDC','TVR MINI PLUS':'TVR','UMA':'UMA','UNIDAD CONDENSADOR':'UCO','UNIDAD EVAPORADORA':'UEV'};
-  let eq_id = '';
-  if(!editRow){
-    const equipo_val=document.getElementById('f_equipo').value.trim().toUpperCase();
-    const s=SEDE_MAP[sede.toUpperCase()]||sede.toUpperCase().substring(0,3);
-    const t=TIPO_MAP[equipo_val]||equipo_val.substring(0,3);
-    const existing=data.filter(x=>(SEDE_MAP[x.sede.toUpperCase()]||x.sede.toUpperCase().substring(0,3))===s&&(TIPO_MAP[x.equipo.toUpperCase()]||x.equipo.toUpperCase().substring(0,3))===t);
-    eq_id='MA-'+s+'-'+t+'-'+String(existing.length+1).padStart(3,'0');
-  } else {
-    eq_id=data.find(x=>x.row===editRow)?.eq_id||'';
-  }
-  const cliente_val='RIPLEY';const row=[eq_id,sede,cliente_val,document.getElementById('f_equipo').value.trim(),desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim()];
+  const cliente_val='RIPLEY';
+  const row=['',sede,cliente_val,document.getElementById('f_equipo').value.trim(),desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim()];
   try{
-    if(editRow!==null){await gasPost({action:'update',rowNum:editRow,row:row});toast('Equipo actualizado ✓','ok');}
-    else{await gasPost({action:'save',row:row});toast('Equipo agregado ✓','ok');}
+    if(editRow!==null){
+      row[0]=data.find(x=>x.row===editRow)?.eq_id||'';
+      await gasPost({action:'update',rowNum:editRow,row:row});toast('Equipo actualizado ✓','ok');
+    } else {
+      const equipo_val=document.getElementById('f_equipo').value.trim().toUpperCase();
+      const s=SEDE_MAP[sede.toUpperCase()]||sede.toUpperCase().substring(0,3);
+      const t=TIPO_MAP[equipo_val]||equipo_val.substring(0,3);
+      // Correlativo por MÁXIMO del prefijo, no por conteo: con huecos por
+      // eliminaciones, conteo+1 podía repetir un código vivo (ej: quedan 001 y
+      // 003 → conteo 2 → generaba 003, pisando al existente).
+      const pref='MA-'+s+'-'+t+'-';
+      const nums=data.filter(x=>x.eq_id.startsWith(pref)).map(x=>parseInt(x.eq_id.slice(pref.length),10)).filter(Number.isFinite);
+      let n=(nums.length?Math.max(...nums):0)+1;
+      // La reserva real es la transacción create-only: si el código ya existe
+      // en Firestore (otro usuario, datos locales viejos), prueba el siguiente.
+      let creado=false;
+      for(let i=0;i<20&&!creado;i++,n++){
+        row[0]=pref+String(n).padStart(3,'0');
+        try{ await crearEquipoUnico(row); creado=true; }
+        catch(err){ if(err?.code!=='eqid-exists') throw err; }
+      }
+      if(!creado) throw new Error('No se pudo reservar un código único; recarga (⟳) e intenta de nuevo');
+      toast('Equipo agregado ✓ ('+row[0]+')','ok');
+    }
     cm();await sync();
   }catch(e){toast('Error: '+e.message,'err');}
   finally{btn.disabled=false;btn.textContent=editRow?'Guardar cambios':'Guardar';}
