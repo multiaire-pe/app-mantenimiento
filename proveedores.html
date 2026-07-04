@@ -388,7 +388,7 @@ tr:hover td{background:var(--surface2)}
       <tbody id="det-top-body"><tr><td colspan="4" class="empty-msg" style="padding:14px">Sin compras registradas.</td></tr></tbody>
     </table></div>
     <div style="text-align:right;margin-bottom:16px">
-      <button class="btn btn-sm" onclick="openHistorial()">🕘 Ver historial completo</button>
+      <button class="btn btn-sm" id="det-btn-historial" onclick="openHistorial()" style="display:none">🕘 Ver historial completo</button>
     </div>
 
     <input type="hidden" id="det-id">
@@ -807,8 +807,8 @@ async function removeProveedor(id){
     : '';
   if(!confirm(`¿Eliminar al proveedor "${p?.razonSocial || ''}"?${aviso}\nEsta acción no se puede deshacer.`)) return;
   try{
-    await db.collection('proveedores').doc(id).delete();
     if(compras.length) await COMPRAS.eliminarPorProveedor(db, id);
+    await db.collection('proveedores').doc(id).delete();
     proveedores = proveedores.filter(x => x.id !== id);
     closeModal('modal-prov');
     closeModal('modal-prov-detalle');
@@ -885,6 +885,7 @@ async function openProvDetalle(id){
   const admin = isProvAdmin();
   document.getElementById('det-btn-editar').style.display    = admin ? 'inline-flex' : 'none';
   document.getElementById('det-btn-registrar').style.display = admin ? 'inline-flex' : 'none';
+  document.getElementById('det-btn-historial').style.display = admin ? 'inline-flex' : 'none';
   document.getElementById('det-btn-del').style.display        = MA.can('borrar') ? 'inline-flex' : 'none';
   document.getElementById('modal-prov-detalle').classList.add('open');
   await refreshDetalleIndicadores(id);
@@ -920,6 +921,7 @@ function editarDesdeDetalle(){
 
 // ── HISTORIAL COMPLETO ──────────────────────────────────────────────────────────
 async function openHistorial(){
+  if(!isProvAdmin()){ toast('Sin permisos', 'err'); return; }
   const id = _detProvId;
   if(!id) return;
   const p = proveedores.find(x => x.id === id);
