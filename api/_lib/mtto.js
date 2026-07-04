@@ -14,6 +14,16 @@ const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0
 // mantenimiento/mtto/preventivo — lookahead en vez de \b por las tildes del español
 export const RE_MTTO = /(mantenimientos?|mtto\.?|preventiv[oa]s?)(?![a-z])/i;
 
+// Intención de REGISTRO (no solo mencionar la palabra): exige verbo de registro o que el
+// mensaje EMPIECE con la intención — "después del mantenimiento preventivo quedó con fuga"
+// debe seguir yendo a observaciones (hallazgo del Council).
+export function esIntencionMtto(texto) {
+  const t = norm(texto);
+  if (!RE_MTTO.test(t)) return false;
+  if (/(registr|hice|realic|complet|termin|marcar|actividades)/.test(t)) return true;
+  return /^\s*(mantenimiento|mtto|preventiv)/.test(t);
+}
+
 // saludo/menú "en frío" (sin sesión): despliega las 3 opciones
 export function esSaludo(texto) {
   return /^(hola|buenas(\s+(dias|tardes|noches))?|buenos\s+dias|menu|inicio|ayuda|hey)[\s!.,?]*$/.test(norm(texto).trim());
@@ -129,7 +139,7 @@ async function guardarFoto(ses, tecnico, imagenB64, mime) {
 
 // ── Motor del flujo ───────────────────────────────────────────────────────────
 // Devuelve el texto de respuesta (o null). El webhook lo envía.
-export async function manejarMtto({ tecnico, from, texto, imagenB64, mime }) {
+export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWriteStart }) {
   const t = norm(texto).trim();
   let ses = await getSesion(from);
 
@@ -170,6 +180,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime }) {
 
   if (ses.fase === 'CONFIRMA') {
     if (/^(si|sí|s|ok|dale|confirmo|confirmar)[\s!.]*$/.test(t)) {
+      if (onWriteStart) onWriteStart();   // idempotencia: de aquí en adelante no reprocesar
       await guardarRegistro(ses, tecnico);
       ses.fase = 'FOTOS';
       ses.fotoPos = 0;
@@ -185,6 +196,10 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime }) {
 
   if (ses.fase === 'FOTOS') {
     if (imagenB64) {
+      if (imagenB64.length > 900 * 1024) {   // margen bajo el límite de 1MB por doc (convención del bot)
+        return '📷 Esa foto es muy pesada para guardarla. Reenvíala como *foto normal* (no como documento/HD).';
+      }
+      if (onWriteStart) onWriteStart();   // idempotencia: la foto se escribe una sola vez
       await guardarFoto(ses, tecnico, imagenB64, mime);
       ses.fotos += 1;
       await guardarSesion(from, ses);

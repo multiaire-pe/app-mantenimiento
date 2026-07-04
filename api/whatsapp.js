@@ -155,7 +155,8 @@ async function procesarMensaje(msg) {
       return;
     }
     if (flujo === 'mtto') {
-      const resp = await manejarMtto({ tecnico, from: msg.from, texto, imagenB64, mime });
+      const resp = await manejarMtto({ tecnico, from: msg.from, texto, imagenB64, mime,
+        onWriteStart: () => { escrituraIniciada = true; } });
       if (resp) await enviarTexto(msg.from, resp);
       return;
     }

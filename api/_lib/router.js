@@ -12,13 +12,19 @@ import { getSesion as getSesionAsist } from './asistencia_sesiones.js';
 import { getSesion as getSesionObs } from './sesiones.js';
 import { getSesion as getSesionMtto } from './mtto_sesiones.js';
 import { RE_ASISTENCIA } from './asistencia.js';
-import { RE_MTTO, esSaludo } from './mtto.js';
+import { esIntencionMtto, esSaludo } from './mtto.js';
 
 // Flujos: 'asistencia' | 'mtto' | 'observaciones' | 'menu' (saludo en frío) |
 // 'hint-obs' / 'hint-asistencia' (elección 2/3 del menú: instrucción sin sesión).
 export async function decidirFlujo({ from, tipo, texto }) {
   if (await getSesionAsist(from)) return 'asistencia';
-  if (await getSesionMtto(from)) return 'mtto';
+  const sesMtto = await getSesionMtto(from);
+  if (sesMtto) {
+    // En FOTOS el registro YA está guardado: un marcaje urgente (texto o ubicación)
+    // no debe quedar atrapado en el pedido de fotos (hallazgo del Council).
+    if (sesMtto.fase === 'FOTOS' && ((texto && RE_ASISTENCIA.test(texto)) || tipo === 'location')) return 'asistencia';
+    return 'mtto';
+  }
   if (await getSesionObs(from)) return 'observaciones';
   if (tipo === 'location') return 'asistencia';
   const t = (texto || '').trim();
@@ -27,6 +33,6 @@ export async function decidirFlujo({ from, tipo, texto }) {
   if (t === '3') return 'hint-asistencia';
   if (texto && esSaludo(texto)) return 'menu';
   if (texto && RE_ASISTENCIA.test(texto)) return 'asistencia';
-  if (texto && RE_MTTO.test(texto)) return 'mtto';
+  if (texto && esIntencionMtto(texto)) return 'mtto';
   return 'observaciones';
 }
