@@ -21,6 +21,7 @@ import { descargarMedia } from './_lib/media.js';
 import { notificarSupervisores } from './_lib/avisos.js';
 import { decidirFlujo } from './_lib/router.js';
 import { manejarAsistencia } from './_lib/asistencia.js';
+import { manejarMtto, MENU_TEXTO } from './_lib/mtto.js';
 
 // Necesitamos el body CRUDO (bytes exactos) para validar la firma HMAC → desactivamos
 // el parser automático de Vercel.
@@ -141,6 +142,24 @@ async function procesarMensaje(msg) {
 
     // ¿Este mensaje es de asistencia (marcaje) o de observaciones?
     const flujo = await decidirFlujo({ from: msg.from, tipo: msg.type, texto });
+    if (flujo === 'menu') {
+      await enviarTexto(msg.from, MENU_TEXTO);
+      return;
+    }
+    if (flujo === 'hint-obs') {
+      await enviarTexto(msg.from, '📝 Descríbeme la observación: *sede*, *equipo* y el problema (puedes adjuntar una foto). Ej: "fuga de gas en el rooftop 6 de megaplaza".');
+      return;
+    }
+    if (flujo === 'hint-asistencia') {
+      await enviarTexto(msg.from, '🕐 Para marcar, escribe *entrada* o *salida* y comparte tu *ubicación* 📍 (y tu selfie si te la pido).');
+      return;
+    }
+    if (flujo === 'mtto') {
+      const resp = await manejarMtto({ tecnico, from: msg.from, texto, imagenB64, mime,
+        onWriteStart: () => { escrituraIniciada = true; } });
+      if (resp) await enviarTexto(msg.from, resp);
+      return;
+    }
     if (flujo === 'asistencia') {
       const resp = await manejarAsistencia({ tecnico, from: msg.from, texto, ubicacion, imagenB64, mime });
       if (resp) await enviarTexto(msg.from, resp);
