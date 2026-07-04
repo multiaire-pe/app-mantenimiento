@@ -10,12 +10,23 @@
 //   5) por defecto → observaciones.
 import { getSesion as getSesionAsist } from './asistencia_sesiones.js';
 import { getSesion as getSesionObs } from './sesiones.js';
+import { getSesion as getSesionMtto } from './mtto_sesiones.js';
 import { RE_ASISTENCIA } from './asistencia.js';
+import { RE_MTTO, esSaludo } from './mtto.js';
 
+// Flujos: 'asistencia' | 'mtto' | 'observaciones' | 'menu' (saludo en frío) |
+// 'hint-obs' / 'hint-asistencia' (elección 2/3 del menú: instrucción sin sesión).
 export async function decidirFlujo({ from, tipo, texto }) {
   if (await getSesionAsist(from)) return 'asistencia';
+  if (await getSesionMtto(from)) return 'mtto';
   if (await getSesionObs(from)) return 'observaciones';
   if (tipo === 'location') return 'asistencia';
+  const t = (texto || '').trim();
+  if (t === '1') return 'mtto';            // elección del menú (sin sesión viva)
+  if (t === '2') return 'hint-obs';
+  if (t === '3') return 'hint-asistencia';
+  if (texto && esSaludo(texto)) return 'menu';
   if (texto && RE_ASISTENCIA.test(texto)) return 'asistencia';
+  if (texto && RE_MTTO.test(texto)) return 'mtto';
   return 'observaciones';
 }
