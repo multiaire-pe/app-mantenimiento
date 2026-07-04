@@ -470,6 +470,12 @@ function actividadesDe(eq){
 // Por EQUIPO edita el override (mtto_actividades_equipo — canWrite mantenimiento).
 let _acts = null;  // estado del editor
 const _actEsc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// cita un valor para un onclick inline: JSON para JS + escape para el atributo
+const _jsq = v => _actEsc(JSON.stringify(String(v??'')));
+// parse tolerante: campo string JSON u objeto; corrupto → {} (no tumbar la vista entera)
+function _safeObj(val){ if(!val) return {}; if(typeof val==='object') return val; try{ return JSON.parse(val)||{}; }catch(e){ return {}; } }
+// solo data-URLs de imagen van a un src
+const _fotoSrc = v => /^data:image\/(jpeg|png|webp|gif);base64,/.test(String(v||'')) ? v : '';
 
 function openActsEditor(){
   if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); return; }
@@ -629,8 +635,9 @@ async function renderFotosTarea(){
     const puedeBorrar = MA.can('editar','mantenimiento');
     cont.innerHTML = snap.docs.length ? snap.docs.map(d => {
       const r = d.data();
+      const _src = _fotoSrc(r.foto); if(!_src) return '';
       return '<div style="position:relative">'
-        + '<img src="'+r.foto+'" style="width:100%;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer" onclick="ftLightbox(this.src)">'
+        + '<img src="'+_actEsc(_src)+'" style="width:100%;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer" onclick="ftLightbox(this.src)">'
         + (puedeBorrar ? '<button onclick="ftBorrar(\''+d.id+'\')" style="position:absolute;top:4px;right:4px;background:rgba(200,30,50,.85);color:#fff;border:none;border-radius:6px;width:22px;height:22px;cursor:pointer;font-size:11px">✕</button>' : '')
         + '</div>';
     }).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px">Sin fotos de esta actividad.</div>';
@@ -690,8 +697,7 @@ async function openHistorialEq(eqId){
       const r = d.data();
       const [sede, periodo, anio] = (r.clave || d.id).split('|');
       if(sede !== eq.sede) return;
-      const sel = typeof r.seleccionados==='string' ? JSON.parse(r.seleccionados||'{}') : (r.seleccionados||{});
-      const ts  = typeof r.tareaStatus==='string' ? JSON.parse(r.tareaStatus||'{}') : (r.tareaStatus||{});
+      const sel = _safeObj(r.seleccionados), ts = _safeObj(r.tareaStatus);
       if(!sel[eqId] && !ts[eqId]) return;
       const st = ts[eqId] || {};
       const done = (typeof st === 'boolean') ? (st ? nTareas : 0) : Object.values(st).filter(v=>v===true).length;
@@ -703,7 +709,7 @@ async function openHistorialEq(eqId){
       const em = f.done >= nTareas && nTareas ? '🟢' : f.done > 0 ? '🟡' : '🔴';
       return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px">'
         + '<span>'+em+'</span>'
-        + '<div style="flex:1"><div style="font-size:12px;font-weight:700">'+f.periodo+' '+f.anio+'</div>'
+        + '<div style="flex:1"><div style="font-size:12px;font-weight:700">'+_actEsc(f.periodo)+' '+f.anio+'</div>'
         + '<div style="font-size:10px;color:var(--muted2)">'+f.done+'/'+nTareas+' actividades'+(f.fotos?' · 📷 '+f.fotos:'')+'</div></div>'
         + '<span style="font-size:12px;font-weight:700;color:'+(pct===100?'var(--green,#0a4)':pct>0?'#cc8800':'var(--red,#c33)')+'">'+pct+'%</span></div>';
     }).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px">Sin intervenciones registradas para este equipo.</div>';
@@ -731,8 +737,7 @@ async function renderGlobal(){
     docs.forEach(d => {
       const r = d.data();
       const sede = (r.clave || d.id).split('|')[0];
-      const sel = typeof r.seleccionados==='string' ? JSON.parse(r.seleccionados||'{}') : (r.seleccionados||{});
-      const ts  = typeof r.tareaStatus==='string' ? JSON.parse(r.tareaStatus||'{}') : (r.tareaStatus||{});
+      const sel = _safeObj(r.seleccionados), ts = _safeObj(r.tareaStatus);
       const ids = Object.keys(sel).filter(k => sel[k]);
       if(!ids.length) return;
       let g=0,y=0,rr=0;
@@ -744,7 +749,7 @@ async function renderGlobal(){
       });
       const tot = ids.length, pct = tot ? Math.round(100*g/tot) : 0;
       html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'
-        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:700;flex:1">'+sede+'</span>'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:700;flex:1">'+_actEsc(sede)+'</span>'
         + '<span style="font-size:12px;font-weight:700;color:'+(pct===100?'var(--green,#0a4)':pct>0?'#cc8800':'var(--red,#c33)')+'">'+pct+'%</span></div>'
         + '<div style="font-size:11px;color:var(--muted2)">'+tot+' equipos · 🟢 '+g+' · 🟡 '+y+' · 🔴 '+rr+'</div></div>';
     });
@@ -1043,7 +1048,7 @@ function renderEquipo(eq, tareas) {
         <input type="checkbox" class="tarea-cb" ${done?'checked':''} onchange="toggleTarea('${eq.eq_id}',${i},this.checked)">
         <span class="tarea-label">${_actEsc(t)}</span>
         ${peso}
-        <button type="button" class="btn-foto mant-edit-ok" onclick="event.preventDefault();event.stopPropagation();openFotosTarea('${eq.eq_id}',${i})" title="Fotos de esta actividad">📷<span class="fc-badge" data-fc="${eq.eq_id}|${i}" style="display:none"></span></button>
+        <button type="button" class="btn-foto mant-edit-ok" onclick="event.preventDefault();event.stopPropagation();openFotosTarea(${_jsq(eq.eq_id)},${i})" title="Fotos de esta actividad">📷<span class="fc-badge" data-fc="${_actEsc(eq.eq_id)}|${i}" style="display:none"></span></button>
       </label>`;
     }).join('') + `</div>`;
   }
@@ -1061,7 +1066,7 @@ function renderEquipo(eq, tareas) {
       <div class="equipo-row">
         <div class="semaforo ${sem} eq-semaforo">${semEmoji}</div>
         <span class="eq-id">${eq.eq_id}</span>
-        <div style="flex:1;cursor:pointer" onclick="openHistorialEq('${eq.eq_id}')" title="Ver historial de intervenciones">
+        <div style="flex:1;cursor:pointer" onclick="openHistorialEq(${_jsq(eq.eq_id)})" title="Ver historial de intervenciones">
           <div class="eq-name">${eq.nombre}</div>
           <div class="eq-area">${eq.area||''} ${eq.marca?'· '+eq.marca:''}</div>
         </div>
@@ -1074,6 +1079,8 @@ function renderEquipo(eq, tareas) {
 function getSemaforo(eq, tareas) {
   if(!tareas) return 'red';
   const statusMap = tareaStatus[eq.eq_id] || {};
+  if(statusMap === true) return 'green';   // equipos solo-marcar: estado booleano
+  if(typeof statusMap !== 'object') return 'red';
   const done = tareas.filter((_,i) => statusMap[i]===true).length;
   if(done === 0) return 'red';
   if(done === tareas.length) return 'green';
@@ -1341,6 +1348,8 @@ function getPct(eq) {
   if(!tareas) return 0;
   const mins = _a.minutos;
   const statusMap = tareaStatus[eq.eq_id] || {};
+  if(statusMap === true) return 100;       // equipos solo-marcar: estado booleano
+  if(typeof statusMap !== 'object') return 0;
   if(mins && mins.length) {
     // Weighted by minutes
     const totalMins = mins.reduce((a,b) => a+b, 0);
