@@ -753,7 +753,7 @@ async function renderGlobal(){
         + '<span style="font-size:12px;font-weight:700;color:'+(pct===100?'var(--green,#0a4)':pct>0?'#cc8800':'var(--red,#c33)')+'">'+pct+'%</span></div>'
         + '<div style="font-size:11px;color:var(--muted2)">'+tot+' equipos · 🟢 '+g+' · 🟡 '+y+' · 🔴 '+rr+'</div></div>';
     });
-    cont.innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:10px">Ninguna sede tiene equipos seleccionados en '+currentPeriodo+' '+currentAnio+'.</div>';
+    cont.innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:10px">Ninguna sede tiene equipos seleccionados en '+_actEsc(currentPeriodo)+' '+_actEsc(currentAnio)+'.</div>';
   }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
 }
 
@@ -1045,7 +1045,7 @@ function renderEquipo(eq, tareas) {
       const isParams = t === 'Toma de parámetros';
       const style = isParams ? 'border-top:1px dashed var(--border2);margin-top:4px;padding-top:8px;' : '';
       return `<label class="tarea-row ${done?'done':''}" style="${style}">
-        <input type="checkbox" class="tarea-cb" ${done?'checked':''} onchange="toggleTarea('${eq.eq_id}',${i},this.checked)">
+        <input type="checkbox" class="tarea-cb" ${done?'checked':''} onchange="toggleTarea(${_jsq(eq.eq_id)},${i},this.checked)">
         <span class="tarea-label">${_actEsc(t)}</span>
         ${peso}
         <button type="button" class="btn-foto mant-edit-ok" onclick="event.preventDefault();event.stopPropagation();openFotosTarea(${_jsq(eq.eq_id)},${i})" title="Fotos de esta actividad">📷<span class="fc-badge" data-fc="${_actEsc(eq.eq_id)}|${i}" style="display:none"></span></button>
@@ -1065,10 +1065,10 @@ function renderEquipo(eq, tareas) {
     <div class="equipo-card">
       <div class="equipo-row">
         <div class="semaforo ${sem} eq-semaforo">${semEmoji}</div>
-        <span class="eq-id">${eq.eq_id}</span>
+        <span class="eq-id">${_actEsc(eq.eq_id)}</span>
         <div style="flex:1;cursor:pointer" onclick="openHistorialEq(${_jsq(eq.eq_id)})" title="Ver historial de intervenciones">
-          <div class="eq-name">${eq.nombre}</div>
-          <div class="eq-area">${eq.area||''} ${eq.marca?'· '+eq.marca:''}</div>
+          <div class="eq-name">${_actEsc(eq.nombre)}</div>
+          <div class="eq-area">${_actEsc(eq.area||'')} ${eq.marca?'· '+_actEsc(eq.marca):''}</div>
         </div>
       </div>
       ${progressBar}
