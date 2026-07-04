@@ -331,6 +331,10 @@ option{background:#fff}
   <div class="sidebar" id="sidebar">
     <div class="sb-section">Configuración</div>
 
+    <div class="sb-group mant-edit-btn">
+      <button class="btn" style="width:100%;justify-content:center" onclick="openActsEditor()">⚙️ Actividades de mtto.</button>
+    </div>
+
     <div class="sb-group">
       <div class="sb-label">Sede</div>
       <select id="selSede" onchange="onSedeChange()">
@@ -438,26 +442,153 @@ option{background:#fff}
 // Tareas cargadas dinámicamente desde TAREAS_CONFIG (Sheet)
 let TAREAS = {};
 let MINUTOS_TAREA = {};  // minutos reales por tipo/tarea
+let ACT_EQ = {};         // overrides por equipo: eq_id -> {agregadas:[{nombre,minutos}], quitadas:[nombre]}
+
+// Lista EFECTIVA de actividades de un equipo: (plantilla del tipo − quitadas) + agregadas.
+// Devuelve los mismos arrays paralelos tareas/minutos que usa todo el módulo (estado por índice).
+function actividadesDe(eq){
+  const bt = TAREAS[eq.tipo], bm = MINUTOS_TAREA[eq.tipo] || [];
+  const ov = ACT_EQ[eq.eq_id];
+  if(!ov) return { tareas: bt, minutos: bm };
+  const quit = new Set(ov.quitadas || []);
+  const tareas = [], minutos = [];
+  (bt || []).forEach((t,i) => { if(!quit.has(t)){ tareas.push(t); minutos.push(Number(bm[i]) || 5); } });
+  (ov.agregadas || []).forEach(a => { tareas.push(a.nombre); minutos.push(Number(a.minutos) || 5); });
+  return { tareas: tareas.length ? tareas : null, minutos };
+}
+
+// ── EDITOR DE ACTIVIDADES (Etapa 1) ───────────────────────────────────────────
+// Por TIPO edita la plantilla (tareas_config — reglas: solo SUPER_ADMIN escribe).
+// Por EQUIPO edita el override (mtto_actividades_equipo — canWrite mantenimiento).
+let _acts = null;  // estado del editor
+const _actEsc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+function openActsEditor(){
+  if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); return; }
+  const selT = document.getElementById('act-tipo');
+  selT.innerHTML = Object.keys(TAREAS).sort().map(t=>'<option>'+_actEsc(t)+'</option>').join('');
+  onActsTipo();
+  document.getElementById('acts-overlay').style.display = 'flex';
+}
+function closeActsEditor(){ document.getElementById('acts-overlay').style.display = 'none'; }
+function onActsTipo(){
+  const tipo = document.getElementById('act-tipo').value;
+  const selE = document.getElementById('act-eq');
+  const eqs = (sedeEquipos||[]).filter(e=>e.tipo===tipo);
+  selE.innerHTML = '<option value="">— Plantilla del tipo (todos) —</option>'
+    + eqs.map(e=>'<option value="'+_actEsc(e.eq_id)+'">'+_actEsc(e.nombre)+' ('+_actEsc(e.eq_id)+')</option>').join('');
+  renderActsList();
+}
+// reconstruye el estado desde los datos vivos y pinta
+function renderActsList(){
+  const tipo = document.getElementById('act-tipo').value;
+  const eqId = document.getElementById('act-eq').value;
+  const bt = TAREAS[tipo]||[], bm = MINUTOS_TAREA[tipo]||[];
+  _acts = { tipo, eqId,
+    plantilla: bt.map((t,i)=>({nombre:t, minutos:Number(bm[i])||5})),
+    agregadas: eqId ? JSON.parse(JSON.stringify((ACT_EQ[eqId]||{}).agregadas||[])) : [],
+    quitadas: new Set(eqId ? ((ACT_EQ[eqId]||{}).quitadas||[]) : []) };
+  const puedeTipo = MA.can('config');
+  document.getElementById('acts-hint').textContent = eqId
+    ? 'Personalizando SOLO este equipo: desmarca heredadas para quitarlas o agrega propias. La plantilla del tipo no cambia.'
+    : (puedeTipo ? 'Editando la PLANTILLA del tipo: aplica a todos sus equipos (salvo personalizaciones).' : 'Solo el super admin edita la plantilla del tipo. Elige un equipo para personalizarlo.');
+  document.getElementById('acts-save').disabled = !eqId && !puedeTipo;
+  _redrawActs();
+}
+// pinta desde _acts (estado en edición), sin re-leer los globals
+function _redrawActs(){
+  const eqId = _acts.eqId, puedeTipo = MA.can('config');
+  let html = '';
+  _acts.plantilla.forEach((a,i)=>{
+    if(eqId){
+      const off = _acts.quitadas.has(a.nombre);
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;'+(off?'opacity:.45':'')+'">'
+        + '<input type="checkbox" '+(off?'':'checked')+' onchange="actsToggleHeredada('+i+')">'
+        + '<span style="flex:1;font-size:12px;'+(off?'text-decoration:line-through':'')+'">'+_actEsc(a.nombre)+'</span>'
+        + '<span style="font-size:10px;color:var(--muted2);font-family:var(--mono)">'+a.minutos+'min · heredada</span></div>';
+    } else {
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--border);border-radius:6px">'
+        + '<span style="flex:1;font-size:12px">'+_actEsc(a.nombre)+'</span>'
+        + '<input type="number" value="'+a.minutos+'" min="1" style="width:56px" '+(puedeTipo?'onchange="_acts.plantilla['+i+'].minutos=Math.max(1,parseInt(this.value)||5)"':'disabled')+'>'
+        + (puedeTipo?'<button class="btn btn-sm" onclick="actsQuitarPlantilla('+i+')">✕</button>':'')+'</div>';
+    }
+  });
+  _acts.agregadas.forEach((a,i)=>{
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--blue);border-radius:6px">'
+      + '<span style="flex:1;font-size:12px">'+_actEsc(a.nombre)+'</span>'
+      + '<span style="font-size:10px;color:var(--muted2);font-family:var(--mono)">'+a.minutos+'min · propia</span>'
+      + '<button class="btn btn-sm" onclick="actsQuitarAgregada('+i+')">✕</button></div>';
+  });
+  document.getElementById('act-list').innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:8px">Sin actividades.</div>';
+}
+function actsToggleHeredada(i){ const n=_acts.plantilla[i].nombre; _acts.quitadas.has(n)?_acts.quitadas.delete(n):_acts.quitadas.add(n); _redrawActs(); }
+function actsQuitarPlantilla(i){ _acts.plantilla.splice(i,1); _redrawActs(); }
+function actsQuitarAgregada(i){ _acts.agregadas.splice(i,1); _redrawActs(); }
+function actsAgregar(){
+  const nombre = document.getElementById('act-new-nombre').value.trim();
+  const minutos = Math.max(1, parseInt(document.getElementById('act-new-min').value)||5);
+  if(!nombre) return;
+  if(_acts.plantilla.some(a=>a.nombre===nombre) || _acts.agregadas.some(a=>a.nombre===nombre)){ toast('Esa actividad ya existe','err'); return; }
+  if(_acts.eqId) _acts.agregadas.push({nombre, minutos});
+  else { if(!MA.can('config')){ toast('Solo el super admin edita la plantilla','err'); return; } _acts.plantilla.push({nombre, minutos}); }
+  document.getElementById('act-new-nombre').value='';
+  _redrawActs();
+}
+async function actsGuardar(){
+  const btn = document.getElementById('acts-save');
+  btn.disabled = true;
+  try{
+    const { setDoc, deleteDoc, doc } = window.__fb;
+    let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
+    if(_acts.eqId){
+      if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); return; }
+      const quitadas = [..._acts.quitadas];
+      if(!quitadas.length && !_acts.agregadas.length){
+        await deleteDoc(doc(window.__db, 'mtto_actividades_equipo', _acts.eqId));  // sin diferencias: vuelve a heredar todo
+      } else {
+        await setDoc(doc(window.__db, 'mtto_actividades_equipo', _acts.eqId), {
+          eq_id:_acts.eqId, tipo:_acts.tipo, agregadas:_acts.agregadas, quitadas,
+          updatedAt:new Date().toISOString(), updatedBy:_by });
+      }
+    } else {
+      if(!MA.can('config')){ toast('Solo el super admin edita la plantilla','err'); return; }
+      await setDoc(doc(window.__db, 'tareas_config', _acts.tipo), {
+        tipo:_acts.tipo, tareas:_acts.plantilla.map(a=>a.nombre), minutos:_acts.plantilla.map(a=>a.minutos) });
+    }
+    sessionStorage.removeItem('ma_tareas2'); sessionStorage.removeItem('ma_tareas2_time');
+    await loadTareas(); renderMain();
+    toast('Actividades guardadas ✓','ok');
+    closeActsEditor();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+  finally{ btn.disabled = false; }
+}
+
 
 async function loadTareas() {
   // Check cache first (valid for 30 minutes)
-  const cached = sessionStorage.getItem('ma_tareas');
-  const cachedTime = sessionStorage.getItem('ma_tareas_time');
+  const cached = sessionStorage.getItem('ma_tareas2');
+  const cachedTime = sessionStorage.getItem('ma_tareas2_time');
   if (cached && cachedTime && (Date.now() - parseInt(cachedTime)) < 30 * 60 * 1000) {
     const d = JSON.parse(cached);
     TAREAS = d.tareas || {};
     MINUTOS_TAREA = d.minutos || {};
+    ACT_EQ = d.actEq || {};
     return;
   }
   try {
     const { getDocs, collection } = window.__fb;
-    const snap = await getDocs(collection(window.__db, 'tareas_config'));
+    const [snap, ovSnap] = await Promise.all([
+      getDocs(collection(window.__db, 'tareas_config')),
+      getDocs(collection(window.__db, 'mtto_actividades_equipo'))
+    ]);
     const tareas = {}, minutos = {};
     snap.docs.forEach(d => { const data = d.data(); tareas[data.tipo] = data.tareas||[]; minutos[data.tipo] = data.minutos||[]; });
-    TAREAS = tareas; MINUTOS_TAREA = minutos;
-    const _d = { tareas, minutos };
-    sessionStorage.setItem('ma_tareas', JSON.stringify(_d));
-    sessionStorage.setItem('ma_tareas_time', String(Date.now()));
+    const actEq = {};
+    ovSnap.docs.forEach(d => { const o = d.data(); actEq[d.id] = { agregadas: o.agregadas||[], quitadas: o.quitadas||[] }; });
+    TAREAS = tareas; MINUTOS_TAREA = minutos; ACT_EQ = actEq;
+    const _d = { tareas, minutos, actEq };
+    sessionStorage.setItem('ma_tareas2', JSON.stringify(_d));
+    sessionStorage.setItem('ma_tareas2_time', String(Date.now()));
   } catch(e) {
     console.warn('No se pudo cargar TAREAS_CONFIG, usando defaults');
     TAREAS = {
@@ -477,6 +608,7 @@ async function loadTareas() {
       'SPLIT DECORATIVO':['Realizado','Toma de parámetros'],
     };
     MINUTOS_TAREA = {};
+    ACT_EQ = {};
   }
 }
 
@@ -663,17 +795,16 @@ function renderMain() {
   const stats = {green:0, yellow:0, red:0};
 
   Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([tipo, equipos]) => {
-    const tareas = TAREAS[tipo];
     let tipoGreen=0, tipoYellow=0, tipoRed=0;
 
     let equiposHtml = '';
     equipos.forEach(eq => {
-      const sem = getSemaforo(eq, tareas);
+      const sem = getSemaforo(eq, actividadesDe(eq).tareas);
       if(sem==='green') tipoGreen++;
       else if(sem==='yellow') tipoYellow++;
       else tipoRed++;
 
-      equiposHtml += renderEquipo(eq, tareas);
+      equiposHtml += renderEquipo(eq);  // la lista efectiva se resuelve adentro (actividadesDe)
     });
 
     // Tipo semaforo
@@ -703,13 +834,14 @@ function renderMain() {
 }
 
 function renderEquipo(eq, tareas) {
+  const _act = actividadesDe(eq); tareas = _act.tareas;
   const sem = getSemaforo(eq, tareas);
   const semEmoji = sem==='green'?'🟢':sem==='yellow'?'🟡':'🔴';
 
   let tareasHtml = '';
   if(tareas) {
     const statusMap = tareaStatus[eq.eq_id] || {};
-    const mins = MINUTOS_TAREA[eq.tipo] || [];
+    const mins = _act.minutos;
     tareasHtml = '<div class="tareas">' + tareas.map((t,i) => {
       const done = statusMap[i] === true;
       const peso = mins[i] != null ? `<span style="font-size:10px;color:var(--muted2);margin-left:auto;font-family:var(--mono)">${mins[i]}min</span>` : '';
@@ -717,7 +849,7 @@ function renderEquipo(eq, tareas) {
       const style = isParams ? 'border-top:1px dashed var(--border2);margin-top:4px;padding-top:8px;' : '';
       return `<label class="tarea-row ${done?'done':''}" style="${style}">
         <input type="checkbox" class="tarea-cb" ${done?'checked':''} onchange="toggleTarea('${eq.eq_id}',${i},this.checked)">
-        <span class="tarea-label">${t}</span>
+        <span class="tarea-label">${_actEsc(t)}</span>
         ${peso}
       </label>`;
     }).join('') + `</div>`;
@@ -809,7 +941,7 @@ async function saveNow(eqId) { /* autosave — button removed */ return;
 function refreshEquipoCard(eqId) {
   const eq = sedeEquipos.find(e => e.eq_id === eqId);
   if(!eq) return;
-  const tareas = TAREAS[eq.tipo];
+  const tareas = actividadesDe(eq).tareas;
   const sem = getSemaforo(eq, tareas);
   // Update semaforo dots
   document.querySelectorAll(`[data-eqid="${eqId}"]`).forEach(el => {
@@ -823,7 +955,7 @@ function updateStats() {
   const sel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
   let g=0,y=0,r=0;
   sel.forEach(eq => {
-    const s = getSemaforo(eq, TAREAS[eq.tipo]);
+    const s = getSemaforo(eq, actividadesDe(eq).tareas);
     if(s==='green') g++; else if(s==='yellow') y++; else r++;
   });
   document.getElementById('cntGreen').textContent = g;
@@ -970,8 +1102,8 @@ function exportWhatsApp() {
     msg += `🟢 COMPLETADO\n🟡 INCOMPLETO\n🔴 NO REALIZADO\n\n`;
     msg += `*${tipo}*\n`;
 
-    const tareas = TAREAS[tipo];
     equipos.forEach(eq => {
+      const tareas = actividadesDe(eq).tareas;
       const sem = getSemaforo(eq, tareas);
       const emoji = sem==='green'?'🟢':sem==='yellow'?'🟡':'🔴';
       msg += `\n${emoji} *${eq.nombre}*\n`;
@@ -1011,9 +1143,10 @@ const PESO_TIPO = {
 // MINUTOS_TAREA loaded dynamically via loadTareas()
 
 function getPct(eq) {
-  const tareas = TAREAS[eq.tipo];
+  const _a = actividadesDe(eq);
+  const tareas = _a.tareas;
   if(!tareas) return 0;
-  const mins = MINUTOS_TAREA[eq.tipo];
+  const mins = _a.minutos;
   const statusMap = tareaStatus[eq.eq_id] || {};
   if(mins && mins.length) {
     // Weighted by minutes
@@ -1226,8 +1359,6 @@ function exportPDF() {
   const tipoList = Object.entries(byTipo);
   let detailHtml = '';
   tipoList.forEach(([tipo, eqs]) => {
-    const tareas = TAREAS[tipo];
-    const pesos = MINUTOS_TAREA[tipo] || [];
     detailHtml += `<div style="margin-bottom:8px;break-inside:avoid">
       <div style="background:#1e3a5f;color:#fff;padding:7px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.05em">
         ${TIPO_ICON[tipo]||''} ${tipo}
@@ -1235,6 +1366,7 @@ function exportPDF() {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;background:#f8f9fc;border:1px solid #dde;border-top:none;border-radius:0 0 6px 6px">`;
 
     eqs.forEach(eq => {
+      const _a = actividadesDe(eq), tareas = _a.tareas, pesos = _a.minutos;
       const pct = getPct(eq);
       const col = pct===100?'#00aa44':pct>0?'#cc8800':'#cc2233';
       const statusMap = tareaStatus[eq.eq_id] || {};
@@ -1247,7 +1379,7 @@ function exportPDF() {
           const isP = t==='Toma de parámetros';
           return `<div style="display:flex;align-items:center;gap:5px;padding:3px 0;${isP?'border-top:1px dashed #ccc;margin-top:3px;padding-top:5px':''}">
             <span style="color:${done?'#00aa44':'#cc2233'};font-size:13px;flex-shrink:0">${done?'✓':'✗'}</span>
-            <span style="font-size:10px;color:${isP?'#888':'#333'};${isP?'font-style:italic':''};flex:1">${t}</span>
+            <span style="font-size:10px;color:${isP?'#888':'#333'};${isP?'font-style:italic':''};flex:1">${_actEsc(t)}</span>
             ${pw}
           </div>`;
         }).join('');
@@ -1949,6 +2081,27 @@ document.addEventListener('click', function(e) {
         </select>
         <button onclick="maAddUser()" style="padding:8px 16px;background:#1B3F8B;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">+ Agregar</button>
       </div>
+    </div>
+  </div>
+</div>
+<!-- EDITOR DE ACTIVIDADES (por tipo / por equipo) -->
+<div id="acts-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.45);z-index:600;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeActsEditor()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:560px;max-width:100%;max-height:90vh;overflow-y:auto;padding:20px">
+    <h2 style="font-size:15px;color:var(--blue);margin-bottom:4px">⚙️ Actividades de mantenimiento</h2>
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:14px" id="acts-hint"></div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <select id="act-tipo" onchange="onActsTipo()" style="flex:1;min-width:160px"></select>
+      <select id="act-eq" onchange="renderActsList()" style="flex:1.4;min-width:180px"></select>
+    </div>
+    <div id="act-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
+      <input type="text" id="act-new-nombre" placeholder="Nueva actividad..." style="flex:1">
+      <input type="number" id="act-new-min" placeholder="min" min="1" value="5" style="width:64px">
+      <button class="btn btn-sm" onclick="actsAgregar()">＋ Agregar</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);padding-top:12px;position:sticky;bottom:0;background:var(--surface)">
+      <button class="btn" onclick="closeActsEditor()">Cancelar</button>
+      <button class="btn btn-primary" id="acts-save" onclick="actsGuardar()">💾 Guardar</button>
     </div>
   </div>
 </div>
