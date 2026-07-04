@@ -132,7 +132,9 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
     <div class="auth-loading" id="auth-loading"></div>
   </div>
 </div>
-<main id="main-page" style="display:none">
+<!-- visibility (no display): el main debe ocupar su alto desde el inicio para que
+     el footer no suba al header mientras el auth resuelve (main{flex:1} lo empuja) -->
+<main id="main-page" style="visibility:hidden">
   <div class="brand"><img src="logo-multiaire.png" alt="MultiAire"></div>
   <div class="section-label">Apps disponibles</div>
   <div class="grid">
@@ -348,7 +350,7 @@ async function maVerify(payload, save){
     if(ldEl) ldEl.classList.remove('show');
     document.getElementById('auth-overlay').style.display = 'none';
     document.body.style.overflow = '';
-    document.getElementById('main-page').style.display = 'block';
+    document.getElementById('main-page').style.visibility = 'visible';
     renderUserPill();
     applyCardAccess();
   }catch(e){

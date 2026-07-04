@@ -64,6 +64,9 @@ service cloud.firestore {
     match /asistencia_registros/{doc}      { allow read: if authorized(); allow create, update: if canWrite('asistencia');    allow delete: if isSuper(); }
     match /asistencia_registros_fotos/{doc}{ allow read: if authorized(); allow create, update: if canWrite('asistencia');    allow delete: if isSuper(); }
     match /proveedores/{doc}               { allow read: if authorized(); allow create, update: if canWrite('proveedores');   allow delete: if isSuper(); }
+    // compras: historial de compras a proveedores (proveedores.html). Mismo permiso que
+    // proveedores — sin edición/borrado desde el cliente todavía (solo alta + consulta).
+    match /compras/{doc}                   { allow read: if authorized(); allow create, update: if canWrite('proveedores');   allow delete: if isSuper(); }
     match /mantenimiento/{doc}             { allow read: if authorized(); allow create, update: if canWrite('mantenimiento'); allow delete: if isSuper(); }
     match /bd_itinerarios/{doc}            { allow read: if authorized(); allow create, update: if canWrite('itinerario');    allow delete: if isSuper(); }
     match /bd_bloques/{doc}                { allow read: if authorized(); allow create, update: if canWrite('itinerario');    allow delete: if isSuper(); }
