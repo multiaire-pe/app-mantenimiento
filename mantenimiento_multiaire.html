@@ -912,36 +912,37 @@ async function loadPeriodo() {
   currentAnio = document.getElementById('selAnio').value;
   const key = currentSede + '|' + currentPeriodo + '|' + currentAnio;
 
-  // Check local cache first
+  // SIEMPRE leer de Firestore: el BOT (y otros usuarios) escriben este mismo doc y el
+  // caché de sesión mostraba checks desactualizados — un registro hecho por WhatsApp no
+  // aparecía en el checklist ni con F5 (feedback del usuario). El caché queda solo como
+  // respaldo si la lectura falla (p.ej. sin conexión).
   const cacheKey = 'ma_maint_' + key;
-  const localCache = sessionStorage.getItem(cacheKey);
-  if (localCache) {
-    const d = JSON.parse(localCache);
-    seleccionados = d.seleccionados || {};
-    tareaStatus  = d.tareaStatus  || {};
+  try {
+    const { getDoc, doc } = window.__fb;
+    const snap = await getDoc(doc(window.__db, 'mantenimiento', key));
+    const d = snap.exists ? snap.data() : {};
+    // Handle both string and object formats
+    function parseField(val) {
+      if (!val) return {};
+      if (typeof val === 'string') { try { return JSON.parse(val); } catch(e) { return {}; } }
+      return val; // already an object
+    }
+    seleccionados = parseField(d.seleccionados);
+    tareaStatus = parseField(d.tareaStatus);
     currentUpdatedAt = d.updatedAt || null;
     currentUpdatedBy = d.updatedBy || null;
-    // Don't return early - let normal flow continue to renderChecklist
-  } else {
-    // Load from Firestore
-    try {
-      const { getDoc, doc } = window.__fb;
-      const snap = await getDoc(doc(window.__db, 'mantenimiento', key));
-      const d = snap.exists ? snap.data() : {};
-      // Handle both string and object formats
-      function parseField(val) {
-        if (!val) return {};
-        if (typeof val === 'string') { try { return JSON.parse(val); } catch(e) { return {}; } }
-        return val; // already an object
-      }
-      seleccionados = parseField(d.seleccionados);
-      tareaStatus = parseField(d.tareaStatus);
+    sessionStorage.setItem(cacheKey, JSON.stringify({ seleccionados, tareaStatus, updatedAt: currentUpdatedAt, updatedBy: currentUpdatedBy }));
+  } catch(e) {
+    const localCache = sessionStorage.getItem(cacheKey);
+    if (localCache) {
+      const d = JSON.parse(localCache);
+      seleccionados = d.seleccionados || {};
+      tareaStatus  = d.tareaStatus  || {};
       currentUpdatedAt = d.updatedAt || null;
       currentUpdatedBy = d.updatedBy || null;
-      sessionStorage.setItem(cacheKey, JSON.stringify({ seleccionados, tareaStatus, updatedAt: currentUpdatedAt, updatedBy: currentUpdatedBy }));
-    } catch(e) {
-        seleccionados = {}; tareaStatus = {};
-        currentUpdatedAt = null; currentUpdatedBy = null;
+    } else {
+      seleccionados = {}; tareaStatus = {};
+      currentUpdatedAt = null; currentUpdatedBy = null;
     }
   }
 
