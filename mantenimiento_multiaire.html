@@ -360,11 +360,6 @@ option{background:#fff}
       </div>
     </div>
 
-    <div class="sb-group" id="lastUpdatedBar" style="display:none">
-      <div class="sb-label">Última actualización</div>
-      <div id="lastUpdatedText" style="font-size:12px;color:var(--muted2);font-family:var(--mono)">—</div>
-      <div id="lastUpdatedBy" style="font-size:11px;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-    </div>
 
     <div class="status-bar" id="statusBar" style="display:none">
       <div class="sb-label" style="margin-bottom:8px">Progreso del período</div>
@@ -393,6 +388,7 @@ option{background:#fff}
       <button class="tab-btn active" onclick="switchTab('checklist')">📋 Checklist</button>
       <button class="tab-btn" onclick="switchTab('dashboard')">📊 Dashboard</button>
       <button class="tab-btn" onclick="switchTab('global')">🌐 Global</button>
+      <button class="tab-btn" onclick="switchTab('historial')">🕘 Historial</button>
     </div>
 
     <div class="tab-view active" id="tab-checklist">
@@ -403,6 +399,15 @@ option{background:#fff}
           <p>Selecciona una sede y un período para comenzar a registrar el mantenimiento de equipos.</p>
         </div>
       </div>
+    </div>
+
+    <div class="tab-view" id="tab-historial">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <select id="hl-sede" onchange="renderHistorialLogFiltrado()" style="max-width:220px"><option value="">Todas las sedes</option></select>
+        <select id="hl-origen" onchange="renderHistorialLogFiltrado()" style="max-width:150px"><option value="">App y Bot</option><option value="BOT">Solo Bot</option><option value="APP">Solo App</option></select>
+        <span id="hl-count" style="font-size:11px;color:var(--muted2)"></span>
+      </div>
+      <div id="hl-list" style="display:flex;flex-direction:column;gap:6px"></div>
     </div>
 
     <div class="tab-view" id="tab-global">
@@ -898,18 +903,9 @@ function onSedeChange() {
 
 function onPeriodoChange() { if(currentSede) loadPeriodo(); }
 
-function renderLastUpdated() {
-  const bar = document.getElementById('lastUpdatedBar');
-  const txt = document.getElementById('lastUpdatedText');
-  const byEl = document.getElementById('lastUpdatedBy');
-  if (!bar || !txt) return;
-  if (!currentUpdatedAt) { bar.style.display = 'none'; return; }
-  const d = new Date(currentUpdatedAt);
-  const opts = { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false };
-  txt.textContent = d.toLocaleString('es-PE', opts);
-  if (byEl) byEl.textContent = currentUpdatedBy || '';
-  bar.style.display = 'block';
-}
+// "Última actualización" del sidebar RETIRADA (2026-07-04, pedido del usuario):
+// la bitácora del tab Historial la reemplaza con detalle por evento.
+function renderLastUpdated() {}
 
 async function loadPeriodo() {
   currentPeriodo = document.getElementById('selPeriodo').value;
@@ -1096,9 +1092,27 @@ function updateStatusBar(stats) {
 }
 
 // ── CHECKBOX HANDLERS ────────────────────────────────────────────────────────
+// Bitácora de registros (tab Historial): un evento por acción — quién/qué/cuándo.
+// Fire-and-forget: si falla no interrumpe el marcado (el checklist es lo primario).
+function logRegistro(eqId, actividades, done) {
+  try {
+    const eq = sedeEquipos.find(e => e.eq_id === eqId);
+    let autor = ''; try { autor = firebase.auth().currentUser.email || ''; } catch(e) {}
+    window.__db.collection('mtto_log').add({
+      ts: new Date().toISOString(),
+      fecha: new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10),  // día en Lima (UTC-5)
+      autor, origen: 'APP',
+      sede: currentSede, periodo: currentPeriodo, anio: currentAnio,
+      eq_id: eqId, nombreEq: eq?.nombre || eqId,
+      actividades, done: !!done,
+    }).catch(()=>{});
+  } catch(e) { /* nunca romper el marcado por el log */ }
+}
+
 function toggleSoloMarcar(eqId, checked) {
   if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   tareaStatus[eqId] = checked;
+  logRegistro(eqId, ['(equipo completo)'], checked);
   markDirty(eqId);
   renderMain();
   updateStats();
@@ -1108,6 +1122,9 @@ function toggleTarea(eqId, idx, checked) {
   if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   if(!tareaStatus[eqId]) tareaStatus[eqId] = {};
   tareaStatus[eqId][idx] = checked;
+  { const eq = sedeEquipos.find(e => e.eq_id === eqId);
+    const acts = eq ? (actividadesDe(eq).tareas || []) : [];
+    logRegistro(eqId, [acts[idx] || ('Actividad ' + (idx+1))], checked); }
   markDirty(eqId);
   renderMain();
   updateStats();
@@ -1509,8 +1526,53 @@ function switchTab(tab) {
   document.getElementById('tab-'+tab).classList.add('active');
   if(tab==='dashboard') renderDashboard();
   if(tab==='global') renderGlobal();
+  if(tab==='historial') renderHistorialLog();
 }
 
+
+// ── TAB HISTORIAL (bitácora: quién registró qué y cuándo, agrupado por día) ───
+let _hlEventos = [];
+async function renderHistorialLog(){
+  const cont = document.getElementById('hl-list');
+  cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando bitácora…</div>';
+  try{
+    const snap = await window.__db.collection('mtto_log').orderBy('ts','desc').limit(300).get();
+    _hlEventos = snap.docs.map(d => d.data());
+    const sedes = [...new Set(_hlEventos.map(e => e.sede).filter(Boolean))].sort();
+    const selS = document.getElementById('hl-sede');
+    const cur = selS.value;
+    selS.innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(x => '<option'+(x===cur?' selected':'')+'>'+_actEsc(x)+'</option>').join('');
+    renderHistorialLogFiltrado();
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
+}
+function renderHistorialLogFiltrado(){
+  const sede = document.getElementById('hl-sede').value;
+  const origen = document.getElementById('hl-origen').value;
+  const evs = _hlEventos.filter(e => (!sede || e.sede === sede) && (!origen || e.origen === origen));
+  document.getElementById('hl-count').textContent = evs.length + ' evento(s) · últimos 300';
+  const DIAS = ['dom','lun','mar','mié','jue','vie','sáb'];
+  let html = '', diaPrev = null;
+  evs.forEach(e => {
+    const dia = e.fecha || (e.ts || '').slice(0,10);
+    if(dia !== diaPrev){
+      diaPrev = dia;
+      const dt = new Date(dia + 'T12:00:00Z');
+      html += '<div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 2px">📅 '+DIAS[dt.getUTCDay()]+' '+_actEsc(dia)+'</div>';
+    }
+    const hora = e.ts ? new Date(new Date(e.ts).getTime() - 5*60*60*1000).toISOString().slice(11,16) : '—';
+    const badge = e.origen === 'BOT'
+      ? '<span style="background:var(--blue);color:#fff;font-size:9px;font-weight:700;border-radius:4px;padding:1px 6px">BOT</span>'
+      : '<span style="background:var(--surface3);color:var(--muted2);font-size:9px;font-weight:700;border-radius:4px;padding:1px 6px">APP</span>';
+    const acts = (e.actividades || []).map(_actEsc).join(', ');
+    const marca = e.done === false ? ' <span style="color:var(--red,#c33);font-size:10px">(desmarcó)</span>' : '';
+    html += '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">'
+      + '<span style="font-family:var(--mono);font-size:11px;color:var(--muted2);flex-shrink:0;padding-top:1px">'+hora+'</span>'
+      + '<div style="flex:1;min-width:0"><div style="font-size:12px"><b>'+_actEsc(e.autor || '—')+'</b> · '+_actEsc(e.nombreEq || e.eq_id || '')+' <span style="color:var(--muted2)">('+_actEsc(e.sede || '')+')</span></div>'
+      + '<div style="font-size:11px;color:var(--muted2);word-break:break-word">'+acts+marca+'</div></div>'
+      + badge + '</div>';
+  });
+  document.getElementById('hl-list').innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:10px">Sin eventos aún. La bitácora registra desde hoy: cada marcado en la app y cada registro del bot.</div>';
+}
 
 // ── EXPORT PNG ────────────────────────────────────────────────────────────────
 function exportPDF() {
