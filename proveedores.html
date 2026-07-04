@@ -381,8 +381,8 @@ tr:hover td{background:var(--surface2)}
 
     <div class="card-title">🏆 Productos más comprados</div>
     <table class="mini-table" style="margin-bottom:6px">
-      <thead><tr><th>Producto / servicio</th><th>Último precio</th><th>Última compra</th></tr></thead>
-      <tbody id="det-top-body"><tr><td colspan="3" class="empty-msg" style="padding:14px">Sin compras registradas.</td></tr></tbody>
+      <thead><tr><th>Producto / servicio</th><th>Último precio</th><th>Precio mínimo</th><th>Última compra</th></tr></thead>
+      <tbody id="det-top-body"><tr><td colspan="4" class="empty-msg" style="padding:14px">Sin compras registradas.</td></tr></tbody>
     </table>
     <div style="text-align:right;margin-bottom:16px">
       <button class="btn btn-sm" onclick="openHistorial()">🕘 Ver historial completo</button>
@@ -693,7 +693,6 @@ function provFilter(){
 function renderProvTable(){
   const body  = document.getElementById('prov-body');
   const list  = provFilter();
-  const puedeBorrar = MA.can('borrar');
   document.getElementById('prov-count').textContent =
     `${list.length} de ${proveedores.length} proveedor${proveedores.length!==1?'es':''}`;
   if(!list.length){
@@ -716,7 +715,6 @@ function renderProvTable(){
       <td class="col-acc"><div class="acc-icons">
         <button class="btn btn-sm qv-trigger" onclick="event.stopPropagation();openQuickView('${idAttr}', this)" title="Vista rápida" style="padding:3px 7px">👁</button>
         <button class="btn btn-sm" onclick="event.stopPropagation();openProvDetalle('${idAttr}')" title="Detalles" style="padding:3px 7px">📋</button>
-        ${puedeBorrar ? `<button class="btn btn-sm btn-red" onclick="event.stopPropagation();removeProveedor('${idAttr}')" title="Eliminar" style="padding:3px 7px">🗑</button>` : ''}
       </div></td>
     </tr>`;
   }).join('');
@@ -808,9 +806,14 @@ async function removeProveedor(id){
   if(!MA.can('borrar')){ toast('Solo el super admin puede eliminar', 'err'); return; }
   if(!id) return;
   const p = proveedores.find(x => x.id === id);
-  if(!confirm(`¿Eliminar al proveedor "${p?.razonSocial || ''}"?\nEsta acción no se puede deshacer.`)) return;
+  const compras = await COMPRAS.porProveedor(db, id);
+  const aviso = compras.length
+    ? `\nTiene ${compras.length} compra${compras.length!==1?'s':''} registrada${compras.length!==1?'s':''} — también se eliminará su historial.`
+    : '';
+  if(!confirm(`¿Eliminar al proveedor "${p?.razonSocial || ''}"?${aviso}\nEsta acción no se puede deshacer.`)) return;
   try{
     await db.collection('proveedores').doc(id).delete();
+    if(compras.length) await COMPRAS.eliminarPorProveedor(db, id);
     proveedores = proveedores.filter(x => x.id !== id);
     closeModal('modal-prov');
     closeModal('modal-prov-detalle');
@@ -910,8 +913,8 @@ async function refreshDetalleIndicadores(id){
     + statTile(fmtMoney(ind.montoTotal), 'Monto total comprado');
   const top = COMPRAS.topProductos(compras, 5);
   document.getElementById('det-top-body').innerHTML = top.length
-    ? top.map(t => `<tr><td>${esc(t.nombre)}${t.tipo==='SERVICIO'?' <span style="color:var(--muted2);font-size:9px">(servicio)</span>':''}</td><td>${fmtMoney(t.ultimoPrecio)}</td><td>${fmtFecha(t.ultimaCompra)}</td></tr>`).join('')
-    : '<tr><td colspan="3" class="empty-msg" style="padding:14px">Sin compras registradas.</td></tr>';
+    ? top.map(t => `<tr><td>${esc(t.nombre)}${t.tipo==='SERVICIO'?' <span style="color:var(--muted2);font-size:9px">(servicio)</span>':''}</td><td>${fmtMoney(t.ultimoPrecio)}</td><td>${fmtMoney(t.precioMinimo)}</td><td>${fmtFecha(t.ultimaCompra)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="empty-msg" style="padding:14px">Sin compras registradas.</td></tr>';
 }
 
 function editarDesdeDetalle(){

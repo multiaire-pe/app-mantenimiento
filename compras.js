@@ -39,6 +39,23 @@ window.COMPRAS = (function () {
 
   function invalidar(proveedorId) { delete _porProveedor[proveedorId]; }
 
+  // Borra en cascada todas las compras de un proveedor (se usa al eliminar el
+  // proveedor, para no dejar historial huérfano). Trocea en bloques de 450
+  // (límite de un batch de Firestore), igual criterio que insumos.html.
+  async function eliminarPorProveedor(db, proveedorId) {
+    const lista = await porProveedor(db, proveedorId, true);
+    if (!lista.length) return 0;
+    let batch = db.batch(), n = 0;
+    for (const c of lista) {
+      batch.delete(db.collection(COL).doc(c.id));
+      n++;
+      if (n % 450 === 0) { await batch.commit(); batch = db.batch(); }
+    }
+    await batch.commit();
+    invalidar(proveedorId);
+    return lista.length;
+  }
+
   // Indicadores de consulta rápida (Vista rápida y Detalles comparten esta forma).
   function indicadores(compras) {
     const claves = new Set();
@@ -63,12 +80,14 @@ window.COMPRAS = (function () {
     compras.forEach(c => {
       (c.items || []).forEach(it => {
         const k = claveItem(it);
-        const e = mapa[k] || { nombre: it.nombre, tipo: it.tipo, veces: 0, ultimoPrecio: 0, ultimaCompra: '' };
+        const precio = Number(it.precioUnitario || 0);
+        const e = mapa[k] || { nombre: it.nombre, tipo: it.tipo, veces: 0, ultimoPrecio: 0, ultimaCompra: '', precioMinimo: precio };
         e.veces += 1;
         if (String(c.fecha || '') >= e.ultimaCompra) {
           e.ultimaCompra = c.fecha || '';
-          e.ultimoPrecio = Number(it.precioUnitario || 0);
+          e.ultimoPrecio = precio;
         }
+        if (precio < e.precioMinimo) e.precioMinimo = precio;
         mapa[k] = e;
       });
     });
@@ -115,5 +134,5 @@ window.COMPRAS = (function () {
     return _catalogo;
   }
 
-  return { COL, claveItem, porProveedor, invalidar, indicadores, topProductos, crear, catalogo };
+  return { COL, claveItem, porProveedor, invalidar, eliminarPorProveedor, indicadores, topProductos, crear, catalogo };
 })();
