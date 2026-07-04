@@ -95,6 +95,12 @@ footer{background:var(--surface);border-top:1px solid var(--border);padding:14px
 .form-input,.form-select{background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:12px;padding:8px 10px;border-radius:6px;outline:none;width:100%}
 .form-input:focus,.form-select:focus{border-color:var(--blue);background:#fff}
 .form-input:disabled,.form-select:disabled{opacity:.7;cursor:not-allowed;background:var(--surface3)}
+/* iOS: el date nativo ignora width:100% y se dimensiona a su contenido (desbordaba el
+   modal de compra en celular → scroll horizontal); mismo fix que asistencia (2026-06-21) */
+input[type=date].form-input{-webkit-appearance:none;appearance:none;text-align:left}
+/* antes inline (flex:0 0 160px): como estilo inline le ganaba al override móvil y el
+   flex-basis se volvía ALTO de 160px al apilarse en columna (hueco bajo Fecha) */
+.fg-fecha{flex:0 0 160px;min-width:140px}
 
 /* ── TOOLBAR ──────────────────────────────────────────────────────────────── */
 .prov-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -184,7 +190,7 @@ tr:hover td{background:var(--surface2)}
   .form-row .form-group{flex:0 0 auto}
   /* modal de detalles compacto y con el pie SIEMPRE visible (no scrollear para llegar a los botones);
      wrap porque a 390px los 4 botones no caben en una fila y Eliminar se cortaba */
-  .modal{padding:16px 14px}
+  .modal{padding:16px 14px;overflow-x:hidden}
   .stat-tile{padding:8px 6px}
   .stat-num{font-size:15px}
   .modal-foot{position:sticky;bottom:0;flex-wrap:wrap;background:var(--surface);margin-top:10px}
@@ -425,7 +431,7 @@ tr:hover td{background:var(--surface2)}
     <div class="modal-sub" id="rc-sub">Proveedor: —</div>
 
     <div class="form-row">
-      <div class="form-group" style="flex:0 0 160px;min-width:140px">
+      <div class="form-group fg-fecha">
         <label class="form-label">Fecha <span style="color:var(--orange)">*</span></label>
         <input type="date" id="rc-fecha" class="form-input">
       </div>
