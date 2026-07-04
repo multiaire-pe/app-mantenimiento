@@ -89,6 +89,20 @@ export async function esActividadConocida(texto) {
   return _cacheNombres.nombres.some((n) => t.includes(n));
 }
 
+// Señales de INCIDENTE: si el texto huele a problema, es una observación — aunque
+// mencione una actividad — salvo que traiga verbo explícito de registro (Council).
+// (norm() convierte ñ→n y quita tildes: por eso "danad", "averi", "enfria".)
+export const RE_PROBLEMA = /(fuga|falla|fallo|averi|no (funciona|enciende|prende|enfria|arranca)|ruido|gotea|goteo|alarma|problema|danad|malograd|roto|rota|quemad|humo|chispa|\bmal\b)/;
+
+// Decisión final de intención de REGISTRO (la usa el router).
+export async function esRegistroActividad(texto) {
+  const t = norm(texto);
+  const intencion = esIntencionMtto(texto) || await esActividadConocida(texto);
+  if (!intencion) return false;
+  if (!RE_PROBLEMA.test(t)) return true;
+  return /(registr|hice|realic|complet|termin|marcar)/.test(t);   // problema + verbo explícito → registro igual
+}
+
 // ── Lista efectiva de actividades del equipo (Firestore, caché 5 min) ────────
 const _cacheActs = new Map();  // eqId → {ts, actividades}
 export async function actividadesDeEquipo(eqId, tipo) {

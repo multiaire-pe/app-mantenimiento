@@ -12,7 +12,7 @@ import { getSesion as getSesionAsist } from './asistencia_sesiones.js';
 import { getSesion as getSesionObs, limpiarSesion as limpiarSesionObs } from './sesiones.js';
 import { getSesion as getSesionMtto } from './mtto_sesiones.js';
 import { RE_ASISTENCIA } from './asistencia.js';
-import { esIntencionMtto, esActividadConocida, esSaludo } from './mtto.js';
+import { esRegistroActividad, esSaludo } from './mtto.js';
 
 // Flujos: 'asistencia' | 'mtto' | 'observaciones' | 'menu' (saludo en frío) |
 // 'hint-obs' / 'hint-asistencia' (elección 2/3 del menú: instrucción sin sesión).
@@ -30,7 +30,7 @@ export async function decidirFlujo({ from, tipo, texto }) {
     // Escapes: una sesión de observaciones a medias no debe tragarse un saludo (menú)
     // ni una intención clara de registrar actividades (hallazgo de la prueba en vivo).
     if (texto && esSaludo(texto)) { await limpiarSesionObs(from); return 'menu'; }
-    if (texto && (esIntencionMtto(texto) || await esActividadConocida(texto))) { await limpiarSesionObs(from); return 'mtto'; }
+    if (texto && await esRegistroActividad(texto)) { await limpiarSesionObs(from); return 'mtto'; }
     return 'observaciones';
   }
   if (tipo === 'location') return 'asistencia';
@@ -40,7 +40,6 @@ export async function decidirFlujo({ from, tipo, texto }) {
   if (t === '3') return 'hint-asistencia';
   if (texto && esSaludo(texto)) return 'menu';
   if (texto && RE_ASISTENCIA.test(texto)) return 'asistencia';
-  if (texto && esIntencionMtto(texto)) return 'mtto';
-  if (texto && await esActividadConocida(texto)) return 'mtto';
+  if (texto && await esRegistroActividad(texto)) return 'mtto';
   return 'observaciones';
 }
