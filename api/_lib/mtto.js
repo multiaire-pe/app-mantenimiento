@@ -19,6 +19,7 @@ export const RE_MTTO = /(mantenimientos?|mtto\.?|preventiv[oa]s?)(?![a-z])/i;
 // debe seguir yendo a observaciones (hallazgo del Council).
 export function esIntencionMtto(texto) {
   const t = norm(texto);
+  if (/registr\w*/.test(t) && /actividad/.test(t)) return true;   // "quiero registrar ... actividad(es)"
   if (!RE_MTTO.test(t)) return false;
   if (/(registr|hice|realic|complet|termin|marcar|actividades)/.test(t)) return true;
   return /^\s*(mantenimiento|mtto|preventiv)/.test(t);
@@ -65,6 +66,43 @@ function safeObj(val) {
   try { return JSON.parse(val) || {}; } catch { return {}; }
 }
 
+// ¿El texto menciona una ACTIVIDAD ya definida? (plantillas por tipo + agregadas por
+// equipo). Un técnico que escribe "lavado de serpentín de condensador del rooftop 5"
+// está registrando una actividad, no reportando una observación — pedido del usuario.
+// Solo nombres específicos (≥2 palabras y ≥10 chars): "Realizado" daría falsos positivos.
+const _cacheNombres = { ts: 0, nombres: [] };
+export async function esActividadConocida(texto) {
+  const t = norm(texto);
+  if (!t || t.length < 10) return false;
+  if (Date.now() - _cacheNombres.ts > 5 * 60 * 1000) {
+    const db = getDb();
+    const [plSnap, ovSnap] = await Promise.all([
+      db.collection('tareas_config').get(),
+      db.collection('mtto_actividades_equipo').get(),
+    ]);
+    const set = new Set();
+    plSnap.docs.forEach((d) => (d.data().tareas || []).forEach((x) => set.add(x)));
+    ovSnap.docs.forEach((d) => ((d.data() || {}).agregadas || []).forEach((a) => set.add(a.nombre)));
+    _cacheNombres.nombres = [...set].map(norm).filter((n) => n.length >= 10 && n.trim().split(/\s+/).length >= 2);
+    _cacheNombres.ts = Date.now();
+  }
+  return _cacheNombres.nombres.some((n) => t.includes(n));
+}
+
+// Señales de INCIDENTE: si el texto huele a problema, es una observación — aunque
+// mencione una actividad — salvo que traiga verbo explícito de registro (Council).
+// (norm() convierte ñ→n y quita tildes: por eso "danad", "averi", "enfria".)
+export const RE_PROBLEMA = /(fuga|falla|fallo|averi|no (funciona|enciende|prende|enfria|arranca)|ruido|gotea|goteo|alarma|problema|danad|malograd|roto|rota|quemad|humo|chispa|\bmal\b)/;
+
+// Decisión final de intención de REGISTRO (la usa el router).
+export async function esRegistroActividad(texto) {
+  const t = norm(texto);
+  const intencion = esIntencionMtto(texto) || await esActividadConocida(texto);
+  if (!intencion) return false;
+  if (!RE_PROBLEMA.test(t)) return true;
+  return /(registr|hice|realic|complet|termin|marcar)/.test(t);   // problema + verbo explícito → registro igual
+}
+
 // ── Lista efectiva de actividades del equipo (Firestore, caché 5 min) ────────
 const _cacheActs = new Map();  // eqId → {ts, actividades}
 export async function actividadesDeEquipo(eqId, tipo) {
@@ -94,7 +132,7 @@ function pedirActividades(ses) {
 function resumenConfirma(ses) {
   const { periodo, anio } = periodoLima();
   const hechas = ses.marcadas.map((i) => `✅ ${ses.actividades[i]}`).join('\n');
-  return `📋 *Confirma el registro*\n${ses.nombreEq} (${ses.eqId}) · ${ses.sede}\nPeríodo: ${periodo} ${anio}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar o *NO* para cancelar.`;
+  return `📋 *Confirma el registro*\n${ses.nombreEq} (${ses.eqId}) · ${ses.sede}\nPeríodo: ${periodo} ${anio}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
 }
 function pedirFotos(ses) {
   const idx = ses.marcadas[ses.fotoPos];
@@ -177,7 +215,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     ses = nuevaSesion(from, tecnico);
     ses.textoOriginal = texto || '';
     ses.fase = 'EQUIPO';
-    if (texto && RE_MTTO.test(texto)) {
+    if (texto && t !== '1' && !esSaludo(texto)) {
       const r = await intentarResolver(ses, texto);
       if (r) return r;
     }
@@ -211,10 +249,12 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       return `✅ *Registro guardado.*\n\n${pedirFotos(ses)}`;
     }
     if (/^(no|n)[\s!.]*$/.test(t)) {
-      await limpiarSesion(from);
-      return '❌ Registro cancelado. Nada se guardó.';
+      ses.fase = 'ACTIVIDADES';
+      ses.marcadas = [];
+      await guardarSesion(from, ses);
+      return `Ok, corrijamos.\n\n${pedirActividades(ses)}`;
     }
-    return 'Responde *SÍ* para guardar o *NO* para cancelar.';
+    return 'Responde *SÍ* para guardar, *NO* para corregir la selección o *CANCELAR* para salir.';
   }
 
   if (ses.fase === 'FOTOS') {
@@ -269,6 +309,19 @@ async function intentarResolver(ses, texto) {
   ses.tipo = r.equipo.tipo;
   ses.nombreEq = r.equipo.nombre;
   ses.actividades = acts;
+  // ¿El mensaje ya menciona actividades de la lista? → pre-marcarlas y saltar a confirmar
+  const tOrig = norm(ses.textoOriginal || '');
+  const pre = [];
+  acts.forEach((a, i) => {
+    const n = norm(a);
+    if (n.length >= 10 && n.trim().split(/\s+/).length >= 2 && tOrig.includes(n)) pre.push(i);
+  });
+  if (pre.length) {
+    ses.marcadas = pre;
+    ses.fase = 'CONFIRMA';
+    await guardarSesion(ses.from, ses);
+    return `🔎 Detecté ${pre.length} actividad(es) en tu mensaje.\n\n${resumenConfirma(ses)}`;
+  }
   ses.fase = 'ACTIVIDADES';
   await guardarSesion(ses.from, ses);
   return pedirActividades(ses);
