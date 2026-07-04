@@ -120,6 +120,18 @@ async function guardarRegistro(ses, tecnico) {
       updatedBy: `BOT · ${tecnico?.nombre || ses.nombre || ses.from}`,
     }, { merge: true });
   });
+  // Bitácora (tab Historial de la app): quién registró qué y cuándo
+  await db.collection('mtto_log').add({
+    ts: new Date().toISOString(),
+    fecha: hoyLima(),
+    autor: tecnico?.nombre || ses.nombre || ses.from,
+    colabId: tecnico?.id || null,
+    origen: 'BOT',
+    sede: ses.sede, periodo, anio,
+    eq_id: ses.eqId, nombreEq: ses.nombreEq,
+    actividades: ses.marcadas.map((i) => ses.actividades[i]),
+    done: true,
+  }).catch(() => {});   // el log nunca debe frustrar el registro
   return clave;
 }
 
