@@ -139,10 +139,20 @@ async function procesarMensaje(msg) {
       return;
     }
 
-    // Tipos no soportados (audio, documento…) sin contenido útil → orientar al técnico.
+    // Tipos no soportados (audio, documento, 'unsupported'…) sin contenido útil.
+    // Con una conversación VIVA, el hint debe ser el del flujo activo — el genérico de
+    // observaciones/asistencia en plena fase de fotos confunde (feedback del usuario).
     if (!texto && !imagenB64 && !ubicacion && msg.type && msg.type !== 'text') {
-      await enviarTexto(msg.from,
-        '📝 Mándame una *observación* (texto o foto), o para marcar tu asistencia escribe *entrada*/*salida* y comparte tu *ubicación* 📍.');
+      console.log('[whatsapp] tipo no soportado:', msg.type, 'de', msg.from);
+      const flujoRaro = await decidirFlujo({ from: msg.from, tipo: msg.type, texto: '' });
+      if (flujoRaro === 'mtto') {
+        await enviarTexto(msg.from, '🤔 Eso no lo pude leer. Envía una *foto*, *SIGUIENTE* o *FIN*.');
+      } else if (flujoRaro === 'asistencia') {
+        await enviarTexto(msg.from, '🤔 Eso no lo pude leer. Comparte tu *ubicación* 📍 (o tu selfie) para el marcaje, o escribe *cancelar*.');
+      } else {
+        await enviarTexto(msg.from,
+          '📝 Mándame una *observación* (texto o foto), o para marcar tu asistencia escribe *entrada*/*salida* y comparte tu *ubicación* 📍.');
+      }
       return;
     }
 
