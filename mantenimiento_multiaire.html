@@ -452,8 +452,8 @@ function actividadesDe(eq){
   if(!ov) return { tareas: bt, minutos: bm };
   const quit = new Set(ov.quitadas || []);
   const tareas = [], minutos = [];
-  (bt || []).forEach((t,i) => { if(!quit.has(t)){ tareas.push(t); minutos.push(bm[i] != null ? bm[i] : 5); } });
-  (ov.agregadas || []).forEach(a => { tareas.push(a.nombre); minutos.push(a.minutos != null ? a.minutos : 5); });
+  (bt || []).forEach((t,i) => { if(!quit.has(t)){ tareas.push(t); minutos.push(Number(bm[i]) || 5); } });
+  (ov.agregadas || []).forEach(a => { tareas.push(a.nombre); minutos.push(Number(a.minutos) || 5); });
   return { tareas: tareas.length ? tareas : null, minutos };
 }
 
@@ -485,7 +485,7 @@ function renderActsList(){
   const eqId = document.getElementById('act-eq').value;
   const bt = TAREAS[tipo]||[], bm = MINUTOS_TAREA[tipo]||[];
   _acts = { tipo, eqId,
-    plantilla: bt.map((t,i)=>({nombre:t, minutos:bm[i]!=null?bm[i]:5})),
+    plantilla: bt.map((t,i)=>({nombre:t, minutos:Number(bm[i])||5})),
     agregadas: eqId ? JSON.parse(JSON.stringify((ACT_EQ[eqId]||{}).agregadas||[])) : [],
     quitadas: new Set(eqId ? ((ACT_EQ[eqId]||{}).quitadas||[]) : []) };
   const puedeTipo = MA.can('config');
