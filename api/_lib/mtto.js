@@ -123,6 +123,17 @@ async function guardarRegistro(ses, tecnico) {
   return clave;
 }
 
+// nº real de fotos guardadas (docs), inmune a la carrera de mensajes concurrentes
+async function contarFotos(ses, tareaIdx) {
+  const { periodo, anio } = periodoLima();
+  let q = getDb().collection('mantenimiento_fotos')
+    .where('clave', '==', `${ses.sede}|${periodo}|${anio}`)
+    .where('eq_id', '==', ses.eqId);
+  if (tareaIdx != null) q = q.where('tareaIdx', '==', tareaIdx);
+  const snap = await q.select('tareaIdx').get();   // solo headers, no baja los base64
+  return snap.size;
+}
+
 async function guardarFoto(ses, tecnico, imagenB64, mime) {
   const { periodo, anio } = periodoLima();
   const idx = ses.marcadas[ses.fotoPos];
@@ -201,14 +212,13 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       }
       if (onWriteStart) onWriteStart();   // idempotencia: la foto se escribe una sola vez
       await guardarFoto(ses, tecnico, imagenB64, mime);
-      ses.fotos += 1;
-      await guardarSesion(from, ses);
-      return `📷 Foto ${ses.fotos} guardada para *${ses.actividades[ses.marcadas[ses.fotoPos]]}*. Envía otra, *SIGUIENTE* o *FIN*.`;
+      const n = await contarFotos(ses, ses.marcadas[ses.fotoPos]);
+      return `📷 Foto ${n} guardada para *${ses.actividades[ses.marcadas[ses.fotoPos]]}*. Envía otra, *SIGUIENTE* o *FIN*.`;
     }
     if (/(^|\s)(siguiente|listo|next)(\s|$)/.test(t)) {
       ses.fotoPos += 1;
       if (ses.fotoPos >= ses.marcadas.length) {
-        const n = ses.fotos;
+        const n = await contarFotos(ses, null);
         await limpiarSesion(from);
         return `🏁 *Registro completo* — ${ses.marcadas.length} actividad(es), ${n} foto(s). ¡Gracias!`;
       }
@@ -216,9 +226,9 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       return pedirFotos(ses);
     }
     if (/(^|\s)(fin|terminar|termine|ya)(\s|$)/.test(t)) {
-      const resumen = `🏁 *Registro completo* — ${ses.marcadas.length} actividad(es), ${ses.fotos} foto(s). ¡Gracias!`;
+      const n = await contarFotos(ses, null);
       await limpiarSesion(from);
-      return resumen;
+      return `🏁 *Registro completo* — ${ses.marcadas.length} actividad(es), ${n} foto(s). ¡Gracias!`;
     }
     return `Envía una foto, *SIGUIENTE* para pasar de actividad o *FIN* para terminar.`;
   }
