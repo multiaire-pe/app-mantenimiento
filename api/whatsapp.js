@@ -131,6 +131,14 @@ async function procesarMensaje(msg) {
       if (media) { imagenB64 = media.base64; mime = media.mime; }
     }
 
+    // Imagen que no se pudo descargar (fallo transitorio de la Graph API): pedir reenvío
+    // con un mensaje claro — antes caía al aviso genérico de observaciones, confuso en
+    // medio de un flujo de fotos de mantenimiento.
+    if (msg.type === 'image' && msg.image?.id && !imagenB64) {
+      await enviarTexto(msg.from, '📷 No pude descargar esa foto (fallo temporal). ¿Me la reenvías?');
+      return;
+    }
+
     // Tipos no soportados (audio, documento…) sin contenido útil → orientar al técnico.
     if (!texto && !imagenB64 && !ubicacion && msg.type && msg.type !== 'text') {
       await enviarTexto(msg.from,
