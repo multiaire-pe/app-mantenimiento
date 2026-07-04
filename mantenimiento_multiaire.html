@@ -153,6 +153,9 @@ option{background:#fff}
 .equipo-row{display:flex;align-items:center;gap:10px}
 .eq-id{font-family:var(--mono);font-size:10px;color:#1B3F8B;background:#e8eef8;border:1px solid #d0daf0;padding:2px 7px;border-radius:4px;flex-shrink:0;font-weight:600}
 .eq-name{font-weight:600;font-size:13px;flex:1}
+.btn-foto{display:inline-flex;align-items:center;gap:3px;background:none;border:1px solid var(--border);border-radius:6px;padding:2px 6px;cursor:pointer;font-size:12px;margin-left:6px;flex-shrink:0}
+.btn-foto:hover{border-color:var(--blue)}
+.fc-badge{background:var(--blue);color:#fff;font-size:9px;font-weight:700;border-radius:8px;padding:0 5px;line-height:14px}
 .eq-area{font-size:11px;color:var(--muted2)}
 .eq-semaforo{flex-shrink:0}
 
@@ -389,6 +392,7 @@ option{background:#fff}
     <div class="tab-nav" id="tabNav" style="display:none">
       <button class="tab-btn active" onclick="switchTab('checklist')">📋 Checklist</button>
       <button class="tab-btn" onclick="switchTab('dashboard')">📊 Dashboard</button>
+      <button class="tab-btn" onclick="switchTab('global')">🌐 Global</button>
     </div>
 
     <div class="tab-view active" id="tab-checklist">
@@ -399,6 +403,10 @@ option{background:#fff}
           <p>Selecciona una sede y un período para comenzar a registrar el mantenimiento de equipos.</p>
         </div>
       </div>
+    </div>
+
+    <div class="tab-view" id="tab-global">
+      <div id="global-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px"></div>
     </div>
 
     <div class="tab-view" id="tab-dashboard">
@@ -562,6 +570,188 @@ async function actsGuardar(){
   }catch(e){ toast('Error: '+e.message,'err'); }
   finally{ btn.disabled = false; }
 }
+
+// ── ETAPA 2: FOTOS POR ACTIVIDAD ──────────────────────────────────────────────
+// Colección mantenimiento_fotos: UN doc por foto {clave, eq_id, tareaIdx, tarea,
+// foto(base64), createdAt, createdBy} — 1 foto/doc esquiva el límite de 1MB.
+let fotosCount = {};   // `${eq_id}|${idx}` → n (del período actual)
+let _ftCtx = null;     // contexto del modal de fotos {eqId, idx, tarea}
+
+function _mttoKey(){ return currentSede + '|' + currentPeriodo + '|' + currentAnio; }
+
+async function loadFotosCounts(){
+  fotosCount = {};
+  try{
+    const { getDocs, collection } = window.__fb;
+    const snap = await window.__db.collection('mantenimiento_fotos').where('clave','==',_mttoKey()).get();
+    snap.docs.forEach(d => { const r=d.data(); const k=r.eq_id+'|'+r.tareaIdx; fotosCount[k]=(fotosCount[k]||0)+1; });
+  }catch(e){ /* sin permiso o sin datos: badges en 0 */ }
+  refreshFotoBadges();
+}
+function refreshFotoBadges(){
+  document.querySelectorAll('[data-fc]').forEach(el => {
+    const n = fotosCount[el.dataset.fc] || 0;
+    el.textContent = n ? n : '';
+    el.style.display = n ? 'inline-flex' : 'none';
+  });
+}
+function _ftComprimir(file){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 900, esc = Math.min(1, MAX/Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width*esc); c.height = Math.round(img.height*esc);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      res(c.toDataURL('image/jpeg', .72));
+    };
+    img.onerror = rej;
+    img.src = URL.createObjectURL(file);
+  });
+}
+function openFotosTarea(eqId, idx){
+  const eq = sedeEquipos.find(e => e.eq_id === eqId); if(!eq) return;
+  const tareas = actividadesDe(eq).tareas || [];
+  _ftCtx = { eqId, idx, tarea: tareas[idx] || ('Actividad '+(idx+1)) };
+  document.getElementById('ft-title').textContent = _ftCtx.tarea;
+  document.getElementById('ft-sub').textContent = eq.nombre + ' · ' + eqId + ' · ' + currentPeriodo + ' ' + currentAnio;
+  document.getElementById('ft-add').style.display = MA.can('editar','mantenimiento') ? 'inline-flex' : 'none';
+  document.getElementById('ft-overlay').style.display = 'flex';
+  renderFotosTarea();
+}
+function closeFotosTarea(){ document.getElementById('ft-overlay').style.display='none'; _ftCtx=null; }
+async function renderFotosTarea(){
+  const cont = document.getElementById('ft-grid');
+  cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando…</div>';
+  try{
+    const snap = await window.__db.collection('mantenimiento_fotos')
+      .where('clave','==',_mttoKey()).where('eq_id','==',_ftCtx.eqId).where('tareaIdx','==',_ftCtx.idx).get();
+    const puedeBorrar = MA.can('editar','mantenimiento');
+    cont.innerHTML = snap.docs.length ? snap.docs.map(d => {
+      const r = d.data();
+      return '<div style="position:relative">'
+        + '<img src="'+r.foto+'" style="width:100%;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer" onclick="ftLightbox(this.src)">'
+        + (puedeBorrar ? '<button onclick="ftBorrar(\''+d.id+'\')" style="position:absolute;top:4px;right:4px;background:rgba(200,30,50,.85);color:#fff;border:none;border-radius:6px;width:22px;height:22px;cursor:pointer;font-size:11px">✕</button>' : '')
+        + '</div>';
+    }).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px">Sin fotos de esta actividad.</div>';
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
+}
+async function ftAgregar(input){
+  if(!input.files || !input.files.length) return;
+  if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); return; }
+  let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
+  try{
+    for(const file of [...input.files]){
+      const foto = await _ftComprimir(file);
+      await window.__db.collection('mantenimiento_fotos').add({
+        clave:_mttoKey(), eq_id:_ftCtx.eqId, tareaIdx:_ftCtx.idx, tarea:_ftCtx.tarea,
+        foto, createdAt:new Date().toISOString(), createdBy:_by });
+      const k=_ftCtx.eqId+'|'+_ftCtx.idx; fotosCount[k]=(fotosCount[k]||0)+1;
+    }
+    toast('Foto(s) guardada(s) ✓','ok');
+    refreshFotoBadges(); renderFotosTarea();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+  input.value='';
+}
+async function ftBorrar(id){
+  if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); return; }
+  try{
+    await window.__db.collection('mantenimiento_fotos').doc(id).delete();
+    const k=_ftCtx.eqId+'|'+_ftCtx.idx; fotosCount[k]=Math.max(0,(fotosCount[k]||1)-1);
+    refreshFotoBadges(); renderFotosTarea();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+function ftLightbox(src){
+  const lb = document.getElementById('ft-lightbox');
+  lb.querySelector('img').src = src;
+  lb.style.display = 'flex';
+}
+
+// ── ETAPA 2: HISTORIAL DE INTERVENCIONES POR EQUIPO (tap en el equipo) ────────
+async function openHistorialEq(eqId){
+  const eq = sedeEquipos.find(e => e.eq_id === eqId); if(!eq) return;
+  document.getElementById('he-title').textContent = eq.nombre;
+  document.getElementById('he-sub').textContent = eqId + ' · ' + eq.tipo + ' · ' + currentSede;
+  const cont = document.getElementById('he-list');
+  cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando…</div>';
+  document.getElementById('he-overlay').style.display = 'flex';
+  try{
+    const { getDocs, collection } = window.__fb;
+    const [mSnap, fSnap] = await Promise.all([
+      getDocs(collection(window.__db, 'mantenimiento')),
+      window.__db.collection('mantenimiento_fotos').where('eq_id','==',eqId).get()
+    ]);
+    const fotosPorClave = {};
+    fSnap.docs.forEach(d => { const c=d.data().clave; fotosPorClave[c]=(fotosPorClave[c]||0)+1; });
+    const nTareas = (actividadesDe(eq).tareas || []).length;
+    const ORD = {'ENE-FEB':1,'MAR-ABR':2,'MAY-JUN':3,'JUL-AGO':4,'SEP-OCT':5,'NOV-DIC':6};
+    const filas = [];
+    mSnap.docs.forEach(d => {
+      const r = d.data();
+      const [sede, periodo, anio] = (r.clave || d.id).split('|');
+      if(sede !== eq.sede) return;
+      const sel = typeof r.seleccionados==='string' ? JSON.parse(r.seleccionados||'{}') : (r.seleccionados||{});
+      const ts  = typeof r.tareaStatus==='string' ? JSON.parse(r.tareaStatus||'{}') : (r.tareaStatus||{});
+      if(!sel[eqId] && !ts[eqId]) return;
+      const st = ts[eqId] || {};
+      const done = (typeof st === 'boolean') ? (st ? nTareas : 0) : Object.values(st).filter(v=>v===true).length;
+      filas.push({ periodo, anio: parseInt(anio)||0, done, fotos: fotosPorClave[r.clave || d.id] || 0, upd: r.updatedAt||'' });
+    });
+    filas.sort((a,b) => b.anio - a.anio || (ORD[b.periodo]||0) - (ORD[a.periodo]||0));
+    cont.innerHTML = filas.length ? filas.map(f => {
+      const pct = nTareas ? Math.round(100*f.done/nTareas) : 0;
+      const em = f.done >= nTareas && nTareas ? '🟢' : f.done > 0 ? '🟡' : '🔴';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px">'
+        + '<span>'+em+'</span>'
+        + '<div style="flex:1"><div style="font-size:12px;font-weight:700">'+f.periodo+' '+f.anio+'</div>'
+        + '<div style="font-size:10px;color:var(--muted2)">'+f.done+'/'+nTareas+' actividades'+(f.fotos?' · 📷 '+f.fotos:'')+'</div></div>'
+        + '<span style="font-size:12px;font-weight:700;color:'+(pct===100?'var(--green,#0a4)':pct>0?'#cc8800':'var(--red,#c33)')+'">'+pct+'%</span></div>';
+    }).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px">Sin intervenciones registradas para este equipo.</div>';
+    cont.innerHTML += '<div style="font-size:10px;color:var(--muted);padding:6px 2px">El total de actividades se calcula con la lista vigente del equipo.</div>';
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
+}
+function closeHistorialEq(){ document.getElementById('he-overlay').style.display='none'; }
+
+// ── ETAPA 2: VISTA GLOBAL (todas las sedes, período actual) ──────────────────
+async function renderGlobal(){
+  const cont = document.getElementById('global-grid');
+  cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando todas las sedes…</div>';
+  try{
+    const { getDocs, collection } = window.__fb;
+    const [mSnap, invSnap] = await Promise.all([
+      getDocs(collection(window.__db, 'mantenimiento')),
+      getDocs(collection(window.__db, 'inventario'))
+    ]);
+    const eqIdx = {};
+    invSnap.docs.forEach(d => { const r=d.data(); if(r.eq_id) eqIdx[r.eq_id] = { eq_id:r.eq_id, tipo:r.tipo||'', sede:r.sede||'' }; });
+    const sufijo = '|' + currentPeriodo + '|' + currentAnio;
+    let html = '';
+    const docs = mSnap.docs.filter(d => (d.data().clave || d.id).endsWith(sufijo))
+      .sort((a,b) => (a.data().clave||a.id).localeCompare(b.data().clave||b.id));
+    docs.forEach(d => {
+      const r = d.data();
+      const sede = (r.clave || d.id).split('|')[0];
+      const sel = typeof r.seleccionados==='string' ? JSON.parse(r.seleccionados||'{}') : (r.seleccionados||{});
+      const ts  = typeof r.tareaStatus==='string' ? JSON.parse(r.tareaStatus||'{}') : (r.tareaStatus||{});
+      const ids = Object.keys(sel).filter(k => sel[k]);
+      if(!ids.length) return;
+      let g=0,y=0,rr=0;
+      ids.forEach(id => {
+        const eq = eqIdx[id]; const nT = eq ? (actividadesDe(eq).tareas||[]).length : 0;
+        const st = ts[id] || {};
+        const done = (typeof st === 'boolean') ? (st ? nT : 0) : Object.values(st).filter(v=>v===true).length;
+        if(nT && done >= nT) g++; else if(done > 0) y++; else rr++;
+      });
+      const tot = ids.length, pct = tot ? Math.round(100*g/tot) : 0;
+      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:700;flex:1">'+sede+'</span>'
+        + '<span style="font-size:12px;font-weight:700;color:'+(pct===100?'var(--green,#0a4)':pct>0?'#cc8800':'var(--red,#c33)')+'">'+pct+'%</span></div>'
+        + '<div style="font-size:11px;color:var(--muted2)">'+tot+' equipos · 🟢 '+g+' · 🟡 '+y+' · 🔴 '+rr+'</div></div>';
+    });
+    cont.innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:10px">Ninguna sede tiene equipos seleccionados en '+currentPeriodo+' '+currentAnio+'.</div>';
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
+}
+
 
 
 async function loadTareas() {
@@ -756,6 +946,7 @@ async function loadPeriodo() {
 
   renderLastUpdated();
   renderMain();
+  loadFotosCounts();  // badges 📷 del período (async, pinta al llegar)
 }
 
 // ── RENDER ───────────────────────────────────────────────────────────────────
@@ -828,6 +1019,7 @@ function renderMain() {
   });
 
   document.getElementById('content').innerHTML = html;
+  if(typeof refreshFotoBadges==='function') refreshFotoBadges();  // re-pintar badges 📷 tras el render
   // refresh dashboard if visible
   if(document.getElementById('tab-dashboard').classList.contains('active')) renderDashboard();
   updateStatusBar([stats.green, stats.yellow, stats.red]);
@@ -851,6 +1043,7 @@ function renderEquipo(eq, tareas) {
         <input type="checkbox" class="tarea-cb" ${done?'checked':''} onchange="toggleTarea('${eq.eq_id}',${i},this.checked)">
         <span class="tarea-label">${_actEsc(t)}</span>
         ${peso}
+        <button type="button" class="btn-foto mant-edit-ok" onclick="event.preventDefault();event.stopPropagation();openFotosTarea('${eq.eq_id}',${i})" title="Fotos de esta actividad">📷<span class="fc-badge" data-fc="${eq.eq_id}|${i}" style="display:none"></span></button>
       </label>`;
     }).join('') + `</div>`;
   }
@@ -868,7 +1061,7 @@ function renderEquipo(eq, tareas) {
       <div class="equipo-row">
         <div class="semaforo ${sem} eq-semaforo">${semEmoji}</div>
         <span class="eq-id">${eq.eq_id}</span>
-        <div style="flex:1">
+        <div style="flex:1;cursor:pointer" onclick="openHistorialEq('${eq.eq_id}')" title="Ver historial de intervenciones">
           <div class="eq-name">${eq.nombre}</div>
           <div class="eq-area">${eq.area||''} ${eq.marca?'· '+eq.marca:''}</div>
         </div>
@@ -1306,6 +1499,7 @@ function switchTab(tab) {
   document.querySelector(`.tab-btn[onclick*="${tab}"]`).classList.add('active');
   document.getElementById('tab-'+tab).classList.add('active');
   if(tab==='dashboard') renderDashboard();
+  if(tab==='global') renderGlobal();
 }
 
 
@@ -2102,6 +2296,32 @@ document.addEventListener('click', function(e) {
     <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);padding-top:12px;position:sticky;bottom:0;background:var(--surface)">
       <button class="btn" onclick="closeActsEditor()">Cancelar</button>
       <button class="btn btn-primary" id="acts-save" onclick="actsGuardar()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- FOTOS POR ACTIVIDAD -->
+<div id="ft-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.45);z-index:600;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeFotosTarea()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:520px;max-width:100%;max-height:90vh;overflow-y:auto;overflow-x:hidden;padding:20px">
+    <h2 style="font-size:14px;color:var(--blue)" id="ft-title"></h2>
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:12px" id="ft-sub"></div>
+    <div id="ft-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:12px"></div>
+    <div style="display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--border);padding-top:12px;position:sticky;bottom:0;background:var(--surface);flex-wrap:wrap">
+      <label id="ft-add" class="btn btn-primary" style="cursor:pointer">📷 Agregar fotos<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="ftAgregar(this)"></label>
+      <button class="btn" onclick="closeFotosTarea()">Cerrar</button>
+    </div>
+  </div>
+</div>
+<div id="ft-lightbox" style="position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:700;display:none;align-items:center;justify-content:center;padding:20px;cursor:pointer" onclick="this.style.display='none'">
+  <img style="max-width:100%;max-height:100%;border-radius:8px">
+</div>
+<!-- HISTORIAL DE INTERVENCIONES -->
+<div id="he-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.45);z-index:600;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeHistorialEq()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:480px;max-width:100%;max-height:90vh;overflow-y:auto;overflow-x:hidden;padding:20px">
+    <h2 style="font-size:14px;color:var(--blue)" id="he-title"></h2>
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:12px" id="he-sub"></div>
+    <div id="he-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+    <div style="display:flex;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px;position:sticky;bottom:0;background:var(--surface)">
+      <button class="btn" onclick="closeHistorialEq()">Cerrar</button>
     </div>
   </div>
 </div>
