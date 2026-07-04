@@ -56,6 +56,9 @@ service cloud.firestore {
     match /maestros_grupos/{doc}   { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_feriados/{doc} { allow read: if authorized(); allow write: if isSuper(); }
     match /tareas_config/{doc}     { allow read: if authorized(); allow write: if isSuper(); }
+    // actividades personalizadas por equipo (mantenimiento): editarlas —incluido borrar el
+    // override para volver a heredar la plantilla— es operación normal del módulo
+    match /mtto_actividades_equipo/{doc} { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
     match /manta_guia/{doc}        { allow read: if authorized(); allow write: if isSuper(); }
     match /manta_equipos/{doc}     { allow read: if authorized(); allow write: if isSuper(); }
 
