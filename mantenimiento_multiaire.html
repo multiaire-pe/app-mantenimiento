@@ -849,7 +849,7 @@ function renderEquipo(eq, tareas) {
       const style = isParams ? 'border-top:1px dashed var(--border2);margin-top:4px;padding-top:8px;' : '';
       return `<label class="tarea-row ${done?'done':''}" style="${style}">
         <input type="checkbox" class="tarea-cb" ${done?'checked':''} onchange="toggleTarea('${eq.eq_id}',${i},this.checked)">
-        <span class="tarea-label">${t}</span>
+        <span class="tarea-label">${_actEsc(t)}</span>
         ${peso}
       </label>`;
     }).join('') + `</div>`;
@@ -1379,7 +1379,7 @@ function exportPDF() {
           const isP = t==='Toma de parámetros';
           return `<div style="display:flex;align-items:center;gap:5px;padding:3px 0;${isP?'border-top:1px dashed #ccc;margin-top:3px;padding-top:5px':''}">
             <span style="color:${done?'#00aa44':'#cc2233'};font-size:13px;flex-shrink:0">${done?'✓':'✗'}</span>
-            <span style="font-size:10px;color:${isP?'#888':'#333'};${isP?'font-style:italic':''};flex:1">${t}</span>
+            <span style="font-size:10px;color:${isP?'#888':'#333'};${isP?'font-style:italic':''};flex:1">${_actEsc(t)}</span>
             ${pw}
           </div>`;
         }).join('');
