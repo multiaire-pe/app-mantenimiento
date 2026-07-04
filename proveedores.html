@@ -910,7 +910,7 @@ function statTile(num, label){ return `<div class="stat-tile"><div class="stat-n
 
 async function refreshDetalleIndicadores(id){
   document.getElementById('det-stats').innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--muted2);font-size:11px;padding:10px">Cargando indicadores…</div>`;
-  document.getElementById('det-top-body').innerHTML = '<tr><td colspan="3" class="empty-msg" style="padding:14px">Cargando…</td></tr>';
+  document.getElementById('det-top-body').innerHTML = '<tr><td colspan="4" class="empty-msg" style="padding:14px">Cargando…</td></tr>';
   const compras = await COMPRAS.porProveedor(db, id);
   if(_detProvId !== id) return; // el panel cambió de proveedor mientras cargaba
   const ind = COMPRAS.indicadores(compras);
