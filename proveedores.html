@@ -110,14 +110,53 @@ th{background:var(--surface3);color:var(--muted2);font-size:10px;font-weight:700
 td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle}
 tr:hover td{background:var(--surface2)}
 .col-estado{width:30px;text-align:center}
-.col-acc{width:48px;text-align:center}
-.col-notas{max-width:240px}
-.cell-notas{display:block;max-width:240px;color:var(--muted2);font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.col-acc{width:110px;text-align:center}
+.acc-icons{display:flex;gap:4px;justify-content:center}
 .estado-dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle}
 .estado-dot.on{background:var(--green)}
 .estado-dot.off{background:var(--muted)}
 .row-clickable{cursor:pointer}
 .empty-msg{text-align:center;color:var(--muted);padding:40px 20px;font-size:13px}
+
+/* ── VISTA RÁPIDA (popover) ──────────────────────────────────────────────────── */
+.qv-pop{position:fixed;z-index:600;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);padding:12px 14px;min-width:230px;display:none}
+.qv-pop.open{display:block}
+.qv-title{font-size:11px;font-weight:700;color:var(--blue);margin-bottom:6px}
+.qv-row{display:flex;justify-content:space-between;gap:14px;padding:4px 0;border-bottom:1px dashed var(--border);font-size:12px}
+.qv-row:last-child{border-bottom:none}
+.qv-label{color:var(--muted2)}
+.qv-val{font-weight:700;color:var(--accent)}
+
+/* ── INDICADORES (stat tiles) ────────────────────────────────────────────────── */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stat-tile{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 8px;text-align:center}
+.stat-num{font-size:17px;font-weight:700;color:var(--blue)}
+.stat-lbl{font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-top:3px;line-height:1.3}
+
+/* ── INFO GRID (Detalles → información general, solo lectura) ───────────────── */
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 20px}
+.info-item{display:flex;flex-direction:column;gap:2px;min-width:0}
+.info-val{font-size:12px;color:var(--accent);word-break:break-word}
+.info-val.empty{color:var(--muted)}
+
+/* ── PRODUCTOS MÁS COMPRADOS / HISTORIAL ─────────────────────────────────────── */
+.mini-table{width:100%;border-collapse:collapse;font-size:11px}
+.mini-table th{background:var(--surface3);color:var(--muted2);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:6px 8px;text-align:left}
+.mini-table td{padding:6px 8px;border-bottom:1px solid var(--border)}
+.hist-row{border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden}
+.hist-head{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;cursor:pointer;background:var(--surface2);font-size:12px}
+.hist-head:hover{background:var(--surface3)}
+.hist-body{padding:0 12px 10px;display:none}
+.hist-body.open{display:block}
+
+/* ── REGISTRAR COMPRA (ítems dinámicos) ──────────────────────────────────────── */
+.ci-row{display:grid;grid-template-columns:110px 1fr 80px 100px 90px 30px;gap:8px;align-items:end;margin-bottom:10px;position:relative}
+.ci-sugg{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1.5px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);max-height:170px;overflow-y:auto;z-index:50;display:none;margin-top:2px}
+.ci-sugg.open{display:block}
+.ci-sugg-item{padding:7px 10px;font-size:12px;cursor:pointer}
+.ci-sugg-item:hover{background:var(--surface2)}
+.ci-sugg-empty{padding:7px 10px;font-size:11px;color:var(--muted)}
+.ci-subtotal{font-size:12px;font-weight:700;color:var(--blue);padding:8px 0}
 
 /* ── MODAL ────────────────────────────────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(10,20,50,.45);backdrop-filter:blur(2px);z-index:500;display:none;align-items:center;justify-content:center;padding:16px;cursor:pointer}
@@ -143,6 +182,9 @@ tr:hover td{background:var(--surface2)}
   .form-row{flex-direction:column;align-items:stretch}
   .prov-toolbar-actions{width:100%}
   .prov-toolbar-actions .btn{flex:1;justify-content:center}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
+  .info-grid{grid-template-columns:1fr}
+  .ci-row{grid-template-columns:1fr;gap:6px}
 }
 </style>
 </head>
@@ -204,18 +246,17 @@ tr:hover td{background:var(--surface2)}
             <th>Teléfono</th>
             <th>Contacto</th>
             <th>Cond. pago</th>
-            <th class="col-notas">Notas</th>
-            <th class="col-acc"></th>
+            <th class="col-acc">Acciones</th>
           </tr>
         </thead>
         <tbody id="prov-body">
-          <tr><td colspan="10" class="empty-msg">Cargando proveedores…</td></tr>
+          <tr><td colspan="9" class="empty-msg">Cargando proveedores…</td></tr>
         </tbody>
       </table>
     </div>
     <p style="font-size:10px;color:var(--muted2);margin-top:6px">
       <span class="estado-dot on"></span> Activo &nbsp;·&nbsp;
-      <span class="estado-dot off"></span> Inactivo &nbsp;·&nbsp; doble clic en una fila para ver el detalle.
+      <span class="estado-dot off"></span> Inactivo &nbsp;·&nbsp; doble clic en una fila, o 📋, para ver los detalles y el historial de compras.
     </p>
   </div>
 
@@ -316,9 +357,89 @@ tr:hover td{background:var(--surface2)}
 
     </div>
     <div class="modal-foot">
-      <button class="btn btn-red" id="btn-del-prov" onclick="deleteProv()" style="margin-right:auto;display:none">🗑 Eliminar</button>
+      <button class="btn btn-red" id="btn-del-prov" onclick="removeProveedor(document.getElementById('prov-id').value)" style="margin-right:auto;display:none">🗑 Eliminar</button>
       <button class="btn" onclick="closeModal('modal-prov')">Cancelar</button>
       <button class="btn btn-primary" id="btn-save-prov" onclick="saveProv()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- VISTA RÁPIDA (popover flotante, ver openQuickView) -->
+<div class="qv-pop" id="qv-pop"></div>
+
+<!-- MODAL DETALLES DE PROVEEDOR (info + indicadores + productos + compras) -->
+<div class="modal-overlay" id="modal-prov-detalle" onclick="if(event.target===this)closeModal('modal-prov-detalle')">
+  <div class="modal" style="width:640px">
+    <h2 id="det-title">🏢 Detalles del proveedor</h2>
+    <div class="modal-sub" id="det-sub"></div>
+
+    <div class="card-title" style="margin-top:4px">📇 Información general</div>
+    <div class="info-grid" id="det-info" style="margin-bottom:18px"></div>
+
+    <div class="card-title">📊 Indicadores</div>
+    <div class="stat-grid" id="det-stats" style="margin-bottom:18px"></div>
+
+    <div class="card-title">🏆 Productos más comprados</div>
+    <table class="mini-table" style="margin-bottom:6px">
+      <thead><tr><th>Producto / servicio</th><th>Último precio</th><th>Última compra</th></tr></thead>
+      <tbody id="det-top-body"><tr><td colspan="3" class="empty-msg" style="padding:14px">Sin compras registradas.</td></tr></tbody>
+    </table>
+    <div style="text-align:right;margin-bottom:16px">
+      <button class="btn btn-sm" onclick="openHistorial()">🕘 Ver historial completo</button>
+    </div>
+
+    <input type="hidden" id="det-id">
+    <div class="modal-foot">
+      <button class="btn btn-red" id="det-btn-del" onclick="removeProveedor(document.getElementById('det-id').value)" style="margin-right:auto;display:none">🗑 Eliminar</button>
+      <button class="btn" id="det-btn-editar" onclick="editarDesdeDetalle()" style="display:none">✎ Editar</button>
+      <button class="btn btn-primary" id="det-btn-registrar" onclick="openRegistrarCompra()" style="display:none">➕ Registrar compra</button>
+      <button class="btn" onclick="closeModal('modal-prov-detalle')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL HISTORIAL COMPLETO DE COMPRAS -->
+<div class="modal-overlay" id="modal-compras-historial" onclick="if(event.target===this)closeModal('modal-compras-historial')">
+  <div class="modal" style="width:600px">
+    <h2>🕘 Historial de compras</h2>
+    <div class="modal-sub" id="hist-sub"></div>
+    <div id="hist-list" style="max-height:420px;overflow-y:auto"></div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-compras-historial')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL REGISTRAR COMPRA -->
+<div class="modal-overlay" id="modal-registrar-compra" onclick="if(event.target===this)closeModal('modal-registrar-compra')">
+  <div class="modal" style="width:700px">
+    <h2>➕ Registrar compra</h2>
+    <div class="modal-sub" id="rc-sub">Proveedor: —</div>
+
+    <div class="form-row">
+      <div class="form-group" style="flex:0 0 160px;min-width:140px">
+        <label class="form-label">Fecha <span style="color:var(--orange)">*</span></label>
+        <input type="date" id="rc-fecha" class="form-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label">N° de comprobante</label>
+        <input type="text" id="rc-comprobante" class="form-input" placeholder="F001-000123 (opcional)" autocomplete="off">
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <label class="form-label" style="display:block;margin-bottom:8px">Ítems <span style="color:var(--orange)">*</span></label>
+      <div id="rc-items"></div>
+      <button class="btn btn-sm" onclick="addItemRow()">＋ Agregar ítem</button>
+    </div>
+
+    <input type="hidden" id="rc-proveedor-id">
+    <div class="modal-foot" style="justify-content:space-between">
+      <span style="font-size:13px;font-weight:700;color:var(--blue)">Total: <span id="rc-total">S/ 0.00</span></span>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="closeModal('modal-registrar-compra')">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarCompra()">💾 Guardar compra</button>
+      </div>
     </div>
   </div>
 </div>
@@ -354,6 +475,7 @@ tr:hover td{background:var(--surface2)}
 
 <script src="firebase-config.js"></script>
 <script src="auth-guard.js"></script>
+<script src="compras.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -551,7 +673,7 @@ async function loadProveedores(){
     proveedores.sort((a,b) => (a.razonSocial||'').localeCompare(b.razonSocial||'','es'));
   }catch(e){
     proveedores = [];
-    if(body) body.innerHTML = '<tr><td colspan="10" class="empty-msg">Error al cargar proveedores.</td></tr>';
+    if(body) body.innerHTML = '<tr><td colspan="9" class="empty-msg">Error al cargar proveedores.</td></tr>';
     toast('Error al cargar proveedores: ' + e.message, 'err');
     return;
   }
@@ -571,19 +693,18 @@ function provFilter(){
 function renderProvTable(){
   const body  = document.getElementById('prov-body');
   const list  = provFilter();
-  const admin = isProvAdmin();
+  const puedeBorrar = MA.can('borrar');
   document.getElementById('prov-count').textContent =
     `${list.length} de ${proveedores.length} proveedor${proveedores.length!==1?'es':''}`;
   if(!list.length){
-    body.innerHTML = `<tr><td colspan="10" class="empty-msg">${proveedores.length ? 'Sin coincidencias.' : 'Sin proveedores registrados.'}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9" class="empty-msg">${proveedores.length ? 'Sin coincidencias.' : 'Sin proveedores registrados.'}</td></tr>`;
     return;
   }
   body.innerHTML = list.map(p => {
     const activo  = (p.activo || 'SI') === 'SI';
     const dot     = `<span class="estado-dot ${activo?'on':'off'}" title="${activo?'Activo':'Inactivo'}"></span>`;
-    const actIcon = admin ? '✎' : '👁';
     const idAttr  = esc(p.id);
-    return `<tr class="row-clickable" ondblclick="openEditProv('${idAttr}')">
+    return `<tr class="row-clickable" ondblclick="openProvDetalle('${idAttr}')">
       <td class="col-estado">${dot}</td>
       <td style="font-family:var(--mono)">${esc(p.ruc)}</td>
       <td><strong>${esc(p.razonSocial)}</strong></td>
@@ -592,10 +713,21 @@ function renderProvTable(){
       <td style="font-family:var(--mono)">${esc(p.telefono)}</td>
       <td>${esc(p.contacto)}</td>
       <td>${esc(p.condicionesPago)}</td>
-      <td class="col-notas"><span class="cell-notas" title="${esc(p.notas)}">${esc(p.notas)}</span></td>
-      <td class="col-acc"><button class="btn btn-sm" onclick="openEditProv('${idAttr}')" title="${admin?'Editar':'Ver'}" style="padding:3px 9px">${actIcon}</button></td>
+      <td class="col-acc"><div class="acc-icons">
+        <button class="btn btn-sm qv-trigger" onclick="event.stopPropagation();openQuickView('${idAttr}', this)" title="Vista rápida" style="padding:3px 7px">👁</button>
+        <button class="btn btn-sm" onclick="event.stopPropagation();openProvDetalle('${idAttr}')" title="Detalles" style="padding:3px 7px">📋</button>
+        ${puedeBorrar ? `<button class="btn btn-sm btn-red" onclick="event.stopPropagation();removeProveedor('${idAttr}')" title="Eliminar" style="padding:3px 7px">🗑</button>` : ''}
+      </div></td>
     </tr>`;
   }).join('');
+}
+
+// ── FORMATO ───────────────────────────────────────────────────────────────────
+function fmtMoney(n){ return 'S/ ' + Number(n||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtFecha(f){
+  if(!f) return '—';
+  const [y,m,d] = String(f).split('-');
+  return (y && m && d) ? `${d}/${m}/${y}` : f;
 }
 
 // ── MODAL ALTA / EDICIÓN ────────────────────────────────────────────────────────
@@ -617,15 +749,17 @@ function openNewProv(){
   setTimeout(() => document.getElementById('prov-ruc')?.focus(), 50);
 }
 
+// La consulta de solo-lectura vive ahora en el panel Detalles (openProvDetalle);
+// este modal de edición solo se abre para quien puede editar (ver editarDesdeDetalle).
 function openEditProv(id){
+  if(!isProvAdmin()){ toast('Sin permisos para editar proveedores', 'err'); return; }
   const p = proveedores.find(x => x.id === id);
   if(!p) return;
-  const admin = isProvAdmin();
-  document.getElementById('prov-modal-title').textContent = admin ? '✎ Editar proveedor' : '👁 Ver proveedor';
+  document.getElementById('prov-modal-title').textContent = '✎ Editar proveedor';
   document.getElementById('prov-id').value = p.id;
   PROV_FIELDS.forEach(f => { const el = document.getElementById('prov-'+f); if(el) el.value = p[f] || ''; });
   document.getElementById('prov-activo').value = (p.activo || 'SI');
-  setProvModalReadonly(!admin);
+  setProvModalReadonly(false);
   document.getElementById('btn-del-prov').style.display = MA.can('borrar') ? 'inline-flex' : 'none';
   document.getElementById('modal-prov').classList.add('open');
 }
@@ -668,9 +802,10 @@ async function saveProv(){
 }
 
 // ── DELETE ────────────────────────────────────────────────────────────────────
-async function deleteProv(){
+// Único punto de borrado: se llama desde la fila de la tabla, desde el modal de
+// edición y desde el panel Detalles (los tres reciben el id del proveedor).
+async function removeProveedor(id){
   if(!MA.can('borrar')){ toast('Solo el super admin puede eliminar', 'err'); return; }
-  const id = document.getElementById('prov-id').value;
   if(!id) return;
   const p = proveedores.find(x => x.id === id);
   if(!confirm(`¿Eliminar al proveedor "${p?.razonSocial || ''}"?\nEsta acción no se puede deshacer.`)) return;
@@ -678,9 +813,270 @@ async function deleteProv(){
     await db.collection('proveedores').doc(id).delete();
     proveedores = proveedores.filter(x => x.id !== id);
     closeModal('modal-prov');
+    closeModal('modal-prov-detalle');
     renderProvTable();
     toast('Proveedor eliminado', 'ok');
   }catch(e){ toast('Error al eliminar: ' + e.message, 'err'); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  HISTORIAL DE COMPRAS — capa de UI de proveedores.html sobre compras.js
+//  (window.COMPRAS). Implementación provisional dentro de Proveedores; ver
+//  compras.js para la razón del desacople (posible módulo Compras a futuro).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── VISTA RÁPIDA (popover) ──────────────────────────────────────────────────────
+async function openQuickView(id, btnEl){
+  const pop  = document.getElementById('qv-pop');
+  const same = pop.dataset.provId === id && pop.classList.contains('open');
+  pop.classList.remove('open');
+  if(same){ pop.dataset.provId = ''; return; }
+  const p = proveedores.find(x => x.id === id);
+  if(!p) return;
+  const rect = btnEl.getBoundingClientRect();
+  pop.style.top  = (rect.bottom + 6) + 'px';
+  pop.style.left = Math.max(8, rect.right - 230) + 'px';
+  pop.dataset.provId = id;
+  pop.innerHTML = `<div class="qv-title">${esc(p.razonSocial)}</div><div class="qv-row"><span class="qv-label">Cargando…</span></div>`;
+  pop.classList.add('open');
+  const compras = await COMPRAS.porProveedor(db, id);
+  if(pop.dataset.provId !== id) return; // se cerró o cambió de fila mientras cargaba
+  const ind = COMPRAS.indicadores(compras);
+  pop.innerHTML = `<div class="qv-title">${esc(p.razonSocial)}</div>`
+    + qvRow('Productos diferentes', ind.productosDistintos)
+    + qvRow('Compras realizadas', ind.comprasRealizadas)
+    + qvRow('Última compra', ind.ultimaCompra ? fmtFecha(ind.ultimaCompra) : '—')
+    + qvRow('Monto total comprado', fmtMoney(ind.montoTotal));
+}
+function qvRow(label, val){ return `<div class="qv-row"><span class="qv-label">${label}</span><span class="qv-val">${esc(String(val))}</span></div>`; }
+function closeQuickView(){
+  const pop = document.getElementById('qv-pop');
+  pop.classList.remove('open');
+  pop.dataset.provId = '';
+}
+document.addEventListener('click', e => {
+  const pop = document.getElementById('qv-pop');
+  if(pop.classList.contains('open') && !pop.contains(e.target) && !e.target.closest('.qv-trigger')) closeQuickView();
+});
+
+// ── DETALLES (info + indicadores + top productos) ──────────────────────────────
+let _detProvId = null;
+
+async function openProvDetalle(id){
+  const p = proveedores.find(x => x.id === id);
+  if(!p) return;
+  closeQuickView();
+  _detProvId = id;
+  document.getElementById('det-id').value = id;
+  document.getElementById('det-title').textContent = '🏢 ' + (p.razonSocial || '(sin razón social)');
+  const activo = (p.activo || 'SI') === 'SI';
+  document.getElementById('det-sub').innerHTML =
+    `RUC ${esc(p.ruc)} &nbsp;·&nbsp; <span class="estado-dot ${activo?'on':'off'}" style="margin-right:4px"></span>${activo?'Activo':'Inactivo'}`;
+  document.getElementById('det-info').innerHTML = [
+    infoItem('Nombre comercial', p.nombreComercial),
+    infoItem('Rubro', p.rubro),
+    infoItem('Teléfono', p.telefono),
+    infoItem('Email', p.email),
+    infoItem('Contacto', p.contacto),
+    infoItem('Dirección', p.direccion),
+    infoItem('Condiciones de pago', p.condicionesPago),
+    infoItem('Banco', p.banco),
+    infoItem('N° de cuenta / CCI', p.cuenta),
+    infoItem('Notas', p.notas),
+  ].join('');
+  const admin = isProvAdmin();
+  document.getElementById('det-btn-editar').style.display    = admin ? 'inline-flex' : 'none';
+  document.getElementById('det-btn-registrar').style.display = admin ? 'inline-flex' : 'none';
+  document.getElementById('det-btn-del').style.display        = MA.can('borrar') ? 'inline-flex' : 'none';
+  document.getElementById('modal-prov-detalle').classList.add('open');
+  await refreshDetalleIndicadores(id);
+}
+function infoItem(label, value){
+  const v = String(value || '').trim();
+  return `<div class="info-item"><span class="form-label">${label}</span><span class="info-val${v?'':' empty'}">${v ? esc(v) : '—'}</span></div>`;
+}
+function statTile(num, label){ return `<div class="stat-tile"><div class="stat-num">${esc(String(num))}</div><div class="stat-lbl">${label}</div></div>`; }
+
+async function refreshDetalleIndicadores(id){
+  document.getElementById('det-stats').innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--muted2);font-size:11px;padding:10px">Cargando indicadores…</div>`;
+  document.getElementById('det-top-body').innerHTML = '<tr><td colspan="3" class="empty-msg" style="padding:14px">Cargando…</td></tr>';
+  const compras = await COMPRAS.porProveedor(db, id);
+  if(_detProvId !== id) return; // el panel cambió de proveedor mientras cargaba
+  const ind = COMPRAS.indicadores(compras);
+  document.getElementById('det-stats').innerHTML =
+      statTile(ind.productosDistintos, 'Productos diferentes')
+    + statTile(ind.comprasRealizadas, 'Compras realizadas')
+    + statTile(ind.ultimaCompra ? fmtFecha(ind.ultimaCompra) : '—', 'Última compra')
+    + statTile(fmtMoney(ind.montoTotal), 'Monto total comprado');
+  const top = COMPRAS.topProductos(compras, 5);
+  document.getElementById('det-top-body').innerHTML = top.length
+    ? top.map(t => `<tr><td>${esc(t.nombre)}${t.tipo==='SERVICIO'?' <span style="color:var(--muted2);font-size:9px">(servicio)</span>':''}</td><td>${fmtMoney(t.ultimoPrecio)}</td><td>${fmtFecha(t.ultimaCompra)}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="empty-msg" style="padding:14px">Sin compras registradas.</td></tr>';
+}
+
+function editarDesdeDetalle(){
+  const id = document.getElementById('det-id').value;
+  closeModal('modal-prov-detalle');
+  openEditProv(id);
+}
+
+// ── HISTORIAL COMPLETO ──────────────────────────────────────────────────────────
+async function openHistorial(){
+  const id = _detProvId;
+  if(!id) return;
+  const p = proveedores.find(x => x.id === id);
+  document.getElementById('hist-sub').textContent = p ? p.razonSocial : '';
+  const compras = await COMPRAS.porProveedor(db, id);
+  const list = document.getElementById('hist-list');
+  list.innerHTML = compras.length ? compras.map((c, i) => `
+    <div class="hist-row">
+      <div class="hist-head" onclick="toggleHistRow(${i})">
+        <span>${fmtFecha(c.fecha)}${c.numeroComprobante ? (' · ' + esc(c.numeroComprobante)) : ''}</span>
+        <span>${(c.items||[]).length} ítem${(c.items||[]).length!==1?'s':''} · <strong>${fmtMoney(c.total)}</strong></span>
+      </div>
+      <div class="hist-body" id="hist-body-${i}">
+        <table class="mini-table">
+          <thead><tr><th>Ítem</th><th>Cant.</th><th>P. unit.</th><th>Subtotal</th></tr></thead>
+          <tbody>${(c.items||[]).map(it => `<tr><td>${esc(it.nombre)}${it.tipo==='SERVICIO'?' <span style="color:var(--muted2);font-size:9px">(servicio)</span>':''}</td><td>${it.cantidad}</td><td>${fmtMoney(it.precioUnitario)}</td><td>${fmtMoney(it.subtotal)}</td></tr>`).join('')}</tbody>
+        </table>
+        <div style="font-size:10px;color:var(--muted2);margin-top:6px">Registrado por ${esc(c.createdBy || '—')}</div>
+      </div>
+    </div>`).join('') : '<div class="empty-msg">Sin compras registradas.</div>';
+  document.getElementById('modal-compras-historial').classList.add('open');
+}
+function toggleHistRow(i){ document.getElementById('hist-body-'+i)?.classList.toggle('open'); }
+
+// ── REGISTRAR COMPRA ─────────────────────────────────────────────────────────────
+let _rcItems    = []; // [{tipo, catalogoId, nombre, cantidad, precioUnitario}]
+let _rcCatalogo = [];
+
+async function openRegistrarCompra(){
+  const id = _detProvId;
+  const p  = proveedores.find(x => x.id === id);
+  if(!p) return;
+  if(!isProvAdmin()){ toast('Sin permisos para registrar compras', 'err'); return; }
+  document.getElementById('rc-proveedor-id').value = id;
+  document.getElementById('rc-sub').textContent = 'Proveedor: ' + (p.razonSocial || '');
+  document.getElementById('rc-fecha').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('rc-comprobante').value = '';
+  _rcItems = [];
+  addItemRow();
+  document.getElementById('modal-registrar-compra').classList.add('open');
+  _rcCatalogo = await COMPRAS.catalogo(db);
+}
+
+function addItemRow(){
+  const idx = _rcItems.length;
+  _rcItems.push({ tipo:'ARTICULO', catalogoId:null, nombre:'', cantidad:1, precioUnitario:0 });
+  renderItemRows();
+  setTimeout(() => document.getElementById('rc-nombre-'+idx)?.focus(), 30);
+}
+function removeItemRow(idx){
+  if(_rcItems.length <= 1) return;
+  _rcItems.splice(idx, 1);
+  renderItemRows();
+}
+function renderItemRows(){
+  document.getElementById('rc-items').innerHTML = _rcItems.map((it, idx) => `
+    <div class="ci-row">
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <select class="form-select" onchange="onTipoChange(${idx}, this.value)">
+          <option value="ARTICULO"${it.tipo==='ARTICULO'?' selected':''}>Artículo</option>
+          <option value="SERVICIO"${it.tipo==='SERVICIO'?' selected':''}>Servicio</option>
+        </select>
+      </div>
+      <div class="form-group" style="position:relative">
+        <label class="form-label">${it.tipo==='SERVICIO'?'Descripción':'Artículo del catálogo'}</label>
+        <input type="text" class="form-input" id="rc-nombre-${idx}" value="${esc(it.nombre)}" autocomplete="off"
+               placeholder="${it.tipo==='SERVICIO'?'Describe el servicio…':'Buscar por nombre o código…'}"
+               oninput="onNombreInput(${idx}, this.value)">
+        <div class="ci-sugg" id="rc-sugg-${idx}"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cant.</label>
+        <input type="number" class="form-input" id="rc-cant-${idx}" min="0.01" step="0.01" value="${it.cantidad}" oninput="recalcRow(${idx})">
+      </div>
+      <div class="form-group">
+        <label class="form-label">P. unit. (S/)</label>
+        <input type="number" class="form-input" id="rc-precio-${idx}" min="0" step="0.01" value="${it.precioUnitario}" oninput="recalcRow(${idx})">
+      </div>
+      <div class="ci-subtotal" id="rc-subtotal-${idx}">${fmtMoney(it.cantidad*it.precioUnitario)}</div>
+      <button class="btn btn-sm btn-red" onclick="removeItemRow(${idx})" title="Quitar ítem" style="padding:5px 8px"${_rcItems.length<=1?' disabled':''}>🗑</button>
+    </div>`).join('');
+  recalcTotal();
+}
+function onTipoChange(idx, tipo){
+  _rcItems[idx].tipo       = tipo;
+  _rcItems[idx].catalogoId = null;
+  _rcItems[idx].nombre     = '';
+  renderItemRows();
+}
+function onNombreInput(idx, val){
+  _rcItems[idx].nombre     = val;
+  _rcItems[idx].catalogoId = null; // se re-vincula solo al elegir una sugerencia del catálogo
+  const sugg = document.getElementById('rc-sugg-'+idx);
+  if(_rcItems[idx].tipo !== 'ARTICULO'){ sugg.classList.remove('open'); return; }
+  const q = val.trim().toLowerCase();
+  if(!q){ sugg.classList.remove('open'); return; }
+  const matches = _rcCatalogo.filter(c =>
+    (c.nombre||'').toLowerCase().includes(q) || (c.codigo||'').toLowerCase().includes(q)
+  ).slice(0, 8);
+  sugg.innerHTML = matches.length
+    ? matches.map(c => `<div class="ci-sugg-item" onclick="pickCatalogo(${idx},'${c.id}')">${esc(c.nombre)}${c.codigo?(' <span style="color:var(--muted2)">· '+esc(c.codigo)+'</span>'):''}</div>`).join('')
+    : `<div class="ci-sugg-empty">Sin coincidencias en el catálogo.</div>`;
+  sugg.classList.add('open');
+}
+function pickCatalogo(idx, catalogoId){
+  const c = _rcCatalogo.find(x => x.id === catalogoId);
+  if(!c) return;
+  _rcItems[idx].catalogoId = c.id;
+  _rcItems[idx].nombre     = c.nombre;
+  document.getElementById('rc-nombre-'+idx).value = c.nombre;
+  document.getElementById('rc-sugg-'+idx).classList.remove('open');
+}
+document.addEventListener('click', e => {
+  if(!e.target.closest('.ci-row')) document.querySelectorAll('.ci-sugg.open').forEach(s => s.classList.remove('open'));
+});
+function recalcRow(idx){
+  const cant   = Number(document.getElementById('rc-cant-'+idx)?.value || 0);
+  const precio = Number(document.getElementById('rc-precio-'+idx)?.value || 0);
+  _rcItems[idx].cantidad       = cant;
+  _rcItems[idx].precioUnitario = precio;
+  const el = document.getElementById('rc-subtotal-'+idx);
+  if(el) el.textContent = fmtMoney(cant*precio);
+  recalcTotal();
+}
+function recalcTotal(){
+  const total = _rcItems.reduce((s, it) => s + Number(it.cantidad||0)*Number(it.precioUnitario||0), 0);
+  const el = document.getElementById('rc-total');
+  if(el) el.textContent = fmtMoney(total);
+}
+
+async function guardarCompra(){
+  if(!isProvAdmin()){ toast('Sin permisos', 'err'); return; }
+  const proveedorId = document.getElementById('rc-proveedor-id').value;
+  const p     = proveedores.find(x => x.id === proveedorId);
+  const fecha = document.getElementById('rc-fecha').value;
+  if(!fecha){ toast('La fecha es obligatoria', 'err'); return; }
+  if(!_rcItems.length){ toast('Agrega al menos un ítem', 'err'); return; }
+  for(let i = 0; i < _rcItems.length; i++){
+    const it = _rcItems[i];
+    if(it.tipo === 'ARTICULO' && !it.catalogoId){ toast(`Ítem ${i+1}: selecciona un artículo del catálogo`, 'err'); return; }
+    if(it.tipo === 'SERVICIO' && !it.nombre.trim()){ toast(`Ítem ${i+1}: describe el servicio`, 'err'); return; }
+    if(!(it.cantidad > 0)){ toast(`Ítem ${i+1}: la cantidad debe ser mayor a 0`, 'err'); return; }
+    if(it.precioUnitario < 0){ toast(`Ítem ${i+1}: el precio unitario no puede ser negativo`, 'err'); return; }
+  }
+  const numeroComprobante = document.getElementById('rc-comprobante').value.trim();
+  try{
+    await COMPRAS.crear(db, {
+      proveedorId, proveedorRazonSocial: p?.razonSocial || '',
+      fecha, numeroComprobante, items: _rcItems, createdBy: maUser?.email || '',
+    });
+    toast('Compra registrada ✓', 'ok');
+    closeModal('modal-registrar-compra');
+    if(_detProvId === proveedorId) await refreshDetalleIndicadores(proveedorId);
+  }catch(e){ toast('Error al guardar la compra: ' + e.message, 'err'); }
 }
 
 // ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
