@@ -22,6 +22,7 @@ import { notificarSupervisores } from './_lib/avisos.js';
 import { decidirFlujo } from './_lib/router.js';
 import { manejarAsistencia } from './_lib/asistencia.js';
 import { manejarMtto, MENU_TEXTO } from './_lib/mtto.js';
+import { getSesion as getSesionMtto } from './_lib/mtto_sesiones.js';
 
 // Necesitamos el body CRUDO (bytes exactos) para validar la firma HMAC → desactivamos
 // el parser automático de Vercel.
@@ -146,8 +147,16 @@ async function procesarMensaje(msg) {
       console.log('[whatsapp] tipo no soportado:', msg.type, 'de', msg.from);
       const flujoRaro = await decidirFlujo({ from: msg.from, tipo: msg.type, texto: '' });
       if (flujoRaro === 'mtto') {
-        // SILENCIO: en pleno registro/subida de fotos, los mensajes raros que WhatsApp
-        // manda junto a un álbum no merecen respuesta — solo meten ruido (feedback del usuario).
+        const sesM = await getSesionMtto(msg.from);
+        // SILENCIO solo en fase FOTOS: los mensajes raros que WhatsApp manda junto a un
+        // álbum solo meten ruido entre los "Foto N guardada" (feedback del usuario).
+        if (sesM?.fase === 'FOTOS') return;
+        if (sesM) {
+          // otras fases: la guía de la propia fase (Council) — texto vacío dispara el fallback
+          const resp = await manejarMtto({ tecnico, from: msg.from, texto: '', imagenB64: null, mime: null });
+          if (resp) await enviarTexto(msg.from, resp);
+          return;
+        }
         return;
       } else if (flujoRaro === 'asistencia') {
         await enviarTexto(msg.from, '🤔 Eso no lo pude leer. Comparte tu *ubicación* 📍 (o tu selfie) para el marcaje, o escribe *cancelar*.');
