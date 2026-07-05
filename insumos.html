@@ -1902,6 +1902,10 @@ function applyFilters(){
 }
 
 function renderCatalogo(){
+  // La selección múltiple persiste entre re-renders (búsqueda/filtros); solo se purgan
+  // ids de ítems que ya no existen (borrados por otra acción).
+  [...selectedQRIds].forEach(id => { if (!catalogoData.some(i => i.id === id)) selectedQRIds.delete(id); });
+  updateQRSelectionBar();
   const wrap=document.getElementById('catalogo-table');
   if(!filteredCatalogo.length){wrap.innerHTML='<div class="empty"><div class="empty-icon">📭</div>Sin ítems</div>';return;}
   const isEd=can('editarItem'),isReset=can('eliminarMov');
@@ -1918,7 +1922,7 @@ function renderCatalogo(){
       ${can('eliminarItem')?`<button class="btn btn-sm btn-red" onclick="deleteInsumo('${item.id}','${item.nombre.replace(/'/g,"\\'")}')">🗑</button>`:''}
       ${isReset?`<button class="btn btn-sm" style="color:var(--muted2)" title="Resetear stock a 0" onclick="resetStockItem('${item.id}','${item.nombre.replace(/'/g,"\\'")}')">⟳</button>`:''}
     </div></td>`:'';
-    return `<tr><td style='text-align:center'><input type='checkbox' class='qr-chk' data-id='${item.id}' onchange='updateQRSelection()'></td><td class="td-code">${item.codigo||'—'}</td><td class="td-name">${item.nombre}</td>
+    return `<tr><td style='text-align:center'><input type='checkbox' class='qr-chk' data-id='${item.id}' ${selectedQRIds.has(item.id)?'checked':''} onchange='updateQRSelection(this)'></td><td class="td-code">${item.codigo||'—'}</td><td class="td-name">${item.nombre}</td>
     <td><span class="td-cat ${cC}">${cL}</span></td>
     <td style="color:var(--muted2);font-size:11px">${item.marca||'—'}${item.modelo?' · '+item.modelo:''}</td>
     <td style="font-family:var(--mono);font-size:11px">${item.unidad||'UND'}</td>
@@ -4311,9 +4315,11 @@ function toggleAllQR(checked) {
   updateQRSelectionBar();
 }
 
-function updateQRSelection() {
-  selectedQRIds.clear();
-  document.querySelectorAll('.qr-chk:checked').forEach(chk => selectedQRIds.add(chk.dataset.id));
+function updateQRSelection(chk) {
+  // Solo toca el id de este checkbox — no reconstruir desde el DOM visible,
+  // porque bajo un filtro/búsqueda activo eso descartaría lo seleccionado con otro filtro.
+  if (chk.checked) selectedQRIds.add(chk.dataset.id);
+  else selectedQRIds.delete(chk.dataset.id);
   updateQRSelectionBar();
 }
 
