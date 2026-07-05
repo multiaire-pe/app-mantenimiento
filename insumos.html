@@ -1822,12 +1822,26 @@ function renderStats(){
   document.getElementById('st-out').textContent=out;
 }
 
+// Recuerda si el usuario desplegó el detalle de cada banner (persiste entre re-renders de renderAll)
+let alertsExpanded = { sin:false, bajo:false };
+function toggleAlertGroup(tipo){
+  alertsExpanded[tipo] = !alertsExpanded[tipo];
+  renderAlerts();
+}
 function renderAlerts(){
   const sin=catalogoData.filter(i=>totalS(i.id)<=0);
   const bajo=catalogoData.filter(i=>sNivel(i)==='low');
   let h='';
-  if(sin.length) h+=`<div class="alert-banner alert-red">⛔ <strong>${sin.length} sin stock:</strong> ${sin.map(i=>i.nombre).join(', ')}</div>`;
-  if(bajo.length) h+=`<div class="alert-banner alert-yellow">⚠️ <strong>${bajo.length} stock bajo:</strong> ${bajo.map(i=>i.nombre).join(', ')}</div>`;
+  if(sin.length){
+    const open=alertsExpanded.sin;
+    h+=`<div class="alert-banner alert-red" style="cursor:pointer" onclick="toggleAlertGroup('sin')">⛔ <strong>${sin.length} sin stock</strong><span style="margin-left:auto;font-size:11px;white-space:nowrap">${open?'▾ ocultar':'▸ ver'}</span></div>`;
+    if(open) h+=`<div class="alert-detail" style="margin:-4px 0 8px;padding:8px 13px;font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:8px">${sin.map(i=>i.nombre).join(', ')}</div>`;
+  }
+  if(bajo.length){
+    const open=alertsExpanded.bajo;
+    h+=`<div class="alert-banner alert-yellow" style="cursor:pointer" onclick="toggleAlertGroup('bajo')">⚠️ <strong>${bajo.length} stock bajo</strong><span style="margin-left:auto;font-size:11px;white-space:nowrap">${open?'▾ ocultar':'▸ ver'}</span></div>`;
+    if(open) h+=`<div class="alert-detail" style="margin:-4px 0 8px;padding:8px 13px;font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:8px">${bajo.map(i=>i.nombre).join(', ')}</div>`;
+  }
   document.getElementById('alert-banners').innerHTML=h;
 }
 
