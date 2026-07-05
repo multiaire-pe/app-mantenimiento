@@ -191,11 +191,12 @@ async function avanzar(ses, msg, d) {
       : u.dentro ? `en la sede (${fmtDistancia(u.distancia)})`
       : `⚠️ fuera de radio (${fmtDistancia(u.distancia)})`;
     const { notificarPorTipo } = await import('./avisos.js');
+    const tipoTxt = ses.tipo === 'SALIDA' ? 'Salida' : 'Entrada';
+    const sedeTxt = labelSede(ses.sede) + (ses.fueraDePlan ? ' · ⚠️ fuera de plan' : '');
     await notificarPorTipo('asistencia',
-      `🕐 *${ses.tipo === 'SALIDA' ? 'Salida' : 'Entrada'}* — ${ses.nombre}\n` +
-      `🏪 ${labelSede(ses.sede)}${ses.fueraDePlan ? ' · ⚠️ fuera de plan' : ''}\n` +
-      `🕐 ${hora} · 📍 ${geo}`,
-      ses.colabId || '');
+      `🕐 *${tipoTxt}* — ${ses.nombre}\n🏪 ${sedeTxt}\n🕐 ${hora} · 📍 ${geo}`,
+      ses.colabId || '',
+      { params: [tipoTxt, ses.nombre, sedeTxt, hora, geo] });
   } catch (e) { console.error('[avisos asistencia]', e.message); }
   return confirmacion(ses, res);
 }
