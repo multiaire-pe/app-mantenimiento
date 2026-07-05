@@ -1247,13 +1247,18 @@ tbody td{padding:9px 12px;vertical-align:middle}
     <div id="qr-reader" style="width:100%"></div>
     <div id="qr-result-box" style="padding:10px 12px;font-size:12px;color:var(--muted2)">Esperando escaneo...</div>
     <div id="scan-item-info" style="display:none;padding:10px 12px;font-size:12px;border-top:1px solid var(--border)"></div>
-    <div id="scan-lote-status" style="display:none;padding:10px 12px;background:var(--blue-pale);border-top:1px solid var(--border);font-size:12px">
-      <div id="scan-lote-status-text" style="margin-bottom:6px"></div>
+    <div id="scan-lote-queue-box" style="display:none;padding:10px 12px;background:var(--blue-pale);border-top:1px solid var(--border);font-size:12px">
+      <div id="scan-lote-queue-title" style="margin-bottom:6px;font-weight:600"></div>
+      <div id="scan-lote-queue-list" style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;margin-bottom:8px"></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
-        <button class="btn btn-sm btn-primary" onclick="finishScanLote()">✓ Terminar y confirmar</button>
-        <button class="btn btn-sm" onclick="undoScanLote()">↩ Deshacer lo escaneado</button>
+        <button class="btn btn-sm btn-primary" data-scan-act="terminar">✓ Terminar y confirmar</button>
+        <button class="btn btn-sm" data-scan-act="cancelar-lote">✕ Cancelar lote</button>
       </div>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--border);font-size:12px;cursor:pointer">
+      <input type="checkbox" id="scan-lote-toggle" onchange="toggleScanLoteMode(this.checked)">
+      🔁 Escanear varios ítems para una guía (modo lote)
+    </label>
   </div>
 </div>
 
@@ -2463,13 +2468,13 @@ async function openScanner() {
     await destroyScanner();
   }
 
-  // Limpiar UI (nueva sesión de escaneo: se olvida el modo de lote de la vez anterior)
+  // Limpiar UI (nueva sesión de escaneo: se olvida lo escaneado la vez anterior;
+  // el toggle de modo lote SÍ se recuerda, es una preferencia de trabajo)
   document.getElementById('qr-reader').innerHTML = '';
   document.getElementById('qr-result-box').textContent = 'Apunta la cámara al código QR o de barras...';
   document.getElementById('scan-item-info').style.display = 'none';
-  scanLoteTipo = null;
-  scanLoteAddedIds.clear();
-  document.getElementById('scan-lote-status').style.display = 'none';
+  resetScanLoteQueue();
+  document.getElementById('scan-lote-toggle').checked = scanLoteOn;
   document.getElementById('modal-scanner').classList.add('open');
 
   // Esperar un tick para que el DOM se actualice
@@ -2509,12 +2514,25 @@ async function destroyScanner() {
   if (readerEl) readerEl.innerHTML = '';
 }
 
-// Modo de lote iniciado desde el escáner: null hasta que se toca la primera acción
-// (Salida/Baja/Transferir); a partir de ahí los siguientes escaneos se agregan
-// directo, sin volver a preguntar. scanLoteAddedIds recuerda SOLO lo agregado en
-// esta sesión, para poder deshacerlo sin tocar una selección manual previa.
-let scanLoteTipo = null;
-let scanLoteAddedIds = new Set();
+// Toggle "modo lote" (preferencia de trabajo: se recuerda entre aperturas del escáner).
+// scanLoteTipo/scanLoteQueue son SIEMPRE locales a la sesión de escaneo actual — no tocan
+// selectedInstQRIds hasta "Terminar y confirmar", y se olvidan al cerrar el escáner (✕ o
+// al terminar): así cerrar el formulario reinicia el escaneo de verdad, sin dejar residuos.
+let scanLoteOn = false;
+let scanLoteTipo = null;           // 'SALIDA' | 'BAJA' | 'TRANSFERENCIA', fijado con el primer ítem
+let scanLoteQueue = [];            // [{id, nombre, sede, estado}] — solo esta sesión de escaneo
+
+function toggleScanLoteMode(checked) {
+  scanLoteOn = checked;
+  if (!checked) cancelScanLote(); // salir de modo lote descarta la lista local (nada se guardó aún)
+}
+
+function resetScanLoteQueue() {
+  scanLoteTipo = null;
+  scanLoteQueue = [];
+  const box = document.getElementById('scan-lote-queue-box');
+  if (box) box.style.display = 'none';
+}
 
 function onQRScanned(code) {
   document.getElementById('qr-result-box').textContent = '✓ ' + code;
@@ -2534,9 +2552,9 @@ function onQRScanned(code) {
       </div>`;
     infoBox.style.display = 'block';
   } else if (inst) {
-    if (scanLoteTipo) {
-      // Ya se eligió la acción con el primer escaneo de esta sesión: solo se agrega.
-      addToScanLote(inst);
+    if (scanLoteOn && scanLoteTipo) {
+      // Ya se eligió la acción con el primer escaneo de esta sesión: solo se agrega a la lista.
+      addToScanQueue(inst);
     } else {
       infoBox.innerHTML = `<strong>${escB(inst.nombre)}</strong> · <span style="font-family:var(--mono)">${escB(inst.id)}</span><br>
         📍 Sede: <strong>${escB(inst.sede)||'—'}</strong> · Estado: <strong>${escB(inst.estado)||'DISPONIBLE'}</strong>
@@ -2562,8 +2580,8 @@ function onQRScanned(code) {
   }
 }
 
-// Primer escaneo de la sesión: fija la acción (Salida/Baja/Transferencia) para todo lo que se
-// siga escaneando y agrega esta primera instancia. No cierra la cámara.
+// Listener delegado de todos los botones del modal del escáner (Council: nada de onclick
+// con interpolación cruda). scanId/quitarId ya vienen escapados (escB) desde el render.
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-scan-act]');
   if (!b) return;
@@ -2572,70 +2590,109 @@ document.addEventListener('click', (e) => {
   else if (scanAct === 'editar') { closeScanner(); openEditInstancia(scanId); }
   else if (scanAct === 'editar-pkg') { closeScanner(); openModalPaquete(scanId); }
   else if (scanAct === 'transf-pkg') { closeScanner(); openModalTransfPaquete(scanId); }
-  else startScanLote(scanAct, scanId);
+  else if (scanAct === 'quitar-cola') { removeFromScanQueue(scanId); }
+  else if (scanAct === 'terminar') { finishScanLote(); }
+  else if (scanAct === 'cancelar-lote') { cancelScanLote(); }
+  else onScanAction(scanAct, scanId); // 'SALIDA' | 'BAJA' | 'TRANSFERENCIA'
 });
 
-function startScanLote(tipo, instId) {
+// Se toca un botón de acción (Salida/Baja/Transferir) tras un escaneo. Con el toggle de
+// modo lote apagado: comportamiento de siempre, uno por uno (cierra el escáner y abre el
+// modal individual). Encendido: fija la acción para toda la sesión y agrega a la lista.
+function onScanAction(tipo, instId) {
+  if (!scanLoteOn) {
+    closeScanner();
+    if (tipo === 'TRANSFERENCIA') openModalTransferenciaDesdeScanner(instId);
+    else openModalSalidaDesdeScanner(instId, tipo);
+    return;
+  }
   scanLoteTipo = tipo;
   const inst = instanciasData.find(x => x.id === instId);
-  if (inst) addToScanLote(inst);
+  if (inst) addToScanQueue(inst);
 }
 
-// Agrega una instancia a la selección de lote (reutiliza selectedInstQRIds, el mismo
-// Set del tab Instancias) y refresca el resumen visible dentro del escáner.
-function addToScanLote(inst) {
-  const yaEstaba = selectedInstQRIds.has(inst.id);
-  selectedInstQRIds.add(inst.id);
-  if (!yaEstaba) scanLoteAddedIds.add(inst.id);   // deshacer no toca selección manual previa (Council)
-  renderInstancias();
-  const infoBox = document.getElementById('scan-item-info');
-  infoBox.innerHTML = `${yaEstaba ? '⚠️ Ya estaba en la lista: ' : '✓ Agregado: '}<strong>${escB(inst.nombre)}</strong> <span style="font-family:var(--mono)">${escB(inst.id)}</span>`;
-  infoBox.style.display = 'block';
-  refreshScanLoteStatus();
+// Agrega una instancia a la lista LOCAL de esta sesión de escaneo (no toca selectedInstQRIds
+// todavía) y la pinta en la cola con su ✕ para quitarla.
+function addToScanQueue(inst) {
+  if (scanLoteQueue.some(x => x.id === inst.id)) {
+    toast('Ya está en la lista: ' + inst.id, 'warn');
+    return;
+  }
+  scanLoteQueue.push({ id: inst.id, nombre: inst.nombre, sede: inst.sede, estado: inst.estado });
+  document.getElementById('scan-item-info').style.display = 'none';
+  document.getElementById('qr-result-box').textContent = `✓ Agregado: ${inst.id} (${scanLoteQueue.length} en la lista)`;
+  renderScanLoteQueue();
 }
 
 function loteTipoLabel(tipo) {
   return tipo === 'BAJA' ? 'Baja en lote' : tipo === 'TRANSFERENCIA' ? 'Transferencia en lote' : 'Salida en lote';
 }
 
-function refreshScanLoteStatus() {
-  const box = document.getElementById('scan-lote-status');
-  if (!scanLoteTipo) { box.style.display = 'none'; return; }
+function renderScanLoteQueue() {
+  const box = document.getElementById('scan-lote-queue-box');
+  if (!scanLoteQueue.length) { box.style.display = 'none'; return; }
   box.style.display = 'block';
-  document.getElementById('scan-lote-status-text').innerHTML =
-    `🧾 Modo: <strong>${loteTipoLabel(scanLoteTipo)}</strong> · ${selectedInstQRIds.size} instancia(s) en la selección`;
+  document.getElementById('scan-lote-queue-title').textContent =
+    `🧾 ${loteTipoLabel(scanLoteTipo)} · ${scanLoteQueue.length} instancia(s)`;
+  document.getElementById('scan-lote-queue-list').innerHTML = scanLoteQueue.map(x => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--surface2);border-radius:6px;padding:4px 8px">
+      <span style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-family:var(--mono);font-weight:700">${escB(x.id)}</span> — ${escB(x.nombre)}</span>
+      <button class="btn btn-sm" style="padding:2px 8px;flex:none" data-scan-act="quitar-cola" data-scan-id="${escB(x.id)}" title="Quitar de la lista">✕</button>
+    </div>`).join('');
 }
 
-// Deshace SOLO lo agregado en esta sesión de escaneo (no toca una selección manual previa
-// del tab Instancias) y libera la acción fijada, para poder elegir otra desde cero.
-function undoScanLote() {
-  scanLoteAddedIds.forEach(id => selectedInstQRIds.delete(id));
-  scanLoteAddedIds.clear();
-  scanLoteTipo = null;
-  renderInstancias();
-  document.getElementById('scan-lote-status').style.display = 'none';
+// Quita un ítem puntual de la lista local (el ✕ de cada fila).
+function removeFromScanQueue(id) {
+  scanLoteQueue = scanLoteQueue.filter(x => x.id !== id);
+  if (!scanLoteQueue.length) scanLoteTipo = null; // lista vacía: se libera la acción fijada
+  renderScanLoteQueue();
+}
+
+// Descarta toda la lista local de esta sesión (nada se había guardado en selectedInstQRIds).
+function cancelScanLote() {
+  resetScanLoteQueue();
   document.getElementById('scan-item-info').style.display = 'none';
   document.getElementById('qr-result-box').textContent = 'Apunta la cámara al código QR o de barras...';
-  toast('Se deshizo lo escaneado en esta sesión', 'warn');
 }
 
-// Cierra el escáner y abre el modal de lote correspondiente, ya con toda la selección
-// (lo escaneado ahora + cualquier selección manual previa del tab Instancias).
+// Recién ahora se traslada la lista local a selectedInstQRIds (se suma a cualquier
+// selección manual previa del tab Instancias) y se abre el modal de lote correspondiente.
 async function finishScanLote() {
   const tipo = scanLoteTipo;
-  if (!tipo) return;
-  scanLoteTipo = null;
-  scanLoteAddedIds.clear();
+  const ids = scanLoteQueue.map(x => x.id);
+  if (!tipo || !ids.length) return;
+  ids.forEach(id => selectedInstQRIds.add(id));
+  renderInstancias();
   await closeScanner();
   if (tipo === 'TRANSFERENCIA') openModalTransfLote();
   else openModalSalidaLote(tipo);
 }
 
+async function openModalSalidaDesdeScanner(instId, tipo) {
+  openModalSalida(tipo || 'SALIDA');
+  // Esperar que el modal y las opciones estén en el DOM
+  await new Promise(r => setTimeout(r, 120));
+  const sel = document.getElementById('fsal-instancia');
+  if (sel) {
+    sel.value = instId;
+    onSalidaInstanciaChange();
+  }
+}
+
+async function openModalTransferenciaDesdeScanner(instId) {
+  openModalTransferencia();
+  // Esperar que el modal esté en el DOM con todas las instancias cargadas
+  await new Promise(r => setTimeout(r, 120));
+  const sel = document.getElementById('ft-instancia');
+  if (sel) {
+    sel.value = instId;
+    onTransfInstanciaChange();
+  }
+}
+
 async function closeScanner() {
-  // sesión de lote sin confirmar → se deshace (lo escaneado no queda seleccionado
-  // en silencio; una selección manual previa se conserva) — hallazgo del Council
-  if (scanLoteTipo) { undoScanLote(); toast('Escaneo cerrado sin confirmar — se quitó lo escaneado', 'warn'); }
   document.getElementById('modal-scanner').classList.remove('open');
+  resetScanLoteQueue(); // cerrar el escáner reinicia el escaneo: nada queda pendiente
   await destroyScanner();
 }
 
