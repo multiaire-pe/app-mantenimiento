@@ -100,6 +100,8 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .plan-chip a{cursor:pointer;font-weight:700;margin-left:2px}
 .pa-card{padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;background:var(--surface);margin-bottom:4px}
 .pa-card:hover{border-color:var(--blue,#1B3F8B);background:var(--blue-pale,#e8eef8)}
+.pa-card.sel{border-color:var(--blue,#1B3F8B);background:var(--blue-pale,#e8eef8);font-weight:600}
+.pa-card.sel::before{content:'✓ ';color:var(--blue,#1B3F8B);font-weight:700}
 .bloque-card.drop-hover{outline:2px dashed var(--blue,#1B3F8B);outline-offset:2px}
 .bloque-grupo{font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px}
 .grupo-preventivo{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
@@ -865,7 +867,7 @@ async function abrirPanelActs(nBloque, tienda){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
   _panelBloque = nBloque;
   const fecha = document.getElementById('fecha-input').value;
-  document.getElementById('pa-sub').textContent = tienda + ' · Bloque ' + nBloque + ' · ' + fecha + ' — toca una actividad para asignarla (o arrástrala a otro bloque)';
+  document.getElementById('pa-sub').textContent = tienda + ' · Bloque ' + nBloque + ' · ' + fecha + ' — marca las actividades y asígnalas juntas (o arrastra una a otro bloque)';
   const cont = document.getElementById('pa-list');
   cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Buscando pendientes de ' + _pEsc(tienda) + '…</div>';
   document.getElementById('pa-overlay').style.display = 'flex';
@@ -874,13 +876,71 @@ async function abrirPanelActs(nBloque, tienda){
     let eqPrev = null, html = '';
     pend.forEach(p => {
       if(p.nombreEq !== eqPrev){ eqPrev = p.nombreEq; html += '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 2px">'+_pEsc(p.nombreEq)+' <span style="font-weight:400">('+_pEsc(p.eq_id)+')</span></div>'; }
-      html += '<div class="pa-card" draggable="true" data-pid="'+_pEsc(p.pid)+'" ondragstart="paDragStart(event)" onclick="asignarPlan(this.dataset.pid)">🔧 '+_pEsc(p.tarea)+'</div>';
+      html += '<div class="pa-card" draggable="true" data-pid="'+_pEsc(p.pid)+'" ondragstart="paDragStart(event)" onclick="paToggleSel(this)">🔧 '+_pEsc(p.tarea)+'</div>';
     });
     cont.innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:10px">🎉 Sin actividades pendientes en esta sede para el período.</div>';
     window._paPend = Object.fromEntries(pend.map(p => [p.pid, p]));
   }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
 }
-function cerrarPanelActs(){ document.getElementById('pa-overlay').style.display='none'; _panelBloque = null; }
+function cerrarPanelActs(){ document.getElementById('pa-overlay').style.display='none'; _panelBloque = null; _paSel.clear(); _paActualizarBoton(); }
+
+// Multi-selección (pedido del usuario): tap marca/desmarca; un botón asigna todas juntas
+const _paSel = new Set();
+function paToggleSel(el){
+  const pid = el.dataset.pid;
+  if (_paSel.has(pid)) { _paSel.delete(pid); el.classList.remove('sel'); }
+  else { _paSel.add(pid); el.classList.add('sel'); }
+  _paActualizarBoton();
+}
+function _paActualizarBoton(){
+  const btn = document.getElementById('pa-asignar');
+  if (btn) { btn.textContent = '🗓 Asignar seleccionadas (' + _paSel.size + ')'; btn.disabled = !_paSel.size; }
+}
+async function asignarSeleccionadas(){
+  if (!_paSel.size || _panelBloque == null) return;
+  const pids = [..._paSel];
+  const personal = personalDeBloque(_panelBloque);
+  if (personal.length <= 1) return _finalizarMulti(pids, _panelBloque, personal[0] || null);
+  const cont = document.getElementById('pt-list');
+  cont.innerHTML = personal.map((t, i) =>
+    '<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:6px" data-pt="'+i+'">👷 '+_pEsc(t.nombre)+'</button>').join('');
+  document.getElementById('pt-sub').textContent = pids.length + ' actividad(es) → Bloque ' + _panelBloque;
+  cont.onclick = (e) => {
+    const btn = e.target.closest('[data-pt]'); if(!btn) return;
+    document.getElementById('pt-overlay').style.display = 'none';
+    _finalizarMulti(pids, _panelBloque, personal[Number(btn.dataset.pt)]);
+  };
+  document.getElementById('pt-overlay').style.display = 'flex';
+}
+async function _finalizarMulti(pids, nBloque, tec){
+  if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  const fecha = document.getElementById('fecha-input').value;
+  const { periodo, anio } = periodoDe(fecha);
+  let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
+  const { writeBatch: wbP, doc: docP } = window.__fb;
+  try{
+    const batch = wbP(window.__db);
+    const nuevos = [];
+    pids.forEach(pid => {
+      const p = (window._paPend||{})[pid]; if(!p) return;
+      batch.set(docP(window.__db, 'mtto_plan', p.pid), {
+        eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, tareaIdx: p.idx, tarea: p.tarea,
+        sede: window._paSede || '', periodo, anio, fecha,
+        itiId: currentIti?.id || '', itiVersion: Number(currentIti?.version) || 1, nBloque,
+        tecnicoId: tec?.id || '', tecnicoNombre: tec?.nombre || '',
+        asignadoPor: _by, ts: new Date().toISOString(),
+      });
+      nuevos.push({ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, tarea: p.tarea, nBloque, fecha, tecnicoNombre: tec?.nombre || '' });
+    });
+    await batch.commit();
+    const ids = new Set(nuevos.map(x => x._id));
+    planDia = planDia.filter(x => !ids.has(x._id)).concat(nuevos);
+    renderPlanChips();
+    pids.forEach(pid => { const c = document.querySelector('.pa-card[data-pid="'+CSS.escape(pid)+'"]'); if(c) c.remove(); });
+    _paSel.clear(); _paActualizarBoton();
+    toast('🗓 ' + nuevos.length + ' actividad(es) → ' + (tec?.nombre || 'bloque ' + nBloque), 'ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
 
 function personalDeBloque(n){
   const b = (window._bloquesDia||[]).find(x => x.nBloque === n) || {};
@@ -1961,7 +2021,8 @@ document.addEventListener('click', function(e) {
     <h2 style="font-size:14px;color:var(--blue,#1B3F8B)">🔧 Actividades pendientes</h2>
     <div style="font-size:11px;color:var(--muted2);margin-bottom:12px" id="pa-sub"></div>
     <div id="pa-list" style="margin-bottom:12px"></div>
-    <div style="display:flex;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px;position:sticky;bottom:0;background:var(--surface)">
+    <div style="display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--border);padding-top:12px;position:sticky;bottom:0;background:var(--surface);flex-wrap:wrap">
+      <button class="btn btn-primary" id="pa-asignar" onclick="asignarSeleccionadas()" disabled>🗓 Asignar seleccionadas (0)</button>
       <button class="btn" onclick="cerrarPanelActs()">Cerrar</button>
     </div>
   </div>
