@@ -1330,7 +1330,7 @@ async function deleteVersion() {
     const bSnap4 = await getDocs(col4(window.__db,'bd_bloques'));
     bSnap4.docs.filter(dd=>dd.data().idIti===currentIti.id&&dd.data().version===currentIti.version).forEach(dd=>batch4.delete(dd.ref));
     const pSnap4 = await window.__db.collection('mtto_plan').where('itiId','==',currentIti.id).get();
-    pSnap4.docs.filter(dd=>Number(dd.data().itiVersion||currentIti.version)===Number(currentIti.version)).forEach(dd=>batch4.delete(dd.ref));  // sin huérfanos (Council)
+    pSnap4.docs.filter(dd=>Number(dd.data().itiVersion ?? 1)===Number(currentIti.version)).forEach(dd=>batch4.delete(dd.ref));  // sin huérfanos; legacy sin versión = v1 (Council)
     await batch4.commit();
     const d = { ok: true };
     if (d.ok) {
@@ -1412,7 +1412,7 @@ function exportWhatsApp() {
     msg += '⏰ ' + horario + '\n';
     msg += '👷 ' + (personal || 'Sin asignar') + '\n';
     if (detalle) msg += '📝 ' + detalle + '\n';
-    const actsWsp = [...card.querySelectorAll('.plan-chip')].map(c => c.textContent.replace(/✕\s*$/,'').trim()).filter(Boolean);
+    const actsWsp = [...card.querySelectorAll('.plan-chip')].map(c => c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim()).filter(Boolean);
     if (actsWsp.length) msg += '🔧 *Actividades:*\n' + actsWsp.map(a => '   • ' + a).join('\n') + '\n';
     msg += '🔖 Estado: ' + estado + '\n';
     msg += '─'.repeat(30) + '\n';
@@ -1587,7 +1587,7 @@ function buildPrintLayout() {
       html += '<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;color:#8a9ab8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Detalle de trabajo</div>';
       html += '<div style="font-size:12px;line-height:1.5;background:#f5f8ff;padding:8px 12px;border-radius:6px;border-left:3px solid #1B3F8B">' + escI(detalle) + '</div></div>';
     }
-    const actsPrint = [...card.querySelectorAll('.plan-chip')].map(c => c.textContent.replace(/✕\s*$/,'').trim()).filter(Boolean);
+    const actsPrint = [...card.querySelectorAll('.plan-chip')].map(c => c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim()).filter(Boolean);
     if (actsPrint.length) {
       html += '<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;color:#8a9ab8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Actividades de mantenimiento</div>';
       html += '<div style="display:flex;flex-direction:column;gap:3px">';
