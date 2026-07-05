@@ -11,6 +11,7 @@ const TTL_MS = 30 * 60 * 1000;
 export function nuevaSesion(from, tecnico) {
   return {
     from: String(from),
+    inicio: new Date().toISOString(),   // las fotos de ESTA sesión se cuentan desde aquí
     colabId: tecnico?.id || null,
     nombre: tecnico?.nombre || '',
     fase: 'EQUIPO',        // EQUIPO → ACTIVIDADES → CONFIRMA → FOTOS
