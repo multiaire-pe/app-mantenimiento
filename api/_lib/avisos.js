@@ -9,13 +9,37 @@ import { enviarTexto, enviarPlantilla } from './whatsapp.js';
 const ESTADO_LABEL = { PENDIENTE: 'Pendiente', EN_PROCESO: 'En proceso', OK: 'Resuelto (OK)' };
 const sinRipley = (t) => String(t || '').replace(/^RIPLEY\s+/i, '');
 
-// Lista de destinatarios: maestros_personal activos, con recibeAvisos y teléfono usable.
-export async function destinatariosAviso() {
+// Lista de destinatarios POR TIPO de evento ('obs' | 'asistencia' | 'mtto').
+// La matriz vive en Personal → 🔔 Alertas del bot (campo `avisos` del doc);
+// `recibeAvisos` legacy sigue valiendo como avisos.obs si el doc aún no migró.
+export function tieneAviso(p, tipo = 'obs') {
+  const av = p.avisos;
+  if (av && av[tipo] !== undefined) return av[tipo] === true;
+  return tipo === 'obs' && (p.recibeAvisos === true || String(p.recibeAvisos || '').toUpperCase() === 'SI');
+}
+
+export async function destinatariosAviso(tipo = 'obs') {
   const snap = await getDb().collection('maestros_personal').get();
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    .filter((p) => p.recibeAvisos === true || String(p.recibeAvisos || '').toUpperCase() === 'SI')
+    .filter((p) => tieneAviso(p, tipo))
     .filter((p) => String(p.activo === undefined ? 'SI' : p.activo).toUpperCase() !== 'NO')
     .filter((p) => String(p.telefono || '').replace(/\D/g, '').length >= 9);
+}
+
+// Aviso de TEXTO libre a los designados de un tipo (asistencia/mtto: sin plantilla de
+// Meta todavía — llega dentro de la ventana de 24h del destinatario; para entrega
+// garantizada en frío habría que aprobar una plantilla, como nueva_observacion).
+export async function notificarPorTipo(tipo, texto, excluirId = '', opts = {}) {
+  const destinos = opts.destinos || await destinatariosAviso(tipo);
+  if (!destinos.length) { console.log(`[avisos] 0 destinatarios con avisos.${tipo}`); return 0; }
+  const _enviarTexto = opts.enviarTexto || enviarTexto;
+  let n = 0;
+  for (const p of destinos) {
+    if (excluirId && p.id === excluirId) continue;   // no avisar a quien hizo la acción
+    try { await _enviarTexto(String(p.telefono).replace(/\D/g, ''), texto); n++; }
+    catch (e) { console.error('[avisos]', tipo, p.id, e.message); }
+  }
+  return n;
 }
 
 function textoAviso(obs, tecnico) {

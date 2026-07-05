@@ -209,8 +209,29 @@ tr:hover td{background:var(--surface2)}
     </div>
   </div>
 
+  <!-- TABS -->
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+    <button class="btn btn-sm btn-primary" id="ptab-dir" onclick="persTab('dir')">📇 Directorio</button>
+    <button class="btn btn-sm" id="ptab-alertas" onclick="persTab('alertas')">🔔 Alertas del bot</button>
+  </div>
+
+  <!-- ALERTAS DEL BOT: matriz de notificaciones de WhatsApp -->
+  <div class="card" id="view-alertas" style="display:none">
+    <div class="results-header">
+      <h3>🔔 Alertas del bot — ¿a quién le llega cada aviso de WhatsApp?</h3>
+      <span style="font-size:11px;color:var(--muted2)">requiere teléfono con WhatsApp</span>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted2);padding:0 16px 10px">Marca quién recibe la notificación cuando el bot registra una <b>observación</b>, un <b>marcaje de asistencia</b> o una <b>actividad de mantenimiento</b>. No se avisa a quien hizo la acción.</div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Colaborador</th><th style="text-align:center">👁 Observaciones</th><th style="text-align:center">🕐 Asistencia</th><th style="text-align:center">🔧 Actividades</th></tr></thead>
+        <tbody id="alertas-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- TABLE -->
-  <div class="card">
+  <div class="card" id="view-directorio">
     <div class="results-header">
       <h3>👥 Directorio de personal</h3>
       <span id="pers-count" style="font-size:11px;color:var(--muted2)"></span>
@@ -416,12 +437,6 @@ tr:hover td{background:var(--surface2)}
         <div class="form-group">
           <label class="form-label">Jefe directo</label>
           <select id="pers-jefeId" class="form-select"></select>
-        </div>
-        <div class="form-group" style="flex:0 0 200px;justify-content:flex-end">
-          <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;padding:8px 0">
-            <input type="checkbox" id="pers-recibeAvisos" style="width:16px;height:16px">
-            📣 Recibe avisos del bot
-          </label>
         </div>
       </div>
       <div class="form-row" style="margin-top:10px">
@@ -898,6 +913,54 @@ function initApp(){
 }
 
 // ── LOAD ──────────────────────────────────────────────────────────────────────
+// ── TAB ALERTAS DEL BOT (matriz de notificaciones) ────────────────────────────
+// Campo `avisos:{obs,asistencia,mtto}` en maestros_personal; `recibeAvisos` legacy
+// se mantiene sincronizado con avisos.obs (el bot en prod lo lee como fallback).
+function persTab(t){
+  document.getElementById('view-directorio').style.display = t==='dir' ? '' : 'none';
+  document.querySelector('.pers-toolbar').style.display = t==='dir' ? '' : 'none';
+  document.getElementById('view-alertas').style.display = t==='alertas' ? '' : 'none';
+  document.getElementById('ptab-dir').classList.toggle('btn-primary', t==='dir');
+  document.getElementById('ptab-alertas').classList.toggle('btn-primary', t==='alertas');
+  if (t==='alertas') renderAlertas();
+}
+function avisoDe(p, tipo){
+  const av = p.avisos;
+  if (av && av[tipo] !== undefined) return av[tipo] === true;
+  return tipo==='obs' && (p.recibeAvisos===true || String(p.recibeAvisos||'').toUpperCase()==='SI');
+}
+document.addEventListener('change', (e) => {
+  const chk = e.target.closest('[data-av-id]');
+  if (chk) toggleAvisoTipo(chk.dataset.avId, chk.dataset.avTipo, chk.checked);
+});
+function renderAlertas(){
+  const tb = document.getElementById('alertas-tbody');
+  const edita = isPersAdmin();
+  const activos = personal.filter(p => String(p.activo===undefined?'SI':p.activo).toUpperCase() !== 'NO')
+    .sort((a,b) => String(a.nombre||'').localeCompare(String(b.nombre||'')));
+  tb.innerHTML = activos.map(p => {
+    const tel = String(p.telefono||'').replace(/\D/g,'').length >= 9;
+    const chk = (tipo) => '<td style="text-align:center"><input type="checkbox" style="width:16px;height:16px"'
+      + (avisoDe(p,tipo) ? ' checked' : '') + (edita ? '' : ' disabled')
+      + ' data-av-id="'+esc(p.id)+'" data-av-tipo="'+tipo+'"></td>';
+    return '<tr' + (tel ? '' : ' style="opacity:.55"') + '><td><b>'+esc(p.nombre||'')+'</b>'
+      + ' <span style="font-size:10px;color:var(--muted2)">'+esc(p.cargo||'')+'</span>'
+      + (tel ? '' : ' <span title="Sin teléfono WhatsApp: no puede recibir avisos">📵</span>')
+      + '</td>' + chk('obs') + chk('asistencia') + chk('mtto') + '</tr>';
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted2);padding:16px">Sin personal activo</td></tr>';
+}
+async function toggleAvisoTipo(id, tipo, checked){
+  if(!isPersAdmin()){ toast('Sin permisos','err'); return; }
+  const p = personal.find(x => x.id === id); if(!p) return;
+  const av = { obs: avisoDe(p,'obs'), asistencia: avisoDe(p,'asistencia'), mtto: avisoDe(p,'mtto') };
+  av[tipo] = checked;
+  try{
+    await window.__db.collection('maestros_personal').doc(id).set({ avisos: av, recibeAvisos: av.obs === true }, { merge: true });
+    p.avisos = av; p.recibeAvisos = av.obs === true;
+    toast((checked?'🔔 ':'🔕 ') + (p.nombre||id) + ' · ' + ({obs:'observaciones',asistencia:'asistencia',mtto:'actividades'})[tipo], 'ok');
+  }catch(e){ toast('Error: '+e.message,'err'); renderAlertas(); }
+}
+
 async function loadPersonal(){
   const body = document.getElementById('pers-body');
   try{
@@ -1114,7 +1177,7 @@ function fillJefeSelect(excludeId){
 
 // ── MODAL: form fill / read ─────────────────────────────────────────────────────
 function setModalReadonly(ro){
-  const ids = ['pers-nombre','pers-tipoDoc','pers-numDoc','pers-activo','pers-fechaNacimiento','pers-genero','pers-nacionalidad','pers-estadoCivil','pers-direccion','pers-emgNombre','pers-emgParentesco','pers-emgTelefono','pers-cargo','pers-area','pers-estadoLaboral','pers-fechaIngreso','pers-fechaCese','pers-tipoContrato','pers-sedeBase','pers-jefeId','pers-recibeAvisos','pers-regimenAsist','pers-horfijo-entrada','pers-horfijo-salida','pers-rolOperativo','pers-vehiculo','pers-licTiene','pers-licCat','pers-licVence','pers-sueldo','pers-moneda','pers-periodicidad','pers-banco','pers-cuentaNumero','pers-cci','pers-notasConf','pers-notas','pers-comp-input'];
+  const ids = ['pers-nombre','pers-tipoDoc','pers-numDoc','pers-activo','pers-fechaNacimiento','pers-genero','pers-nacionalidad','pers-estadoCivil','pers-direccion','pers-emgNombre','pers-emgParentesco','pers-emgTelefono','pers-cargo','pers-area','pers-estadoLaboral','pers-fechaIngreso','pers-fechaCese','pers-tipoContrato','pers-sedeBase','pers-jefeId','pers-regimenAsist','pers-horfijo-entrada','pers-horfijo-salida','pers-rolOperativo','pers-vehiculo','pers-licTiene','pers-licCat','pers-licVence','pers-sueldo','pers-moneda','pers-periodicidad','pers-banco','pers-cuentaNumero','pers-cci','pers-notasConf','pers-notas','pers-comp-input'];
   ids.forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = ro; });
   document.querySelectorAll('#modal-pers .rep-row select, #modal-pers .rep-row input').forEach(el=>el.disabled=ro);
   ['pers-tel-add','pers-correo-add','pers-foto-up-lbl','pers-foto-cam-lbl'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display = ro?'none':''; });
@@ -1155,7 +1218,6 @@ function resetModal(){
   setVal('pers-cargo',''); setVal('pers-area',''); setVal('pers-estadoLaboral','ACTIVO');
   setVal('pers-fechaIngreso',''); setVal('pers-fechaCese',''); setVal('pers-tipoContrato','');
   setVal('pers-sedeBase',''); setVal('pers-rolOperativo',''); setVal('pers-vehiculo','');
-  document.getElementById('pers-recibeAvisos').checked = false;
   setVal('pers-regimenAsist','MARCA'); setVal('pers-horfijo-entrada','08:30'); setVal('pers-horfijo-salida','18:00'); togglePersHorarioFijo();
   document.getElementById('pers-licTiene').checked = false;
   setVal('pers-licCat',''); setVal('pers-licVence',''); toggleLic();
@@ -1204,7 +1266,6 @@ function openEditPers(id){
   setVal('pers-fechaIngreso', p.fechaIngreso); setVal('pers-fechaCese', p.fechaCese);
   setVal('pers-tipoContrato', p.tipoContrato); setVal('pers-sedeBase', p.sedeBase);
   setVal('pers-rolOperativo', p.rolOperativo); setVal('pers-vehiculo', p.vehiculo);
-  document.getElementById('pers-recibeAvisos').checked = (p.recibeAvisos===true || String(p.recibeAvisos||'').toUpperCase()==='SI');
   setVal('pers-regimenAsist', p.regimenAsistencia || 'MARCA');
   const _hf = p.horarioFijo || {};
   setVal('pers-horfijo-entrada', _hf.entrada!=null ? decToHHMM(_hf.entrada) : '08:30');
@@ -1482,7 +1543,6 @@ async function savePers(){
     tipoContrato: val('pers-tipoContrato'),
     sedeBase: val('pers-sedeBase').trim().toUpperCase(),
     jefeId: val('pers-jefeId'),
-    recibeAvisos: document.getElementById('pers-recibeAvisos').checked,
     regimenAsistencia: val('pers-regimenAsist'),
     horarioFijo: val('pers-regimenAsist')==='FIJO'
       ? { entrada: hhmmToDec(val('pers-horfijo-entrada')), salida: hhmmToDec(val('pers-horfijo-salida')) }
