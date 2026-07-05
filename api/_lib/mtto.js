@@ -173,15 +173,21 @@ async function guardarRegistro(ses, tecnico) {
   return clave;
 }
 
-// nº real de fotos guardadas (docs), inmune a la carrera de mensajes concurrentes
+// nº de fotos de ESTA SESIÓN (docs con createdAt >= inicio de la sesión), inmune a la
+// carrera de mensajes concurrentes. Sin el corte por sesión, el resumen final sumaba las
+// fotos históricas del equipo en el período (12 en vez de 3 — reporte del usuario).
 async function contarFotos(ses, tareaIdx) {
   const { periodo, anio } = periodoLima();
   let q = getDb().collection('mantenimiento_fotos')
     .where('clave', '==', `${ses.sede}|${periodo}|${anio}`)
     .where('eq_id', '==', ses.eqId);
   if (tareaIdx != null) q = q.where('tareaIdx', '==', tareaIdx);
-  const snap = await q.select('tareaIdx').get();   // solo headers, no baja los base64
-  return snap.size;
+  const snap = await q.select('createdAt').get();   // solo headers, no baja los base64
+  const desde = ses.inicio || '';                    // sesiones viejas sin inicio: cuenta todo
+  // normaliza por si un doc trajera Timestamp en vez de ISO string (defensa del Council;
+  // hoy app y bot escriben toISOString())
+  const iso = (v) => (v && typeof v.toDate === 'function') ? v.toDate().toISOString() : String(v || '');
+  return snap.docs.filter((d) => iso(d.data().createdAt) >= desde).length;
 }
 
 async function guardarFoto(ses, tecnico, imagenB64, mime) {
