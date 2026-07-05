@@ -674,6 +674,7 @@ function renderItinerario(iti, bloques, fecha) {
   const estadoClass = iti.estado === 'ACTUALIZADO' ? 'estado-actualizado' : 'estado-registrado';
 
   const bloquesHtml = bloques.map((b, i) => renderBloqueCard(b, i)).join('');
+  window._bloquesDia = bloques;   // para el panel de actividades (personal por bloque)
   setTimeout(() => cargarPlanDia(document.getElementById('fecha-input').value), 0);  // chips 🔧 tras pintar
 
   const _vers = (allItis || []).filter(x => x.id === iti.id)
@@ -789,7 +790,7 @@ function renderPlanChips(){
     const n = Number(cont.dataset.planBlq);
     const del = planDia.filter(p => p.nBloque === n);
     cont.innerHTML = del.length ? del.map(p =>
-      '<span class="plan-chip" title="'+_pEsc(p.tarea)+' · '+_pEsc(p.nombreEq)+'">🔧 '+_pEsc(p.tarea)+' <b>· '+_pEsc(p.nombreEq)+'</b>'
+      '<span class="plan-chip" title="'+_pEsc(p.tarea)+' · '+_pEsc(p.nombreEq)+(p.tecnicoNombre?' → '+_pEsc(p.tecnicoNombre):'')+'">🔧 '+_pEsc(p.tarea)+' <b>· '+_pEsc(p.nombreEq)+'</b>'+(p.tecnicoNombre?' <span style="opacity:.8">👷 '+_pEsc(p.tecnicoNombre)+'</span>':'')
       + (window.MA && MA.can('editar','itinerario') ? ' <a data-plan-del="'+_pEsc(p._id)+'" title="Quitar del plan">✕</a>' : '')
       + '</span>').join('') : '';
   });
@@ -820,10 +821,24 @@ async function pendientesDeSede(sede, fecha){
   const md = mantS.exists ? mantS.data() : {};
   const ts = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } })(md.tareaStatus);
   const planificadas = new Set(planS.docs.map(d => d.id));
+  // La tienda del bloque puede traer el cliente adelante ("RIPLEY PLAZA NORTE") y el
+  // inventario guarda solo la sede ("PLAZA NORTE"): match exacto o el sufijo MÁS LARGO
+  // que sea una sede real (así "MAC PLAZA NORTE" no se confunde con "PLAZA NORTE").
+  const sedesInv = new Set(invS.docs.map(d => (d.data().sede||'').toUpperCase()).filter(Boolean));
+  const tRaw = String(sede||'').toUpperCase().trim();
+  let target = sedesInv.has(tRaw) ? tRaw : null;
+  if (!target) {
+    const toks = tRaw.split(/\s+/);
+    for (let i = 1; i < toks.length && !target; i++) {
+      const suf = toks.slice(i).join(' ');
+      if (sedesInv.has(suf)) target = suf;
+    }
+  }
   const out = [];
+  if (!target) return out;
   invS.docs.forEach(d => {
     const eq = d.data();
-    if((eq.sede||'').toUpperCase() !== String(sede||'').toUpperCase() || !eq.eq_id) return;
+    if((eq.sede||'').toUpperCase() !== target || !eq.eq_id) return;
     const ov = ovs[eq.eq_id], quit = new Set(ov?.quitadas || []);
     const acts = (plantillas[eq.tipo] || []).filter(t => !quit.has(t)).concat((ov?.agregadas || []).map(a => a.nombre));
     const st = ts[eq.eq_id];
@@ -857,10 +872,36 @@ async function abrirPanelActs(nBloque, tienda){
 }
 function cerrarPanelActs(){ document.getElementById('pa-overlay').style.display='none'; _panelBloque = null; }
 
+function personalDeBloque(n){
+  const b = (window._bloquesDia||[]).find(x => x.nBloque === n) || {};
+  const lista = Array.isArray(b.personal) && b.personal.length
+    ? b.personal
+    : [b.personal1, b.personal2, b.personal3, b.personal4].map(nm => nm ? { id:'', nombre:nm } : null);
+  return (lista||[]).filter(p => p && String(p.nombre||'').trim());
+}
+
+// La actividad se asigna a UN TÉCNICO del bloque (pedido del usuario): con un solo
+// técnico va directo; con varios, mini-selector; sin personal, queda a nivel de bloque.
 async function asignarPlan(pid, nBloqueDestino){
   const p = (window._paPend||{})[pid]; if(!p) return;
   const nBloque = nBloqueDestino != null ? nBloqueDestino : _panelBloque;
   if(nBloque == null) return;
+  const personal = personalDeBloque(nBloque);
+  if (personal.length <= 1) return _finalizarAsignacion(p, nBloque, personal[0] || null);
+  // selector de técnico
+  const cont = document.getElementById('pt-list');
+  cont.innerHTML = personal.map((t, i) =>
+    '<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:6px" data-pt="'+i+'">👷 '+_pEsc(t.nombre)+'</button>').join('');
+  document.getElementById('pt-sub').textContent = '"' + p.tarea + '" · ' + p.nombreEq + ' → Bloque ' + nBloque;
+  cont.onclick = (e) => {
+    const btn = e.target.closest('[data-pt]'); if(!btn) return;
+    document.getElementById('pt-overlay').style.display = 'none';
+    _finalizarAsignacion(p, nBloque, personal[Number(btn.dataset.pt)]);
+  };
+  document.getElementById('pt-overlay').style.display = 'flex';
+}
+
+async function _finalizarAsignacion(p, nBloque, tec){
   const fecha = document.getElementById('fecha-input').value;
   const { periodo, anio } = periodoDe(fecha);
   let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
@@ -870,12 +911,13 @@ async function asignarPlan(pid, nBloqueDestino){
       eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, tareaIdx: p.idx, tarea: p.tarea,
       sede: tiendaDest.toUpperCase(), periodo, anio, fecha,
       itiId: currentIti?.id || '', nBloque,
+      tecnicoId: tec?.id || '', tecnicoNombre: tec?.nombre || '',
       asignadoPor: _by, ts: new Date().toISOString(),
     });
-    planDia = planDia.filter(x => x._id !== p.pid).concat([{ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, tarea: p.tarea, nBloque, fecha }]);
+    planDia = planDia.filter(x => x._id !== p.pid).concat([{ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, tarea: p.tarea, nBloque, fecha, tecnicoNombre: tec?.nombre || '' }]);
     renderPlanChips();
     const card = document.querySelector('.pa-card[data-pid="'+CSS.escape(p.pid)+'"]'); if(card) card.remove();
-    toast('🗓 "'+p.tarea+'" asignada al bloque '+nBloque,'ok');
+    toast('🗓 "'+p.tarea+'" → '+(tec?.nombre || 'bloque '+nBloque),'ok');
   }catch(e){ toast('Error: '+e.message,'err'); }
 }
 
@@ -1889,6 +1931,14 @@ document.addEventListener('click', function(e) {
     <div style="display:flex;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px;position:sticky;bottom:0;background:var(--surface)">
       <button class="btn" onclick="cerrarPanelActs()">Cerrar</button>
     </div>
+  </div>
+</div>
+<!-- SELECTOR: ¿a qué técnico del bloque? -->
+<div id="pt-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.55);z-index:700;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:340px;max-width:100%;padding:18px">
+    <h2 style="font-size:13px;color:var(--blue,#1B3F8B)">👷 ¿Para qué técnico?</h2>
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:10px" id="pt-sub"></div>
+    <div id="pt-list"></div>
   </div>
 </div>
 </body>
