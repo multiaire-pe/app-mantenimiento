@@ -801,14 +801,21 @@ function renderPlanChips(){
     const grupos = {};
     del.forEach(p => { const k = p.tecnicoNombre || ''; (grupos[k] = grupos[k] || []).push(p); });
     cont.innerHTML = Object.keys(grupos).sort((a,b) => (a||'\uffff').localeCompare(b||'\uffff')).map(k => {
-      const chips = grupos[k]
-        .sort((a,b) => String(a.nombreEq).localeCompare(String(b.nombreEq)) || String(a.tarea).localeCompare(String(b.tarea)))
-        .map(p => '<span class="plan-chip" data-tec="'+_pEsc(k)+'" title="'+_pEsc(p.tarea)+' · '+_pEsc(p.nombreEq)+'">🔧 '+_pEsc(p.tarea)+' <b>· '+_pEsc(p.nombreEq)+'</b>'
-          + (window.MA && MA.can('editar','itinerario') ? ' <a data-plan-del="'+_pEsc(p._id)+'" title="Quitar del plan">✕</a>' : '')
-          + '</span>').join('');
-      return '<div style="flex-basis:100%"><div style="font-size:10px;font-weight:700;color:var(--muted2,#667);margin:4px 0 3px">'
+      // segundo nivel: por EQUIPO (nombre · área) — pedido del usuario
+      const porEq = {};
+      grupos[k].forEach(p => { const ek = p.nombreEq + '\u0000' + (p.area||''); (porEq[ek] = porEq[ek] || []).push(p); });
+      const cuerpo = Object.keys(porEq).sort().map(ek => {
+        const [nom, area] = ek.split('\u0000');
+        const chips = porEq[ek]
+          .sort((a,b) => String(a.tarea).localeCompare(String(b.tarea)))
+          .map(p => '<span class="plan-chip" data-tec="'+_pEsc(k)+'" data-eq="'+_pEsc(nom + (area ? ' · ' + area : ''))+'" title="'+_pEsc(p.tarea)+'">🔧 '+_pEsc(p.tarea)
+            + (window.MA && MA.can('editar','itinerario') ? ' <a data-plan-del="'+_pEsc(p._id)+'" title="Quitar del plan">✕</a>' : '')
+            + '</span>').join('');
+        return '<div style="margin:2px 0 4px 10px"><div style="font-size:10px;color:var(--accent,#1a2540);font-weight:600">❄️ '+_pEsc(nom)+(area?' <span style="color:var(--muted2,#667);font-weight:400">· 📍 '+_pEsc(area)+'</span>':'')+'</div><div class="plan-chips" style="margin-top:2px">'+chips+'</div></div>';
+      }).join('');
+      return '<div style="flex-basis:100%"><div style="font-size:10px;font-weight:700;color:var(--muted2,#667);margin:4px 0 1px">'
         + (k ? '👷 ' + _pEsc(k) : '👷 Sin técnico asignado')
-        + '</div><div class="plan-chips" style="margin-top:0">' + chips + '</div></div>';
+        + '</div>' + cuerpo + '</div>';
     }).join('');
   });
 }
@@ -867,7 +874,7 @@ async function pendientesDeSede(sede, fecha){
     acts.forEach((tarea, idx) => {
       const hecha = st === true || (st && typeof st === 'object' && st[idx] === true);
       const pid = `${eq.eq_id}|${periodo}|${anio}|${idx}`;
-      if (!hecha && !planificadas.has(pid)) out.push({ pid, eq_id: eq.eq_id, nombreEq: eq.nombre||eq.eq_id, tipo: eq.tipo||'', tarea, idx });
+      if (!hecha && !planificadas.has(pid)) out.push({ pid, eq_id: eq.eq_id, nombreEq: eq.nombre||eq.eq_id, tipo: eq.tipo||'', area: eq.area||'', tarea, idx });
     });
   });
   return out.sort((a,b) => a.nombreEq.localeCompare(b.nombreEq) || a.idx - b.idx);
@@ -886,7 +893,7 @@ async function abrirPanelActs(nBloque, tienda){
     const pend = await pendientesDeSede(tienda, fecha);
     let eqPrev = null, html = '';
     pend.forEach(p => {
-      if(p.nombreEq !== eqPrev){ eqPrev = p.nombreEq; html += '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 2px">'+_pEsc(p.nombreEq)+' <span style="font-weight:400">('+_pEsc(p.eq_id)+')</span></div>'; }
+      if(p.nombreEq !== eqPrev){ eqPrev = p.nombreEq; html += '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 2px">'+_pEsc(p.nombreEq)+' <span style="font-weight:400">('+_pEsc(p.eq_id)+')</span>'+(p.area?' <span style="font-weight:400">· 📍 '+_pEsc(p.area)+'</span>':'')+'</div>'; }
       html += '<div class="pa-card" draggable="true" data-pid="'+_pEsc(p.pid)+'" ondragstart="paDragStart(event)" onclick="paToggleSel(this)">🔧 '+_pEsc(p.tarea)+'</div>';
     });
     cont.innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:10px">🎉 Sin actividades pendientes en esta sede para el período.</div>';
@@ -940,13 +947,13 @@ async function _finalizarMulti(pids, nBloque, tec){
     pids.forEach(pid => {
       const p = (window._paPend||{})[pid]; if(!p) return;
       batch.set(docP(window.__db, 'mtto_plan', p.pid), {
-        eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, tareaIdx: p.idx, tarea: p.tarea,
+        eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tareaIdx: p.idx, tarea: p.tarea,
         sede: window._paSede || '', periodo, anio, fecha,
         itiId: currentIti?.id || '', itiVersion: Number(currentIti?.version) || 1, nBloque,
         tecnicoId: tec?.id || '', tecnicoNombre: tec?.nombre || '',
         asignadoPor: _by, ts: new Date().toISOString(),
       });
-      nuevos.push({ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, tarea: p.tarea, nBloque, fecha, tecnicoNombre: tec?.nombre || '' });
+      nuevos.push({ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, area: p.area || '', tarea: p.tarea, nBloque, fecha, tecnicoNombre: tec?.nombre || '' });
     });
     await batch.commit();
     const ids = new Set(nuevos.map(x => x._id));
@@ -996,13 +1003,13 @@ async function _finalizarAsignacion(p, nBloque, tec){
   let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
   try{
     await window.__db.collection('mtto_plan').doc(p.pid).set({
-      eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, tareaIdx: p.idx, tarea: p.tarea,
+      eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tareaIdx: p.idx, tarea: p.tarea,
       sede: window._paSede || '', periodo, anio, fecha,
       itiId: currentIti?.id || '', itiVersion: Number(currentIti?.version) || 1, nBloque,
       tecnicoId: tec?.id || '', tecnicoNombre: tec?.nombre || '',
       asignadoPor: _by, ts: new Date().toISOString(),
     });
-    planDia = planDia.filter(x => x._id !== p.pid).concat([{ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, tarea: p.tarea, nBloque, fecha, tecnicoNombre: tec?.nombre || '' }]);
+    planDia = planDia.filter(x => x._id !== p.pid).concat([{ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, area: p.area || '', tarea: p.tarea, nBloque, fecha, tecnicoNombre: tec?.nombre || '' }]);
     renderPlanChips();
     const card = document.querySelector('.pa-card[data-pid="'+CSS.escape(p.pid)+'"]'); if(card) card.remove();
     toast('🗓 "'+p.tarea+'" → '+(tec?.nombre || 'bloque '+nBloque),'ok');
@@ -1492,11 +1499,16 @@ function exportWhatsApp() {
     const chipsW = [...card.querySelectorAll('.plan-chip')];
     if (chipsW.length) {
       const gW = {};
-      chipsW.forEach(c => { const t = c.dataset.tec || ''; (gW[t] = gW[t] || []).push(c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim()); });
+      chipsW.forEach(c => { const t = c.dataset.tec || ''; (gW[t] = gW[t] || []).push({ eq: c.dataset.eq || '', tarea: c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim() }); });
       msg += '🔧 *Actividades:*\n';
       Object.keys(gW).sort((a,b)=>(a||'\uffff').localeCompare(b||'\uffff')).forEach(t => {
-        msg += '   👷 ' + (t || 'Sin asignar') + '\n';
-        gW[t].forEach(a => { msg += '      • ' + a + '\n'; });
+        msg += '   👷 *' + (t || 'Sin asignar') + '*\n';
+        const porEqW = {};
+        gW[t].forEach(c => { const ek = c.eq || ''; (porEqW[ek] = porEqW[ek] || []).push(c.tarea); });
+        Object.keys(porEqW).sort().forEach(ek => {
+          msg += '      ❄️ ' + (ek || 'Equipo') + '\n';
+          porEqW[ek].forEach(a => { msg += '         • ' + a + '\n'; });
+        });
       });
     }
     msg += '🔖 Estado: ' + estado + '\n';
@@ -1675,13 +1687,18 @@ function buildPrintLayout() {
     const chipsP = [...card.querySelectorAll('.plan-chip')];
     if (chipsP.length) {
       const gP = {};
-      chipsP.forEach(c => { const t = c.dataset.tec || ''; (gP[t] = gP[t] || []).push(c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim()); });
+      chipsP.forEach(c => { const t = c.dataset.tec || ''; (gP[t] = gP[t] || []).push({ eq: c.dataset.eq || '', tarea: c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim() }); });
       html += '<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;color:#8a9ab8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Actividades de mantenimiento</div>';
       Object.keys(gP).sort((a,b)=>(a||'\uffff').localeCompare(b||'\uffff')).forEach(t => {
         html += '<div style="font-size:10px;font-weight:700;color:#1B3F8B;margin:4px 0 2px">👷 ' + escI(t || 'Sin asignar') + '</div>';
-        html += '<div style="display:flex;flex-direction:column;gap:2px">';
-        gP[t].forEach(a => { html += '<div style="font-size:11px;line-height:1.4;color:#1a2540">🔧 ' + escI(a) + '</div>'; });
-        html += '</div>';
+        const porEqP = {};
+        gP[t].forEach(c => { (porEqP[c.eq] = porEqP[c.eq] || []).push(c.tarea); });
+        Object.keys(porEqP).sort().forEach(ek => {
+          html += '<div style="font-size:10px;font-weight:600;color:#1a2540;margin:2px 0 1px 10px">❄️ ' + escI(ek || 'Equipo') + '</div>';
+          html += '<div style="display:flex;flex-direction:column;gap:2px;margin-left:22px">';
+          porEqP[ek].forEach(a => { html += '<div style="font-size:11px;line-height:1.4;color:#1a2540">🔧 ' + escI(a) + '</div>'; });
+          html += '</div>';
+        });
       });
       html += '</div>';
     }
