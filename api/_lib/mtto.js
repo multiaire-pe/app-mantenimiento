@@ -231,6 +231,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
   }
 
   if (ses.fase === 'ACTIVIDADES') {
+    if (imagenB64) return '📷 Esa foto guárdala un momento: primero dime *qué actividades realizaste* (números o *todas*) — las fotos te las pido al confirmar.';
     const idxs = parseSeleccion(texto || '', ses.actividades.length);
     if (!idxs.length) return `No te entendí. Responde con los números de las actividades realizadas (ej: *1, 3*) o *todas*.\n\n${listaNumerada(ses.actividades)}`;
     ses.marcadas = idxs;
@@ -240,6 +241,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
   }
 
   if (ses.fase === 'CONFIRMA') {
+    if (imagenB64) return '📷 Esa foto te la pido después de confirmar. Responde *SÍ* para guardar el registro — las fotos vienen al toque.';
     if (/^(si|sí|s|ok|dale|confirmo|confirmar)[\s!.]*$/.test(t)) {
       if (onWriteStart) onWriteStart();   // idempotencia: de aquí en adelante no reprocesar
       await guardarRegistro(ses, tecnico);
@@ -282,7 +284,21 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       await limpiarSesion(from);
       return `🏁 *Registro completo* — ${ses.marcadas.length} actividad(es), ${n} foto(s). ¡Gracias!`;
     }
-    return `Envía una foto, *SIGUIENTE* para pasar de actividad o *FIN* para terminar.`;
+    // El registro anterior YA está guardado: un saludo o una NUEVA intención de registro
+    // no deben quedar atrapados pidiendo fotos (pasó en la prueba en vivo).
+    if (texto && esSaludo(texto)) {
+      const n = await contarFotos(ses, null);
+      await limpiarSesion(from);
+      return `🏁 Cerré el registro de *${ses.nombreEq}* (${n} foto(s)).\n\n${MENU_TEXTO}`;
+    }
+    if (texto && await esRegistroActividad(texto)) {
+      const n = await contarFotos(ses, null);
+      const cierre = `🏁 Cerré el registro de *${ses.nombreEq}* (${n} foto(s)).`;
+      await limpiarSesion(from);
+      const resp = await manejarMtto({ tecnico, from, texto, imagenB64: null, mime: null, onWriteStart });
+      return `${cierre}\n\n${resp || ''}`;
+    }
+    return `Envía una foto, *SIGUIENTE* para pasar de actividad o *FIN* para terminar. (Registro en curso: *${ses.nombreEq}*)`;
   }
 
   await limpiarSesion(from);   // fase desconocida: reset defensivo
