@@ -866,6 +866,7 @@ async function pendientesDeSede(sede, fecha){
 async function abrirPanelActs(nBloque, tienda){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
   _panelBloque = nBloque;
+  _paSel.clear(); _paActualizarBoton();   // selección limpia al abrir (Council)
   const fecha = document.getElementById('fecha-input').value;
   document.getElementById('pa-sub').textContent = tienda + ' · Bloque ' + nBloque + ' · ' + fecha + ' — marca las actividades y asígnalas juntas (o arrastra una a otro bloque)';
   const cont = document.getElementById('pa-list');
@@ -912,8 +913,13 @@ async function asignarSeleccionadas(){
   };
   document.getElementById('pt-overlay').style.display = 'flex';
 }
+let _paBusy = false;   // lock: doble click en Asignar no debe duplicar el batch (Council)
 async function _finalizarMulti(pids, nBloque, tec){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  if (_paBusy) return;
+  if (pids.length > 450) { toast('Máximo 450 actividades por lote', 'err'); return; }
+  _paBusy = true;
+  const btnA = document.getElementById('pa-asignar'); if (btnA) btnA.disabled = true;
   const fecha = document.getElementById('fecha-input').value;
   const { periodo, anio } = periodoDe(fecha);
   let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
@@ -940,6 +946,7 @@ async function _finalizarMulti(pids, nBloque, tec){
     _paSel.clear(); _paActualizarBoton();
     toast('🗓 ' + nuevos.length + ' actividad(es) → ' + (tec?.nombre || 'bloque ' + nBloque), 'ok');
   }catch(e){ toast('Error: '+e.message,'err'); }
+  finally{ _paBusy = false; _paActualizarBoton(); }
 }
 
 function personalDeBloque(n){
