@@ -183,6 +183,20 @@ async function avanzar(ses, msg, d) {
   });
   await d.store.limpiarSesion(from);
   if (!res.ok) return errorMarcaje(res.error, res.existing, ses.tipo);
+  // Aviso a los designados (Personal → 🔔 Alertas del bot); nunca frustra el marcaje
+  try {
+    const u = ses.ubicacion || {};
+    const hora = res.registro?.marcajeEntrada?.hora || res.registro?.marcajeSalida?.hora || '';
+    const geo = u.valida === false ? 'sin validación de distancia'
+      : u.dentro ? `en la sede (${fmtDistancia(u.distancia)})`
+      : `⚠️ fuera de radio (${fmtDistancia(u.distancia)})`;
+    const { notificarPorTipo } = await import('./avisos.js');
+    await notificarPorTipo('asistencia',
+      `🕐 *${ses.tipo === 'SALIDA' ? 'Salida' : 'Entrada'}* — ${ses.nombre}\n` +
+      `🏪 ${labelSede(ses.sede)}${ses.fueraDePlan ? ' · ⚠️ fuera de plan' : ''}\n` +
+      `🕐 ${hora} · 📍 ${geo}`,
+      ses.colabId || '');
+  } catch (e) { console.error('[avisos asistencia]', e.message); }
   return confirmacion(ses, res);
 }
 

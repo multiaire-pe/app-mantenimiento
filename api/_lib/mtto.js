@@ -182,6 +182,15 @@ async function guardarRegistro(ses, tecnico) {
     actividades: ses.marcadas.map((i) => ses.actividades[i]),
     done: true,
   }).catch(() => {});   // el log nunca debe frustrar el registro
+  // Aviso a los designados (Personal → 🔔 Alertas del bot); nunca frustra el registro
+  try {
+    const { notificarPorTipo } = await import('./avisos.js');
+    await notificarPorTipo('mtto',
+      `🔧 *Registro de mantenimiento* — ${tecnico?.nombre || ses.nombre || ses.from}\n` +
+      `❄️ ${ses.nombreEq} · 🏪 ${ses.sede} · 📅 ${periodo} ${anio}\n` +
+      ses.marcadas.map((i) => `✅ ${ses.actividades[i]}`).join('\n'),
+      tecnico?.id || '');
+  } catch (e) { console.error('[avisos mtto]', e.message); }
   return clave;
 }
 
