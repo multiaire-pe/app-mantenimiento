@@ -184,7 +184,10 @@ async function contarFotos(ses, tareaIdx) {
   if (tareaIdx != null) q = q.where('tareaIdx', '==', tareaIdx);
   const snap = await q.select('createdAt').get();   // solo headers, no baja los base64
   const desde = ses.inicio || '';                    // sesiones viejas sin inicio: cuenta todo
-  return snap.docs.filter((d) => String(d.data().createdAt || '') >= desde).length;
+  // normaliza por si un doc trajera Timestamp en vez de ISO string (defensa del Council;
+  // hoy app y bot escriben toISOString())
+  const iso = (v) => (v && typeof v.toDate === 'function') ? v.toDate().toISOString() : String(v || '');
+  return snap.docs.filter((d) => iso(d.data().createdAt) >= desde).length;
 }
 
 async function guardarFoto(ses, tecnico, imagenB64, mime) {
