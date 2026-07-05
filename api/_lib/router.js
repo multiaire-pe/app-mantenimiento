@@ -12,7 +12,7 @@ import { getSesion as getSesionAsist } from './asistencia_sesiones.js';
 import { getSesion as getSesionObs, limpiarSesion as limpiarSesionObs } from './sesiones.js';
 import { getSesion as getSesionMtto } from './mtto_sesiones.js';
 import { RE_ASISTENCIA } from './asistencia.js';
-import { esRegistroActividad, esSaludo } from './mtto.js';
+import { esRegistroActividad, esSaludo, esControlSuelto } from './mtto.js';
 
 // Flujos: 'asistencia' | 'mtto' | 'observaciones' | 'menu' (saludo en frío) |
 // 'hint-obs' / 'hint-asistencia' (elección 2/3 del menú: instrucción sin sesión).
@@ -39,6 +39,7 @@ export async function decidirFlujo({ from, tipo, texto }) {
   if (t === '2') return 'hint-obs';
   if (t === '3') return 'hint-asistencia';
   if (texto && esSaludo(texto)) return 'menu';
+  if (texto && esControlSuelto(texto)) return 'menu';   // "fin"/"sí"/… sin sesión: menú, no obs
   if (texto && RE_ASISTENCIA.test(texto)) return 'asistencia';
   if (texto && await esRegistroActividad(texto)) return 'mtto';
   return 'observaciones';

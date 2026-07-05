@@ -30,6 +30,12 @@ export function esSaludo(texto) {
   return /^(hola|buenas(\s+(dias|tardes|noches))?|buenos\s+dias|menu|inicio|ayuda|hey)[\s!.,?]*$/.test(norm(texto).trim());
 }
 
+// Palabra de control SUELTA (sin conversación viva): "fin", "sí", "siguiente"… no deben
+// caer a observaciones y abrir un borrador absurdo (pasó en la prueba en vivo) → menú.
+export function esControlSuelto(texto) {
+  return /^(si|no|ok|dale|fin|siguiente|listo|cancelar|salir|ya|gracias|confirmo)[\s!.,]*$/.test(norm(texto).trim());
+}
+
 export const MENU_TEXTO =
   '👋 ¡Hola! Soy el bot de MultiAire. ¿Qué necesitas?\n\n' +
   '1️⃣ *Registrar actividades* de mantenimiento\n' +
