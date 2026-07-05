@@ -26,18 +26,34 @@ export async function destinatariosAviso(tipo = 'obs') {
     .filter((p) => String(p.telefono || '').replace(/\D/g, '').length >= 9);
 }
 
-// Aviso de TEXTO libre a los designados de un tipo (asistencia/mtto: sin plantilla de
-// Meta todavía — llega dentro de la ventana de 24h del destinatario; para entrega
-// garantizada en frío habría que aprobar una plantilla, como nueva_observacion).
+// Aviso a los designados de un tipo. Con plantilla de Meta aprobada (env
+// WHATSAPP_TEMPLATE_ASISTENCIA / WHATSAPP_TEMPLATE_MTTO) llega FUERA de la ventana
+// de 24h; si falla o no hay plantilla, cae a texto libre (mismo patrón que obs).
+const TEMPLATE_ENV = { asistencia: 'WHATSAPP_TEMPLATE_ASISTENCIA', mtto: 'WHATSAPP_TEMPLATE_MTTO' };
+const paramTexto = (x) => ({ type: 'text', text: (String(x || '').replace(/\s+/g, ' ').trim() || '—').slice(0, 600) });
+
 export async function notificarPorTipo(tipo, texto, excluirId = '', opts = {}) {
   const destinos = opts.destinos || await destinatariosAviso(tipo);
   if (!destinos.length) { console.log(`[avisos] 0 destinatarios con avisos.${tipo}`); return 0; }
+  const plantilla = opts.plantilla !== undefined ? opts.plantilla : (process.env[TEMPLATE_ENV[tipo]] || '');
+  const idioma = process.env.WHATSAPP_TEMPLATE_IDIOMA || 'es';
   const _enviarTexto = opts.enviarTexto || enviarTexto;
+  const _enviarPlantilla = opts.enviarPlantilla || enviarPlantilla;
   let n = 0;
   for (const p of destinos) {
     if (excluirId && p.id === excluirId) continue;   // no avisar a quien hizo la acción
-    try { await _enviarTexto(String(p.telefono).replace(/\D/g, ''), texto); n++; }
-    catch (e) { console.error('[avisos]', tipo, p.id, e.message); }
+    const to = String(p.telefono).replace(/\D/g, '');
+    let ok = false;
+    if (plantilla && Array.isArray(opts.params)) {
+      try { ok = await _enviarPlantilla(to, plantilla, idioma, [{ type: 'body', parameters: opts.params.map(paramTexto) }]); }
+      catch (e) { console.error('[avisos] plantilla', tipo, e.message); }
+      if (!ok) console.warn('[avisos] plantilla falló, intento texto libre ·', tipo, to);
+    }
+    if (!ok) {
+      try { ok = await _enviarTexto(to, texto); }
+      catch (e) { console.error('[avisos]', tipo, p.id, e.message); }
+    }
+    if (ok) n++;
   }
   return n;
 }
