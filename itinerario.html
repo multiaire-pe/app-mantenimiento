@@ -871,7 +871,19 @@ async function pendientesDeSede(sede, fecha){
   const sel = _safe(md.seleccionados);
   const haySeleccion = Object.keys(sel).some(k => sel[k]);
   window._paSinSeleccion = !haySeleccion;
-  const planificadas = new Set(planS.docs.map(d => d.id));
+  // Qué bloquea como "ya planificada" (hallazgo del usuario con v1→v2):
+  //  · asignada en OTRO itinerario/día del período → bloquea (no planificar doble)
+  //  · asignada en ESTA misma versión → bloquea (ya está en el plan abierto)
+  //  · asignada en una versión VIEJA de ESTE itinerario → NO bloquea: re-seleccionable
+  //    en la versión nueva (re-asignarla SOBREESCRIBE el doc — id determinístico — y
+  //    la mueve a la versión actual, sin duplicar)
+  const _idAct = currentIti?.id || '';
+  const _vAct = Number(currentIti?.version) || 1;
+  const planificadas = new Set(planS.docs.filter(d => {
+    const r = d.data();
+    if ((r.itiId || '') !== _idAct) return true;
+    return Number(r.itiVersion ?? 1) === _vAct;
+  }).map(d => d.id));
   invS.docs.forEach(d => {
     const eq = d.data();
     if((eq.sede||'').toUpperCase() !== target || !eq.eq_id) return;
