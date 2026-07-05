@@ -2538,14 +2538,14 @@ function onQRScanned(code) {
       // Ya se eligió la acción con el primer escaneo de esta sesión: solo se agrega.
       addToScanLote(inst);
     } else {
-      infoBox.innerHTML = `<strong>${inst.nombre}</strong> · <span style="font-family:var(--mono)">${inst.id}</span><br>
-        📍 Sede: <strong>${inst.sede||'—'}</strong> · Estado: <strong>${inst.estado||'DISPONIBLE'}</strong>
+      infoBox.innerHTML = `<strong>${escB(inst.nombre)}</strong> · <span style="font-family:var(--mono)">${escB(inst.id)}</span><br>
+        📍 Sede: <strong>${escB(inst.sede)||'—'}</strong> · Estado: <strong>${escB(inst.estado)||'DISPONIBLE'}</strong>
         <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-sm btn-primary" onclick="closeScanner();openQRModal('${inst.id}')">▣ Ver etiqueta</button>
-          <button class="btn btn-sm btn-orange" onclick="closeScanner();openEditInstancia('${inst.id}')">✏️ Editar</button>
-          <button class="btn btn-sm" onclick="startScanLote('SALIDA','${inst.id}')">⬆ Salida</button>
-          <button class="btn btn-sm" style="color:var(--red)" onclick="startScanLote('BAJA','${inst.id}')">⚠️ Dar de baja</button>
-          <button class="btn btn-sm" onclick="startScanLote('TRANSFERENCIA','${inst.id}')">🔄 Transferir</button>
+          <button class="btn btn-sm btn-primary" data-scan-act="ver" data-scan-id="${escB(inst.id)}">▣ Ver etiqueta</button>
+          <button class="btn btn-sm btn-orange" data-scan-act="editar" data-scan-id="${escB(inst.id)}">✏️ Editar</button>
+          <button class="btn btn-sm" data-scan-act="SALIDA" data-scan-id="${escB(inst.id)}">⬆ Salida</button>
+          <button class="btn btn-sm" style="color:var(--red)" data-scan-act="BAJA" data-scan-id="${escB(inst.id)}">⚠️ Dar de baja</button>
+          <button class="btn btn-sm" data-scan-act="TRANSFERENCIA" data-scan-id="${escB(inst.id)}">🔄 Transferir</button>
         </div>`;
       infoBox.style.display = 'block';
     }
@@ -2564,6 +2564,15 @@ function onQRScanned(code) {
 
 // Primer escaneo de la sesión: fija la acción (Salida/Baja/Transferencia) para todo lo que se
 // siga escaneando y agrega esta primera instancia. No cierra la cámara.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-scan-act]');
+  if (!b) return;
+  const { scanAct, scanId } = b.dataset;
+  if (scanAct === 'ver') { closeScanner(); openQRModal(scanId); }
+  else if (scanAct === 'editar') { closeScanner(); openEditInstancia(scanId); }
+  else startScanLote(scanAct, scanId);
+});
+
 function startScanLote(tipo, instId) {
   scanLoteTipo = tipo;
   const inst = instanciasData.find(x => x.id === instId);
