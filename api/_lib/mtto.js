@@ -164,6 +164,12 @@ async function guardarRegistro(ses, tecnico) {
       updatedBy: `BOT · ${tecnico?.nombre || ses.nombre || ses.from}`,
     }, { merge: true });
   });
+  // Sincronización con el itinerario: lo EJECUTADO sale del plan en automático
+  // (pedido del usuario: si el técnico adelantó una actividad planificada para otro
+  // día, esa asignación ya no debe aparecer en el itinerario). Ids determinísticos.
+  await Promise.all(ses.marcadas.map((i) =>
+    db.collection('mtto_plan').doc(`${ses.eqId}|${periodo}|${anio}|${i}`).delete().catch(() => {})
+  ));
   // Bitácora (tab Historial de la app): quién registró qué y cuándo
   await db.collection('mtto_log').add({
     ts: new Date().toISOString(),

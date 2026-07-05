@@ -93,6 +93,16 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .bloque-header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
 .bloque-num{width:28px;height:28px;border-radius:50%;background:var(--blue);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:var(--mono)}
 .bloque-tienda{font-size:14px;font-weight:700;color:var(--accent);flex:1}
+/* actividades de mtto asignadas al bloque + panel de pendientes */
+.plan-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.plan-chip{display:inline-flex;align-items:center;gap:4px;font-size:10px;background:var(--blue-pale,#e8eef8);color:var(--blue,#1B3F8B);border:1px solid var(--border);border-radius:10px;padding:2px 8px;max-width:100%}
+.plan-chip b{font-weight:600;opacity:.75}
+.plan-chip a{cursor:pointer;font-weight:700;margin-left:2px}
+.pa-card{padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;cursor:pointer;background:var(--surface);margin-bottom:4px}
+.pa-card:hover{border-color:var(--blue,#1B3F8B);background:var(--blue-pale,#e8eef8)}
+.pa-card.sel{border-color:var(--blue,#1B3F8B);background:var(--blue-pale,#e8eef8);font-weight:600}
+.pa-card.sel::before{content:'✓ ';color:var(--blue,#1B3F8B);font-weight:700}
+.bloque-card.drop-hover{outline:2px dashed var(--blue,#1B3F8B);outline-offset:2px}
 .bloque-grupo{font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px}
 .grupo-preventivo{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
 .grupo-correctivo{background:var(--orange-pale);color:var(--orange-dark);border:1px solid #f0c09a}
@@ -666,6 +676,8 @@ function renderItinerario(iti, bloques, fecha) {
   const estadoClass = iti.estado === 'ACTUALIZADO' ? 'estado-actualizado' : 'estado-registrado';
 
   const bloquesHtml = bloques.map((b, i) => renderBloqueCard(b, i)).join('');
+  window._bloquesDia = bloques;   // para el panel de actividades (personal por bloque)
+  setTimeout(() => cargarPlanDia(document.getElementById('fecha-input').value), 0);  // chips 🔧 tras pintar
 
   const _vers = (allItis || []).filter(x => x.id === iti.id)
     .map(x => Number(x.version)).filter(v => !isNaN(v)).sort((a, b) => a - b);
@@ -691,7 +703,7 @@ function renderItinerario(iti, bloques, fecha) {
         <button class="btn btn-primary iti-edit" onclick="editarItinerario()">✏️ Editar / Nueva versión</button>
       </div>
     </div>
-    ${iti.obsGenerales ? `<div class="obs-box"><div class="obs-label">Anotaciones generales</div>${iti.obsGenerales}</div>` : ''}
+    ${iti.obsGenerales ? `<div class="obs-box"><div class="obs-label">Anotaciones generales</div>${escI(iti.obsGenerales)}</div>` : ''}
     <div class="bloques-grid">${bloquesHtml}</div>`;
 }
 
@@ -704,15 +716,15 @@ function renderBloqueCard(b, i) {
     .map(p => {
       const per = maestros.personal.find(x => x.id === p.id);
       const cargo = per?.cargo || '';
-      return `<div class="personal-tag">${p.nombre}${cargo?`<span style="font-size:9px;opacity:.6;margin-left:3px">(${cargo})</span>`:''}</div>`;
+      return `<div class="personal-tag">${escI(p.nombre)}${cargo?`<span style="font-size:9px;opacity:.6;margin-left:3px">(${escI(cargo)})</span>`:''}</div>`;
     }).join('');
 
   return `
-    <div class="bloque-card">
+    <div class="bloque-card" data-blq="${b.nBloque}" ondragover="paDragOver(event)" ondragleave="paDragLeave(event)" ondrop="paDrop(event)">
       <div class="bloque-header">
         <div class="bloque-num">${b.nBloque}</div>
-        <div class="bloque-tienda">${b.tienda}</div>
-        <div class="bloque-grupo" style="background:${gc.bg};color:${gc.color};border:1px solid ${gc.border}">${b.grupo}</div>
+        <div class="bloque-tienda">${escI(b.tienda)}</div>
+        <div class="bloque-grupo" style="background:${gc.bg};color:${gc.color};border:1px solid ${gc.border}">${escI(b.grupo)}</div>
         <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${ec.bg};color:${ec.color};border:1px solid ${ec.border}">${b.estado||'PROGRAMADO'}</span>
       </div>
       <div class="bloque-body">
@@ -726,10 +738,353 @@ function renderBloqueCard(b, i) {
         </div>
         <div class="bloque-field full">
           <div class="bloque-field-label">Detalle de trabajo</div>
-          <div class="bloque-detalle">${b.detalle || '—'}</div>
+          <div class="bloque-detalle">${escI(b.detalle) || '—'}</div>
+        </div>
+        <div class="bloque-field full">
+          <div class="bloque-field-label">Actividades de mtto. <a class="mant-edit-btn" style="cursor:pointer;font-weight:700;color:var(--blue,#1B3F8B)" data-abrir-acts="${b.nBloque}">🔧 Asignar</a></div>
+          <div class="plan-chips" data-plan-blq="${b.nBloque}"></div>
         </div>
       </div>
     </div>`;
+}
+
+
+// ── ACTIVIDADES DE MTTO PREVENTIVO EN EL ITINERARIO ───────────────────────────
+// Colección mtto_plan: 1 doc por actividad asignada, id = EQ|PERIODO|AÑO|IDX
+// (re-asignar sobreescribe fecha/bloque: una actividad se planifica una vez por período).
+// El panel muestra las PENDIENTES de la sede del bloque: lista efectiva del equipo
+// (tareas_config − quitadas + agregadas de mtto_actividades_equipo) − hechas del
+// período (doc mantenimiento SEDE|PERIODO|AÑO) − ya planificadas.
+// escape para todo render con datos de Firestore/inputs (auditoría completa del Council)
+const escI = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+let planDia = [];          // docs de mtto_plan de la fecha cargada
+let _planFecha = null;     // guarda de carrera: solo pinta si la fecha sigue siendo la cargada
+// listeners delegados (sin handlers inline interpolados — hallazgo del Council)
+document.addEventListener('click', (e) => {
+  const abrir = e.target.closest('[data-abrir-acts]');
+  if (abrir) {
+    const card = abrir.closest('.bloque-card');
+    const tienda = (card?.querySelector('.bloque-tienda')?.textContent || '').trim();
+    abrirPanelActs(Number(abrir.dataset.abrirActs), tienda);
+    return;
+  }
+  const del = e.target.closest('[data-plan-del]');
+  if (del) quitarPlan(del.dataset.planDel);
+});
+let _panelBloque = null;   // nBloque destino del panel abierto
+const _PERIODOS_ITI = ['ENE-FEB','MAR-ABR','MAY-JUN','JUL-AGO','SEP-OCT','NOV-DIC'];
+function periodoDe(fechaStr){
+  const [anio, mes] = String(fechaStr||'').split('-').map(Number);
+  return { periodo: _PERIODOS_ITI[Math.floor(((mes||1)-1)/2)], anio: anio||new Date().getFullYear() };
+}
+const _pEsc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+async function cargarPlanDia(fecha){
+  _planFecha = fecha;
+  planDia = [];
+  try{
+    const snap = await window.__db.collection('mtto_plan').where('fecha','==',fecha).get();
+    if (_planFecha !== fecha) return;   // el usuario cambió de fecha mientras cargaba
+    // solo los de ESTA versión del itinerario (una v2 puede reordenar bloques — Council);
+    // docs legacy sin itiVersion se muestran para no ocultar lo ya asignado en develop
+    planDia = snap.docs.map(d => ({ _id: d.id, ...d.data() }))
+      .filter(p => !currentIti || !p.itiId || (p.itiId === currentIti.id && (p.itiVersion == null || Number(p.itiVersion) === Number(currentIti.version))));
+    // BARRIDO: lo ya EJECUTADO en Mantenimiento sale del plan en automático (pedido
+    // del usuario: si el técnico adelantó la actividad, no debe seguir en el itinerario)
+    try {
+      const { periodo, anio } = periodoDe(fecha);
+      const sedesPlan = [...new Set(planDia.map(p => p.sede).filter(Boolean))];
+      if (sedesPlan.length) {
+        const { getDoc, doc } = window.__fb;
+        const mSnaps = await Promise.all(sedesPlan.map(sd => getDoc(doc(window.__db, 'mantenimiento', `${sd}|${periodo}|${anio}`))));
+        const tsSede = {};
+        mSnaps.forEach((sp, i) => {
+          const d = sp.exists ? sp.data() : {};
+          tsSede[sedesPlan[i]] = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } })(d.tareaStatus);
+        });
+        const hechas = planDia.filter(p => {
+          const st = (tsSede[p.sede] || {})[p.eq_id];
+          return st === true || (st && typeof st === 'object' && st[p.tareaIdx] === true);
+        });
+        if (hechas.length && _planFecha === fecha) {
+          hechas.forEach(p => { window.__db.collection('mtto_plan').doc(p._id).delete().catch(()=>{}); });
+          const idsH = new Set(hechas.map(p => p._id));
+          planDia = planDia.filter(p => !idsH.has(p._id));
+          console.log('[mtto_plan] ' + hechas.length + ' actividad(es) ya ejecutadas retiradas del plan');
+        }
+      }
+    } catch(e) { console.warn('[mtto_plan sync]', e.message); }
+  }catch(e){ console.warn('[mtto_plan]', e.message); }
+  renderPlanChips();
+}
+function renderPlanChips(){
+  document.querySelectorAll('[data-plan-blq]').forEach(cont => {
+    const n = Number(cont.dataset.planBlq);
+    const del = planDia.filter(p => p.nBloque === n);
+    if (!del.length) { cont.innerHTML = ''; return; }
+    // AGRUPADAS POR TÉCNICO (pedido del usuario), no por orden de asignación
+    const grupos = {};
+    del.forEach(p => { const k = p.tecnicoNombre || ''; (grupos[k] = grupos[k] || []).push(p); });
+    cont.innerHTML = Object.keys(grupos).sort((a,b) => (a||'\uffff').localeCompare(b||'\uffff')).map(k => {
+      // segundo nivel: por EQUIPO (nombre · área) — pedido del usuario
+      const porEq = {};
+      grupos[k].forEach(p => { const ek = p.nombreEq + '\u0000' + (p.area||''); (porEq[ek] = porEq[ek] || []).push(p); });
+      const cuerpo = Object.keys(porEq).sort().map(ek => {
+        const [nom, area] = ek.split('\u0000');
+        const chips = porEq[ek]
+          .sort((a,b) => String(a.tarea).localeCompare(String(b.tarea)))
+          .map(p => '<span class="plan-chip" data-tec="'+_pEsc(k)+'" data-eq="'+_pEsc(nom + (area ? ' · ' + area : ''))+'" title="'+_pEsc(p.tarea)+'">🔧 '+_pEsc(p.tarea)
+            + (window.MA && MA.can('editar','itinerario') ? ' <a data-plan-del="'+_pEsc(p._id)+'" title="Quitar del plan">✕</a>' : '')
+            + '</span>').join('');
+        return '<div style="margin:2px 0 4px 10px"><div style="font-size:10px;color:var(--accent,#1a2540);font-weight:600">❄️ '+_pEsc(nom)+(area?' <span style="color:var(--muted2,#667);font-weight:400">· 📍 '+_pEsc(area)+'</span>':'')+'</div><div class="plan-chips" style="margin-top:2px">'+chips+'</div></div>';
+      }).join('');
+      return '<div style="flex-basis:100%"><div style="font-size:10px;font-weight:700;color:var(--muted2,#667);margin:4px 0 1px">'
+        + (k ? '👷 ' + _pEsc(k) : '👷 Sin técnico asignado')
+        + '</div>' + cuerpo + '</div>';
+    }).join('');
+  });
+}
+async function quitarPlan(id){
+  if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  try{
+    await window.__db.collection('mtto_plan').doc(id).delete();
+    planDia = planDia.filter(p => p._id !== id);
+    renderPlanChips();
+    toast('Actividad quitada del plan','ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+// Pendientes de la sede (efectivas − hechas − planificadas en el período)
+async function pendientesDeSede(sede, fecha){
+  const { periodo, anio } = periodoDe(fecha);
+  const { getDocs, getDoc, doc, collection } = window.__fb;
+  const [invS, tcS, ovS] = await Promise.all([
+    getDocs(collection(window.__db, 'inventario')),
+    getDocs(collection(window.__db, 'tareas_config')),
+    getDocs(collection(window.__db, 'mtto_actividades_equipo')),
+  ]);
+  const plantillas = {}; tcS.docs.forEach(d => { plantillas[d.data().tipo] = d.data().tareas || []; });
+  const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
+  // La tienda del bloque puede traer el cliente adelante ("RIPLEY PLAZA NORTE") y el
+  // inventario guarda solo la sede ("PLAZA NORTE"): match exacto o el sufijo MÁS LARGO
+  // que sea una sede real (así "MAC PLAZA NORTE" no se confunde con "PLAZA NORTE").
+  const sedesInv = new Set(invS.docs.map(d => (d.data().sede||'').toUpperCase()).filter(Boolean));
+  const tRaw = String(sede||'').toUpperCase().trim();
+  let target = sedesInv.has(tRaw) ? tRaw : null;
+  if (!target) {
+    const toks = tRaw.split(/\s+/);
+    for (let i = 1; i < toks.length && !target; i++) {
+      const suf = toks.slice(i).join(' ');
+      if (sedesInv.has(suf)) target = suf;
+    }
+  }
+  const out = [];
+  window._paSede = target || '';   // la sede REAL: la usan asignación y badges
+  window._paZonaLibre = !target;   // zona tipeada/fuera del inventario: mensaje específico
+  if (!target) return out;
+  // hechos y planificados con la sede RESUELTA (hallazgo del Council: con la cruda
+  // "RIPLEY PLAZA NORTE" el doc del período y el plan no matcheaban)
+  const [mantS, planS] = await Promise.all([
+    getDoc(doc(window.__db, 'mantenimiento', `${target}|${periodo}|${anio}`)),
+    window.__db.collection('mtto_plan').where('sede','==',target).where('periodo','==',periodo).where('anio','==',anio).get(),
+  ]);
+  const md = mantS.exists ? mantS.data() : {};
+  const _safe = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } });
+  const ts = _safe(md.tareaStatus);
+  // SOLO los equipos SELECCIONADOS para el período en la app de Mantenimiento
+  // (pedido del usuario: el itinerario planifica lo que Mantenimiento decidió trabajar,
+  // no todo el inventario de la sede)
+  const sel = _safe(md.seleccionados);
+  const haySeleccion = Object.keys(sel).some(k => sel[k]);
+  window._paSinSeleccion = !haySeleccion;
+  // Qué bloquea como "ya planificada" (hallazgo del usuario con v1→v2):
+  //  · asignada en OTRO itinerario/día del período → bloquea (no planificar doble)
+  //  · asignada en ESTA misma versión → bloquea (ya está en el plan abierto)
+  //  · asignada en una versión VIEJA de ESTE itinerario → NO bloquea: re-seleccionable
+  //    en la versión nueva (re-asignarla SOBREESCRIBE el doc — id determinístico — y
+  //    la mueve a la versión actual, sin duplicar)
+  const _idAct = currentIti?.id || '';
+  const _vAct = Number(currentIti?.version) || 1;
+  const planificadas = new Set(planS.docs.filter(d => {
+    const r = d.data();
+    if ((r.itiId || '') !== _idAct) return true;
+    return Number(r.itiVersion ?? 1) === _vAct;
+  }).map(d => d.id));
+  invS.docs.forEach(d => {
+    const eq = d.data();
+    if((eq.sede||'').toUpperCase() !== target || !eq.eq_id) return;
+    if(!sel[eq.eq_id]) return;   // no seleccionado para el período → no se planifica
+    const ov = ovs[eq.eq_id], quit = new Set(ov?.quitadas || []);
+    const acts = (plantillas[eq.tipo] || []).filter(t => !quit.has(t)).concat((ov?.agregadas || []).map(a => a.nombre));
+    const st = ts[eq.eq_id];
+    acts.forEach((tarea, idx) => {
+      const hecha = st === true || (st && typeof st === 'object' && st[idx] === true);
+      const pid = `${eq.eq_id}|${periodo}|${anio}|${idx}`;
+      if (!hecha && !planificadas.has(pid)) out.push({ pid, eq_id: eq.eq_id, nombreEq: eq.nombre||eq.eq_id, tipo: eq.tipo||'', area: eq.area||'', tarea, idx });
+    });
+  });
+  return out.sort((a,b) => a.nombreEq.localeCompare(b.nombreEq) || a.idx - b.idx);
+}
+
+async function abrirPanelActs(nBloque, tienda){
+  if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  _panelBloque = nBloque;
+  window._paTienda = String(tienda||'').trim();   // para vetar drops a bloques de OTRA sede
+  _paSel.clear(); _paActualizarBoton();   // selección limpia al abrir (Council)
+  const fecha = document.getElementById('fecha-input').value;
+  document.getElementById('pa-sub').textContent = tienda + ' · Bloque ' + nBloque + ' · ' + fecha + ' — marca las actividades y asígnalas juntas (o arrastra una a otro bloque)';
+  const cont = document.getElementById('pa-list');
+  cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Buscando pendientes de ' + _pEsc(tienda) + '…</div>';
+  document.getElementById('pa-overlay').style.display = 'flex';
+  try{
+    const pend = await pendientesDeSede(tienda, fecha);
+    let eqPrev = null, html = '';
+    pend.forEach(p => {
+      if(p.nombreEq !== eqPrev){ eqPrev = p.nombreEq; html += '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 2px">'+_pEsc(p.nombreEq)+' <span style="font-weight:400">('+_pEsc(p.eq_id)+')</span>'+(p.area?' <span style="font-weight:400">· 📍 '+_pEsc(p.area)+'</span>':'')+'</div>'; }
+      html += '<div class="pa-card" draggable="true" data-pid="'+_pEsc(p.pid)+'" ondragstart="paDragStart(event)" onclick="paToggleSel(this)">🔧 '+_pEsc(p.tarea)+'</div>';
+    });
+    cont.innerHTML = html || (window._paZonaLibre
+      ? '<div style="font-size:12px;color:var(--muted);padding:10px">✏️ Esta es una <b>zona libre</b> (no corresponde a una sede del inventario): no hay actividades de mtto que planificar aquí.</div>'
+      : window._paSinSeleccion
+      ? '<div style="font-size:12px;color:var(--muted);padding:10px">📋 Esta sede no tiene <b>equipos seleccionados</b> para el período en la app de <b>Mantenimiento</b>. Selecciónalos ahí primero (Checklist → ＋ Seleccionar equipos) y vuelve a abrir este panel.</div>'
+      : '<div style="font-size:12px;color:var(--muted);padding:10px">🎉 Los equipos seleccionados del período no tienen actividades pendientes (todo hecho o ya planificado).</div>');
+    window._paPend = Object.fromEntries(pend.map(p => [p.pid, p]));
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
+}
+function cerrarPanelActs(){ document.getElementById('pa-overlay').style.display='none'; _panelBloque = null; _paSel.clear(); _paActualizarBoton(); }
+
+// Multi-selección (pedido del usuario): tap marca/desmarca; un botón asigna todas juntas
+const _paSel = new Set();
+function paToggleSel(el){
+  const pid = el.dataset.pid;
+  if (_paSel.has(pid)) { _paSel.delete(pid); el.classList.remove('sel'); }
+  else { _paSel.add(pid); el.classList.add('sel'); }
+  _paActualizarBoton();
+}
+function _paActualizarBoton(){
+  const btn = document.getElementById('pa-asignar');
+  if (btn) { btn.textContent = '🗓 Asignar seleccionadas (' + _paSel.size + ')'; btn.disabled = !_paSel.size; }
+}
+async function asignarSeleccionadas(){
+  if (!_paSel.size || _panelBloque == null) return;
+  const pids = [..._paSel];
+  const personal = personalDeBloque(_panelBloque);
+  if (personal.length <= 1) return _finalizarMulti(pids, _panelBloque, personal[0] || null);
+  const cont = document.getElementById('pt-list');
+  cont.innerHTML = personal.map((t, i) =>
+    '<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:6px" data-pt="'+i+'">👷 '+_pEsc(t.nombre)+'</button>').join('');
+  document.getElementById('pt-sub').textContent = pids.length + ' actividad(es) → Bloque ' + _panelBloque;
+  cont.onclick = (e) => {
+    const btn = e.target.closest('[data-pt]'); if(!btn) return;
+    document.getElementById('pt-overlay').style.display = 'none';
+    _finalizarMulti(pids, _panelBloque, personal[Number(btn.dataset.pt)]);
+  };
+  document.getElementById('pt-overlay').style.display = 'flex';
+}
+let _paBusy = false;   // lock: doble click en Asignar no debe duplicar el batch (Council)
+async function _finalizarMulti(pids, nBloque, tec){
+  if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  if (_paBusy) return;
+  if (pids.length > 450) { toast('Máximo 450 actividades por lote', 'err'); return; }
+  _paBusy = true;
+  const btnA = document.getElementById('pa-asignar'); if (btnA) btnA.disabled = true;
+  const fecha = document.getElementById('fecha-input').value;
+  const { periodo, anio } = periodoDe(fecha);
+  let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
+  const { writeBatch: wbP, doc: docP } = window.__fb;
+  try{
+    const batch = wbP(window.__db);
+    const nuevos = [];
+    pids.forEach(pid => {
+      const p = (window._paPend||{})[pid]; if(!p) return;
+      batch.set(docP(window.__db, 'mtto_plan', p.pid), {
+        eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tareaIdx: p.idx, tarea: p.tarea,
+        sede: window._paSede || '', periodo, anio, fecha,
+        itiId: currentIti?.id || '', itiVersion: Number(currentIti?.version) || 1, nBloque,
+        tecnicoId: tec?.id || '', tecnicoNombre: tec?.nombre || '',
+        asignadoPor: _by, ts: new Date().toISOString(),
+      });
+      nuevos.push({ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, area: p.area || '', tarea: p.tarea, nBloque, fecha, tecnicoNombre: tec?.nombre || '' });
+    });
+    await batch.commit();
+    const ids = new Set(nuevos.map(x => x._id));
+    planDia = planDia.filter(x => !ids.has(x._id)).concat(nuevos);
+    renderPlanChips();
+    pids.forEach(pid => { const c = document.querySelector('.pa-card[data-pid="'+CSS.escape(pid)+'"]'); if(c) c.remove(); });
+    _paSel.clear(); _paActualizarBoton();
+    toast('🗓 ' + nuevos.length + ' actividad(es) → ' + (tec?.nombre || 'bloque ' + nBloque), 'ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+  finally{ _paBusy = false; _paActualizarBoton(); }
+}
+
+function personalDeBloque(n){
+  const b = (window._bloquesDia||[]).find(x => x.nBloque === n) || {};
+  const normP = (x) => !x ? null : (typeof x === 'object' ? (x.nombre ? x : null) : { id:'', nombre:String(x) });
+  const lista = Array.isArray(b.personal) && b.personal.length
+    ? b.personal.map(normP)
+    : [b.personal1, b.personal2, b.personal3, b.personal4].map(normP);
+  return (lista||[]).filter(p => p && String(p.nombre||'').trim());
+}
+
+// La actividad se asigna a UN TÉCNICO del bloque (pedido del usuario): con un solo
+// técnico va directo; con varios, mini-selector; sin personal, queda a nivel de bloque.
+async function asignarPlan(pid, nBloqueDestino){
+  const p = (window._paPend||{})[pid]; if(!p) return;
+  const nBloque = nBloqueDestino != null ? nBloqueDestino : _panelBloque;
+  if(nBloque == null) return;
+  // La actividad pertenece a SU sede: un drop en un bloque de otra zona guardaría
+  // datos incoherentes (hallazgo del Council en la integración) → se rechaza.
+  if (nBloqueDestino != null) {
+    const tiendaDest = (document.querySelector('.bloque-card[data-blq="'+nBloque+'"] .bloque-tienda')?.textContent || '').trim();
+    if (tiendaDest !== (window._paTienda || '')) {
+      toast('Esa actividad es de "' + (window._paTienda||'') + '" — suéltala en un bloque de esa misma zona', 'err');
+      return;
+    }
+  }
+  const personal = personalDeBloque(nBloque);
+  if (personal.length <= 1) return _finalizarAsignacion(p, nBloque, personal[0] || null);
+  // selector de técnico
+  const cont = document.getElementById('pt-list');
+  cont.innerHTML = personal.map((t, i) =>
+    '<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:6px" data-pt="'+i+'">👷 '+_pEsc(t.nombre)+'</button>').join('');
+  document.getElementById('pt-sub').textContent = '"' + p.tarea + '" · ' + p.nombreEq + ' → Bloque ' + nBloque;
+  cont.onclick = (e) => {
+    const btn = e.target.closest('[data-pt]'); if(!btn) return;
+    document.getElementById('pt-overlay').style.display = 'none';
+    _finalizarAsignacion(p, nBloque, personal[Number(btn.dataset.pt)]);
+  };
+  document.getElementById('pt-overlay').style.display = 'flex';
+}
+
+async function _finalizarAsignacion(p, nBloque, tec){
+  if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  const fecha = document.getElementById('fecha-input').value;
+  const { periodo, anio } = periodoDe(fecha);
+  let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
+  try{
+    await window.__db.collection('mtto_plan').doc(p.pid).set({
+      eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tareaIdx: p.idx, tarea: p.tarea,
+      sede: window._paSede || '', periodo, anio, fecha,
+      itiId: currentIti?.id || '', itiVersion: Number(currentIti?.version) || 1, nBloque,
+      tecnicoId: tec?.id || '', tecnicoNombre: tec?.nombre || '',
+      asignadoPor: _by, ts: new Date().toISOString(),
+    });
+    planDia = planDia.filter(x => x._id !== p.pid).concat([{ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, area: p.area || '', tarea: p.tarea, nBloque, fecha, tecnicoNombre: tec?.nombre || '' }]);
+    renderPlanChips();
+    const card = document.querySelector('.pa-card[data-pid="'+CSS.escape(p.pid)+'"]'); if(card) card.remove();
+    toast('🗓 "'+p.tarea+'" → '+(tec?.nombre || 'bloque '+nBloque),'ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+// Drag & drop (desktop): card del panel → cualquier bloque-card
+function paDragStart(ev){ ev.dataTransfer.setData('text/plain', ev.target.dataset.pid); ev.dataTransfer.effectAllowed = 'copy'; }
+function paDragOver(ev){ ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; ev.currentTarget.classList.add('drop-hover'); }
+function paDragLeave(ev){ ev.currentTarget.classList.remove('drop-hover'); }
+function paDrop(ev){
+  ev.preventDefault(); ev.currentTarget.classList.remove('drop-hover');
+  const pid = ev.dataTransfer.getData('text/plain');
+  const n = Number(ev.currentTarget.dataset.blq);
+  if(pid && !Number.isNaN(n)) asignarPlan(pid, n);
 }
 
 // ── NUEVO / EDITAR ITINERARIO ─────────────────────────────────────────────────
@@ -853,10 +1208,13 @@ function renderModal(fecha, d, iti) {
     let html = '<div class="bloque-form-item" id="bloque-form-' + i + '">';
     html += '<div class="bloque-form-num">BLOQUE ' + (i+1) + ' <button class="remove-bloque iti-edit" onclick="removeBloque(' + i + ')" title="Eliminar bloque">✕</button></div>';
     html += '<div class="form-grid">';
-    // Tienda options con selected
-    const tOpts = '<option value="">' + (b.idTienda ? '' : 'Seleccionar...') + '</option>'
-      + maestros.tiendas.map(t => '<option value="' + t.id + '"' + (t.id===b.idTienda?' selected':'') + '>' + t.tienda + '</option>').join('');
-    html += '<div class="form-group"><div class="form-label">Tienda</div><select class="form-select" id="bf-tienda-' + i + '">' + tOpts + '</select></div>';
+    // Zona de trabajo: maestro de tiendas + "Otro…" (zona libre ocasional, no en el maestro)
+    const esOtra = !!(b.tienda && !b.idTienda);   // bloque guardado con zona tipeada
+    const tOpts = '<option value="">' + (b.idTienda || esOtra ? '' : 'Seleccionar...') + '</option>'
+      + maestros.tiendas.map(t => '<option value="' + escI(t.id) + '"' + (t.id===b.idTienda?' selected':'') + '>' + escI(t.tienda) + '</option>').join('')
+      + '<option value="__OTRO__"' + (esOtra ? ' selected' : '') + '>✏️ Otra zona (escribir)…</option>';
+    html += '<div class="form-group"><div class="form-label">Zona de trabajo</div><select class="form-select" id="bf-tienda-' + i + '" onchange="toggleZonaOtra(' + i + ')">' + tOpts + '</select>'
+      + '<input type="text" class="form-input" id="bf-tienda-otro-' + i + '" placeholder="Escribe la zona (ocasional)…" value="' + escI(esOtra ? b.tienda : '') + '" style="margin-top:6px;' + (esOtra ? '' : 'display:none') + '"></div>';
     // Grupo options con selected
     const gOpts = '<option value="">' + (b.idGrupo ? '' : 'Seleccionar...') + '</option>'
       + maestros.grupos.map(g => '<option value="' + g.id + '"' + (g.id===b.idGrupo?' selected':'') + '>' + g.grupo + '</option>').join('');
@@ -883,7 +1241,7 @@ function renderModal(fecha, d, iti) {
   document.getElementById('modal-body').innerHTML =
     '<div style="margin-bottom:16px">'
     + '<div class="form-label" style="margin-bottom:5px">Anotaciones generales (opcional)</div>'
-    + '<textarea class="form-textarea" id="obs-generales" placeholder="Indicaciones generales para el día...">' + (iti && iti.obsGenerales ? iti.obsGenerales : '') + '</textarea>'
+    + '<textarea class="form-textarea" id="obs-generales" placeholder="Indicaciones generales para el día...">' + escI(iti && iti.obsGenerales ? iti.obsGenerales : '') + '</textarea>'
     + '</div>'
     + '<div class="bloque-sep">Bloques de trabajo</div>'
     + '<div id="bloques-forms">' + editBloques.map(function(b, i) { return bloqueFormHtml(b, i); }).join('') + '</div>'
@@ -898,6 +1256,13 @@ function renderModal(fecha, d, iti) {
   const saveBtnEl = document.querySelector('#modal-iti .modal-foot .btn-primary');
   if (saveBtnEl) { saveBtnEl.disabled = false; saveBtnEl.textContent = '💾 Guardar itinerario'; }
   document.getElementById('modal-iti').classList.add('open');
+}
+
+// muestra/oculta el input de zona libre cuando el selector está en "Otro…"
+function toggleZonaOtra(i) {
+  const sel = document.getElementById('bf-tienda-' + i);
+  const inp = document.getElementById('bf-tienda-otro-' + i);
+  if (inp) inp.style.display = (sel && sel.value === '__OTRO__') ? '' : 'none';
 }
 
 function addBloque() {
@@ -937,12 +1302,25 @@ async function saveItinerario() {
   const dia = document.getElementById('modal-dia').value;
   const obsGenerales = document.getElementById('obs-generales').value;
 
+  // Validación (Council): un bloque sin tienda se guardaba y el bot lo ignoraba en silencio
+  for (let i = 0; i < editBloques.length; i++) {
+    const tSel = document.getElementById(`bf-tienda-${i}`);
+    const hIni = document.getElementById(`bf-hi-${i}`)?.value || '';
+    const hFin = document.getElementById(`bf-hf-${i}`)?.value || '';
+    if (!tSel || !tSel.value) { toast(`El bloque ${i+1} no tiene zona de trabajo seleccionada`, 'err'); return; }
+    if (tSel.value === '__OTRO__' && !(document.getElementById(`bf-tienda-otro-${i}`)?.value || '').trim()) { toast(`El bloque ${i+1} tiene "Otra zona" sin escribir`, 'err'); return; }
+    if (hIni && hFin && hFin <= hIni) { toast(`El bloque ${i+1} tiene horario inválido (fin ≤ inicio)`, 'err'); return; }
+  }
+
   // Collect bloques
   const bloques = editBloques.map((_, i) => {
     const tiendaSel = document.getElementById(`bf-tienda-${i}`);
+    const esZonaLibre = tiendaSel?.value === '__OTRO__';
     const tiendaOpt = tiendaSel?.options[tiendaSel.selectedIndex];
-    const tienda = tiendaOpt?.text || '';
-    const cliente = maestros.tiendas.find(t => t.id === tiendaSel?.value)?.cliente || '';
+    const tienda = esZonaLibre
+      ? (document.getElementById(`bf-tienda-otro-${i}`)?.value || '').trim().toUpperCase()
+      : (tiendaOpt?.text || '');
+    const cliente = esZonaLibre ? '' : (maestros.tiendas.find(t => t.id === tiendaSel?.value)?.cliente || '');
     const grupoSel = document.getElementById(`bf-grupo-${i}`);
     const grupoOpt = grupoSel?.options[grupoSel.selectedIndex];
     const grupo = grupoOpt?.text || '';
@@ -954,7 +1332,7 @@ async function saveItinerario() {
     while (personalArr.length < 4) personalArr.push({ id:'', nombre:'' });
 
     return {
-      idTienda: tiendaSel?.value || '',
+      idTienda: esZonaLibre ? '' : (tiendaSel?.value || ''),
       tienda, cliente,
       idGrupo: grupoSel?.value || '',
       grupo,
@@ -1025,13 +1403,17 @@ function captureEditBloques() {
     const hiEl       = document.getElementById('bf-hi-'      + i);
     const hfEl       = document.getElementById('bf-hf-'      + i);
     const detEl      = document.getElementById('bf-detalle-' + i);
-    const idTienda   = tiendaSel ? tiendaSel.value : b.idTienda;
-    const tiendaTxt  = tiendaSel && tiendaSel.selectedIndex >= 0 ? (tiendaSel.options[tiendaSel.selectedIndex] || {}).text || b.tienda : b.tienda;
+    const esOtraCap  = tiendaSel && tiendaSel.value === '__OTRO__';
+    const otroTxt    = (document.getElementById('bf-tienda-otro-' + i)?.value || '').trim();
+    const idTienda   = esOtraCap ? '' : (tiendaSel ? tiendaSel.value : b.idTienda);
+    const tiendaTxt  = esOtraCap
+      ? (otroTxt || b.tienda)
+      : (tiendaSel && tiendaSel.selectedIndex >= 0 ? (tiendaSel.options[tiendaSel.selectedIndex] || {}).text || b.tienda : b.tienda);
     const idGrupo    = grupoSel  ? grupoSel.value  : b.idGrupo;
     const grupoTxt   = grupoSel  && grupoSel.selectedIndex  >= 0 ? (grupoSel.options[grupoSel.selectedIndex]   || {}).text || b.grupo  : b.grupo;
     return {
       ...b,
-      idTienda:   idTienda   || b.idTienda,
+      idTienda:   esOtraCap ? '' : (idTienda || b.idTienda),
       tienda:     tiendaTxt  || b.tienda,
       idGrupo:    idGrupo    || b.idGrupo,
       grupo:      grupoTxt   || b.grupo,
@@ -1109,6 +1491,8 @@ async function deleteVersion() {
     iSnap4.docs.filter(dd=>dd.data().id===currentIti.id&&dd.data().version===currentIti.version).forEach(dd=>batch4.delete(dd.ref));
     const bSnap4 = await getDocs(col4(window.__db,'bd_bloques'));
     bSnap4.docs.filter(dd=>dd.data().idIti===currentIti.id&&dd.data().version===currentIti.version).forEach(dd=>batch4.delete(dd.ref));
+    const pSnap4 = await window.__db.collection('mtto_plan').where('itiId','==',currentIti.id).get();
+    pSnap4.docs.filter(dd=>Number(dd.data().itiVersion ?? 1)===Number(currentIti.version)).forEach(dd=>batch4.delete(dd.ref));  // sin huérfanos; legacy sin versión = v1 (Council)
     await batch4.commit();
     const d = { ok: true };
     if (d.ok) {
@@ -1137,6 +1521,8 @@ async function deleteAllVersions() {
     iSnap5.docs.filter(dd=>dd.data().id===currentIti.id).forEach(dd=>batch5.delete(dd.ref));
     const bSnap5 = await getDocs(col5(window.__db,'bd_bloques'));
     bSnap5.docs.filter(dd=>dd.data().idIti===currentIti.id).forEach(dd=>batch5.delete(dd.ref));
+    const pSnap5 = await window.__db.collection('mtto_plan').where('itiId','==',currentIti.id).get();
+    pSnap5.docs.forEach(dd=>batch5.delete(dd.ref));  // sin huérfanos (Council)
     await batch5.commit();
     const d = { ok: true };
     if (d.ok) {
@@ -1188,6 +1574,21 @@ function exportWhatsApp() {
     msg += '⏰ ' + horario + '\n';
     msg += '👷 ' + (personal || 'Sin asignar') + '\n';
     if (detalle) msg += '📝 ' + detalle + '\n';
+    const chipsW = [...card.querySelectorAll('.plan-chip')];
+    if (chipsW.length) {
+      const gW = {};
+      chipsW.forEach(c => { const t = c.dataset.tec || ''; (gW[t] = gW[t] || []).push({ eq: c.dataset.eq || '', tarea: c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim() }); });
+      msg += '🔧 *Actividades:*\n';
+      Object.keys(gW).sort((a,b)=>(a||'\uffff').localeCompare(b||'\uffff')).forEach(t => {
+        msg += '   👷 *' + (t || 'Sin asignar') + '*\n';
+        const porEqW = {};
+        gW[t].forEach(c => { const ek = c.eq || ''; (porEqW[ek] = porEqW[ek] || []).push(c.tarea); });
+        Object.keys(porEqW).sort().forEach(ek => {
+          msg += '      ❄️ ' + (ek || 'Equipo') + '\n';
+          porEqW[ek].forEach(a => { msg += '         • ' + a + '\n'; });
+        });
+      });
+    }
     msg += '🔖 Estado: ' + estado + '\n';
     msg += '─'.repeat(30) + '\n';
   });
@@ -1315,7 +1716,7 @@ function buildPrintLayout() {
   if (currentIti.obsGenerales) {
     html += '<div style="background:#fff8ee;border:1px solid #f5d080;border-radius:8px;padding:14px 16px;margin-bottom:16px">';
     html += '<div style="font-size:9px;font-weight:700;color:#d48a00;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Anotaciones generales</div>';
-    html += '<div style="font-size:12px;line-height:1.6;color:#1a2540">' + currentIti.obsGenerales + '</div>';
+    html += '<div style="font-size:12px;line-height:1.6;color:#1a2540">' + escI(currentIti.obsGenerales) + '</div>';
     html += '</div>';
   }
 
@@ -1341,9 +1742,9 @@ function buildPrintLayout() {
     // Bloque header
     html += '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #d0daf0;background:#f5f8ff">';
     html += '<div style="width:26px;height:26px;border-radius:50%;background:#1B3F8B;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + (i+1) + '</div>';
-    html += '<div style="font-size:14px;font-weight:700;flex:1">' + tienda + '</div>';
-    html += '<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;' + grupoStyle + '">' + grupo + '</span>';
-    html += '<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;' + estadoStyle + '">' + estado + '</span>';
+    html += '<div style="font-size:14px;font-weight:700;flex:1">' + escI(tienda) + '</div>';
+    html += '<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;' + grupoStyle + '">' + escI(grupo) + '</span>';
+    html += '<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;' + estadoStyle + '">' + escI(estado) + '</span>';
     html += '</div>';
     // Bloque body
     html += '<div style="padding:12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">';
@@ -1353,13 +1754,31 @@ function buildPrintLayout() {
     html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
     personalTags.forEach(pt => {
       const name = pt.textContent.trim();
-      html += '<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:#e8eef8;color:#1B3F8B;border:1px solid #d0daf0">' + name.replace('(',' (') + '</span>';
+      html += '<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:#e8eef8;color:#1B3F8B;border:1px solid #d0daf0">' + escI(name.replace('(',' (')) + '</span>';
     });
     if (!personalTags.length) html += '<span style="font-size:11px;color:#8a9ab8">Sin asignar</span>';
     html += '</div></div>';
     if (detalle) {
       html += '<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;color:#8a9ab8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Detalle de trabajo</div>';
-      html += '<div style="font-size:12px;line-height:1.5;background:#f5f8ff;padding:8px 12px;border-radius:6px;border-left:3px solid #1B3F8B">' + detalle + '</div></div>';
+      html += '<div style="font-size:12px;line-height:1.5;background:#f5f8ff;padding:8px 12px;border-radius:6px;border-left:3px solid #1B3F8B">' + escI(detalle) + '</div></div>';
+    }
+    const chipsP = [...card.querySelectorAll('.plan-chip')];
+    if (chipsP.length) {
+      const gP = {};
+      chipsP.forEach(c => { const t = c.dataset.tec || ''; (gP[t] = gP[t] || []).push({ eq: c.dataset.eq || '', tarea: c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim() }); });
+      html += '<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;color:#8a9ab8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Actividades de mantenimiento</div>';
+      Object.keys(gP).sort((a,b)=>(a||'\uffff').localeCompare(b||'\uffff')).forEach(t => {
+        html += '<div style="font-size:10px;font-weight:700;color:#1B3F8B;margin:4px 0 2px">👷 ' + escI(t || 'Sin asignar') + '</div>';
+        const porEqP = {};
+        gP[t].forEach(c => { (porEqP[c.eq] = porEqP[c.eq] || []).push(c.tarea); });
+        Object.keys(porEqP).sort().forEach(ek => {
+          html += '<div style="font-size:10px;font-weight:600;color:#1a2540;margin:2px 0 1px 10px">❄️ ' + escI(ek || 'Equipo') + '</div>';
+          html += '<div style="display:flex;flex-direction:column;gap:2px;margin-left:22px">';
+          porEqP[ek].forEach(a => { html += '<div style="font-size:11px;line-height:1.4;color:#1a2540">🔧 ' + escI(a) + '</div>'; });
+          html += '</div>';
+        });
+      });
+      html += '</div>';
     }
     html += '</div></div>';
   });
@@ -1720,6 +2139,26 @@ document.addEventListener('click', function(e) {
         <button onclick="maAddUser()" style="padding:8px 16px;background:#1B3F8B;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">+ Agregar</button>
       </div>
     </div>
+  </div>
+</div>
+<!-- PANEL: actividades de mtto pendientes de la sede -->
+<div id="pa-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.45);z-index:600;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)cerrarPanelActs()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:520px;max-width:100%;max-height:88vh;overflow-y:auto;overflow-x:hidden;padding:20px">
+    <h2 style="font-size:14px;color:var(--blue,#1B3F8B)">🔧 Actividades pendientes</h2>
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:12px" id="pa-sub"></div>
+    <div id="pa-list" style="margin-bottom:12px"></div>
+    <div style="display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--border);padding-top:12px;position:sticky;bottom:0;background:var(--surface);flex-wrap:wrap">
+      <button class="btn btn-primary" id="pa-asignar" onclick="asignarSeleccionadas()" disabled>🗓 Asignar seleccionadas (0)</button>
+      <button class="btn" onclick="cerrarPanelActs()">Cerrar</button>
+    </div>
+  </div>
+</div>
+<!-- SELECTOR: ¿a qué técnico del bloque? -->
+<div id="pt-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.55);z-index:700;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:340px;max-width:100%;padding:18px">
+    <h2 style="font-size:13px;color:var(--blue,#1B3F8B)">👷 ¿Para qué técnico?</h2>
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:10px" id="pt-sub"></div>
+    <div id="pt-list"></div>
   </div>
 </div>
 </body>

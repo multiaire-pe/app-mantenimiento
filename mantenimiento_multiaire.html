@@ -590,6 +590,25 @@ let _ftCtx = null;     // contexto del modal de fotos {eqId, idx, tarea}
 
 function _mttoKey(){ return currentSede + '|' + currentPeriodo + '|' + currentAnio; }
 
+let planBadges = {};   // `${eq_id}|${idx}` → fecha planificada (mtto_plan del período/sede)
+async function loadPlanBadges(){
+  planBadges = {};
+  try{
+    const { periodo, anio } = (() => { const k=_mttoKey().split('|'); return { periodo:k[1], anio:Number(k[2]) }; })();
+    const snap = await window.__db.collection('mtto_plan')
+      .where('sede','==',currentSede).where('periodo','==',periodo).where('anio','==',anio).get();
+    snap.docs.forEach(d => { const r=d.data(); planBadges[r.eq_id+'|'+r.tareaIdx] = r.fecha || ''; });
+  }catch(e){ console.warn('[mtto_plan]', e.message); }
+  refreshPlanBadges();
+}
+function refreshPlanBadges(){
+  document.querySelectorAll('[data-pb]').forEach(el => {
+    const f = planBadges[el.dataset.pb];
+    el.textContent = f ? '🗓 ' + f.slice(8,10) + '/' + f.slice(5,7) : '';
+    el.style.display = f ? 'inline' : 'none';
+  });
+}
+
 async function loadFotosCounts(){
   fotosCount = {};
   try{
@@ -949,6 +968,7 @@ async function loadPeriodo() {
   renderLastUpdated();
   renderMain();
   loadFotosCounts();  // badges 📷 del período (async, pinta al llegar)
+  loadPlanBadges();   // badges 🗓 de actividades planificadas en el itinerario
 }
 
 // ── RENDER ───────────────────────────────────────────────────────────────────
@@ -1022,6 +1042,7 @@ function renderMain() {
 
   document.getElementById('content').innerHTML = html;
   if(typeof refreshFotoBadges==='function') refreshFotoBadges();  // re-pintar badges 📷 tras el render
+  if(typeof refreshPlanBadges==='function') refreshPlanBadges();
   // refresh dashboard if visible
   if(document.getElementById('tab-dashboard').classList.contains('active')) renderDashboard();
   updateStatusBar([stats.green, stats.yellow, stats.red]);
@@ -1045,7 +1066,7 @@ function renderEquipo(eq, tareas) {
         <input type="checkbox" class="tarea-cb" ${done?'checked':''} onchange="toggleTarea(${_jsq(eq.eq_id)},${i},this.checked)">
         <span class="tarea-label">${_actEsc(t)}</span>
         ${peso}
-        <button type="button" class="btn-foto mant-edit-ok" onclick="event.preventDefault();event.stopPropagation();openFotosTarea(${_jsq(eq.eq_id)},${i})" title="Fotos de esta actividad">📷<span class="fc-badge" data-fc="${_actEsc(eq.eq_id)}|${i}" style="display:none"></span></button>
+        <button type="button" class="btn-foto mant-edit-ok" onclick="event.preventDefault();event.stopPropagation();openFotosTarea(${_jsq(eq.eq_id)},${i})" title="Fotos de esta actividad">📷<span class="fc-badge" data-fc="${_actEsc(eq.eq_id)}|${i}" style="display:none"></span></button><span class="plan-badge" data-pb="${_actEsc(eq.eq_id)}|${i}" style="display:none;font-size:10px;color:var(--blue);font-family:var(--mono);margin-left:4px"></span>
       </label>`;
     }).join('') + `</div>`;
   }
@@ -1095,6 +1116,14 @@ function updateStatusBar(stats) {
 // ── CHECKBOX HANDLERS ────────────────────────────────────────────────────────
 // Bitácora de registros (tab Historial): un evento por acción — quién/qué/cuándo.
 // Fire-and-forget: si falla no interrumpe el marcado (el checklist es lo primario).
+// Lo ejecutado sale del plan del itinerario en automático (ids determinísticos)
+function limpiarPlanDe(eqId, idxs) {
+  try {
+    const [, periodo, anio] = _mttoKey().split('|');
+    idxs.forEach(i => window.__db.collection('mtto_plan').doc(`${eqId}|${periodo}|${anio}|${i}`).delete().catch(()=>{}));
+  } catch(e) { /* nunca romper el marcado */ }
+}
+
 function logRegistro(eqId, actividades, done) {
   try {
     const eq = sedeEquipos.find(e => e.eq_id === eqId);
@@ -1114,6 +1143,7 @@ function toggleSoloMarcar(eqId, checked) {
   if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   tareaStatus[eqId] = checked;
   logRegistro(eqId, ['(equipo completo)'], checked);
+  if (checked) { const eq = sedeEquipos.find(e => e.eq_id === eqId); const n = eq ? (actividadesDe(eq).tareas || []).length : 0; limpiarPlanDe(eqId, Array.from({length: n}, (_, i) => i)); }
   markDirty(eqId);
   renderMain();
   updateStats();
@@ -1126,6 +1156,7 @@ function toggleTarea(eqId, idx, checked) {
   { const eq = sedeEquipos.find(e => e.eq_id === eqId);
     const acts = eq ? (actividadesDe(eq).tareas || []) : [];
     logRegistro(eqId, [acts[idx] || ('Actividad ' + (idx+1))], checked); }
+  if (checked) limpiarPlanDe(eqId, [idx]);
   markDirty(eqId);
   renderMain();
   updateStats();
