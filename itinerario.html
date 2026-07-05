@@ -192,6 +192,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .auth-loading.show{display:block}
 
 /* RESPONSIVE */
+input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;text-align:left}
 @media(max-width:768px){
   header{padding:0 10px;gap:8px}
   .user-name{display:none}                  /* homogéneo con los demás módulos: solo el avatar */
@@ -202,8 +203,14 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
   .sidebar{width:100%;min-width:unset;border-right:none;border-bottom:1.5px solid var(--border);max-height:300px;overflow-x:hidden}
   .main{padding:16px;overflow-x:hidden}   /* sin scroll lateral en móvil (no hay tablas; ambos ya tienen overflow-y:auto) */
   .bloque-body{grid-template-columns:1fr}
+  .bloque-header{flex-wrap:wrap}                     /* título+badges envuelven: no estirar el card (iPhone) */
+  .bloque-card{min-width:0}
+  .personal-tag{max-width:100%}
+  .iti-header{flex-direction:column;align-items:stretch;gap:10px}  /* título arriba, acciones debajo a todo el ancho */
   .form-grid{grid-template-columns:1fr}
   .personal-grid{grid-template-columns:1fr}
+  .modal{overflow-x:hidden}
+  .bloque-form-item{min-width:0}
   .iti-actions{flex-direction:column}                /* botones de acción apilados, sin desbordar */
   .iti-actions>*{width:100%;justify-content:center}
   .ver-chips{gap:6px;margin-top:9px}
