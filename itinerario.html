@@ -701,7 +701,7 @@ function renderItinerario(iti, bloques, fecha) {
         <button class="btn btn-primary iti-edit" onclick="editarItinerario()">✏️ Editar / Nueva versión</button>
       </div>
     </div>
-    ${iti.obsGenerales ? `<div class="obs-box"><div class="obs-label">Anotaciones generales</div>${iti.obsGenerales}</div>` : ''}
+    ${iti.obsGenerales ? `<div class="obs-box"><div class="obs-label">Anotaciones generales</div>${escI(iti.obsGenerales)}</div>` : ''}
     <div class="bloques-grid">${bloquesHtml}</div>`;
 }
 
@@ -714,15 +714,15 @@ function renderBloqueCard(b, i) {
     .map(p => {
       const per = maestros.personal.find(x => x.id === p.id);
       const cargo = per?.cargo || '';
-      return `<div class="personal-tag">${p.nombre}${cargo?`<span style="font-size:9px;opacity:.6;margin-left:3px">(${cargo})</span>`:''}</div>`;
+      return `<div class="personal-tag">${escI(p.nombre)}${cargo?`<span style="font-size:9px;opacity:.6;margin-left:3px">(${escI(cargo)})</span>`:''}</div>`;
     }).join('');
 
   return `
     <div class="bloque-card" data-blq="${b.nBloque}" ondragover="paDragOver(event)" ondragleave="paDragLeave(event)" ondrop="paDrop(event)">
       <div class="bloque-header">
         <div class="bloque-num">${b.nBloque}</div>
-        <div class="bloque-tienda">${b.tienda}</div>
-        <div class="bloque-grupo" style="background:${gc.bg};color:${gc.color};border:1px solid ${gc.border}">${b.grupo}</div>
+        <div class="bloque-tienda">${escI(b.tienda)}</div>
+        <div class="bloque-grupo" style="background:${gc.bg};color:${gc.color};border:1px solid ${gc.border}">${escI(b.grupo)}</div>
         <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:${ec.bg};color:${ec.color};border:1px solid ${ec.border}">${b.estado||'PROGRAMADO'}</span>
       </div>
       <div class="bloque-body">
@@ -736,7 +736,7 @@ function renderBloqueCard(b, i) {
         </div>
         <div class="bloque-field full">
           <div class="bloque-field-label">Detalle de trabajo</div>
-          <div class="bloque-detalle">${b.detalle || '—'}</div>
+          <div class="bloque-detalle">${escI(b.detalle) || '—'}</div>
         </div>
         <div class="bloque-field full">
           <div class="bloque-field-label">Actividades de mtto. <a class="mant-edit-btn" style="cursor:pointer;font-weight:700;color:var(--blue,#1B3F8B)" data-abrir-acts="${b.nBloque}">🔧 Asignar</a></div>
@@ -753,6 +753,8 @@ function renderBloqueCard(b, i) {
 // El panel muestra las PENDIENTES de la sede del bloque: lista efectiva del equipo
 // (tareas_config − quitadas + agregadas de mtto_actividades_equipo) − hechas del
 // período (doc mantenimiento SEDE|PERIODO|AÑO) − ya planificadas.
+// escape para todo render con datos de Firestore/inputs (auditoría completa del Council)
+const escI = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 let planDia = [];          // docs de mtto_plan de la fecha cargada
 let _planFecha = null;     // guarda de carrera: solo pinta si la fecha sigue siendo la cargada
 // listeners delegados (sin handlers inline interpolados — hallazgo del Council)
@@ -781,7 +783,10 @@ async function cargarPlanDia(fecha){
   try{
     const snap = await window.__db.collection('mtto_plan').where('fecha','==',fecha).get();
     if (_planFecha !== fecha) return;   // el usuario cambió de fecha mientras cargaba
-    planDia = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+    // solo los de ESTA versión del itinerario (una v2 puede reordenar bloques — Council);
+    // docs legacy sin itiVersion se muestran para no ocultar lo ya asignado en develop
+    planDia = snap.docs.map(d => ({ _id: d.id, ...d.data() }))
+      .filter(p => !currentIti || !p.itiId || (p.itiId === currentIti.id && (p.itiVersion == null || Number(p.itiVersion) === Number(currentIti.version))));
   }catch(e){ console.warn('[mtto_plan]', e.message); }
   renderPlanChips();
 }
@@ -908,6 +913,7 @@ async function asignarPlan(pid, nBloqueDestino){
 }
 
 async function _finalizarAsignacion(p, nBloque, tec){
+  if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
   const fecha = document.getElementById('fecha-input').value;
   const { periodo, anio } = periodoDe(fecha);
   let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
@@ -915,7 +921,7 @@ async function _finalizarAsignacion(p, nBloque, tec){
     await window.__db.collection('mtto_plan').doc(p.pid).set({
       eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, tareaIdx: p.idx, tarea: p.tarea,
       sede: window._paSede || '', periodo, anio, fecha,
-      itiId: currentIti?.id || '', nBloque,
+      itiId: currentIti?.id || '', itiVersion: Number(currentIti?.version) || 1, nBloque,
       tecnicoId: tec?.id || '', tecnicoNombre: tec?.nombre || '',
       asignadoPor: _by, ts: new Date().toISOString(),
     });
@@ -1088,7 +1094,7 @@ function renderModal(fecha, d, iti) {
   document.getElementById('modal-body').innerHTML =
     '<div style="margin-bottom:16px">'
     + '<div class="form-label" style="margin-bottom:5px">Anotaciones generales (opcional)</div>'
-    + '<textarea class="form-textarea" id="obs-generales" placeholder="Indicaciones generales para el día...">' + (iti && iti.obsGenerales ? iti.obsGenerales : '') + '</textarea>'
+    + '<textarea class="form-textarea" id="obs-generales" placeholder="Indicaciones generales para el día...">' + escI(iti && iti.obsGenerales ? iti.obsGenerales : '') + '</textarea>'
     + '</div>'
     + '<div class="bloque-sep">Bloques de trabajo</div>'
     + '<div id="bloques-forms">' + editBloques.map(function(b, i) { return bloqueFormHtml(b, i); }).join('') + '</div>'
@@ -1141,6 +1147,15 @@ async function saveItinerario() {
   const idIti = document.getElementById('modal-id-iti').value;
   const dia = document.getElementById('modal-dia').value;
   const obsGenerales = document.getElementById('obs-generales').value;
+
+  // Validación (Council): un bloque sin tienda se guardaba y el bot lo ignoraba en silencio
+  for (let i = 0; i < editBloques.length; i++) {
+    const tSel = document.getElementById(`bf-tienda-${i}`);
+    const hIni = document.getElementById(`bf-hi-${i}`)?.value || '';
+    const hFin = document.getElementById(`bf-hf-${i}`)?.value || '';
+    if (!tSel || !tSel.value) { toast(`El bloque ${i+1} no tiene tienda seleccionada`, 'err'); return; }
+    if (hIni && hFin && hFin <= hIni) { toast(`El bloque ${i+1} tiene horario inválido (fin ≤ inicio)`, 'err'); return; }
+  }
 
   // Collect bloques
   const bloques = editBloques.map((_, i) => {
@@ -1314,6 +1329,8 @@ async function deleteVersion() {
     iSnap4.docs.filter(dd=>dd.data().id===currentIti.id&&dd.data().version===currentIti.version).forEach(dd=>batch4.delete(dd.ref));
     const bSnap4 = await getDocs(col4(window.__db,'bd_bloques'));
     bSnap4.docs.filter(dd=>dd.data().idIti===currentIti.id&&dd.data().version===currentIti.version).forEach(dd=>batch4.delete(dd.ref));
+    const pSnap4 = await window.__db.collection('mtto_plan').where('itiId','==',currentIti.id).get();
+    pSnap4.docs.filter(dd=>Number(dd.data().itiVersion||currentIti.version)===Number(currentIti.version)).forEach(dd=>batch4.delete(dd.ref));  // sin huérfanos (Council)
     await batch4.commit();
     const d = { ok: true };
     if (d.ok) {
@@ -1342,6 +1359,8 @@ async function deleteAllVersions() {
     iSnap5.docs.filter(dd=>dd.data().id===currentIti.id).forEach(dd=>batch5.delete(dd.ref));
     const bSnap5 = await getDocs(col5(window.__db,'bd_bloques'));
     bSnap5.docs.filter(dd=>dd.data().idIti===currentIti.id).forEach(dd=>batch5.delete(dd.ref));
+    const pSnap5 = await window.__db.collection('mtto_plan').where('itiId','==',currentIti.id).get();
+    pSnap5.docs.forEach(dd=>batch5.delete(dd.ref));  // sin huérfanos (Council)
     await batch5.commit();
     const d = { ok: true };
     if (d.ok) {
@@ -1393,6 +1412,8 @@ function exportWhatsApp() {
     msg += '⏰ ' + horario + '\n';
     msg += '👷 ' + (personal || 'Sin asignar') + '\n';
     if (detalle) msg += '📝 ' + detalle + '\n';
+    const actsWsp = [...card.querySelectorAll('.plan-chip')].map(c => c.textContent.replace(/✕\s*$/,'').trim()).filter(Boolean);
+    if (actsWsp.length) msg += '🔧 *Actividades:*\n' + actsWsp.map(a => '   • ' + a).join('\n') + '\n';
     msg += '🔖 Estado: ' + estado + '\n';
     msg += '─'.repeat(30) + '\n';
   });
@@ -1520,7 +1541,7 @@ function buildPrintLayout() {
   if (currentIti.obsGenerales) {
     html += '<div style="background:#fff8ee;border:1px solid #f5d080;border-radius:8px;padding:14px 16px;margin-bottom:16px">';
     html += '<div style="font-size:9px;font-weight:700;color:#d48a00;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Anotaciones generales</div>';
-    html += '<div style="font-size:12px;line-height:1.6;color:#1a2540">' + currentIti.obsGenerales + '</div>';
+    html += '<div style="font-size:12px;line-height:1.6;color:#1a2540">' + escI(currentIti.obsGenerales) + '</div>';
     html += '</div>';
   }
 
@@ -1546,9 +1567,9 @@ function buildPrintLayout() {
     // Bloque header
     html += '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #d0daf0;background:#f5f8ff">';
     html += '<div style="width:26px;height:26px;border-radius:50%;background:#1B3F8B;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + (i+1) + '</div>';
-    html += '<div style="font-size:14px;font-weight:700;flex:1">' + tienda + '</div>';
-    html += '<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;' + grupoStyle + '">' + grupo + '</span>';
-    html += '<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;' + estadoStyle + '">' + estado + '</span>';
+    html += '<div style="font-size:14px;font-weight:700;flex:1">' + escI(tienda) + '</div>';
+    html += '<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;' + grupoStyle + '">' + escI(grupo) + '</span>';
+    html += '<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;' + estadoStyle + '">' + escI(estado) + '</span>';
     html += '</div>';
     // Bloque body
     html += '<div style="padding:12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">';
@@ -1558,13 +1579,20 @@ function buildPrintLayout() {
     html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
     personalTags.forEach(pt => {
       const name = pt.textContent.trim();
-      html += '<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:#e8eef8;color:#1B3F8B;border:1px solid #d0daf0">' + name.replace('(',' (') + '</span>';
+      html += '<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;background:#e8eef8;color:#1B3F8B;border:1px solid #d0daf0">' + escI(name.replace('(',' (')) + '</span>';
     });
     if (!personalTags.length) html += '<span style="font-size:11px;color:#8a9ab8">Sin asignar</span>';
     html += '</div></div>';
     if (detalle) {
       html += '<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;color:#8a9ab8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Detalle de trabajo</div>';
-      html += '<div style="font-size:12px;line-height:1.5;background:#f5f8ff;padding:8px 12px;border-radius:6px;border-left:3px solid #1B3F8B">' + detalle + '</div></div>';
+      html += '<div style="font-size:12px;line-height:1.5;background:#f5f8ff;padding:8px 12px;border-radius:6px;border-left:3px solid #1B3F8B">' + escI(detalle) + '</div></div>';
+    }
+    const actsPrint = [...card.querySelectorAll('.plan-chip')].map(c => c.textContent.replace(/✕\s*$/,'').trim()).filter(Boolean);
+    if (actsPrint.length) {
+      html += '<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;color:#8a9ab8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Actividades de mantenimiento</div>';
+      html += '<div style="display:flex;flex-direction:column;gap:3px">';
+      actsPrint.forEach(a => { html += '<div style="font-size:11px;line-height:1.4;color:#1a2540">🔧 ' + escI(a) + '</div>'; });
+      html += '</div></div>';
     }
     html += '</div></div>';
   });
