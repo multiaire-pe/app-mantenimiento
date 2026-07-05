@@ -146,7 +146,9 @@ async function procesarMensaje(msg) {
       console.log('[whatsapp] tipo no soportado:', msg.type, 'de', msg.from);
       const flujoRaro = await decidirFlujo({ from: msg.from, tipo: msg.type, texto: '' });
       if (flujoRaro === 'mtto') {
-        await enviarTexto(msg.from, '🤔 Eso no lo pude leer. Envía una *foto*, *SIGUIENTE* o *FIN*.');
+        // SILENCIO: en pleno registro/subida de fotos, los mensajes raros que WhatsApp
+        // manda junto a un álbum no merecen respuesta — solo meten ruido (feedback del usuario).
+        return;
       } else if (flujoRaro === 'asistencia') {
         await enviarTexto(msg.from, '🤔 Eso no lo pude leer. Comparte tu *ubicación* 📍 (o tu selfie) para el marcaje, o escribe *cancelar*.');
       } else {
