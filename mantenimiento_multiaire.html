@@ -598,7 +598,7 @@ async function loadPlanBadges(){
     const snap = await window.__db.collection('mtto_plan')
       .where('sede','==',currentSede).where('periodo','==',periodo).where('anio','==',anio).get();
     snap.docs.forEach(d => { const r=d.data(); planBadges[r.eq_id+'|'+r.tareaIdx] = r.fecha || ''; });
-  }catch(e){ /* sin datos/permisos: sin badges */ }
+  }catch(e){ console.warn('[mtto_plan]', e.message); }
   refreshPlanBadges();
 }
 function refreshPlanBadges(){

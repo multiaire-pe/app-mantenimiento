@@ -738,7 +738,7 @@ function renderBloqueCard(b, i) {
           <div class="bloque-detalle">${b.detalle || '—'}</div>
         </div>
         <div class="bloque-field full">
-          <div class="bloque-field-label">Actividades de mtto. <a class="mant-edit-btn" style="cursor:pointer;font-weight:700;color:var(--blue,#1B3F8B)" onclick="abrirPanelActs(${b.nBloque}, '${(b.tienda||'').replace(/'/g,'')}')">🔧 Asignar</a></div>
+          <div class="bloque-field-label">Actividades de mtto. <a class="mant-edit-btn" style="cursor:pointer;font-weight:700;color:var(--blue,#1B3F8B)" data-abrir-acts="${b.nBloque}">🔧 Asignar</a></div>
           <div class="plan-chips" data-plan-blq="${b.nBloque}"></div>
         </div>
       </div>
@@ -753,6 +753,19 @@ function renderBloqueCard(b, i) {
 // (tareas_config − quitadas + agregadas de mtto_actividades_equipo) − hechas del
 // período (doc mantenimiento SEDE|PERIODO|AÑO) − ya planificadas.
 let planDia = [];          // docs de mtto_plan de la fecha cargada
+let _planFecha = null;     // guarda de carrera: solo pinta si la fecha sigue siendo la cargada
+// listeners delegados (sin handlers inline interpolados — hallazgo del Council)
+document.addEventListener('click', (e) => {
+  const abrir = e.target.closest('[data-abrir-acts]');
+  if (abrir) {
+    const card = abrir.closest('.bloque-card');
+    const tienda = (card?.querySelector('.bloque-tienda')?.textContent || '').trim();
+    abrirPanelActs(Number(abrir.dataset.abrirActs), tienda);
+    return;
+  }
+  const del = e.target.closest('[data-plan-del]');
+  if (del) quitarPlan(del.dataset.planDel);
+});
 let _panelBloque = null;   // nBloque destino del panel abierto
 const _PERIODOS_ITI = ['ENE-FEB','MAR-ABR','MAY-JUN','JUL-AGO','SEP-OCT','NOV-DIC'];
 function periodoDe(fechaStr){
@@ -762,11 +775,13 @@ function periodoDe(fechaStr){
 const _pEsc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 async function cargarPlanDia(fecha){
+  _planFecha = fecha;
   planDia = [];
   try{
     const snap = await window.__db.collection('mtto_plan').where('fecha','==',fecha).get();
+    if (_planFecha !== fecha) return;   // el usuario cambió de fecha mientras cargaba
     planDia = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
-  }catch(e){ /* sin permisos/red: panel vacío */ }
+  }catch(e){ console.warn('[mtto_plan]', e.message); }
   renderPlanChips();
 }
 function renderPlanChips(){
@@ -775,7 +790,7 @@ function renderPlanChips(){
     const del = planDia.filter(p => p.nBloque === n);
     cont.innerHTML = del.length ? del.map(p =>
       '<span class="plan-chip" title="'+_pEsc(p.tarea)+' · '+_pEsc(p.nombreEq)+'">🔧 '+_pEsc(p.tarea)+' <b>· '+_pEsc(p.nombreEq)+'</b>'
-      + (window.MA && MA.can('editar','itinerario') ? ' <a onclick="quitarPlan(\''+_pEsc(p._id)+'\')" title="Quitar del plan">✕</a>' : '')
+      + (window.MA && MA.can('editar','itinerario') ? ' <a data-plan-del="'+_pEsc(p._id)+'" title="Quitar del plan">✕</a>' : '')
       + '</span>').join('') : '';
   });
 }
@@ -798,7 +813,7 @@ async function pendientesDeSede(sede, fecha){
     getDocs(collection(window.__db, 'tareas_config')),
     getDocs(collection(window.__db, 'mtto_actividades_equipo')),
     getDoc(doc(window.__db, 'mantenimiento', `${sede}|${periodo}|${anio}`)),
-    window.__db.collection('mtto_plan').where('periodo','==',periodo).where('anio','==',anio).get(),
+    window.__db.collection('mtto_plan').where('sede','==',String(sede||'').toUpperCase()).where('periodo','==',periodo).where('anio','==',anio).get(),
   ]);
   const plantillas = {}; tcS.docs.forEach(d => { plantillas[d.data().tipo] = d.data().tareas || []; });
   const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
