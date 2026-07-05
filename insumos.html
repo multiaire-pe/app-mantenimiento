@@ -857,6 +857,28 @@ tbody td{padding:9px 12px;vertical-align:middle}
       </div>
       <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="fent-personal"></select></div>
       <div class="form-group full"><div class="form-label">Observación</div><textarea class="form-textarea" id="fent-obs" placeholder="Ej: Compra orden #123"></textarea></div>
+      <div class="form-group full">
+        <div class="form-label">N° de guía de remisión <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <input type="text" class="form-input" id="fent-guia-num" placeholder="Ej. 001-000123">
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de la guía <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="fent-guia-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="fent-guia-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="fent-guia-input" accept="image/*" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="fent-guia-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="fent-guia-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+        </div>
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de entrega <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="fent-entrega-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="fent-entrega-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="fent-entrega-input" accept="image/*" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="fent-entrega-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="fent-entrega-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+        </div>
+      </div>
     </div>
     <div id="fent-preview" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:11px;margin-bottom:10px"></div>
     <div class="modal-foot">
@@ -889,6 +911,28 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <div id="fsal-inst-info" style="display:none;grid-column:1/-1;background:var(--surface2);border-radius:8px;padding:10px;font-size:11px"></div>
       <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="fsal-personal"></select></div>
       <div class="form-group full"><div class="form-label" id="fsal-motivo-label">Observación</div><textarea class="form-textarea" id="fsal-motivo" placeholder="Describe el motivo..."></textarea></div>
+      <div class="form-group full">
+        <div class="form-label">N° de guía de remisión <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <input type="text" class="form-input" id="fsal-guia-num" placeholder="Ej. 001-000123">
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de la guía <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="fsal-guia-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="fsal-guia-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="fsal-guia-input" accept="image/*" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="fsal-guia-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="fsal-guia-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+        </div>
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de entrega <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="fsal-entrega-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="fsal-entrega-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="fsal-entrega-input" accept="image/*" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="fsal-entrega-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="fsal-entrega-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+        </div>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal('modal-salida')">Cancelar</button>
@@ -942,6 +986,28 @@ tbody td{padding:9px 12px;vertical-align:middle}
       </div>
       <div class="form-group full"><div class="form-label">Realizado por</div><select class="form-select" id="ft-tecnico"></select></div>
       <div class="form-group full"><div class="form-label">Observación</div><textarea class="form-textarea" id="ft-obs" placeholder="Opcional..."></textarea></div>
+      <div class="form-group full">
+        <div class="form-label">N° de guía de remisión <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <input type="text" class="form-input" id="ft-guia-num" placeholder="Ej. 001-000123">
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de la guía <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="ft-guia-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="ft-guia-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="ft-guia-input" accept="image/*" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="ft-guia-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="ft-guia-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('guia',this.files[0]); this.value='';">
+        </div>
+      </div>
+      <div class="form-group full"><div class="form-label">Foto de entrega <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="ft-entrega-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="ft-entrega-input" style="cursor:pointer">📷 Subir</label>
+          <input type="file" id="ft-entrega-input" accept="image/*" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="ft-entrega-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="ft-entrega-cam" accept="image/*" capture="environment" style="display:none" onchange="setLoteFoto('entrega',this.files[0]); this.value='';">
+        </div>
+      </div>
     </div>
     </div>
     <div class="modal-foot" style="flex-shrink:0;margin-top:0">
@@ -2496,6 +2562,11 @@ function openModalEntrada() {
   document.getElementById('fent-nivel').value = '100';
   const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
   document.getElementById('fent-personal').innerHTML = `<option value="">—</option>${pOpts}`;
+  document.getElementById('fent-guia-num').value = '';
+  loteFotos = { guia: null, entrega: null };
+  loteFotoPrefix = 'fent';
+  refreshLoteFotoPreview('guia');
+  refreshLoteFotoPreview('entrega');
   document.getElementById('modal-entrada').classList.add('open');
 }
 
@@ -2560,6 +2631,7 @@ async function saveEntrada() {
   let next = (existing[0] || 0) + 1;
   const obs = document.getElementById('fent-obs').value.trim();
   const resp = document.getElementById('fent-personal').value;
+  const guiaNumero = document.getElementById('fent-guia-num').value.trim();
   const nuevasInstancias = [];
   try {
     for (let i = 0; i < qty; i++) {
@@ -2574,14 +2646,23 @@ async function saveEntrada() {
       instanciasData.push({ id, ...inst });
       nuevasInstancias.push(id);
     }
-    const movRef = await db.collection('insumos_movimientos').add({
+    const movData = {
       tipo: 'ENTRADA', itemId, itemNombre: item.nombre, sede, cantidad: qty,
       instancias: nuevasInstancias, responsable: resp, motivo: obs,
       usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
-    });
-    movimientosData.unshift({ id: movRef.id, tipo: 'ENTRADA', itemId, itemNombre: item.nombre,
-      sede, cantidad: qty, instancias: nuevasInstancias, responsable: resp, motivo: obs,
-      usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date() });
+    };
+    if (guiaNumero) movData.guiaNumero = guiaNumero;
+    if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
+    const movRef = await db.collection('insumos_movimientos').add(movData);
+    movimientosData.unshift({ id: movRef.id, ...movData });
+    if (loteFotos.guia || loteFotos.entrega) {
+      const fotoDoc = { movimientoId: movRef.id, createdAt: new Date().toISOString(), createdBy: maUser.email };
+      if (guiaNumero) fotoDoc.guiaNumero = guiaNumero;
+      if (loteFotos.guia) fotoDoc.guiaFoto = loteFotos.guia;
+      if (loteFotos.entrega) fotoDoc.entregaFoto = loteFotos.entrega;
+      await db.collection('insumos_movimientos_fotos').doc(movRef.id).set(fotoDoc);
+      movFotos[movRef.id] = { guia: loteFotos.guia || null, entrega: loteFotos.entrega || null };
+    }
     toast(`✓ ${qty} instancia${qty > 1 ? 's' : ''} creada${qty > 1 ? 's' : ''}: ${nuevasInstancias.join(', ')}`, 'ok');
     closeModal('modal-entrada');
     renderAll();
@@ -2605,6 +2686,11 @@ function openModalSalida(tipo = 'SALIDA', instId = null) {
   document.getElementById('fsal-inst-info').style.display = 'none';
   const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
   document.getElementById('fsal-personal').innerHTML = `<option value="">—</option>${pOpts}`;
+  document.getElementById('fsal-guia-num').value = '';
+  loteFotos = { guia: null, entrega: null };
+  loteFotoPrefix = 'fsal';
+  refreshLoteFotoPreview('guia');
+  refreshLoteFotoPreview('entrega');
   buscarInstanciasSalida();
   if (instId) setTimeout(() => { document.getElementById('fsal-instancia').value = instId; onSalidaInstanciaChange(); }, 100);
   document.getElementById('modal-salida').classList.add('open');
@@ -2643,6 +2729,7 @@ async function saveSalida() {
   const instId = document.getElementById('fsal-instancia').value;
   const motivo = document.getElementById('fsal-motivo').value.trim();
   const resp = document.getElementById('fsal-personal').value;
+  const guiaNumero = document.getElementById('fsal-guia-num').value.trim();
   const esBaja = currentSalidaTipo === 'BAJA';
   if (!instId) { toast('Selecciona una instancia', 'err'); if(btn){btn.disabled=false;btn.textContent=btn._origText;} return; }
   if (esBaja && !motivo) { toast('El motivo es obligatorio para dar de baja', 'err'); if(btn){btn.disabled=false;btn.textContent=btn._origText;} return; }
@@ -2651,14 +2738,23 @@ async function saveSalida() {
   try {
     await db.collection('insumos_instancias').doc(instId).delete();
     instanciasData = instanciasData.filter(x => x.id !== instId);
-    const movRef = await db.collection('insumos_movimientos').add({
+    const movData = {
       tipo: currentSalidaTipo, itemId: inst.itemId, itemNombre: inst.nombre,
       instanciaId: instId, sede: inst.sede, cantidad: 1, unidad: 'UND',
       motivo, responsable: resp, usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
-    });
-    movimientosData.unshift({ id: movRef.id, tipo: currentSalidaTipo, itemId: inst.itemId,
-      itemNombre: inst.nombre, instanciaId: instId, sede: inst.sede, cantidad: 1,
-      motivo, responsable: resp, usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date() });
+    };
+    if (guiaNumero) movData.guiaNumero = guiaNumero;
+    if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
+    const movRef = await db.collection('insumos_movimientos').add(movData);
+    movimientosData.unshift({ id: movRef.id, ...movData });
+    if (loteFotos.guia || loteFotos.entrega) {
+      const fotoDoc = { movimientoId: movRef.id, createdAt: new Date().toISOString(), createdBy: maUser.email };
+      if (guiaNumero) fotoDoc.guiaNumero = guiaNumero;
+      if (loteFotos.guia) fotoDoc.guiaFoto = loteFotos.guia;
+      if (loteFotos.entrega) fotoDoc.entregaFoto = loteFotos.entrega;
+      await db.collection('insumos_movimientos_fotos').doc(movRef.id).set(fotoDoc);
+      movFotos[movRef.id] = { guia: loteFotos.guia || null, entrega: loteFotos.entrega || null };
+    }
     toast(`✓ ${esBaja ? 'Baja' : 'Salida'} registrada — ${instId}`, 'ok');
     closeModal('modal-salida');
     renderAll();
@@ -3396,6 +3492,11 @@ function openModalTransferencia() {
   document.getElementById('ft-tecnico').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('ft-resp-destino').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('ft-destino').innerHTML = sedeOpts(false);
+  document.getElementById('ft-guia-num').value = '';
+  loteFotos = { guia: null, entrega: null };
+  loteFotoPrefix = 'ft';
+  refreshLoteFotoPreview('guia');
+  refreshLoteFotoPreview('entrega');
   onTransfTipoChange();
   document.getElementById('modal-transf').classList.add('open');
 }
@@ -3469,6 +3570,7 @@ async function saveTransferencia() {
   const instId = document.getElementById('ft-instancia').value;
   const obs = document.getElementById('ft-obs').value.trim();
   const tecnico = document.getElementById('ft-tecnico').value;
+  const guiaNumero = document.getElementById('ft-guia-num').value.trim();
   const transferSede = document.getElementById('ft-chk-sede').checked;
   const transferResp = document.getElementById('ft-chk-resp').checked;
   if (!instId) { toast('Selecciona una instancia', 'err'); return; }
@@ -3529,8 +3631,18 @@ async function saveTransferencia() {
     motivo: obs, responsable: tecnico, usuario: maUser.email,
     estado: 'CONFIRMADO', fecha: new Date()
   };
+  if (guiaNumero) movData.guiaNumero = guiaNumero;
+  if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
   const movRef = await db.collection('insumos_movimientos').add(movData);
   movimientosData.unshift({ id: movRef.id, ...movData });
+  if (loteFotos.guia || loteFotos.entrega) {
+    const fotoDoc = { movimientoId: movRef.id, createdAt: new Date().toISOString(), createdBy: maUser.email };
+    if (guiaNumero) fotoDoc.guiaNumero = guiaNumero;
+    if (loteFotos.guia) fotoDoc.guiaFoto = loteFotos.guia;
+    if (loteFotos.entrega) fotoDoc.entregaFoto = loteFotos.entrega;
+    await db.collection('insumos_movimientos_fotos').doc(movRef.id).set(fotoDoc);
+    movFotos[movRef.id] = { guia: loteFotos.guia || null, entrega: loteFotos.entrega || null };
+  }
   toast(`✓ ${instId} — ${labelParts.join(', ')}${paqueteMsg}`, 'ok');
   closeModal('modal-transf');
   renderAll();
