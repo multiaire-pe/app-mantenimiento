@@ -1195,10 +1195,13 @@ function renderModal(fecha, d, iti) {
     let html = '<div class="bloque-form-item" id="bloque-form-' + i + '">';
     html += '<div class="bloque-form-num">BLOQUE ' + (i+1) + ' <button class="remove-bloque iti-edit" onclick="removeBloque(' + i + ')" title="Eliminar bloque">✕</button></div>';
     html += '<div class="form-grid">';
-    // Tienda options con selected
-    const tOpts = '<option value="">' + (b.idTienda ? '' : 'Seleccionar...') + '</option>'
-      + maestros.tiendas.map(t => '<option value="' + t.id + '"' + (t.id===b.idTienda?' selected':'') + '>' + t.tienda + '</option>').join('');
-    html += '<div class="form-group"><div class="form-label">Tienda</div><select class="form-select" id="bf-tienda-' + i + '">' + tOpts + '</select></div>';
+    // Zona de trabajo: maestro de tiendas + "Otro…" (zona libre ocasional, no en el maestro)
+    const esOtra = !!(b.tienda && !b.idTienda);   // bloque guardado con zona tipeada
+    const tOpts = '<option value="">' + (b.idTienda || esOtra ? '' : 'Seleccionar...') + '</option>'
+      + maestros.tiendas.map(t => '<option value="' + t.id + '"' + (t.id===b.idTienda?' selected':'') + '>' + escI(t.tienda) + '</option>').join('')
+      + '<option value="__OTRO__"' + (esOtra ? ' selected' : '') + '>✏️ Otra zona (escribir)…</option>';
+    html += '<div class="form-group"><div class="form-label">Zona de trabajo</div><select class="form-select" id="bf-tienda-' + i + '" onchange="toggleZonaOtra(' + i + ')">' + tOpts + '</select>'
+      + '<input type="text" class="form-input" id="bf-tienda-otro-' + i + '" placeholder="Escribe la zona (ocasional)…" value="' + escI(esOtra ? b.tienda : '') + '" style="margin-top:6px;' + (esOtra ? '' : 'display:none') + '"></div>';
     // Grupo options con selected
     const gOpts = '<option value="">' + (b.idGrupo ? '' : 'Seleccionar...') + '</option>'
       + maestros.grupos.map(g => '<option value="' + g.id + '"' + (g.id===b.idGrupo?' selected':'') + '>' + g.grupo + '</option>').join('');
@@ -1240,6 +1243,13 @@ function renderModal(fecha, d, iti) {
   const saveBtnEl = document.querySelector('#modal-iti .modal-foot .btn-primary');
   if (saveBtnEl) { saveBtnEl.disabled = false; saveBtnEl.textContent = '💾 Guardar itinerario'; }
   document.getElementById('modal-iti').classList.add('open');
+}
+
+// muestra/oculta el input de zona libre cuando el selector está en "Otro…"
+function toggleZonaOtra(i) {
+  const sel = document.getElementById('bf-tienda-' + i);
+  const inp = document.getElementById('bf-tienda-otro-' + i);
+  if (inp) inp.style.display = (sel && sel.value === '__OTRO__') ? '' : 'none';
 }
 
 function addBloque() {
@@ -1284,16 +1294,20 @@ async function saveItinerario() {
     const tSel = document.getElementById(`bf-tienda-${i}`);
     const hIni = document.getElementById(`bf-hi-${i}`)?.value || '';
     const hFin = document.getElementById(`bf-hf-${i}`)?.value || '';
-    if (!tSel || !tSel.value) { toast(`El bloque ${i+1} no tiene tienda seleccionada`, 'err'); return; }
+    if (!tSel || !tSel.value) { toast(`El bloque ${i+1} no tiene zona de trabajo seleccionada`, 'err'); return; }
+    if (tSel.value === '__OTRO__' && !(document.getElementById(`bf-tienda-otro-${i}`)?.value || '').trim()) { toast(`El bloque ${i+1} tiene "Otra zona" sin escribir`, 'err'); return; }
     if (hIni && hFin && hFin <= hIni) { toast(`El bloque ${i+1} tiene horario inválido (fin ≤ inicio)`, 'err'); return; }
   }
 
   // Collect bloques
   const bloques = editBloques.map((_, i) => {
     const tiendaSel = document.getElementById(`bf-tienda-${i}`);
+    const esZonaLibre = tiendaSel?.value === '__OTRO__';
     const tiendaOpt = tiendaSel?.options[tiendaSel.selectedIndex];
-    const tienda = tiendaOpt?.text || '';
-    const cliente = maestros.tiendas.find(t => t.id === tiendaSel?.value)?.cliente || '';
+    const tienda = esZonaLibre
+      ? (document.getElementById(`bf-tienda-otro-${i}`)?.value || '').trim().toUpperCase()
+      : (tiendaOpt?.text || '');
+    const cliente = esZonaLibre ? '' : (maestros.tiendas.find(t => t.id === tiendaSel?.value)?.cliente || '');
     const grupoSel = document.getElementById(`bf-grupo-${i}`);
     const grupoOpt = grupoSel?.options[grupoSel.selectedIndex];
     const grupo = grupoOpt?.text || '';
@@ -1305,7 +1319,7 @@ async function saveItinerario() {
     while (personalArr.length < 4) personalArr.push({ id:'', nombre:'' });
 
     return {
-      idTienda: tiendaSel?.value || '',
+      idTienda: esZonaLibre ? '' : (tiendaSel?.value || ''),
       tienda, cliente,
       idGrupo: grupoSel?.value || '',
       grupo,
