@@ -912,9 +912,27 @@ async function pendientesDeSede(sede, fecha){
   //    la mueve a la versión actual, sin duplicar)
   const _idAct = currentIti?.id || '';
   const _vAct = Number(currentIti?.version) || 1;
+  // Arrastre (pedido del usuario): una asignación de un día ANTERIOR al que estoy
+  // planificando, que sigue viva (no se ejecutó — el sweep borra las hechas), NO
+  // bloquea: la actividad reaparece como pendiente marcada "⏪ del dd/mm" y al
+  // asignarla se MUEVE a este día (id determinístico, sin duplicar).
+  // CUÁNDO se considera VENCIDA (regla del usuario, HORA DE PERÚ): los días ya
+  // pasados completos, a toda hora; el día EN CURSO recién desde las 19:00 de Lima
+  // (antes, el técnico sigue en cancha y no debe ofrecerse para re-planificar).
+  // Si la cumple antes de medianoche, el registro borra la asignación por su id
+  // único aunque ya se haya movido — queda como completada, no como arrastrada.
+  const _limaParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  const _lp = (t) => (_limaParts.find((x) => x.type === t) || {}).value || '00';
+  const _limaHoy = `${_lp('year')}-${_lp('month')}-${_lp('day')}`;
+  const _limaHora = Number(_lp('hour')) + Number(_lp('minute')) / 60;
+  const yaVencio = (f) => f < _limaHoy || (f === _limaHoy && _limaHora >= 19);
+  const arrastradas = {};
   const planificadas = new Set(planS.docs.filter(d => {
     const r = d.data();
-    if ((r.itiId || '') !== _idAct) return true;
+    if ((r.itiId || '') !== _idAct) {
+      if (r.fecha && String(r.fecha) < String(fecha || '') && yaVencio(String(r.fecha))) { arrastradas[d.id] = r.fecha; return false; }
+      return true;   // asignada en otro día vigente/futuro (o de hoy antes de las 19:00) → sigue bloqueando
+    }
     return Number(r.itiVersion ?? 1) === _vAct;
   }).map(d => d.id));
   invS.docs.forEach(d => {
@@ -927,7 +945,7 @@ async function pendientesDeSede(sede, fecha){
     acts.forEach((tarea, idx) => {
       const hecha = st === true || (st && typeof st === 'object' && st[idx] === true);
       const pid = `${eq.eq_id}|${periodo}|${anio}|${idx}`;
-      if (!hecha && !planificadas.has(pid)) out.push({ pid, eq_id: eq.eq_id, nombreEq: eq.nombre||eq.eq_id, tipo: eq.tipo||'', area: eq.area||'', tarea, idx });
+      if (!hecha && !planificadas.has(pid)) out.push({ pid, eq_id: eq.eq_id, nombreEq: eq.nombre||eq.eq_id, tipo: eq.tipo||'', area: eq.area||'', tarea, idx, prev: arrastradas[pid] || '' });
     });
   });
   return out.sort((a,b) => a.nombreEq.localeCompare(b.nombreEq) || a.idx - b.idx);
@@ -948,7 +966,8 @@ async function abrirPanelActs(nBloque, tienda){
     let eqPrev = null, html = '';
     pend.forEach(p => {
       if(p.nombreEq !== eqPrev){ eqPrev = p.nombreEq; html += '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 2px">'+_pEsc(p.nombreEq)+' <span style="font-weight:400">('+_pEsc(p.eq_id)+')</span>'+(p.area?' <span style="font-weight:400">· 📍 '+_pEsc(p.area)+'</span>':'')+'</div>'; }
-      html += '<div class="pa-card" draggable="true" data-pid="'+_pEsc(p.pid)+'" ondragstart="paDragStart(event)" onclick="paToggleSel(this)">🔧 '+_pEsc(p.tarea)+'</div>';
+      const prevTag = p.prev ? ' <span style="font-size:10px;color:var(--orange,#d4621a);font-weight:700" title="Quedó sin ejecutar de un día anterior — al asignarla se mueve a este día">⏪ del '+_pEsc(p.prev.slice(8,10)+'/'+p.prev.slice(5,7))+'</span>' : '';
+      html += '<div class="pa-card" draggable="true" data-pid="'+_pEsc(p.pid)+'" ondragstart="paDragStart(event)" onclick="paToggleSel(this)">🔧 '+_pEsc(p.tarea)+prevTag+'</div>';
     });
     cont.innerHTML = html || (window._paZonaLibre
       ? '<div style="font-size:12px;color:var(--muted);padding:10px">✏️ Esta es una <b>zona libre</b> (no corresponde a una sede del inventario): no hay actividades de mtto que planificar aquí.</div>'
