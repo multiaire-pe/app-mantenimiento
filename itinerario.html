@@ -880,6 +880,7 @@ async function pendientesDeSede(sede, fecha){
   }
   const out = [];
   window._paSede = target || '';   // la sede REAL: la usan asignación y badges
+  window._paZonaLibre = !target;   // zona tipeada/fuera del inventario: mensaje específico
   if (!target) return out;
   // hechos y planificados con la sede RESUELTA (hallazgo del Council: con la cruda
   // "RIPLEY PLAZA NORTE" el doc del período y el plan no matcheaban)
@@ -941,7 +942,9 @@ async function abrirPanelActs(nBloque, tienda){
       if(p.nombreEq !== eqPrev){ eqPrev = p.nombreEq; html += '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 2px">'+_pEsc(p.nombreEq)+' <span style="font-weight:400">('+_pEsc(p.eq_id)+')</span>'+(p.area?' <span style="font-weight:400">· 📍 '+_pEsc(p.area)+'</span>':'')+'</div>'; }
       html += '<div class="pa-card" draggable="true" data-pid="'+_pEsc(p.pid)+'" ondragstart="paDragStart(event)" onclick="paToggleSel(this)">🔧 '+_pEsc(p.tarea)+'</div>';
     });
-    cont.innerHTML = html || (window._paSinSeleccion
+    cont.innerHTML = html || (window._paZonaLibre
+      ? '<div style="font-size:12px;color:var(--muted);padding:10px">✏️ Esta es una <b>zona libre</b> (no corresponde a una sede del inventario): no hay actividades de mtto que planificar aquí.</div>'
+      : window._paSinSeleccion
       ? '<div style="font-size:12px;color:var(--muted);padding:10px">📋 Esta sede no tiene <b>equipos seleccionados</b> para el período en la app de <b>Mantenimiento</b>. Selecciónalos ahí primero (Checklist → ＋ Seleccionar equipos) y vuelve a abrir este panel.</div>'
       : '<div style="font-size:12px;color:var(--muted);padding:10px">🎉 Los equipos seleccionados del período no tienen actividades pendientes (todo hecho o ya planificado).</div>');
     window._paPend = Object.fromEntries(pend.map(p => [p.pid, p]));
@@ -1198,7 +1201,7 @@ function renderModal(fecha, d, iti) {
     // Zona de trabajo: maestro de tiendas + "Otro…" (zona libre ocasional, no en el maestro)
     const esOtra = !!(b.tienda && !b.idTienda);   // bloque guardado con zona tipeada
     const tOpts = '<option value="">' + (b.idTienda || esOtra ? '' : 'Seleccionar...') + '</option>'
-      + maestros.tiendas.map(t => '<option value="' + t.id + '"' + (t.id===b.idTienda?' selected':'') + '>' + escI(t.tienda) + '</option>').join('')
+      + maestros.tiendas.map(t => '<option value="' + escI(t.id) + '"' + (t.id===b.idTienda?' selected':'') + '>' + escI(t.tienda) + '</option>').join('')
       + '<option value="__OTRO__"' + (esOtra ? ' selected' : '') + '>✏️ Otra zona (escribir)…</option>';
     html += '<div class="form-group"><div class="form-label">Zona de trabajo</div><select class="form-select" id="bf-tienda-' + i + '" onchange="toggleZonaOtra(' + i + ')">' + tOpts + '</select>'
       + '<input type="text" class="form-input" id="bf-tienda-otro-' + i + '" placeholder="Escribe la zona (ocasional)…" value="' + escI(esOtra ? b.tienda : '') + '" style="margin-top:6px;' + (esOtra ? '' : 'display:none') + '"></div>';
@@ -1390,13 +1393,17 @@ function captureEditBloques() {
     const hiEl       = document.getElementById('bf-hi-'      + i);
     const hfEl       = document.getElementById('bf-hf-'      + i);
     const detEl      = document.getElementById('bf-detalle-' + i);
-    const idTienda   = tiendaSel ? tiendaSel.value : b.idTienda;
-    const tiendaTxt  = tiendaSel && tiendaSel.selectedIndex >= 0 ? (tiendaSel.options[tiendaSel.selectedIndex] || {}).text || b.tienda : b.tienda;
+    const esOtraCap  = tiendaSel && tiendaSel.value === '__OTRO__';
+    const otroTxt    = (document.getElementById('bf-tienda-otro-' + i)?.value || '').trim();
+    const idTienda   = esOtraCap ? '' : (tiendaSel ? tiendaSel.value : b.idTienda);
+    const tiendaTxt  = esOtraCap
+      ? (otroTxt || b.tienda)
+      : (tiendaSel && tiendaSel.selectedIndex >= 0 ? (tiendaSel.options[tiendaSel.selectedIndex] || {}).text || b.tienda : b.tienda);
     const idGrupo    = grupoSel  ? grupoSel.value  : b.idGrupo;
     const grupoTxt   = grupoSel  && grupoSel.selectedIndex  >= 0 ? (grupoSel.options[grupoSel.selectedIndex]   || {}).text || b.grupo  : b.grupo;
     return {
       ...b,
-      idTienda:   idTienda   || b.idTienda,
+      idTienda:   esOtraCap ? '' : (idTienda || b.idTienda),
       tienda:     tiendaTxt  || b.tienda,
       idGrupo:    idGrupo    || b.idGrupo,
       grupo:      grupoTxt   || b.grupo,
