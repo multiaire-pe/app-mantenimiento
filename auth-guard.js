@@ -162,5 +162,20 @@ window.MA = (function () {
       var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
       if (a && a.host === location.host) sessionStorage.removeItem('ma_pagina');
     }, true);
+
+    // Cerrar sesión (o quedar deslogueado) también olvida el módulo: el próximo
+    // load de "/" debe mostrar el login del ÍNDICE, no rebotar al módulo (Council).
+    var hookAuth = function (n) {
+      try {
+        if (window.firebase && firebase.auth) {
+          firebase.auth().onAuthStateChanged(function (u) {
+            if (!u) sessionStorage.removeItem('ma_pagina');
+          });
+          return;
+        }
+      } catch (err) { /* firebase aún no cargó */ }
+      if (n > 0) setTimeout(function () { hookAuth(n - 1); }, 250);
+    };
+    hookAuth(40);
   } catch (e) { /* sin history/sessionStorage (iframe sandbox): URL tal cual */ }
 })();
