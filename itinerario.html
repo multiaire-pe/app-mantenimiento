@@ -192,6 +192,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .auth-loading.show{display:block}
 
 /* RESPONSIVE */
+input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;text-align:left}
 @media(max-width:768px){
   header{padding:0 10px;gap:8px}
   .user-name{display:none}                  /* homogéneo con los demás módulos: solo el avatar */
@@ -202,8 +203,14 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
   .sidebar{width:100%;min-width:unset;border-right:none;border-bottom:1.5px solid var(--border);max-height:300px;overflow-x:hidden}
   .main{padding:16px;overflow-x:hidden}   /* sin scroll lateral en móvil (no hay tablas; ambos ya tienen overflow-y:auto) */
   .bloque-body{grid-template-columns:1fr}
+  .bloque-header{flex-wrap:wrap}                     /* título+badges envuelven: no estirar el card (iPhone) */
+  .bloque-card{min-width:0}
+  .personal-tag{max-width:100%}
+  .iti-header{flex-direction:column;align-items:stretch;gap:10px}  /* título arriba, acciones debajo a todo el ancho */
   .form-grid{grid-template-columns:1fr}
   .personal-grid{grid-template-columns:1fr}
+  .modal{overflow-x:hidden}
+  .bloque-form-item{min-width:0}
   .iti-actions{flex-direction:column}                /* botones de acción apilados, sin desbordar */
   .iti-actions>*{width:100%;justify-content:center}
   .ver-chips{gap:6px;margin-top:9px}
@@ -968,22 +975,24 @@ function _paActualizarBoton(){
 async function asignarSeleccionadas(){
   if (!_paSel.size || _panelBloque == null) return;
   const pids = [..._paSel];
-  const personal = personalDeBloque(_panelBloque);
-  if (personal.length <= 1) return _finalizarMulti(pids, _panelBloque, personal[0] || null);
+  const nB = _panelBloque;   // POR VALOR: el callback diferido no debe leer el global
+  const personal = personalDeBloque(nB);
+  if (personal.length <= 1) return _finalizarMulti(pids, nB, personal[0] || null);
   const cont = document.getElementById('pt-list');
   cont.innerHTML = personal.map((t, i) =>
     '<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:6px" data-pt="'+i+'">👷 '+_pEsc(t.nombre)+'</button>').join('');
-  document.getElementById('pt-sub').textContent = pids.length + ' actividad(es) → Bloque ' + _panelBloque;
+  document.getElementById('pt-sub').textContent = pids.length + ' actividad(es) → Bloque ' + nB;
   cont.onclick = (e) => {
     const btn = e.target.closest('[data-pt]'); if(!btn) return;
     document.getElementById('pt-overlay').style.display = 'none';
-    _finalizarMulti(pids, _panelBloque, personal[Number(btn.dataset.pt)]);
+    _finalizarMulti(pids, nB, personal[Number(btn.dataset.pt)]);
   };
   document.getElementById('pt-overlay').style.display = 'flex';
 }
 let _paBusy = false;   // lock: doble click en Asignar no debe duplicar el batch (Council)
 async function _finalizarMulti(pids, nBloque, tec){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  if (nBloque == null) { toast('El panel se cerró — vuelve a abrir 🔧 Asignar','err'); return; }
   if (_paBusy) return;
   if (pids.length > 450) { toast('Máximo 450 actividades por lote', 'err'); return; }
   _paBusy = true;
@@ -1041,7 +1050,7 @@ async function asignarPlan(pid, nBloqueDestino){
       return;
     }
   }
-  const personal = personalDeBloque(nBloque);
+  const personal = personalDeBloque(nBloque);   // nBloque ya es local (por valor) ✓
   if (personal.length <= 1) return _finalizarAsignacion(p, nBloque, personal[0] || null);
   // selector de técnico
   const cont = document.getElementById('pt-list');
@@ -1058,6 +1067,7 @@ async function asignarPlan(pid, nBloqueDestino){
 
 async function _finalizarAsignacion(p, nBloque, tec){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  if (nBloque == null) { toast('El panel se cerró — vuelve a abrir 🔧 Asignar','err'); return; }
   const fecha = document.getElementById('fecha-input').value;
   const { periodo, anio } = periodoDe(fecha);
   let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
