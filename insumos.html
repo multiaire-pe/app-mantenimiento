@@ -790,6 +790,16 @@ tbody td{padding:9px 12px;vertical-align:middle}
     <h2 id="modal-insumo-title">Nuevo ítem</h2>
     <div class="modal-sub">El stock inicial se registra después como una <strong>Entrada</strong> desde el sidebar.</div>
     <div class="form-grid">
+      <div class="form-group full" id="fi-foto-wrap" style="display:none">
+        <div class="form-label">Foto de referencia <span style="color:var(--muted);font-weight:400">(opcional — las instancias sin foto propia la usan por defecto)</span></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <div id="fi-foto-box" style="display:flex;align-items:center;gap:8px"></div>
+          <label class="btn btn-sm" for="fi-foto-input" style="cursor:pointer">📷 Subir / cambiar</label>
+          <input type="file" id="fi-foto-input" accept="image/*" style="display:none" onchange="setCatalogoFoto(this.files[0]); this.value='';">
+          <label class="btn btn-sm cam-only-mobile" for="fi-foto-cam" style="cursor:pointer">📸 Tomar foto</label>
+          <input type="file" id="fi-foto-cam" accept="image/*" capture="environment" style="display:none" onchange="setCatalogoFoto(this.files[0]); this.value='';">
+        </div>
+      </div>
       <div class="form-group full"><div class="form-label">Nombre *</div><input type="text" class="form-input" id="fi-nombre" placeholder="Ej: FILTRO DE AIRE G4 24X24" style="text-transform:uppercase"></div>
       <div class="form-group"><div class="form-label">Categoría *</div>
         <select class="form-select" id="fi-cat">
@@ -1379,7 +1389,7 @@ const PERMS = {
 };
 function can(p){ return (PERMS[maUser?.rol]||PERMS.TECNICO)[p]||0; }
 
-let maUser=null, catalogoData=[], movimientosData=[], stockData={}, sedes=[], personalData=[], paquetesData=[], instanciasData=[], instFotos={}, movFotos={};
+let maUser=null, catalogoData=[], movimientosData=[], stockData={}, sedes=[], personalData=[], paquetesData=[], instanciasData=[], instFotos={}, movFotos={}, catFotos={};
 let filteredCatalogo=[], currentMovTipo='SALIDA', editingInsumoId=null, editingPaqId=null, applyingPaqId=null, paqRowIdx=0;
 
 // ── AUTH — mismo sistema que otras apps ──────────────────────────────────────
@@ -1650,7 +1660,7 @@ function buildSidebar(){
 
 async function loadAll(){
   try{
-    const [catS,movS,tiendasS,persS,paqS,instS,instFotoS,movFotoS]=await Promise.all([
+    const [catS,movS,tiendasS,persS,paqS,instS,instFotoS,movFotoS,catFotoS]=await Promise.all([
       db.collection('insumos_catalogo').get(),
       db.collection('insumos_movimientos').orderBy('fecha','desc').limit(200).get(),
       db.collection('maestros_tiendas').get(),
@@ -1659,10 +1669,13 @@ async function loadAll(){
       db.collection('insumos_instancias').get(),
       db.collection('insumos_instancias_fotos').get(),
       db.collection('insumos_movimientos_fotos').get(),
+      db.collection('insumos_catalogo_fotos').get(),
     ]);
     instFotos={}; instFotoS.docs.forEach(d=>{const f=d.data().foto; if(f) instFotos[d.id]=f;});
     // Fotos adjuntas a movimientos (guía de remisión + foto de entrega). Doc id = id del movimiento.
     movFotos={}; movFotoS.docs.forEach(d=>{const x=d.data(); if(x.guiaFoto||x.entregaFoto) movFotos[d.id]={guia:x.guiaFoto||null,entrega:x.entregaFoto||null};});
+    // Foto de referencia por ítem de catálogo (doc id = id del catálogo). Las instancias sin foto propia la heredan (ver fotoDeInstancia).
+    catFotos={}; catFotoS.docs.forEach(d=>{const f=d.data().foto; if(f) catFotos[d.id]=f;});
     catalogoData=catS.docs.map(d=>({id:d.id,...d.data()}));
     movimientosData=movS.docs.map(d=>({id:d.id,...d.data()}));
     stockData={};
@@ -1717,9 +1730,15 @@ function renderAll(){
   }
 }
 
+// Foto efectiva de una instancia: la propia si existe; si no, la de referencia de su catálogo (heredada, editable independientemente por instancia)
+function fotoDeInstancia(inst){
+  if (!inst) return null;
+  return instFotos[inst.id] || catFotos[inst.itemId] || null;
+}
+
 // Miniatura de la foto de una instancia (o placeholder clicable para agregar)
 function instThumb(id){
-  const f = instFotos[id];
+  const f = fotoDeInstancia(instanciasData.find(x=>x.id===id));
   return f
     ? `<img class="inst-thumb" src="${f}" onclick="event.stopPropagation();openInstFotoLightbox('${id}')" title="Ampliar foto" alt="">`
     : `<div class="inst-thumb-empty" onclick="openEditInstancia('${id}')" title="Sin foto — clic para agregar">📷</div>`;
@@ -2060,6 +2079,7 @@ function validarCodigoItem(){
 
 function openModalInsumo(id){
   editingInsumoId=id;
+  document.getElementById('fi-foto-wrap').style.display = id ? 'block' : 'none';
   if(id){
     const i=catalogoData.find(x=>x.id===id);if(!i)return;
     document.getElementById('modal-insumo-title').textContent='Editar ítem';
@@ -2071,6 +2091,7 @@ function openModalInsumo(id){
     document.getElementById('fi-modelo').value=i.modelo||'';
     document.getElementById('fi-stock-min').value=i.stockMin||'';
     document.getElementById('fi-tipo-cant').value=i.tipoCantidad||'UNIDAD';
+    refreshCatFotoPreview();
   }else{
     document.getElementById('modal-insumo-title').textContent='Nuevo ítem';
     ['fi-nombre','fi-codigo','fi-marca','fi-modelo','fi-stock-min'].forEach(x=>document.getElementById(x).value='');
@@ -2140,6 +2161,7 @@ async function deleteInsumo(id,nombre){
   if(!confirm(`¿Eliminar "${nombre}"?`))return;
   try{
     await db.collection('insumos_catalogo').doc(id).delete();
+    if (catFotos[id]) { await db.collection('insumos_catalogo_fotos').doc(id).delete(); delete catFotos[id]; }
     catalogoData=catalogoData.filter(x=>x.id!==id);
     toast('Ítem eliminado','ok');renderAll();
   }catch(e){toast('Error: '+e.message,'err');}
@@ -3790,7 +3812,7 @@ function _descargarMaterial(insts, filename, etiqueta){
     const pkg = i.paqueteId ? paquetesData.find(p => p.id === i.paqueteId) : null;
     const paqTxt = pkg ? (pkg.id + (pkg.nombre ? ' · ' + pkg.nombre : '')) : '—';
     const resp = i.responsable || (pkg && pkg.responsable) || '';
-    return [i.id, i.nombre || cat.nombre || '', cat.codigo || '', cat.categoria || '', i.sede || '', i.estado || 'DISPONIBLE', paqTxt, resp, instFotos[i.id] ? 'SÍ' : 'NO'].map(_matCsvEsc).join(',');
+    return [i.id, i.nombre || cat.nombre || '', cat.codigo || '', cat.categoria || '', i.sede || '', i.estado || 'DISPONIBLE', paqTxt, resp, fotoDeInstancia(i) ? 'SÍ' : 'NO'].map(_matCsvEsc).join(',');
   });
   const csv = [headers.join(','), ...rows].join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
@@ -3864,7 +3886,7 @@ function _matRows(insts){
   return insts.map(i => {
     const cat = catalogoData.find(c => c.id === i.itemId) || {};
     const pkg = i.paqueteId ? paquetesData.find(p => p.id === i.paqueteId) : null;
-    return { codigo:i.id, item:i.nombre||cat.nombre||'', categoria:cat.categoria||'', sede:i.sede||'', estado:i.estado||'DISPONIBLE', paquete: pkg ? (pkg.id + (pkg.nombre?' · '+pkg.nombre:'')) : '—' };
+    return { codigo:i.id, itemId:i.itemId, item:i.nombre||cat.nombre||'', categoria:cat.categoria||'', sede:i.sede||'', estado:i.estado||'DISPONIBLE', paquete: pkg ? (pkg.id + (pkg.nombre?' · '+pkg.nombre:'')) : '—' };
   });
 }
 function _matCols(showPaquete){
@@ -3902,9 +3924,9 @@ async function _matPrepare(W, padX){
   cols.forEach(c => { c._x = x0; c._w = innerW * c.w/totalW; x0 += c._w; });
   const imgs = {};
   if(conFotos){
-    const ids = rows.map(r => r.codigo).filter(id => instFotos[id]);
-    const loaded = await Promise.all(ids.map(id => _loadImg(instFotos[id])));
-    ids.forEach((id,k) => { if(loaded[k]) imgs[id] = loaded[k]; });
+    const withFoto = rows.map(r => ({ id: r.codigo, src: fotoDeInstancia({ id: r.codigo, itemId: r.itemId }) })).filter(x => x.src);
+    const loaded = await Promise.all(withFoto.map(x => _loadImg(x.src)));
+    withFoto.forEach((x,k) => { if(loaded[k]) imgs[x.id] = loaded[k]; });
   }
   return { rows, cols, conFotos, innerW, imgs, rowH: conFotos ? 56 : 26 };
 }
@@ -4054,15 +4076,20 @@ function compressSquare(file, size, quality) {
 function refreshInstFotoPreview() {
   const box = document.getElementById('fe-inst-foto-box');
   if (!box) return;
-  const f = instFotos[editingInstanciaId];
+  const propia = instFotos[editingInstanciaId];
+  const inst = instanciasData.find(x => x.id === editingInstanciaId);
+  const f = fotoDeInstancia(inst);
   box.innerHTML = f
-    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openInstFotoLightbox(editingInstanciaId)" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeInstanciaFoto()" title="Quitar foto">🗑</button>`
+    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openInstFotoLightbox(editingInstanciaId)" title="Ampliar">`
+      + (propia
+        ? `<button type="button" class="btn btn-sm" onclick="removeInstanciaFoto()" title="Quitar foto">🗑</button>`
+        : `<span style="font-size:11px;color:var(--muted2)" title="Heredada del catálogo — sube una foto para que esta instancia use la suya propia">📎 Del catálogo</span>`)
     : `<div class="inst-foto-empty">📷</div>`;
 }
 
 // Amplía la foto de una instancia en un visor a pantalla completa
 function openInstFotoLightbox(id){
-  const f = instFotos[id];
+  const f = fotoDeInstancia(instanciasData.find(x=>x.id===id));
   if(!f) return;
   document.getElementById('foto-lightbox-img').src = f;
   document.getElementById('foto-lightbox').classList.add('open');
@@ -4101,6 +4128,48 @@ async function removeInstanciaFoto() {
     refreshInstFotoPreview();
     renderInstancias();
     toast('Foto eliminada', 'ok');
+  } catch(e) { toast('Error: ' + (e.message || e), 'err'); }
+}
+
+// Refresca la vista previa de la foto de referencia en el modal de catálogo
+function refreshCatFotoPreview() {
+  const box = document.getElementById('fi-foto-box');
+  if (!box) return;
+  const f = catFotos[editingInsumoId];
+  box.innerHTML = f
+    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openFotoSrc(catFotos['${editingInsumoId}'])" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeCatalogoFoto()" title="Quitar foto">🗑</button>`
+    : `<div class="inst-foto-empty">📷</div>`;
+}
+
+// Sube/reemplaza la foto de referencia del ítem de catálogo (colección aparte insumos_catalogo_fotos)
+async function setCatalogoFoto(file) {
+  if(!can('editarItem')){toast('Sin permisos','err');return;}
+  if (!file || !editingInsumoId) return;
+  if (!/^image\//.test(file.type)) { toast('El archivo no es una imagen', 'err'); return; }
+  try {
+    toast('Procesando foto...');
+    const dataUrl = await compressSquare(file, 480, 0.8);
+    await db.collection('insumos_catalogo_fotos').doc(editingInsumoId).set({
+      foto: dataUrl, itemId: editingInsumoId,
+      updatedAt: new Date().toISOString(), updatedBy: maUser ? maUser.email : ''
+    });
+    catFotos[editingInsumoId] = dataUrl;
+    refreshCatFotoPreview();
+    renderAll();
+    toast('✓ Foto de referencia guardada — las instancias sin foto propia ya la reflejan', 'ok');
+  } catch(e) { toast('Error con la foto: ' + (e.message || e), 'err'); }
+}
+
+async function removeCatalogoFoto() {
+  if(!can('editarItem')){toast('Sin permisos','err');return;}
+  if (!editingInsumoId || !catFotos[editingInsumoId]) return;
+  if (!confirm('¿Quitar la foto de referencia del catálogo?\nLas instancias sin foto propia dejarán de mostrarla.')) return;
+  try {
+    await db.collection('insumos_catalogo_fotos').doc(editingInsumoId).delete();
+    delete catFotos[editingInsumoId];
+    refreshCatFotoPreview();
+    renderAll();
+    toast('Foto de referencia eliminada', 'ok');
   } catch(e) { toast('Error: ' + (e.message || e), 'err'); }
 }
 

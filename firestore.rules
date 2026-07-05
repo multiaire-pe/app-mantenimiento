@@ -86,6 +86,7 @@ service cloud.firestore {
     match /insumos_movimientos/{doc}       { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     match /insumos_instancias_fotos/{doc}  { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     match /insumos_movimientos_fotos/{doc} { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
+    match /insumos_catalogo_fotos/{doc}    { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
 
     // ── Colecciones transitorias del bot de WhatsApp: el bot las escribe vía Admin SDK
     //    (ignora reglas); desde el cliente NO se escriben. Se declaran explícitas para
