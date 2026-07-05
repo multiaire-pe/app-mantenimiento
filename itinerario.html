@@ -789,6 +789,31 @@ async function cargarPlanDia(fecha){
     // docs legacy sin itiVersion se muestran para no ocultar lo ya asignado en develop
     planDia = snap.docs.map(d => ({ _id: d.id, ...d.data() }))
       .filter(p => !currentIti || !p.itiId || (p.itiId === currentIti.id && (p.itiVersion == null || Number(p.itiVersion) === Number(currentIti.version))));
+    // BARRIDO: lo ya EJECUTADO en Mantenimiento sale del plan en automático (pedido
+    // del usuario: si el técnico adelantó la actividad, no debe seguir en el itinerario)
+    try {
+      const { periodo, anio } = periodoDe(fecha);
+      const sedesPlan = [...new Set(planDia.map(p => p.sede).filter(Boolean))];
+      if (sedesPlan.length) {
+        const { getDoc, doc } = window.__fb;
+        const mSnaps = await Promise.all(sedesPlan.map(sd => getDoc(doc(window.__db, 'mantenimiento', `${sd}|${periodo}|${anio}`))));
+        const tsSede = {};
+        mSnaps.forEach((sp, i) => {
+          const d = sp.exists ? sp.data() : {};
+          tsSede[sedesPlan[i]] = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } })(d.tareaStatus);
+        });
+        const hechas = planDia.filter(p => {
+          const st = (tsSede[p.sede] || {})[p.eq_id];
+          return st === true || (st && typeof st === 'object' && st[p.tareaIdx] === true);
+        });
+        if (hechas.length && _planFecha === fecha) {
+          hechas.forEach(p => { window.__db.collection('mtto_plan').doc(p._id).delete().catch(()=>{}); });
+          const idsH = new Set(hechas.map(p => p._id));
+          planDia = planDia.filter(p => !idsH.has(p._id));
+          console.log('[mtto_plan] ' + hechas.length + ' actividad(es) ya ejecutadas retiradas del plan');
+        }
+      }
+    } catch(e) { console.warn('[mtto_plan sync]', e.message); }
   }catch(e){ console.warn('[mtto_plan]', e.message); }
   renderPlanChips();
 }
