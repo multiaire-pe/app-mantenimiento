@@ -64,6 +64,8 @@ service cloud.firestore {
     match /mantenimiento_fotos/{doc}     { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
     // bitácora de registros (tab Historial): el cliente solo AGREGA eventos; editar/borrar, solo super
     match /mtto_log/{doc}                { allow read: if authorized(); allow create: if canWrite('mantenimiento'); allow update, delete: if isSuper(); }
+    // plan de actividades de mtto en el itinerario (asignar/mover/quitar = editar itinerario)
+    match /mtto_plan/{doc}               { allow read: if authorized(); allow write: if canWrite('itinerario'); }
     match /manta_guia/{doc}        { allow read: if authorized(); allow write: if isSuper(); }
     match /manta_equipos/{doc}     { allow read: if authorized(); allow write: if isSuper(); }
 
