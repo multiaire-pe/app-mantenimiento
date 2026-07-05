@@ -1750,7 +1750,9 @@ function instThumb(id){
 }
 
 function renderInstancias() {
-  selectedInstQRIds.clear();
+  // La selección de lote persiste entre re-renders (búsqueda/filtros/refrescos de foto);
+  // solo se purgan ids de instancias que ya no existen (borradas por otra acción).
+  [...selectedInstQRIds].forEach(id => { if (!instanciasData.some(i => i.id === id)) selectedInstQRIds.delete(id); });
   updateInstQRSelectionBar();
   const wrap = document.getElementById('instancias-table');
   if (!wrap) return;
@@ -1802,7 +1804,7 @@ function renderInstancias() {
     const est = inst.estado || 'DISPONIBLE';
     const estColor = estadoColor[est] || 'ok';
     return `<tr>
-      <td style='text-align:center'><input type='checkbox' class='inst-qr-chk' data-id='${inst.id}' onchange='updateInstQRSelection()'></td>
+      <td style='text-align:center'><input type='checkbox' class='inst-qr-chk' data-id='${inst.id}' ${selectedInstQRIds.has(inst.id)?'checked':''} onchange='updateInstQRSelection(this)'></td>
       <td class="td-code" style="font-weight:700"><div style="display:flex;align-items:center;gap:6px">${instThumb(inst.id)}<span>${inst.id}</span></div></td>
       <td style="font-size:11px">${inst.nombre || (item ? item.nombre : '—')}</td>
       <td style="font-size:11px">${inst.sede || '—'}</td>
@@ -3716,9 +3718,11 @@ function toggleAllInstQR(checked) {
   updateInstQRSelectionBar();
 }
 
-function updateInstQRSelection() {
-  selectedInstQRIds.clear();
-  document.querySelectorAll('.inst-qr-chk:checked').forEach(chk => selectedInstQRIds.add(chk.dataset.id));
+function updateInstQRSelection(chk) {
+  // Solo toca el id de este checkbox — no reconstruir desde el DOM visible,
+  // porque bajo un filtro/búsqueda activo eso descartaría lo seleccionado con otro filtro.
+  if (chk.checked) selectedInstQRIds.add(chk.dataset.id);
+  else selectedInstQRIds.delete(chk.dataset.id);
   updateInstQRSelectionBar();
 }
 
