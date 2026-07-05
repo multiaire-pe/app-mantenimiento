@@ -796,10 +796,20 @@ function renderPlanChips(){
   document.querySelectorAll('[data-plan-blq]').forEach(cont => {
     const n = Number(cont.dataset.planBlq);
     const del = planDia.filter(p => p.nBloque === n);
-    cont.innerHTML = del.length ? del.map(p =>
-      '<span class="plan-chip" title="'+_pEsc(p.tarea)+' · '+_pEsc(p.nombreEq)+(p.tecnicoNombre?' → '+_pEsc(p.tecnicoNombre):'')+'">🔧 '+_pEsc(p.tarea)+' <b>· '+_pEsc(p.nombreEq)+'</b>'+(p.tecnicoNombre?' <span style="opacity:.8">👷 '+_pEsc(p.tecnicoNombre)+'</span>':'')
-      + (window.MA && MA.can('editar','itinerario') ? ' <a data-plan-del="'+_pEsc(p._id)+'" title="Quitar del plan">✕</a>' : '')
-      + '</span>').join('') : '';
+    if (!del.length) { cont.innerHTML = ''; return; }
+    // AGRUPADAS POR TÉCNICO (pedido del usuario), no por orden de asignación
+    const grupos = {};
+    del.forEach(p => { const k = p.tecnicoNombre || ''; (grupos[k] = grupos[k] || []).push(p); });
+    cont.innerHTML = Object.keys(grupos).sort((a,b) => (a||'\uffff').localeCompare(b||'\uffff')).map(k => {
+      const chips = grupos[k]
+        .sort((a,b) => String(a.nombreEq).localeCompare(String(b.nombreEq)) || String(a.tarea).localeCompare(String(b.tarea)))
+        .map(p => '<span class="plan-chip" data-tec="'+_pEsc(k)+'" title="'+_pEsc(p.tarea)+' · '+_pEsc(p.nombreEq)+'">🔧 '+_pEsc(p.tarea)+' <b>· '+_pEsc(p.nombreEq)+'</b>'
+          + (window.MA && MA.can('editar','itinerario') ? ' <a data-plan-del="'+_pEsc(p._id)+'" title="Quitar del plan">✕</a>' : '')
+          + '</span>').join('');
+      return '<div style="flex-basis:100%"><div style="font-size:10px;font-weight:700;color:var(--muted2,#667);margin:4px 0 3px">'
+        + (k ? '👷 ' + _pEsc(k) : '👷 Sin técnico asignado')
+        + '</div><div class="plan-chips" style="margin-top:0">' + chips + '</div></div>';
+    }).join('');
   });
 }
 async function quitarPlan(id){
@@ -1479,8 +1489,16 @@ function exportWhatsApp() {
     msg += '⏰ ' + horario + '\n';
     msg += '👷 ' + (personal || 'Sin asignar') + '\n';
     if (detalle) msg += '📝 ' + detalle + '\n';
-    const actsWsp = [...card.querySelectorAll('.plan-chip')].map(c => c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim()).filter(Boolean);
-    if (actsWsp.length) msg += '🔧 *Actividades:*\n' + actsWsp.map(a => '   • ' + a).join('\n') + '\n';
+    const chipsW = [...card.querySelectorAll('.plan-chip')];
+    if (chipsW.length) {
+      const gW = {};
+      chipsW.forEach(c => { const t = c.dataset.tec || ''; (gW[t] = gW[t] || []).push(c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim()); });
+      msg += '🔧 *Actividades:*\n';
+      Object.keys(gW).sort((a,b)=>(a||'\uffff').localeCompare(b||'\uffff')).forEach(t => {
+        msg += '   👷 ' + (t || 'Sin asignar') + '\n';
+        gW[t].forEach(a => { msg += '      • ' + a + '\n'; });
+      });
+    }
     msg += '🔖 Estado: ' + estado + '\n';
     msg += '─'.repeat(30) + '\n';
   });
@@ -1654,12 +1672,18 @@ function buildPrintLayout() {
       html += '<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;color:#8a9ab8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Detalle de trabajo</div>';
       html += '<div style="font-size:12px;line-height:1.5;background:#f5f8ff;padding:8px 12px;border-radius:6px;border-left:3px solid #1B3F8B">' + escI(detalle) + '</div></div>';
     }
-    const actsPrint = [...card.querySelectorAll('.plan-chip')].map(c => c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim()).filter(Boolean);
-    if (actsPrint.length) {
+    const chipsP = [...card.querySelectorAll('.plan-chip')];
+    if (chipsP.length) {
+      const gP = {};
+      chipsP.forEach(c => { const t = c.dataset.tec || ''; (gP[t] = gP[t] || []).push(c.textContent.replace(/✕\s*$/,'').replace(/^🔧\s*/,'').trim()); });
       html += '<div style="grid-column:1/-1"><div style="font-size:9px;font-weight:700;color:#8a9ab8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Actividades de mantenimiento</div>';
-      html += '<div style="display:flex;flex-direction:column;gap:3px">';
-      actsPrint.forEach(a => { html += '<div style="font-size:11px;line-height:1.4;color:#1a2540">🔧 ' + escI(a) + '</div>'; });
-      html += '</div></div>';
+      Object.keys(gP).sort((a,b)=>(a||'\uffff').localeCompare(b||'\uffff')).forEach(t => {
+        html += '<div style="font-size:10px;font-weight:700;color:#1B3F8B;margin:4px 0 2px">👷 ' + escI(t || 'Sin asignar') + '</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:2px">';
+        gP[t].forEach(a => { html += '<div style="font-size:11px;line-height:1.4;color:#1a2540">🔧 ' + escI(a) + '</div>'; });
+        html += '</div>';
+      });
+      html += '</div>';
     }
     html += '</div></div>';
   });
