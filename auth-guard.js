@@ -122,11 +122,15 @@ window.MA = (function () {
 // ── Máscara de URL (decisión de UX 2026-07-02) ────────────────────────────────
 // La barra de direcciones muestra siempre SOLO el dominio (app.multiaire.com.pe),
 // sin /pagina.html. Es cosmético, NO seguridad (cada módulo mantiene su gate de
-// auth + firestore.rules). Consecuencias asumidas: F5, Adelante, duplicar pestaña
-// y restaurar sesión dentro de un módulo vuelven al índice. Los deep-links SÍ
-// abren (la máscara reescribe después de cargar la página), solo que no se pueden
-// copiar de la barra. Se omite en localhost para no estorbar el desarrollo local.
-// Revertir = borrar este bloque.
+// auth + firestore.rules). Los deep-links SÍ abren (la máscara reescribe después
+// de cargar la página), solo que no se pueden copiar de la barra. Se omite en
+// localhost para no estorbar el desarrollo local. Revertir = borrar este bloque.
+//
+// RECARGA DENTRO DE UN MÓDULO (fix 2026-07-05, reporte del usuario): con la URL
+// enmascarada, F5 recargaba "/" y te botaba al índice. Ahora cada módulo recuerda
+// su página en sessionStorage (por pestaña) y el índice, al cargar, te devuelve al
+// módulo recordado. Navegar a propósito (clic en ← Inicio o en cualquier link
+// interno) limpia el recuerdo, así que ir al índice sigue funcionando normal.
 (function () {
   try {
     if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
@@ -135,8 +139,28 @@ window.MA = (function () {
     // Pages (/repo/ y también /repo sin slash, que redirige a /repo/),
     // replaceState('/') cambia la base de los href relativos y rompe la navegación.
     if (location.pathname !== '/' && !/^\/[^/]+\.html?$/i.test(location.pathname)) return;
+
+    var esIndex = location.pathname === '/' || /^\/index\.html?$/i.test(location.pathname);
+    if (esIndex) {
+      // ¿Esta pestaña estaba dentro de un módulo? → volver ahí (fue un F5, no un clic)
+      var rec = sessionStorage.getItem('ma_pagina');
+      if (rec && /^\/[^/]+\.html?$/i.test(rec) && !/^\/index\.html?$/i.test(rec)) {
+        location.replace(rec);
+        return;
+      }
+    } else {
+      sessionStorage.setItem('ma_pagina', location.pathname);
+    }
+
     if (location.pathname !== '/' || location.search || location.hash) {
       history.replaceState(null, '', '/');
     }
-  } catch (e) { /* sin history API (iframe sandbox): se deja la URL tal cual */ }
+
+    // Clic en cualquier link interno = navegación A PROPÓSITO → olvidar el módulo
+    // (el destino se recuerda solo al cargar; el índice no recuerda nada).
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (a && a.host === location.host) sessionStorage.removeItem('ma_pagina');
+    }, true);
+  } catch (e) { /* sin history/sessionStorage (iframe sandbox): URL tal cual */ }
 })();
