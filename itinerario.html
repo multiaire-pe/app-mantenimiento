@@ -929,6 +929,7 @@ async function pendientesDeSede(sede, fecha){
 async function abrirPanelActs(nBloque, tienda){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
   _panelBloque = nBloque;
+  window._paTienda = String(tienda||'').trim();   // para vetar drops a bloques de OTRA sede
   _paSel.clear(); _paActualizarBoton();   // selección limpia al abrir (Council)
   const fecha = document.getElementById('fecha-input').value;
   document.getElementById('pa-sub').textContent = tienda + ' · Bloque ' + nBloque + ' · ' + fecha + ' — marca las actividades y asígnalas juntas (o arrastra una a otro bloque)';
@@ -1031,6 +1032,15 @@ async function asignarPlan(pid, nBloqueDestino){
   const p = (window._paPend||{})[pid]; if(!p) return;
   const nBloque = nBloqueDestino != null ? nBloqueDestino : _panelBloque;
   if(nBloque == null) return;
+  // La actividad pertenece a SU sede: un drop en un bloque de otra zona guardaría
+  // datos incoherentes (hallazgo del Council en la integración) → se rechaza.
+  if (nBloqueDestino != null) {
+    const tiendaDest = (document.querySelector('.bloque-card[data-blq="'+nBloque+'"] .bloque-tienda')?.textContent || '').trim();
+    if (tiendaDest !== (window._paTienda || '')) {
+      toast('Esa actividad es de "' + (window._paTienda||'') + '" — suéltala en un bloque de esa misma zona', 'err');
+      return;
+    }
+  }
   const personal = personalDeBloque(nBloque);
   if (personal.length <= 1) return _finalizarAsignacion(p, nBloque, personal[0] || null);
   // selector de técnico
