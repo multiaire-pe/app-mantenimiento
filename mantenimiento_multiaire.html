@@ -1116,6 +1116,14 @@ function updateStatusBar(stats) {
 // ── CHECKBOX HANDLERS ────────────────────────────────────────────────────────
 // Bitácora de registros (tab Historial): un evento por acción — quién/qué/cuándo.
 // Fire-and-forget: si falla no interrumpe el marcado (el checklist es lo primario).
+// Lo ejecutado sale del plan del itinerario en automático (ids determinísticos)
+function limpiarPlanDe(eqId, idxs) {
+  try {
+    const [, periodo, anio] = _mttoKey().split('|');
+    idxs.forEach(i => window.__db.collection('mtto_plan').doc(`${eqId}|${periodo}|${anio}|${i}`).delete().catch(()=>{}));
+  } catch(e) { /* nunca romper el marcado */ }
+}
+
 function logRegistro(eqId, actividades, done) {
   try {
     const eq = sedeEquipos.find(e => e.eq_id === eqId);
@@ -1135,6 +1143,7 @@ function toggleSoloMarcar(eqId, checked) {
   if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   tareaStatus[eqId] = checked;
   logRegistro(eqId, ['(equipo completo)'], checked);
+  if (checked) { const eq = sedeEquipos.find(e => e.eq_id === eqId); const n = eq ? (actividadesDe(eq).tareas || []).length : 0; limpiarPlanDe(eqId, Array.from({length: n}, (_, i) => i)); }
   markDirty(eqId);
   renderMain();
   updateStats();
@@ -1147,6 +1156,7 @@ function toggleTarea(eqId, idx, checked) {
   { const eq = sedeEquipos.find(e => e.eq_id === eqId);
     const acts = eq ? (actividadesDe(eq).tareas || []) : [];
     logRegistro(eqId, [acts[idx] || ('Actividad ' + (idx+1))], checked); }
+  if (checked) limpiarPlanDe(eqId, [idx]);
   markDirty(eqId);
   renderMain();
   updateStats();
