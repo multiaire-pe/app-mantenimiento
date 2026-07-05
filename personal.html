@@ -163,9 +163,10 @@ tr:hover td{background:var(--surface2)}
   .modal{padding:16px}
   .fieldset{padding:12px}
   /* Tabla: oculta columnas secundarias (Documento·Área·Correo) en móvil; el resto + scroll-x */
-  table td:nth-child(4),table th:nth-child(4),
-  table td:nth-child(6),table th:nth-child(6),
-  table td:nth-child(8),table th:nth-child(8){display:none}
+  /* solo el DIRECTORIO oculta columnas secundarias; la matriz de alertas (4 col) muestra todas */
+  #view-directorio table td:nth-child(4),#view-directorio table th:nth-child(4),
+  #view-directorio table td:nth-child(6),#view-directorio table th:nth-child(6),
+  #view-directorio table td:nth-child(8),#view-directorio table th:nth-child(8){display:none}
 }
 </style>
 </head>
