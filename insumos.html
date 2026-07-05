@@ -2088,7 +2088,7 @@ function openModalInsumo(id){
     document.getElementById('fi-codigo').value=i.codigo||'';
     document.getElementById('fi-marca').value=i.marca||'';
     document.getElementById('fi-modelo').value=i.modelo||'';
-    document.getElementById('fi-stock-min').value=(i.stockMin??'');
+    document.getElementById('fi-stock-min').value=i.stockMin||'';
     document.getElementById('fi-tipo-cant').value=i.tipoCantidad||'UNIDAD';
   }else{
     document.getElementById('modal-insumo-title').textContent='Nuevo ítem';
