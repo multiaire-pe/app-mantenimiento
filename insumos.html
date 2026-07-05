@@ -5654,9 +5654,13 @@ document.addEventListener('click', e => {
   if (resA && inputA && !inputA.contains(e.target) && !resA.contains(e.target)) resA.style.display = 'none';
 });
 
-// Cerrar modales al hacer clic fuera
+// Cerrar modales al hacer clic fuera (fallback para los modales que no tienen el onclick inline propio,
+// p.ej. modal-insumo/modal-inst-edit). Reutiliza closeModal() en vez de tocar el estilo a mano: los modales
+// que SÍ tienen su onclick inline reciben esta llamada también, pero closeModal() es idempotente (no rompe
+// nada llamarlo dos veces). Antes esto ponía style.display='none' directo en el elemento, que pisaba la clase
+// CSS .open y dejaba el modal sin poder reabrirse la próxima vez (closeModal() sí limpia ese estilo inline).
 document.querySelectorAll('.modal-overlay').forEach(o => {
-  o.addEventListener('click', e => { if (e.target === o) { o.style.display='none'; o.classList.remove('open'); }});
+  o.addEventListener('click', e => { if (e.target === o) closeModal(o.id); });
 });
 </script>
 </body>
