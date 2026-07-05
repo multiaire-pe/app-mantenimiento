@@ -916,12 +916,22 @@ async function pendientesDeSede(sede, fecha){
   // planificando, que sigue viva (no se ejecutó — el sweep borra las hechas), NO
   // bloquea: la actividad reaparece como pendiente marcada "⏪ del dd/mm" y al
   // asignarla se MUEVE a este día (id determinístico, sin duplicar).
+  // CUÁNDO se considera VENCIDA (regla del usuario, HORA DE PERÚ): los días ya
+  // pasados completos, a toda hora; el día EN CURSO recién desde las 19:00 de Lima
+  // (antes, el técnico sigue en cancha y no debe ofrecerse para re-planificar).
+  // Si la cumple antes de medianoche, el registro borra la asignación por su id
+  // único aunque ya se haya movido — queda como completada, no como arrastrada.
+  const _limaParts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  const _lp = (t) => (_limaParts.find((x) => x.type === t) || {}).value || '00';
+  const _limaHoy = `${_lp('year')}-${_lp('month')}-${_lp('day')}`;
+  const _limaHora = Number(_lp('hour')) + Number(_lp('minute')) / 60;
+  const yaVencio = (f) => f < _limaHoy || (f === _limaHoy && _limaHora >= 19);
   const arrastradas = {};
   const planificadas = new Set(planS.docs.filter(d => {
     const r = d.data();
     if ((r.itiId || '') !== _idAct) {
-      if (r.fecha && String(r.fecha) < String(fecha || '')) { arrastradas[d.id] = r.fecha; return false; }
-      return true;   // asignada en otro día vigente/futuro → sigue bloqueando
+      if (r.fecha && String(r.fecha) < String(fecha || '') && yaVencio(String(r.fecha))) { arrastradas[d.id] = r.fecha; return false; }
+      return true;   // asignada en otro día vigente/futuro (o de hoy antes de las 19:00) → sigue bloqueando
     }
     return Number(r.itiVersion ?? 1) === _vAct;
   }).map(d => d.id));
