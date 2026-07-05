@@ -306,6 +306,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>insumos_movimientos.csv</div>
             <div class="backup-file"><span></span>insumos_instancias_fotos.csv</div>
             <div class="backup-file"><span></span>insumos_movimientos_fotos.csv</div>
+            <div class="backup-file"><span></span>insumos_catalogo_fotos.csv</div>
             <div class="backup-file"><span></span>proveedores.csv</div>
             <div class="backup-file"><span></span>compras.csv</div>
             <div class="backup-file"><span></span>manta_equipos.csv</div>
@@ -906,7 +907,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
@@ -927,6 +928,7 @@ async function exportBackup() {
       window.__db.collection('insumos_movimientos').get(),
       window.__db.collection('insumos_instancias_fotos').get(),
       window.__db.collection('insumos_movimientos_fotos').get(),
+      window.__db.collection('insumos_catalogo_fotos').get(),
       window.__db.collection('proveedores').get(),
       window.__db.collection('compras').get(),
       window.__db.collection('manta_equipos').get(),
@@ -1111,6 +1113,14 @@ async function exportBackup() {
     });
     zip.file('insumos_movimientos_fotos.csv', [insMovFotoHeaders.join(','), ...insMovFotoRows].join('\n'));
 
+    // 13c. Insumos — foto de referencia por ítem de catálogo (base64; colección aparte; las instancias sin foto propia la heredan)
+    const insCatFotoHeaders = ['ID','FOTO'];
+    const insCatFotoRows = insCatFotoSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.foto||''].map(escapeCSV).join(',');
+    });
+    zip.file('insumos_catalogo_fotos.csv', [insCatFotoHeaders.join(','), ...insCatFotoRows].join('\n'));
+
     // 14. Proveedores (directorio)
     const provHeaders = ['ID','RUC','RAZON_SOCIAL','NOMBRE_COMERCIAL','RUBRO','TELEFONO','EMAIL','CONTACTO','DIRECCION','CONDICIONES_PAGO','BANCO','CUENTA','NOTAS','ACTIVO'];
     const provRows = provSnap.docs.map(d => {
@@ -1256,7 +1266,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1572,6 +1582,14 @@ async function confirmImport() {
       const conFoto = rows.filter(r => r.GUIA_FOTO || r.ENTREGA_FOTO);
       await batchWrite('insumos_movimientos_fotos', conFoto, r => { const o={_docId:r.ID, movimientoId:r.ID}; if(r.GUIA_NUMERO)o.guiaNumero=r.GUIA_NUMERO; if(r.GUIA_FOTO)o.guiaFoto=r.GUIA_FOTO; if(r.ENTREGA_FOTO)o.entregaFoto=r.ENTREGA_FOTO; if(r.CREATED_AT)o.createdAt=r.CREATED_AT; if(r.CREATED_BY)o.createdBy=r.CREATED_BY; return o; });
       addLog('✓ Fotos de movimientos importadas (' + conFoto.length + ')', 'ok');
+    }
+
+    // 13c. Insumos — foto de referencia por ítem de catálogo (base64)
+    if (pendingImport.files['insumos_catalogo_fotos.csv']) {
+      addLog('🖼 Importando fotos de referencia del catálogo...', 'info');
+      const rows = parseCSV(pendingImport.files['insumos_catalogo_fotos.csv']);
+      await batchWrite('insumos_catalogo_fotos', rows.filter(r=>r.FOTO), r => ({_docId:r.ID, itemId:r.ID, foto:r.FOTO}));
+      addLog('✓ Fotos de referencia del catálogo importadas (' + rows.filter(r=>r.FOTO).length + ')', 'ok');
     }
 
     // 14. Proveedores (directorio)
