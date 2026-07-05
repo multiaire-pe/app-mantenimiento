@@ -809,12 +809,10 @@ async function quitarPlan(id){
 async function pendientesDeSede(sede, fecha){
   const { periodo, anio } = periodoDe(fecha);
   const { getDocs, getDoc, doc, collection } = window.__fb;
-  const [invS, tcS, ovS, mantS, planS] = await Promise.all([
+  const [invS, tcS, ovS] = await Promise.all([
     getDocs(collection(window.__db, 'inventario')),
     getDocs(collection(window.__db, 'tareas_config')),
     getDocs(collection(window.__db, 'mtto_actividades_equipo')),
-    getDoc(doc(window.__db, 'mantenimiento', `${sede}|${periodo}|${anio}`)),
-    window.__db.collection('mtto_plan').where('sede','==',String(sede||'').toUpperCase()).where('periodo','==',periodo).where('anio','==',anio).get(),
   ]);
   const plantillas = {}; tcS.docs.forEach(d => { plantillas[d.data().tipo] = d.data().tareas || []; });
   const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
@@ -835,7 +833,14 @@ async function pendientesDeSede(sede, fecha){
     }
   }
   const out = [];
+  window._paSede = target || '';   // la sede REAL: la usan asignación y badges
   if (!target) return out;
+  // hechos y planificados con la sede RESUELTA (hallazgo del Council: con la cruda
+  // "RIPLEY PLAZA NORTE" el doc del período y el plan no matcheaban)
+  const [mantS, planS] = await Promise.all([
+    getDoc(doc(window.__db, 'mantenimiento', `${target}|${periodo}|${anio}`)),
+    window.__db.collection('mtto_plan').where('sede','==',target).where('periodo','==',periodo).where('anio','==',anio).get(),
+  ]);
   invS.docs.forEach(d => {
     const eq = d.data();
     if((eq.sede||'').toUpperCase() !== target || !eq.eq_id) return;
@@ -874,9 +879,10 @@ function cerrarPanelActs(){ document.getElementById('pa-overlay').style.display=
 
 function personalDeBloque(n){
   const b = (window._bloquesDia||[]).find(x => x.nBloque === n) || {};
+  const normP = (x) => !x ? null : (typeof x === 'object' ? (x.nombre ? x : null) : { id:'', nombre:String(x) });
   const lista = Array.isArray(b.personal) && b.personal.length
-    ? b.personal
-    : [b.personal1, b.personal2, b.personal3, b.personal4].map(nm => nm ? { id:'', nombre:nm } : null);
+    ? b.personal.map(normP)
+    : [b.personal1, b.personal2, b.personal3, b.personal4].map(normP);
   return (lista||[]).filter(p => p && String(p.nombre||'').trim());
 }
 
@@ -905,11 +911,10 @@ async function _finalizarAsignacion(p, nBloque, tec){
   const fecha = document.getElementById('fecha-input').value;
   const { periodo, anio } = periodoDe(fecha);
   let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
-  const tiendaDest = (document.querySelector('.bloque-card[data-blq="'+nBloque+'"] .bloque-tienda')?.textContent || '').trim();
   try{
     await window.__db.collection('mtto_plan').doc(p.pid).set({
       eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, tareaIdx: p.idx, tarea: p.tarea,
-      sede: tiendaDest.toUpperCase(), periodo, anio, fecha,
+      sede: window._paSede || '', periodo, anio, fecha,
       itiId: currentIti?.id || '', nBloque,
       tecnicoId: tec?.id || '', tecnicoNombre: tec?.nombre || '',
       asignadoPor: _by, ts: new Date().toISOString(),
