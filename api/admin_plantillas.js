@@ -40,14 +40,15 @@ export default async function handler(req, res) {
     let decoded;
     try { decoded = await admin.auth().verifyIdToken(idToken); }
     catch { return res.status(401).json({ error: 'Sesión no válida.' }); }
-    if (!SUPER_ADMIN_EMAILS.includes(String(decoded.email || '').toLowerCase())) {
+    if (decoded.email_verified !== true || !SUPER_ADMIN_EMAILS.includes(String(decoded.email || '').toLowerCase())) {
       return res.status(403).json({ error: 'Solo super admin.' });
     }
 
     const token = process.env.WHATSAPP_TOKEN;
     if (!token) return res.status(500).json({ error: 'WHATSAPP_TOKEN no configurado en este entorno.' });
 
-    const accion = (req.body || {}).accion || 'crear';
+    const accion = (req.body || {}).accion;
+    if (!['crear', 'estado'].includes(accion)) return res.status(400).json({ error: "accion debe ser 'crear' o 'estado'" });
     if (accion === 'estado') {
       const r = await fetch(`${GRAPH}/${WABA}/message_templates?fields=name,status,language&limit=50`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -64,7 +65,8 @@ export default async function handler(req, res) {
         body: JSON.stringify(tpl),
       });
       const j = await r.json();
-      resultados.push({ plantilla: tpl.name, ok: r.ok, respuesta: r.ok ? { id: j.id, status: j.status } : (j.error || j) });
+      const err = j.error || {};
+      resultados.push({ plantilla: tpl.name, ok: r.ok, respuesta: r.ok ? { id: j.id, status: j.status } : { code: err.code, message: err.error_user_msg || err.message || 'error' } });
     }
     return res.status(200).json({ resultados });
   } catch (e) {
