@@ -13,7 +13,7 @@ const PLANTILLAS = [
     name: 'marcaje_asistencia', language: 'es', category: 'UTILITY',
     components: [{
       type: 'BODY',
-      text: '🕐 *Marcaje de asistencia — MultiAire*\nTipo: {{1}}\nColaborador: {{2}}\nSede: {{3}}\nHora: {{4}}\nUbicación: {{5}}\nAviso automático del bot de asistencia.',
+      text: '🕐 *Marcaje de {{1}}* — {{2}}\n🏪 {{3}}\n🕐 {{4}} · 📍 {{5}}',
       example: { body_text: [['Entrada', 'RAFAEL SANTOS', 'PLAZA NORTE', '08:30', 'en la sede (a 120 m)']] },
     }],
   },
@@ -21,7 +21,7 @@ const PLANTILLAS = [
     name: 'registro_mtto', language: 'es', category: 'UTILITY',
     components: [{
       type: 'BODY',
-      text: '🔧 *Registro de mantenimiento — MultiAire*\nTécnico: {{1}}\nEquipo: {{2}}\nSede: {{3}}\nPeríodo: {{4}}\nActividades realizadas: {{5}}\nAviso automático del bot de mantenimiento.',
+      text: '🔧 *Registro de mantenimiento* — {{1}}\n❄️ {{2}} · 🏪 {{3}}\n📅 Período {{4}}\n✅ {{5}}',
       example: { body_text: [['RAFAEL SANTOS', 'AA Roof Top 05', 'PLAZA NORTE', 'JUL-AGO 2026', 'Lavado de filtros · Limpieza de siroco']] },
     }],
   },
