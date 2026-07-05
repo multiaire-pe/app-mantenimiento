@@ -920,7 +920,7 @@ async function pendientesDeSede(sede, fecha){
   const planificadas = new Set(planS.docs.filter(d => {
     const r = d.data();
     if ((r.itiId || '') !== _idAct) {
-      if (String(r.fecha || '') < String(fecha || '')) { arrastradas[d.id] = r.fecha; return false; }
+      if (r.fecha && String(r.fecha) < String(fecha || '')) { arrastradas[d.id] = r.fecha; return false; }
       return true;   // asignada en otro día vigente/futuro → sigue bloqueando
     }
     return Number(r.itiVersion ?? 1) === _vAct;
