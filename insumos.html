@@ -1736,11 +1736,16 @@ function fotoDeInstancia(inst){
   return instFotos[inst.id] || catFotos[inst.itemId] || null;
 }
 
+// Solo data-URLs de imagen llegan a un src (charset base64 puro: sin comillas posibles).
+// Un backup/import manipulado no puede inyectar atributos (hallazgo Crítico del Council).
+function fotoSrc(f){ return /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(String(f||'')) ? f : ''; }
+function escB(v){ return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
 // Miniatura de la foto de una instancia (o placeholder clicable para agregar)
 function instThumb(id){
   const f = fotoDeInstancia(instanciasData.find(x=>x.id===id));
   return f
-    ? `<img class="inst-thumb" src="${f}" onclick="event.stopPropagation();openInstFotoLightbox('${id}')" title="Ampliar foto" alt="">`
+    ? `<img class="inst-thumb" src="${fotoSrc(f)}" onclick="event.stopPropagation();openInstFotoLightbox('${id}')" title="Ampliar foto" alt="">`
     : `<div class="inst-thumb-empty" onclick="openEditInstancia('${id}')" title="Sin foto — clic para agregar">📷</div>`;
 }
 
@@ -1835,12 +1840,12 @@ function renderAlerts(){
   if(sin.length){
     const open=alertsExpanded.sin;
     h+=`<div class="alert-banner alert-red" style="cursor:pointer" onclick="toggleAlertGroup('sin')">⛔ <strong>${sin.length} sin stock</strong><span style="margin-left:auto;font-size:11px;white-space:nowrap">${open?'▾ ocultar':'▸ ver'}</span></div>`;
-    if(open) h+=`<div class="alert-detail" style="margin:-4px 0 8px;padding:8px 13px;font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:8px">${sin.map(i=>i.nombre).join(', ')}</div>`;
+    if(open) h+=`<div class="alert-detail" style="margin:-4px 0 8px;padding:8px 13px;font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:8px">${sin.map(i=>escB(i.nombre)).join(', ')}</div>`;
   }
   if(bajo.length){
     const open=alertsExpanded.bajo;
     h+=`<div class="alert-banner alert-yellow" style="cursor:pointer" onclick="toggleAlertGroup('bajo')">⚠️ <strong>${bajo.length} stock bajo</strong><span style="margin-left:auto;font-size:11px;white-space:nowrap">${open?'▾ ocultar':'▸ ver'}</span></div>`;
-    if(open) h+=`<div class="alert-detail" style="margin:-4px 0 8px;padding:8px 13px;font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:8px">${bajo.map(i=>i.nombre).join(', ')}</div>`;
+    if(open) h+=`<div class="alert-detail" style="margin:-4px 0 8px;padding:8px 13px;font-size:11px;color:var(--muted2);background:var(--surface2);border-radius:8px">${bajo.map(i=>escB(i.nombre)).join(', ')}</div>`;
   }
   document.getElementById('alert-banners').innerHTML=h;
 }
@@ -1961,7 +1966,7 @@ function renderMovimientos(){
     // Adjuntos: N° de guía de remisión + miniaturas de fotos (guía/entrega), clicables → lightbox
     const guiaTxt = m.guiaNumero ? `<span style="font-size:10px;color:var(--blue)"> · 📎 Guía ${m.guiaNumero}</span>` : '';
     const mf = movFotos[m.id];
-    const fotosThumbs = mf ? `<div class="mov-fotos">${mf.guia?`<img src="${mf.guia}" class="mov-foto-thumb" title="Foto de guía — ampliar" onclick="openMovFoto('${m.id}','guia')">`:''}${mf.entrega?`<img src="${mf.entrega}" class="mov-foto-thumb" title="Foto de entrega — ampliar" onclick="openMovFoto('${m.id}','entrega')">`:''}</div>` : '';
+    const fotosThumbs = mf ? `<div class="mov-fotos">${mf.guia?`<img src="${fotoSrc(mf.guia)}" class="mov-foto-thumb" title="Foto de guía — ampliar" onclick="openMovFoto('${m.id}','guia')">`:''}${mf.entrega?`<img src="${fotoSrc(mf.entrega)}" class="mov-foto-thumb" title="Foto de entrega — ampliar" onclick="openMovFoto('${m.id}','entrega')">`:''}</div>` : '';
     return `<div class="mov-item ${isPend?'pendiente':''}">
       <div class="mov-icon ${tCls}">${icons[m.tipo]||'📦'}</div>
       <div class="mov-body">
@@ -2186,7 +2191,9 @@ async function deleteInsumo(id,nombre){
   if(!confirm(`¿Eliminar "${nombre}"?`))return;
   try{
     await db.collection('insumos_catalogo').doc(id).delete();
-    if (catFotos[id]) { await db.collection('insumos_catalogo_fotos').doc(id).delete(); delete catFotos[id]; }
+    // incondicional: el mapa local puede no tener la foto cargada (hallazgo del Council)
+    await db.collection('insumos_catalogo_fotos').doc(id).delete().catch(()=>{});
+    delete catFotos[id];
     catalogoData=catalogoData.filter(x=>x.id!==id);
     toast('Ítem eliminado','ok');renderAll();
   }catch(e){toast('Error: '+e.message,'err');}
@@ -2887,7 +2894,7 @@ function refreshLoteFotoPreview(tipo) {
   if (!box) return;
   const f = loteFotos[tipo];
   box.innerHTML = f
-    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openFotoSrc(loteFotos['${tipo}'])" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeLoteFoto('${tipo}')" title="Quitar foto">🗑</button>`
+    ? `<img src="${fotoSrc(f)}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openFotoSrc(loteFotos['${tipo}'])" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeLoteFoto('${tipo}')" title="Quitar foto">🗑</button>`
     : `<div class="inst-foto-empty">📷</div>`;
 }
 
@@ -4105,7 +4112,7 @@ function refreshInstFotoPreview() {
   const inst = instanciasData.find(x => x.id === editingInstanciaId);
   const f = fotoDeInstancia(inst);
   box.innerHTML = f
-    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openInstFotoLightbox(editingInstanciaId)" title="Ampliar">`
+    ? `<img src="${fotoSrc(f)}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openInstFotoLightbox(editingInstanciaId)" title="Ampliar">`
       + (propia
         ? `<button type="button" class="btn btn-sm" onclick="removeInstanciaFoto()" title="Quitar foto">🗑</button>`
         : `<span style="font-size:11px;color:var(--muted2)" title="Heredada del catálogo — sube una foto para que esta instancia use la suya propia">📎 Del catálogo</span>`)
@@ -4165,7 +4172,7 @@ function refreshCatFotoPreview() {
   if (!box) return;
   const f = editingInsumoId ? catFotos[editingInsumoId] : pendingCatFoto;
   box.innerHTML = f
-    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openFotoSrc(${editingInsumoId ? `catFotos['${editingInsumoId}']` : 'pendingCatFoto'})" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeCatalogoFoto()" title="Quitar foto">🗑</button>`
+    ? `<img src="${fotoSrc(f)}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openFotoSrc(editingInsumoId ? catFotos[editingInsumoId] : pendingCatFoto)" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeCatalogoFoto()" title="Quitar foto">🗑</button>`
     : `<div class="inst-foto-empty">📷</div>`;
 }
 

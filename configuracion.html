@@ -1278,6 +1278,23 @@ async function processZip(file) {
 
     const mode = document.querySelector('input[name="import-mode"]:checked').value;
     addLog('Modo: ' + (mode === 'replace' ? '🔄 Reemplazar todo' : '🔀 Fusionar'), 'info');
+
+    // "Reemplazar todo" fiel al backup: colecciones NUEVAS que un ZIP viejo no trae se
+    // VACÍAN — antes quedaban datos fantasma (hallazgo del Council, cierra el backlog).
+    if (mode === 'replace') {
+      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'insumos_catalogo_fotos'];
+      for (const colN of NUEVAS) {
+        if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
+        const _exN = await window.__db.collection(colN).get();
+        if (!_exN.size) continue;
+        for (let i = 0; i < _exN.docs.length; i += 450) {
+          const _bN = window.__db.batch();
+          _exN.docs.slice(i, i + 450).forEach(d => _bN.delete(d.ref));
+          await _bN.commit();
+        }
+        addLog('🧹 ' + colN + ' vaciada (' + _exN.size + ' docs; el backup no la incluía)', 'info');
+      }
+    }
     addLog('Listo para importar. Confirma para proceder.', 'info');
     document.getElementById('confirm-btn').style.display = 'block';
 
