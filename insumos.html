@@ -790,7 +790,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
     <h2 id="modal-insumo-title">Nuevo ítem</h2>
     <div class="modal-sub">El stock inicial se registra después como una <strong>Entrada</strong> desde el sidebar.</div>
     <div class="form-grid">
-      <div class="form-group full" id="fi-foto-wrap" style="display:none">
+      <div class="form-group full" id="fi-foto-wrap">
         <div class="form-label">Foto de referencia <span style="color:var(--muted);font-weight:400">(opcional — las instancias sin foto propia la usan por defecto)</span></div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div id="fi-foto-box" style="display:flex;align-items:center;gap:8px"></div>
@@ -2079,7 +2079,6 @@ function validarCodigoItem(){
 
 function openModalInsumo(id){
   editingInsumoId=id;
-  document.getElementById('fi-foto-wrap').style.display = id ? 'block' : 'none';
   if(id){
     const i=catalogoData.find(x=>x.id===id);if(!i)return;
     document.getElementById('modal-insumo-title').textContent='Editar ítem';
@@ -2091,7 +2090,6 @@ function openModalInsumo(id){
     document.getElementById('fi-modelo').value=i.modelo||'';
     document.getElementById('fi-stock-min').value=i.stockMin||'';
     document.getElementById('fi-tipo-cant').value=i.tipoCantidad||'UNIDAD';
-    refreshCatFotoPreview();
   }else{
     document.getElementById('modal-insumo-title').textContent='Nuevo ítem';
     ['fi-nombre','fi-codigo','fi-marca','fi-modelo','fi-stock-min'].forEach(x=>document.getElementById(x).value='');
@@ -2099,7 +2097,9 @@ function openModalInsumo(id){
     document.getElementById('fi-cat').value='INSUMO';
     document.getElementById('fi-unidad').value='UND';
     document.getElementById('fi-tipo-cant').value='UNIDAD';
+    pendingCatFoto=null;
   }
+  refreshCatFotoPreview();
   toggleStockMinField();
   document.getElementById('modal-insumo').classList.add('open');
   // Autogenerar código si es nuevo ítem
@@ -2132,7 +2132,18 @@ async function saveInsumo(){
     const prevItem=editingInsumoId?catalogoData.find(x=>x.id===docId):null;
     const nombreCambiado=!!prevItem && prevItem.nombre!==nombre;
     await db.collection('insumos_catalogo').doc(docId).set(item,{merge:!!editingInsumoId});
-    if(!editingInsumoId)catalogoData.push({id:docId,...item});
+    if(!editingInsumoId){
+      catalogoData.push({id:docId,...item});
+      // Si se adjuntó una foto de referencia antes de guardar (ítem nuevo), recién ahora se sube — ya existe el docId
+      if(pendingCatFoto){
+        await db.collection('insumos_catalogo_fotos').doc(docId).set({
+          foto:pendingCatFoto, itemId:docId,
+          updatedAt:new Date().toISOString(), updatedBy:maUser.email
+        });
+        catFotos[docId]=pendingCatFoto;
+        pendingCatFoto=null;
+      }
+    }
     else{const idx=catalogoData.findIndex(x=>x.id===docId);if(idx>=0)catalogoData[idx]={id:docId,...item};}
     // Propagar el nuevo nombre a las instancias hijas (itemId === docId) — antes quedaban con el nombre viejo
     let nProp=0;
@@ -4131,46 +4142,61 @@ async function removeInstanciaFoto() {
   } catch(e) { toast('Error: ' + (e.message || e), 'err'); }
 }
 
+// Foto de referencia de un ítem NUEVO (aún sin guardar): se queda en memoria y se sube recién al confirmar el ítem (ver saveInsumo)
+let pendingCatFoto = null;
+
 // Refresca la vista previa de la foto de referencia en el modal de catálogo
 function refreshCatFotoPreview() {
   const box = document.getElementById('fi-foto-box');
   if (!box) return;
-  const f = catFotos[editingInsumoId];
+  const f = editingInsumoId ? catFotos[editingInsumoId] : pendingCatFoto;
   box.innerHTML = f
-    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openFotoSrc(catFotos['${editingInsumoId}'])" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeCatalogoFoto()" title="Quitar foto">🗑</button>`
+    ? `<img src="${f}" class="inst-foto-preview" alt="" style="cursor:zoom-in" onclick="openFotoSrc(${editingInsumoId ? `catFotos['${editingInsumoId}']` : 'pendingCatFoto'})" title="Ampliar"><button type="button" class="btn btn-sm" onclick="removeCatalogoFoto()" title="Quitar foto">🗑</button>`
     : `<div class="inst-foto-empty">📷</div>`;
 }
 
-// Sube/reemplaza la foto de referencia del ítem de catálogo (colección aparte insumos_catalogo_fotos)
+// Sube/reemplaza la foto de referencia del ítem de catálogo. Si el ítem ya existe, se sube de inmediato
+// (colección aparte insumos_catalogo_fotos); si es un ítem nuevo sin guardar, se queda en memoria.
 async function setCatalogoFoto(file) {
-  if(!can('editarItem')){toast('Sin permisos','err');return;}
-  if (!file || !editingInsumoId) return;
+  if(!can('crearItem')&&!can('editarItem')){toast('Sin permisos','err');return;}
+  if (!file) return;
   if (!/^image\//.test(file.type)) { toast('El archivo no es una imagen', 'err'); return; }
   try {
     toast('Procesando foto...');
     const dataUrl = await compressSquare(file, 480, 0.8);
-    await db.collection('insumos_catalogo_fotos').doc(editingInsumoId).set({
-      foto: dataUrl, itemId: editingInsumoId,
-      updatedAt: new Date().toISOString(), updatedBy: maUser ? maUser.email : ''
-    });
-    catFotos[editingInsumoId] = dataUrl;
+    if (editingInsumoId) {
+      await db.collection('insumos_catalogo_fotos').doc(editingInsumoId).set({
+        foto: dataUrl, itemId: editingInsumoId,
+        updatedAt: new Date().toISOString(), updatedBy: maUser ? maUser.email : ''
+      });
+      catFotos[editingInsumoId] = dataUrl;
+      renderAll();
+      toast('✓ Foto de referencia guardada — las instancias sin foto propia ya la reflejan', 'ok');
+    } else {
+      pendingCatFoto = dataUrl;
+      toast('✓ Foto lista — se guarda junto con el ítem', 'ok');
+    }
     refreshCatFotoPreview();
-    renderAll();
-    toast('✓ Foto de referencia guardada — las instancias sin foto propia ya la reflejan', 'ok');
   } catch(e) { toast('Error con la foto: ' + (e.message || e), 'err'); }
 }
 
 async function removeCatalogoFoto() {
-  if(!can('editarItem')){toast('Sin permisos','err');return;}
-  if (!editingInsumoId || !catFotos[editingInsumoId]) return;
-  if (!confirm('¿Quitar la foto de referencia del catálogo?\nLas instancias sin foto propia dejarán de mostrarla.')) return;
-  try {
-    await db.collection('insumos_catalogo_fotos').doc(editingInsumoId).delete();
-    delete catFotos[editingInsumoId];
+  if(!can('crearItem')&&!can('editarItem')){toast('Sin permisos','err');return;}
+  if (editingInsumoId) {
+    if (!catFotos[editingInsumoId]) return;
+    if (!confirm('¿Quitar la foto de referencia del catálogo?\nLas instancias sin foto propia dejarán de mostrarla.')) return;
+    try {
+      await db.collection('insumos_catalogo_fotos').doc(editingInsumoId).delete();
+      delete catFotos[editingInsumoId];
+      refreshCatFotoPreview();
+      renderAll();
+      toast('Foto de referencia eliminada', 'ok');
+    } catch(e) { toast('Error: ' + (e.message || e), 'err'); }
+  } else {
+    if (!pendingCatFoto) return;
+    pendingCatFoto = null;
     refreshCatFotoPreview();
-    renderAll();
-    toast('Foto de referencia eliminada', 'ok');
-  } catch(e) { toast('Error: ' + (e.message || e), 'err'); }
+  }
 }
 
 function openEditInstancia(instId) {
