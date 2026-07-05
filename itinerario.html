@@ -863,11 +863,19 @@ async function pendientesDeSede(sede, fecha){
     window.__db.collection('mtto_plan').where('sede','==',target).where('periodo','==',periodo).where('anio','==',anio).get(),
   ]);
   const md = mantS.exists ? mantS.data() : {};
-  const ts = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } })(md.tareaStatus);
+  const _safe = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } });
+  const ts = _safe(md.tareaStatus);
+  // SOLO los equipos SELECCIONADOS para el período en la app de Mantenimiento
+  // (pedido del usuario: el itinerario planifica lo que Mantenimiento decidió trabajar,
+  // no todo el inventario de la sede)
+  const sel = _safe(md.seleccionados);
+  const haySeleccion = Object.keys(sel).some(k => sel[k]);
+  window._paSinSeleccion = !haySeleccion;
   const planificadas = new Set(planS.docs.map(d => d.id));
   invS.docs.forEach(d => {
     const eq = d.data();
     if((eq.sede||'').toUpperCase() !== target || !eq.eq_id) return;
+    if(!sel[eq.eq_id]) return;   // no seleccionado para el período → no se planifica
     const ov = ovs[eq.eq_id], quit = new Set(ov?.quitadas || []);
     const acts = (plantillas[eq.tipo] || []).filter(t => !quit.has(t)).concat((ov?.agregadas || []).map(a => a.nombre));
     const st = ts[eq.eq_id];
@@ -896,7 +904,9 @@ async function abrirPanelActs(nBloque, tienda){
       if(p.nombreEq !== eqPrev){ eqPrev = p.nombreEq; html += '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 2px">'+_pEsc(p.nombreEq)+' <span style="font-weight:400">('+_pEsc(p.eq_id)+')</span>'+(p.area?' <span style="font-weight:400">· 📍 '+_pEsc(p.area)+'</span>':'')+'</div>'; }
       html += '<div class="pa-card" draggable="true" data-pid="'+_pEsc(p.pid)+'" ondragstart="paDragStart(event)" onclick="paToggleSel(this)">🔧 '+_pEsc(p.tarea)+'</div>';
     });
-    cont.innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:10px">🎉 Sin actividades pendientes en esta sede para el período.</div>';
+    cont.innerHTML = html || (window._paSinSeleccion
+      ? '<div style="font-size:12px;color:var(--muted);padding:10px">📋 Esta sede no tiene <b>equipos seleccionados</b> para el período en la app de <b>Mantenimiento</b>. Selecciónalos ahí primero (Checklist → ＋ Seleccionar equipos) y vuelve a abrir este panel.</div>'
+      : '<div style="font-size:12px;color:var(--muted);padding:10px">🎉 Los equipos seleccionados del período no tienen actividades pendientes (todo hecho o ya planificado).</div>');
     window._paPend = Object.fromEntries(pend.map(p => [p.pid, p]));
   }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
 }
