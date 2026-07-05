@@ -50,7 +50,7 @@ export async function notificarPorTipo(tipo, texto, excluirId = '', opts = {}) {
       if (!ok) console.warn('[avisos] plantilla falló, intento texto libre ·', tipo, to);
     }
     if (!ok) {
-      try { await _enviarTexto(to, texto); ok = true; }
+      try { ok = await _enviarTexto(to, texto); }
       catch (e) { console.error('[avisos]', tipo, p.id, e.message); }
     }
     if (ok) n++;
