@@ -816,9 +816,6 @@ async function pendientesDeSede(sede, fecha){
   ]);
   const plantillas = {}; tcS.docs.forEach(d => { plantillas[d.data().tipo] = d.data().tareas || []; });
   const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
-  const md = mantS.exists ? mantS.data() : {};
-  const ts = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } })(md.tareaStatus);
-  const planificadas = new Set(planS.docs.map(d => d.id));
   // La tienda del bloque puede traer el cliente adelante ("RIPLEY PLAZA NORTE") y el
   // inventario guarda solo la sede ("PLAZA NORTE"): match exacto o el sufijo MÁS LARGO
   // que sea una sede real (así "MAC PLAZA NORTE" no se confunde con "PLAZA NORTE").
@@ -841,6 +838,9 @@ async function pendientesDeSede(sede, fecha){
     getDoc(doc(window.__db, 'mantenimiento', `${target}|${periodo}|${anio}`)),
     window.__db.collection('mtto_plan').where('sede','==',target).where('periodo','==',periodo).where('anio','==',anio).get(),
   ]);
+  const md = mantS.exists ? mantS.data() : {};
+  const ts = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } })(md.tareaStatus);
+  const planificadas = new Set(planS.docs.map(d => d.id));
   invS.docs.forEach(d => {
     const eq = d.data();
     if((eq.sede||'').toUpperCase() !== target || !eq.eq_id) return;
