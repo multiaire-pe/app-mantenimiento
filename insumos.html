@@ -2557,7 +2557,7 @@ function onQRScanned(code) {
       </div>`;
     infoBox.style.display = 'block';
   } else {
-    infoBox.innerHTML = `<span style="color:var(--red)">⚠️ No encontrado: ${code}</span>`;
+    infoBox.innerHTML = `<span style="color:var(--red)">⚠️ No encontrado: ${escB(code)}</span>`;
     infoBox.style.display = 'block';
   }
 }
@@ -2575,10 +2575,10 @@ function startScanLote(tipo, instId) {
 function addToScanLote(inst) {
   const yaEstaba = selectedInstQRIds.has(inst.id);
   selectedInstQRIds.add(inst.id);
-  scanLoteAddedIds.add(inst.id);
+  if (!yaEstaba) scanLoteAddedIds.add(inst.id);   // deshacer no toca selección manual previa (Council)
   renderInstancias();
   const infoBox = document.getElementById('scan-item-info');
-  infoBox.innerHTML = `${yaEstaba ? '⚠️ Ya estaba en la lista: ' : '✓ Agregado: '}<strong>${inst.nombre}</strong> <span style="font-family:var(--mono)">${inst.id}</span>`;
+  infoBox.innerHTML = `${yaEstaba ? '⚠️ Ya estaba en la lista: ' : '✓ Agregado: '}<strong>${escB(inst.nombre)}</strong> <span style="font-family:var(--mono)">${escB(inst.id)}</span>`;
   infoBox.style.display = 'block';
   refreshScanLoteStatus();
 }
@@ -2621,6 +2621,9 @@ async function finishScanLote() {
 }
 
 async function closeScanner() {
+  // sesión de lote sin confirmar → se deshace (lo escaneado no queda seleccionado
+  // en silencio; una selección manual previa se conserva) — hallazgo del Council
+  if (scanLoteTipo) { undoScanLote(); toast('Escaneo cerrado sin confirmar — se quitó lo escaneado', 'warn'); }
   document.getElementById('modal-scanner').classList.remove('open');
   await destroyScanner();
 }
