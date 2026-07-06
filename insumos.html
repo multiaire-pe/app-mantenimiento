@@ -389,7 +389,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <button class="tab-btn" onclick="switchTab('stock',this)">🏢 Por Sede</button>
       <button class="tab-btn" onclick="switchTab('paquetes',this)">🎒 Paquetes</button>
       <button class="tab-btn" onclick="switchTab('tecnicos',this)">👥 Por Persona</button>
-      <button class="tab-btn" onclick="switchTab('archivo',this)">📦 Archivo</button>
+      <button class="tab-btn" id="tab-btn-archivo" style="display:none" onclick="switchTab('archivo',this)">📦 Archivo</button>
     </div>
 
     <div class="tab-view active" id="tab-catalogo">
@@ -1498,6 +1498,9 @@ async function maVerify(payload,save){
     renderUserPill();
     document.getElementById('conn-pill').textContent='✓ Conectado';
     document.getElementById('conn-pill').className='hpill ok';
+    // Pestaña "📦 Archivo" (base anterior) solo para el super admin.
+    const archBtn=document.getElementById('tab-btn-archivo');
+    if(archBtn)archBtn.style.display=MA.isSuperAdmin()?'':'none';
     buildSidebar();
     await loadAll();
   }catch(e){
@@ -2715,6 +2718,7 @@ async function closeScanner() {
 
 // ── FUNCIONES UI BÁSICAS ──────────────────────────────────
 function switchTab(tab, btn) {
+  if (tab === 'archivo' && !MA.isSuperAdmin()) { toast('El archivo es solo del super admin', 'err'); return; }
   document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
@@ -2732,6 +2736,7 @@ let archivoLoaded = false, archivoTipo = 'catalogo';
 let archivoData = { catalogo: [], instancias: [], movimientos: [] };
 
 async function loadArchivoOnce() {
+  if (!MA.isSuperAdmin()) return; // archivo solo para el super admin
   if (archivoLoaded) return;
   archivoLoaded = true; // marcar de una para evitar cargas duplicadas si se re-clickea
   const wrap = document.getElementById('archivo-table');
