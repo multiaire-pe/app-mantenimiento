@@ -389,6 +389,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <button class="tab-btn" onclick="switchTab('stock',this)">🏢 Por Sede</button>
       <button class="tab-btn" onclick="switchTab('paquetes',this)">🎒 Paquetes</button>
       <button class="tab-btn" onclick="switchTab('tecnicos',this)">👥 Por Persona</button>
+      <button class="tab-btn" onclick="switchTab('archivo',this)">📦 Archivo</button>
     </div>
 
     <div class="tab-view active" id="tab-catalogo">
@@ -496,6 +497,22 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <select id="f-tec-persona" onchange="renderPorTecnico()" style="max-width:240px;font-size:12px"><option value="">Seleccionar...</option></select>
       </div>
       <div id="tecnico-content"><div class="empty"><div class="empty-icon">👥</div>Selecciona una persona o "Todos" para ver su inventario</div></div>
+    </div>
+
+    <div class="tab-view" id="tab-archivo">
+      <div style="background:var(--yellow-bg,#fff8e6);border:1px solid var(--yellow-border,#f0d98a);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--muted2)">
+        <strong>📦 Base anterior — solo consulta.</strong> Datos de la base de insumos previa (archivados, congelados). La base activa se registra de cero. Aquí no se puede editar ni borrar nada.
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+        <div class="lblfmt-toggle">
+          <button class="lblfmt-pill active" id="arch-t-catalogo" onclick="setArchivoTipo('catalogo',this)">📦 Catálogo</button>
+          <button class="lblfmt-pill" id="arch-t-instancias" onclick="setArchivoTipo('instancias',this)">🏷️ Instancias</button>
+          <button class="lblfmt-pill" id="arch-t-movimientos" onclick="setArchivoTipo('movimientos',this)">📋 Movimientos</button>
+        </div>
+        <input type="search" id="q-archivo" placeholder="Buscar en el archivo..." oninput="renderArchivo()" style="max-width:300px;font-size:12px">
+        <span id="arch-count" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div class="table-wrap" id="archivo-table"><div class="empty"><div class="empty-icon">⏳</div>Abrí la pestaña para cargar el archivo...</div></div>
     </div>
   </div>
 </div>
@@ -2705,6 +2722,74 @@ function switchTab(tab, btn) {
   // Mostrar filtros solo en catálogo
   const filterSections = document.querySelectorAll('.sb-group');
   filterSections.forEach(s => { s.style.display = tab === 'catalogo' ? '' : 'none'; });
+  if (tab === 'archivo') loadArchivoOnce();
+}
+
+// ── ARCHIVO (base anterior, solo lectura) ─────────────────────────────────────
+// Lee las colecciones *_legacy (congeladas, write:false en firestore.rules). Carga perezosa:
+// solo al abrir la pestaña por primera vez, para no pesar sobre el loadAll normal.
+let archivoLoaded = false, archivoTipo = 'catalogo';
+let archivoData = { catalogo: [], instancias: [], movimientos: [] };
+
+async function loadArchivoOnce() {
+  if (archivoLoaded) return;
+  archivoLoaded = true; // marcar de una para evitar cargas duplicadas si se re-clickea
+  const wrap = document.getElementById('archivo-table');
+  wrap.innerHTML = `<div class="empty"><div class="empty-icon">⏳</div>Cargando archivo...</div>`;
+  try {
+    const [cat, inst, mov] = await Promise.all([
+      db.collection('insumos_catalogo_legacy').get(),
+      db.collection('insumos_instancias_legacy').get(),
+      db.collection('insumos_movimientos_legacy').get(),
+    ]);
+    archivoData.catalogo = cat.docs.map(d => ({ id: d.id, ...d.data() }));
+    archivoData.instancias = inst.docs.map(d => ({ id: d.id, ...d.data() }));
+    archivoData.movimientos = mov.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderArchivo();
+  } catch (e) {
+    archivoLoaded = false; // permitir reintento
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div>No se pudo cargar el archivo: ${escB(e.message)}</div>`;
+  }
+}
+
+function setArchivoTipo(tipo, btn) {
+  archivoTipo = tipo;
+  document.querySelectorAll('#tab-archivo .lblfmt-pill').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderArchivo();
+}
+
+function _archFecha(f) {
+  try {
+    const d = f && typeof f.toDate === 'function' ? f.toDate() : (f ? new Date(f) : null);
+    return d && !isNaN(d) ? d.toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+  } catch { return ''; }
+}
+
+function renderArchivo() {
+  const wrap = document.getElementById('archivo-table');
+  const cnt = document.getElementById('arch-count');
+  const q = (document.getElementById('q-archivo')?.value || '').trim().toLowerCase();
+  const rows = archivoData[archivoTipo] || [];
+  const match = (obj) => !q || Object.values(obj).some(v => v != null && typeof v !== 'object' && String(v).toLowerCase().includes(q));
+  const data = rows.filter(match);
+  if (cnt) cnt.textContent = `${data.length} de ${rows.length}`;
+
+  if (!rows.length) { wrap.innerHTML = `<div class="empty"><div class="empty-icon">📭</div>El archivo no tiene ${escB(archivoTipo)} (nada que mostrar).</div>`; return; }
+  if (!data.length) { wrap.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div>Sin coincidencias para "${escB(q)}".</div>`; return; }
+
+  let head = '', body = '';
+  if (archivoTipo === 'catalogo') {
+    head = `<th>Código</th><th>Nombre</th><th>Categoría</th><th>Unidad</th><th>Marca/Modelo</th><th>Stock mín.</th>`;
+    body = data.map(i => `<tr><td>${escB(i.codigo || i.id)}</td><td>${escB(i.nombre)}</td><td>${escB(i.categoria || '')}</td><td>${escB(i.unidad || '')}</td><td>${escB([i.marca, i.modelo].filter(Boolean).join(' '))}</td><td>${escB(i.stockMin ?? '')}</td></tr>`).join('');
+  } else if (archivoTipo === 'instancias') {
+    head = `<th>ID</th><th>Ítem</th><th>Sede</th><th>Estado</th><th>Responsable</th><th>Notas</th>`;
+    body = data.map(i => `<tr><td>${escB(i.id)}</td><td>${escB(i.nombre || i.itemId || '')}</td><td>${escB(i.sede || '')}</td><td>${escB(i.estado || '')}</td><td>${escB(i.responsable || '')}</td><td>${escB(i.notas || '')}</td></tr>`).join('');
+  } else {
+    head = `<th>Fecha</th><th>Tipo</th><th>Ítem</th><th>Sede</th><th>Cant.</th><th>Responsable</th><th>Motivo</th>`;
+    body = data.map(m => `<tr><td>${escB(_archFecha(m.fecha))}</td><td>${escB(m.tipo || '')}</td><td>${escB(m.itemNombre || m.itemId || '')}</td><td>${escB(m.sede || m.sedeDestino || '')}</td><td>${escB(m.cantidad ?? '')}</td><td>${escB(m.responsable || m.usuario || '')}</td><td>${escB(m.motivo || m.cambios || '')}</td></tr>`).join('');
+  }
+  wrap.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 function closeModal(id) {
