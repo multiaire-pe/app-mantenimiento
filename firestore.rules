@@ -92,6 +92,19 @@ service cloud.firestore {
     match /insumos_movimientos_fotos/{doc} { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     match /insumos_catalogo_fotos/{doc}    { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
 
+    // ── Archivo CONGELADO de la base anterior de insumos (2026-07-06): la base "mal hecha"
+    //    se copió a *_legacy con Admin SDK (que ignora reglas) antes de vaciar la base viva.
+    //    Solo LECTURA desde el cliente (pestaña "📦 Archivo" de insumos.html); nadie la escribe
+    //    (`write:false` la deja inmutable). Necesitan regla explícita o el catch-all fail-closed
+    //    de abajo las haría ilegibles. ──
+    match /insumos_catalogo_legacy/{doc}          { allow read: if authorized(); allow write: if false; }
+    match /insumos_instancias_legacy/{doc}        { allow read: if authorized(); allow write: if false; }
+    match /insumos_movimientos_legacy/{doc}       { allow read: if authorized(); allow write: if false; }
+    match /insumos_paquetes_legacy/{doc}          { allow read: if authorized(); allow write: if false; }
+    match /insumos_catalogo_fotos_legacy/{doc}    { allow read: if authorized(); allow write: if false; }
+    match /insumos_instancias_fotos_legacy/{doc}  { allow read: if authorized(); allow write: if false; }
+    match /insumos_movimientos_fotos_legacy/{doc} { allow read: if authorized(); allow write: if false; }
+
     // ── Colecciones transitorias del bot de WhatsApp: el bot las escribe vía Admin SDK
     //    (ignora reglas); desde el cliente NO se escriben. Se declaran explícitas para
     //    poder cerrar el catch-all de lectura en fail-closed sin romper su lectura. ──
