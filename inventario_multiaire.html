@@ -453,10 +453,13 @@ function af() {
   const sede=document.getElementById('fSede').value.toLowerCase().trim(), equipo=document.getElementById('fEquipo').value,
         area=document.getElementById('fArea').value, marca=document.getElementById('fMarca').value,
         q=document.getElementById('search').value.toLowerCase().trim();
-  // sede es búsqueda por texto (substring); el resto, igualdad exacta.
+  // Sede: si el texto coincide EXACTAMENTE con una sede existente (la elegiste del dropdown),
+  // filtra por igualdad; si es parcial (estás escribiendo), por substring. Así "PLAZA NORTE"
+  // no arrastra "MAC PLAZA NORTE". El resto de campos, igualdad exacta.
   // skip = campo que se excluye, para calcular las opciones en cascada de ese campo.
+  const sedeExacta = !!sede && data.some(r => (r.sede||'').toLowerCase()===sede);
   const pass=(r,skip)=>{
-    if(skip!=='sede'&&sede&&!r.sede.toLowerCase().includes(sede))return false;
+    if(skip!=='sede'&&sede){const s=(r.sede||'').toLowerCase();if(sedeExacta?s!==sede:!s.includes(sede))return false;}
     if(skip!=='equipo'&&equipo&&r.equipo!==equipo)return false;
     if(skip!=='area'&&area&&r.area!==area)return false;
     if(skip!=='marca'&&marca&&r.marca!==marca)return false;
