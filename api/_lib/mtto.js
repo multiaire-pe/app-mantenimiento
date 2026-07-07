@@ -243,7 +243,10 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
   // Sin sesión: arrancar — con el texto completo intentamos resolver el equipo de una
   if (!ses) {
     ses = nuevaSesion(from, tecnico);
-    ses.textoOriginal = texto || '';
+    // No arrastrar el dígito del menú ("1") ni un saludo como texto del pedido: contaminan el
+    // matching (el "1" mete un número falso → falso empate de equipo, p.ej. Roof Top 01 vs 03)
+    // y no aportan datos. El primer mensaje REAL pasa a ser el textoOriginal en la fase EQUIPO.
+    ses.textoOriginal = (t === '1' || esSaludo(texto)) ? '' : (texto || '');
     ses.fase = 'EQUIPO';
     if (texto && t !== '1' && !esSaludo(texto)) {
       const r = await intentarResolver(ses, texto);
@@ -255,7 +258,18 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
 
   if (ses.fase === 'EQUIPO') {
     if (!texto) return 'Dime el *equipo* y la *sede* (ej: "chiller 1 de atocongo").';
-    const r = await intentarResolver(ses, `${ses.textoOriginal} ${texto}`);
+    // Un saludo, una palabra de control ("fin"/"listo"/"ya"…) o un dígito de menú a mitad del
+    // flujo NO son datos del equipo: reinician al menú en vez de acumularse como ruido (o meter
+    // un número falso) y dejar al técnico atrapado repreguntando. "cancelar"/"salir" ya salieron arriba.
+    if (esSaludo(texto) || esControlSuelto(texto) || t === '1' || t === '2' || t === '3') {
+      await limpiarSesion(from);
+      return MENU_TEXTO;
+    }
+    // Acumula lo que el técnico va diciendo: la 1ª frase suele traer la sede y la respuesta a
+    // la repregunta el equipo (o al revés). Sin acumular, responder de a poco perdía lo ya
+    // dicho (la sede desaparecía al contestar el equipo) → el bot repreguntaba en bucle.
+    ses.textoOriginal = `${ses.textoOriginal || ''} ${texto}`.trim();
+    const r = await intentarResolver(ses, ses.textoOriginal);
     if (r) return r;
     return null;
   }
