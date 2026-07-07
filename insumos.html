@@ -851,19 +851,19 @@ tbody td{padding:9px 12px;vertical-align:middle}
         </select>
         <div style="font-size:10px;color:var(--muted2);margin-top:4px" id="rango-hint" style="display:none">Con tipo Rango, el stock se actualiza por % estimado en cada sede (0–100%). No se usa para paquetes.</div>
       </div>
-      <div class="form-group full" id="fi-stock-inicial-wrap" style="border-top:1px dashed var(--border);padding-top:12px;margin-top:2px">
+      <div class="form-group full" id="fi-stock-inicial-wrap" style="border-top:1px dashed var(--border);padding-top:14px;margin-top:4px">
         <div class="form-label" style="font-weight:600;color:var(--accent)">📦 Stock inicial <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
-        <div style="font-size:10px;color:var(--muted2);margin-bottom:8px">Crea las unidades de una vez (cada una con su código y QR). Déjalo en 0 si registrarás el stock después como Entrada.</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <div style="flex:0 0 84px">
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;margin-bottom:12px;line-height:1.5">Crea las unidades de una vez (cada una con su código y QR). Déjalo en 0 si registrarás el stock después como Entrada.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">
+          <div class="form-group" style="flex:0 0 84px">
             <div class="form-label">Cantidad</div>
             <input type="number" class="form-input" id="fi-cant-inicial" min="0" placeholder="0">
           </div>
-          <div style="flex:1;min-width:140px">
+          <div class="form-group" style="flex:1;min-width:150px">
             <div class="form-label">Sede / almacén</div>
             <select class="form-select" id="fi-sede-inicial"></select>
           </div>
-          <div style="flex:1;min-width:140px">
+          <div class="form-group" style="flex:1;min-width:150px">
             <div class="form-label">Responsable <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
             <select class="form-select" id="fi-resp-inicial"></select>
           </div>
@@ -2196,9 +2196,7 @@ function openModalInsumo(id){
     if(stockWrap){
       stockWrap.style.display='';
       document.getElementById('fi-cant-inicial').value='';
-      const selSede=document.getElementById('fi-sede-inicial');
-      selSede.innerHTML=sedeOpts();
-      if([...selSede.options].some(o=>o.value==='OFICINA'))selSede.value='OFICINA';
+      document.getElementById('fi-sede-inicial').innerHTML=sedeOpts();
       const pOpts=personalData.map(p=>`<option value="${escB(p.nombre)}">${escB(p.nombre)}</option>`).join('');
       document.getElementById('fi-resp-inicial').innerHTML=`<option value="">—</option>${pOpts}`;
     }
