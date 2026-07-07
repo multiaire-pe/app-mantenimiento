@@ -805,7 +805,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 <div class="modal-overlay" id="modal-insumo">
   <div class="modal">
     <h2 id="modal-insumo-title">Nuevo ítem</h2>
-    <div class="modal-sub">El stock inicial se registra después como una <strong>Entrada</strong> desde el sidebar.</div>
+    <div class="modal-sub">Define el tipo de ítem. Puedes crear su <strong>stock inicial</strong> aquí mismo (abajo) o registrarlo después como Entrada.</div>
     <div class="form-grid">
       <div class="form-group full" id="fi-foto-wrap">
         <div class="form-label">Foto de referencia <span style="color:var(--muted);font-weight:400">(opcional — las instancias sin foto propia la usan por defecto)</span></div>
@@ -850,6 +850,24 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <option value="RANGO">Porcentaje visual — LLENO / MEDIO / BAJO / VACÍO (ej: refrigerante, aceite)</option>
         </select>
         <div style="font-size:10px;color:var(--muted2);margin-top:4px" id="rango-hint" style="display:none">Con tipo Rango, el stock se actualiza por % estimado en cada sede (0–100%). No se usa para paquetes.</div>
+      </div>
+      <div class="form-group full" id="fi-stock-inicial-wrap" style="border-top:1px dashed var(--border);padding-top:14px;margin-top:4px">
+        <div class="form-label" style="font-weight:600;color:var(--accent)">📦 Stock inicial <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <div style="font-size:10px;color:var(--muted2);margin-top:4px;margin-bottom:12px;line-height:1.5">Crea las unidades de una vez (cada una con su código y QR). Déjalo en 0 si registrarás el stock después como Entrada.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start">
+          <div class="form-group" style="flex:0 0 84px">
+            <div class="form-label">Cantidad</div>
+            <input type="number" class="form-input" id="fi-cant-inicial" min="0" placeholder="0">
+          </div>
+          <div class="form-group" style="flex:1;min-width:150px">
+            <div class="form-label">Sede / almacén</div>
+            <select class="form-select" id="fi-sede-inicial"></select>
+          </div>
+          <div class="form-group" style="flex:1;min-width:150px">
+            <div class="form-label">Responsable <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+            <select class="form-select" id="fi-resp-inicial"></select>
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -1090,16 +1108,20 @@ tbody td{padding:9px 12px;vertical-align:middle}
 </div>
 
 <!-- MODAL SALIDA / BAJA EN LOTE -->
-<div class="modal-overlay" id="modal-salida-lote" onclick="if(event.target===this)closeModal('modal-salida-lote')">
+<div class="modal-overlay" id="modal-salida-lote" onclick="if(event.target===this)cerrarLoteModal('modal-salida-lote')">
   <div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:90vh">
     <div class="modal-header" style="flex-shrink:0">
       <div class="modal-title" id="modal-lote-title">⬆ Salida en lote</div>
-      <div onclick="closeModal('modal-salida-lote')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+      <div onclick="cerrarLoteModal('modal-salida-lote')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
     </div>
     <div id="modal-lote-sub" class="modal-sub" style="margin-bottom:12px;flex-shrink:0"></div>
     <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:12px">
       <div class="form-group full">
         <div class="form-label">Instancias seleccionadas (<span id="lote-inst-count">0</span>)</div>
+        <div style="position:relative;margin-bottom:6px">
+          <input type="text" class="form-input" id="lote-inst-buscar" placeholder="＋ Añadir por código o nombre..." oninput="buscarInstLote('salida')" onfocus="buscarInstLote('salida')" style="font-size:12px" autocomplete="off">
+          <div id="lote-inst-resultados" style="position:fixed;max-height:200px;overflow-y:auto;background:var(--surface);border:1.5px solid var(--border2);border-radius:6px;font-size:11px;display:none;z-index:9999;box-shadow:var(--shadow-lg);min-width:280px"></div>
+        </div>
         <div id="lote-inst-list" style="max-height:160px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:11px;display:flex;flex-direction:column;gap:4px"></div>
       </div>
       <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="flote-personal"></select></div>
@@ -1128,23 +1150,27 @@ tbody td{padding:9px 12px;vertical-align:middle}
       </div>
     </div>
     <div class="modal-foot" style="flex-shrink:0">
-      <button class="btn" onclick="closeModal('modal-salida-lote')">Cancelar</button>
+      <button class="btn" onclick="cerrarLoteModal('modal-salida-lote')">Cancelar</button>
       <button class="btn btn-primary" id="btn-save-lote" onclick="saveSalidaLote()">⬆ Confirmar salida</button>
     </div>
   </div>
 </div>
 
 <!-- MODAL TRANSFERENCIA EN LOTE -->
-<div class="modal-overlay" id="modal-transf-lote" onclick="if(event.target===this)closeModal('modal-transf-lote')">
+<div class="modal-overlay" id="modal-transf-lote" onclick="if(event.target===this)cerrarLoteModal('modal-transf-lote')">
   <div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:90vh">
     <div class="modal-header" style="flex-shrink:0">
       <div class="modal-title">🔄 Transferir en lote</div>
-      <div onclick="closeModal('modal-transf-lote')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+      <div onclick="cerrarLoteModal('modal-transf-lote')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
     </div>
     <div class="modal-sub" style="margin-bottom:12px;flex-shrink:0">🔄 Traslada varios bienes entre sedes y/o cambia su responsable. Cada bien mantiene su ID y QR. Si alguno está en un paquete, saldrá de él.</div>
     <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:12px">
       <div class="form-group full">
         <div class="form-label">Instancias seleccionadas (<span id="tlote-inst-count">0</span>)</div>
+        <div style="position:relative;margin-bottom:6px">
+          <input type="text" class="form-input" id="tlote-inst-buscar" placeholder="＋ Añadir por código o nombre..." oninput="buscarInstLote('transf')" onfocus="buscarInstLote('transf')" style="font-size:12px" autocomplete="off">
+          <div id="tlote-inst-resultados" style="position:fixed;max-height:200px;overflow-y:auto;background:var(--surface);border:1.5px solid var(--border2);border-radius:6px;font-size:11px;display:none;z-index:9999;box-shadow:var(--shadow-lg);min-width:280px"></div>
+        </div>
         <div id="tlote-inst-list" style="max-height:140px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;font-size:11px;display:flex;flex-direction:column;gap:4px"></div>
       </div>
       <div class="form-group full">
@@ -1186,7 +1212,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
       </div>
     </div>
     <div class="modal-foot" style="flex-shrink:0">
-      <button class="btn" onclick="closeModal('modal-transf-lote')">Cancelar</button>
+      <button class="btn" onclick="cerrarLoteModal('modal-transf-lote')">Cancelar</button>
       <button class="btn btn-primary" id="btn-save-transf-lote" onclick="saveTransfLote()">🔄 Confirmar transferencia</button>
     </div>
   </div>
@@ -1535,6 +1561,14 @@ document.addEventListener('click',e=>{
   const pill=document.getElementById('user-pill');
   const menu=document.getElementById('user-menu');
   if(menu&&pill&&!pill.contains(e.target))menu.classList.remove('open');
+});
+
+// Cerrar los dropdowns de "añadir instancia" (paquete y lotes) al hacer clic fuera del campo/resultados
+document.addEventListener('click',e=>{
+  [['fpkg-inst-buscar','fpkg-inst-resultados'],['lote-inst-buscar','lote-inst-resultados'],['tlote-inst-buscar','tlote-inst-resultados']].forEach(([inpId,resId])=>{
+    const res=document.getElementById(resId),inp=document.getElementById(inpId);
+    if(res&&res.style.display!=='none'&&!res.contains(e.target)&&e.target!==inp)res.style.display='none';
+  });
 });
 
 // ── PANEL DE ACCESOS ─────────────────────────────────────────────────────────
@@ -2136,6 +2170,8 @@ function validarCodigoItem(){
 
 function openModalInsumo(id){
   editingInsumoId=id;
+  // El bloque de "stock inicial" solo aparece al CREAR (para sumar unidades a un ítem existente está Entrada)
+  const stockWrap=document.getElementById('fi-stock-inicial-wrap');
   if(id){
     const i=catalogoData.find(x=>x.id===id);if(!i)return;
     document.getElementById('modal-insumo-title').textContent='Editar ítem';
@@ -2147,6 +2183,7 @@ function openModalInsumo(id){
     document.getElementById('fi-modelo').value=i.modelo||'';
     document.getElementById('fi-stock-min').value=i.stockMin||'';
     document.getElementById('fi-tipo-cant').value=i.tipoCantidad||'UNIDAD';
+    if(stockWrap)stockWrap.style.display='none';
   }else{
     document.getElementById('modal-insumo-title').textContent='Nuevo ítem';
     ['fi-nombre','fi-codigo','fi-marca','fi-modelo','fi-stock-min'].forEach(x=>document.getElementById(x).value='');
@@ -2155,6 +2192,14 @@ function openModalInsumo(id){
     document.getElementById('fi-unidad').value='UND';
     document.getElementById('fi-tipo-cant').value='UNIDAD';
     pendingCatFoto=null;
+    // Poblar el stock inicial: cantidad en blanco, sede (OFICINA por defecto) y responsable
+    if(stockWrap){
+      stockWrap.style.display='';
+      document.getElementById('fi-cant-inicial').value='';
+      document.getElementById('fi-sede-inicial').innerHTML=sedeOpts();
+      const pOpts=personalData.map(p=>`<option value="${escB(p.nombre)}">${escB(p.nombre)}</option>`).join('');
+      document.getElementById('fi-resp-inicial').innerHTML=`<option value="">—</option>${pOpts}`;
+    }
   }
   refreshCatFotoPreview();
   toggleStockMinField();
@@ -2168,6 +2213,33 @@ function openModalInsumo(id){
   }
 }
 
+// Crea N instancias de un ítem (misma lógica que saveEntrada: prefijo del código + correlativo)
+// y registra un movimiento ENTRADA. Devuelve los ids creados. Usado por el stock inicial de saveInsumo.
+async function crearInstanciasIniciales(item,docId,qty,sede,resp,nivel){
+  const prefix=(item.codigo||item.nombre.replace(/[^A-Z0-9]/gi,'')).substring(0,3).toUpperCase();
+  const existing=instanciasData.filter(i=>i.id.startsWith(prefix+'-')).map(i=>parseInt(i.id.replace(prefix+'-',''))||0).sort((a,b)=>b-a);
+  let next=(existing[0]||0)+1;
+  const nuevas=[];
+  for(let i=0;i<qty;i++){
+    const id=`${prefix}-${String(next+i).padStart(3,'0')}`;
+    const snap=await db.collection('insumos_instancias').doc(id).get();
+    if(snap.exists){next++;i--;continue;}
+    const inst={itemId:docId,nombre:item.nombre.toUpperCase(),sede,estado:'DISPONIBLE',
+      creadoEn:new Date().toISOString(),creadoPor:maUser.email,
+      ...(resp&&{responsable:resp}),
+      ...(item.tipoCantidad==='RANGO'&&{nivel:Number(nivel)||100})};
+    await db.collection('insumos_instancias').doc(id).set(inst);
+    instanciasData.push({id,...inst});
+    nuevas.push(id);
+  }
+  const movData={tipo:'ENTRADA',itemId:docId,itemNombre:item.nombre,sede,cantidad:nuevas.length,
+    instancias:nuevas,responsable:resp,motivo:'Stock inicial al crear el ítem',
+    usuario:maUser.email,estado:'CONFIRMADO',fecha:new Date()};
+  const movRef=await db.collection('insumos_movimientos').add(movData);
+  movimientosData.unshift({id:movRef.id,...movData});
+  return nuevas;
+}
+
 async function saveInsumo(){
   if(!can('crearItem')&&!can('editarItem')){toast('Sin permisos','err');return;}
   const nombre=document.getElementById('fi-nombre').value.trim().toUpperCase();
@@ -2177,6 +2249,11 @@ async function saveInsumo(){
   // Validar unicidad del código (excepto al editar el mismo ítem)
   const duplicado = catalogoData.find(x => x.codigo && x.codigo.toUpperCase()===codigo && x.id!==editingInsumoId);
   if(duplicado){toast('El código ya existe: '+duplicado.nombre,'err');return;}
+  // Stock inicial (solo al CREAR): leer y validar ANTES de escribir nada
+  const qtyIni=editingInsumoId?0:Math.max(0,parseInt(document.getElementById('fi-cant-inicial').value)||0);
+  const sedeIni=document.getElementById('fi-sede-inicial').value;
+  const respIni=document.getElementById('fi-resp-inicial').value;
+  if(qtyIni>0&&!sedeIni){toast('Elige la sede del stock inicial (o deja la cantidad en 0)','err');return;}
   const item={nombre,categoria:document.getElementById('fi-cat').value,unidad:document.getElementById('fi-unidad').value,
     codigo:codigo,
     marca:document.getElementById('fi-marca').value.trim(),modelo:document.getElementById('fi-modelo').value.trim(),
@@ -2189,6 +2266,7 @@ async function saveInsumo(){
     const prevItem=editingInsumoId?catalogoData.find(x=>x.id===docId):null;
     const nombreCambiado=!!prevItem && prevItem.nombre!==nombre;
     await db.collection('insumos_catalogo').doc(docId).set(item,{merge:!!editingInsumoId});
+    let nInst=0; // unidades creadas por el stock inicial (solo al crear)
     if(!editingInsumoId){
       catalogoData.push({id:docId,...item});
       // Si se adjuntó una foto de referencia antes de guardar (ítem nuevo), recién ahora se sube — ya existe el docId
@@ -2199,6 +2277,10 @@ async function saveInsumo(){
         });
         catFotos[docId]=pendingCatFoto;
         pendingCatFoto=null;
+      }
+      // Stock inicial opcional: crear las N unidades de una vez (con su código y QR) + movimiento ENTRADA
+      if(qtyIni>0){
+        nInst=(await crearInstanciasIniciales(item,docId,qtyIni,sedeIni,respIni)).length;
       }
     }
     else{const idx=catalogoData.findIndex(x=>x.id===docId);if(idx>=0)catalogoData[idx]={id:docId,...item};}
@@ -2219,7 +2301,9 @@ async function saveInsumo(){
         nProp=hijas.length;
       }
     }
-    toast(editingInsumoId?('✓ Ítem actualizado'+(nProp?` · ${nProp} instancia(s) renombrada(s)`:'')):'✓ Ítem creado — registra el stock inicial como Entrada','ok');
+    toast(editingInsumoId
+      ?('✓ Ítem actualizado'+(nProp?` · ${nProp} instancia(s) renombrada(s)`:''))
+      :('✓ Ítem creado'+(nInst?` · ${nInst} unidad(es) en ${sedeIni}`:' — registra el stock como Entrada')),'ok');
     closeModal('modal-insumo');renderAll();
   }catch(e){toast('Error: '+e.message,'err');}
 }
@@ -3063,6 +3147,70 @@ function compressFit(file, maxSide, quality) {
   });
 }
 
+// ── Lista + buscador de instancias en los modales de lote (salida/baja/transferencia) ──
+// Permite AÑADIR instancias que no se escanearon, buscándolas por código o nombre.
+// Opera sobre selectedInstQRIds (misma fuente que usan saveSalidaLote/saveTransfLote).
+const LOTE_UI = {
+  salida: { input:'lote-inst-buscar',  res:'lote-inst-resultados',  list:'lote-inst-list',  count:'lote-inst-count'  },
+  transf: { input:'tlote-inst-buscar', res:'tlote-inst-resultados', list:'tlote-inst-list', count:'tlote-inst-count' },
+};
+
+function renderLoteInst(which) {
+  const cfg = LOTE_UI[which];
+  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
+  document.getElementById(cfg.count).textContent = ids.length;
+  const listEl = document.getElementById(cfg.list);
+  if (!ids.length) { listEl.innerHTML = '<div style="color:var(--muted)">Sin instancias — agrégalas con el buscador de arriba</div>'; return; }
+  listEl.innerHTML = ids.map(id => {
+    const inst = instanciasData.find(x => x.id === id);
+    const extra = which === 'transf'
+      ? `${inst.sede || 'sin sede'}${inst.responsable ? ' · ' + inst.responsable : ''}`
+      : `${inst.sede || 'sin sede'} · ${inst.estado || 'DISPONIBLE'}`;
+    return `<div style="display:flex;align-items:center;gap:6px">
+      <span style="font-family:var(--mono)">${escB(id)}</span>
+      <span style="flex:1">— ${escB(inst.nombre)} <span style="color:var(--muted2)">(${escB(extra)})</span></span>
+      <button type="button" onclick="removeInstLote('${id}','${which}')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:13px;padding:0 2px" title="Quitar">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function buscarInstLote(which) {
+  const cfg = LOTE_UI[which];
+  const input = document.getElementById(cfg.input);
+  const q = input.value.toLowerCase();
+  const res = document.getElementById(cfg.res);
+  const rect = input.getBoundingClientRect();
+  res.style.left = rect.left + 'px'; res.style.top = (rect.bottom + 2) + 'px'; res.style.width = rect.width + 'px';
+  // Candidatas: instancias activas (no BAJA) que no estén ya en la lista. Filtra por código o nombre.
+  const list = instanciasData.filter(i =>
+    i.estado !== 'BAJA' && !selectedInstQRIds.has(i.id) &&
+    (!q || (i.id + i.nombre + (i.sede || '')).toLowerCase().includes(q))
+  ).slice(0, 25);
+  if (!list.length) { res.innerHTML = `<div style="padding:8px 10px;color:var(--muted2)">${q ? 'Sin resultados' : 'No hay instancias disponibles'}</div>`; res.style.display = 'block'; return; }
+  res.innerHTML = list.map(i => `<div onclick="addInstLote('${i.id}','${which}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background=''">
+      <span style="font-family:var(--mono);font-size:10px;font-weight:600;min-width:70px">${escB(i.id)}</span>
+      <span style="font-size:11px;flex:1">${escB(i.nombre)}</span>
+      <span style="font-size:10px;color:var(--muted2)">${escB(i.sede || '—')}</span>
+    </div>`).join('');
+  res.style.display = 'block';
+}
+
+function addInstLote(id, which) {
+  selectedInstQRIds.add(id);
+  const cfg = LOTE_UI[which];
+  document.getElementById(cfg.input).value = '';
+  document.getElementById(cfg.res).style.display = 'none';
+  renderLoteInst(which);
+}
+
+function removeInstLote(id, which) {
+  selectedInstQRIds.delete(id);
+  renderLoteInst(which);
+}
+
+// Cerrar un modal de lote re-sincronizando el tab Instancias (el buscador pudo cambiar la selección)
+function cerrarLoteModal(id) { closeModal(id); renderInstancias(); }
+
 function openModalSalidaLote(tipo = 'SALIDA') {
   if (can('salida') !== 1) { toast('No tienes permiso para registrar salidas', 'err'); return; }
   const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
@@ -3081,11 +3229,9 @@ function openModalSalidaLote(tipo = 'SALIDA') {
   document.getElementById('flote-guia-num').value = '';
   const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
   document.getElementById('flote-personal').innerHTML = `<option value="">—</option>${pOpts}`;
-  document.getElementById('lote-inst-count').textContent = ids.length;
-  document.getElementById('lote-inst-list').innerHTML = ids.map(id => {
-    const inst = instanciasData.find(x => x.id === id);
-    return `<div><span style="font-family:var(--mono)">${id}</span> — ${inst.nombre} <span style="color:var(--muted2)">(${inst.sede || 'sin sede'} · ${inst.estado || 'DISPONIBLE'})</span></div>`;
-  }).join('') || '<div style="color:var(--muted)">Sin instancias válidas</div>';
+  document.getElementById('lote-inst-buscar').value = '';
+  document.getElementById('lote-inst-resultados').style.display = 'none';
+  renderLoteInst('salida');
   refreshLoteFotoPreview('guia');
   refreshLoteFotoPreview('entrega');
   document.getElementById('modal-salida-lote').classList.add('open');
@@ -3200,11 +3346,9 @@ function openModalTransfLote() {
   document.getElementById('ftl-tecnico').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('ftl-resp-destino').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('ftl-destino').innerHTML = sedeOpts(false);
-  document.getElementById('tlote-inst-count').textContent = ids.length;
-  document.getElementById('tlote-inst-list').innerHTML = ids.map(id => {
-    const inst = instanciasData.find(x => x.id === id);
-    return `<div><span style="font-family:var(--mono)">${id}</span> — ${inst.nombre} <span style="color:var(--muted2)">(${inst.sede || 'sin sede'}${inst.responsable ? ' · ' + inst.responsable : ''})</span></div>`;
-  }).join('');
+  document.getElementById('tlote-inst-buscar').value = '';
+  document.getElementById('tlote-inst-resultados').style.display = 'none';
+  renderLoteInst('transf');
   refreshLoteFotoPreview('guia');
   refreshLoteFotoPreview('entrega');
   onTransfLoteTipoChange();
@@ -5509,28 +5653,30 @@ function buscarInstanciasPkg() {
   res.style.left = rect.left + 'px';
   res.style.top = (rect.bottom + 2) + 'px';
   res.style.width = rect.width + 'px';
-  if (!q) { res.style.display='none'; return; }
+  // Con el campo vacío se despliega la lista de disponibles (dropdown), no solo al escribir.
+  const coincide = i => !q || (i.id + i.nombre + (i.sede || '')).toLowerCase().includes(q);
+  const sedePkg = document.getElementById('fpkg-sede')?.value || '';
   // Instancias disponibles: sin paquete, ya en este paquete, o en otro paquete (con advertencia)
-  const sinPaquete = instanciasData.filter(i =>
+  let sinPaquete = instanciasData.filter(i =>
     i.estado !== 'BAJA' && !pkgInstanciasSeleccionadas.has(i.id) &&
-    (!i.paqueteId || i.paqueteId === editingPaqueteId) &&
-    (i.id+i.nombre+(i.sede||'')).toLowerCase().includes(q)
+    (!i.paqueteId || i.paqueteId === editingPaqueteId) && coincide(i)
   );
+  // Priorizar arriba las instancias de la sede del paquete (lo más probable a mano)
+  if (sedePkg) sinPaquete = [...sinPaquete].sort((a, b) => (b.sede === sedePkg ? 1 : 0) - (a.sede === sedePkg ? 1 : 0));
   const enOtroPaquete = instanciasData.filter(i =>
     i.estado !== 'BAJA' && !pkgInstanciasSeleccionadas.has(i.id) &&
-    i.paqueteId && i.paqueteId !== editingPaqueteId &&
-    (i.id+i.nombre+(i.sede||'')).toLowerCase().includes(q)
+    i.paqueteId && i.paqueteId !== editingPaqueteId && coincide(i)
   );
-  const list = [...sinPaquete, ...enOtroPaquete].slice(0, 10);
-  if (!list.length) { res.innerHTML='<div style="padding:8px 10px;color:var(--muted2)">Sin resultados</div>'; res.style.display='block'; return; }
+  const list = [...sinPaquete, ...enOtroPaquete].slice(0, 25);
+  if (!list.length) { res.innerHTML = `<div style="padding:8px 10px;color:var(--muted2)">${q ? 'Sin resultados' : 'No hay instancias disponibles'}</div>`; res.style.display='block'; return; }
   res.innerHTML = list.map(i=>{
     const enotro = i.paqueteId && i.paqueteId !== editingPaqueteId;
     const pkg = enotro ? paquetesData.find(p=>p.id===i.paqueteId) : null;
     return `<div onclick="addInstToPkg('${i.id}','${enotro?i.paqueteId:''}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center${enotro?';opacity:.7':''}" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background=''">
-      <span style="font-family:var(--mono);font-size:10px;font-weight:600;min-width:70px">${i.id}</span>
-      <span style="font-size:11px;flex:1">${i.nombre}</span>
-      <span style="font-size:10px;color:var(--muted2)">${i.sede||'—'}</span>
-      ${enotro?`<span style="font-size:9px;color:var(--orange);font-weight:600">en ${pkg?.id||i.paqueteId}</span>`:''}
+      <span style="font-family:var(--mono);font-size:10px;font-weight:600;min-width:70px">${escB(i.id)}</span>
+      <span style="font-size:11px;flex:1">${escB(i.nombre)}</span>
+      <span style="font-size:10px;color:var(--muted2)">${escB(i.sede||'—')}</span>
+      ${enotro?`<span style="font-size:9px;color:var(--orange);font-weight:600">en ${escB(pkg?.id||i.paqueteId)}</span>`:''}
     </div>`;
   }).join('');
   res.style.display='block';
