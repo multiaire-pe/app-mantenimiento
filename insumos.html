@@ -573,7 +573,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
     <div class="modal-foot" style="flex-shrink:0;margin-top:0">
       <button class="btn btn-red" id="fpkg-btn-delete" style="display:none" onclick="deletePaquete()">🗑 Eliminar</button>
       <button class="btn" onclick="closeModal('modal-paquete')">Cancelar</button>
-      <button class="btn btn-primary" onclick="savePaquete()">💾 Guardar</button>
+      <button class="btn btn-primary" id="btn-save-pkg" onclick="savePaquete()">💾 Guardar</button>
     </div>
   </div>
 </div>
@@ -1102,7 +1102,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
     <div class="modal-foot">
       <button class="btn btn-red" onclick="deleteInstancia()">🗑 Eliminar</button>
       <button class="btn" onclick="closeModal('modal-inst-edit')">Cancelar</button>
-      <button class="btn btn-primary" onclick="updateInstancia()">💾 Guardar</button>
+      <button class="btn btn-primary" id="btn-save-inst" onclick="updateInstancia()">💾 Guardar</button>
     </div>
   </div>
 </div>
@@ -1384,7 +1384,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal('modal-edit-mov')">Cancelar</button>
-      <button class="btn btn-primary" onclick="guardarEdicionMovimiento()">💾 Guardar</button>
+      <button class="btn btn-primary" id="btn-save-editmov" onclick="guardarEdicionMovimiento()">💾 Guardar</button>
     </div>
   </div>
 </div>
@@ -3849,6 +3849,7 @@ async function confirmarImportInsumos() {
   if (!MA.can('importMasiva')) { toast('La importación masiva es solo del super admin', 'err'); return; }
   if (!_cmImport) return;
   const r = _cmImport, btn = document.getElementById('cm-confirm-btn');
+  if (btn && btn.disabled) return; // ya se está importando → ignora el doble-click
   const totalCat = r.cat.nuevos.length + r.cat.upd.length, totalInst = r.inst.nuevos.length + r.inst.upd.length;
   if (!confirm(`¿Confirmar la importación?\n\nCatálogo: ${totalCat} (${r.cat.nuevos.length} nuevos, ${r.cat.upd.length} actualizar)\nInstancias: ${totalInst} (${r.inst.nuevos.length} nuevos, ${r.inst.upd.length} actualizar)\n\nLas filas con error se omiten.`)) return;
   if (btn) { btn.disabled = true; btn._t = btn.textContent; btn.textContent = '⏳ Importando...'; }
@@ -4607,6 +4608,8 @@ function openEditInstancia(instId) {
 async function updateInstancia() {
   if(!can('editarItem')){toast('Sin permisos','err');return;}
   if (!editingInstanciaId) return;
+  const btn = document.getElementById('btn-save-inst');
+  if (btn && btn.disabled) return; // ya se está guardando → ignora el doble-click
   const sede = document.getElementById('fe-inst-sede').value;
   const estado = document.getElementById('fe-inst-estado').value;
   const notas = document.getElementById('fe-inst-notas').value.trim();
@@ -4620,6 +4623,7 @@ async function updateInstancia() {
   if (inst.estado !== estado) diffs.push({campo:'estado', de:inst.estado||'DISPONIBLE', a:estado});
   if (inst.sede !== sede) diffs.push({campo:'sede', de:inst.sede||'', a:sede});
   if (nivel !== undefined && inst.nivel !== nivel) diffs.push({campo:'nivel', de:inst.nivel??0, a:nivel});
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
   try {
     await db.collection('insumos_instancias').doc(editingInstanciaId).update(updates);
     const idx = instanciasData.findIndex(x => x.id === editingInstanciaId);
@@ -4645,6 +4649,7 @@ async function updateInstancia() {
     closeModal('modal-inst-edit');
     renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '💾 Guardar'; } }
 }
 
 async function deleteInstancia() {
@@ -5103,8 +5108,11 @@ async function guardarEdicionMovimiento() {
   if (!editingMovId) return;
   const mov = movimientosData.find(x => x.id === editingMovId);
   if (!mov) return;
+  const btn = document.getElementById('btn-save-editmov');
+  if (btn && btn.disabled) return; // ya se está guardando → ignora el doble-click
   const responsable = document.getElementById('em-responsable').value;
   const motivo = document.getElementById('em-motivo').value.trim();
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
   try {
     const movUpdates = { responsable, motivo };
 
@@ -5155,6 +5163,7 @@ async function guardarEdicionMovimiento() {
     closeModal('modal-edit-mov');
     renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '💾 Guardar'; } }
 }
 
 
@@ -5722,6 +5731,8 @@ async function savePaquete() {
   const sede = document.getElementById('fpkg-sede').value;
   if (!nombre) { toast('Nombre obligatorio','err'); return; }
   if (!sede) { toast('Sede obligatoria','err'); return; }
+  const btn = document.getElementById('btn-save-pkg');
+  if (btn && btn.disabled) return; // ya se está guardando → ignora el doble-click
   const instanciasAntes = editingPaqueteId ? (paquetesData.find(x=>x.id===editingPaqueteId)?.instancias||[]) : [];
   const instanciasDespues = [...pkgInstanciasSeleccionadas];
   const pkg = {
@@ -5732,6 +5743,7 @@ async function savePaquete() {
     instancias: instanciasDespues,
     updatedAt: new Date().toISOString(), updatedBy: maUser.email
   };
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
   try {
     let pkgId = editingPaqueteId;
     if (!pkgId) {
@@ -5771,6 +5783,7 @@ async function savePaquete() {
     toast(`✓ Paquete ${editingPaqueteId?'actualizado':'creado'} — ${pkgId}`,'ok');
     closeModal('modal-paquete'); renderAll();
   } catch(e){toast('Error: '+e.message,'err');}
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '💾 Guardar'; } }
 }
 
 async function deletePaquete(pkgId) {
