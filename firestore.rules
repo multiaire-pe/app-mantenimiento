@@ -85,7 +85,13 @@ service cloud.firestore {
     match /manta_observaciones/{doc}       { allow read: if authorized(); allow create, update: if canWrite('observaciones'); allow delete: if isSuper(); }
     match /manta_observaciones_fotos/{doc} { allow read: if authorized(); allow create, update: if canWrite('observaciones'); allow delete: if isSuper(); }
     match /insumos_catalogo/{doc}          { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
-    match /insumos_instancias/{doc}        { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
+    // insumos_instancias: borrar una instancia es OPERACIÓN NORMAL del módulo, no un borrado
+    // administrativo — una SALIDA/BAJA consume/entrega el bien y lo elimina del inventario, y la
+    // reversión de una ENTRADA también borra las unidades creadas. La UX gatea quién hace salida/baja
+    // (tabla PERMS: ADMIN/SUPERVISOR sí); las reglas deben permitir el delete a quien opera insumos, o
+    // ADMIN/SUPERVISOR reciben "Missing or insufficient permissions" al confirmar la salida. Mismo
+    // criterio que mtto_actividades_equipo / mantenimiento_fotos / mtto_plan (delete = canWrite).
+    match /insumos_instancias/{doc}        { allow read: if authorized(); allow create, update, delete: if canWrite('insumos'); }
     match /insumos_paquetes/{doc}          { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     match /insumos_movimientos/{doc}       { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     match /insumos_instancias_fotos/{doc}  { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
