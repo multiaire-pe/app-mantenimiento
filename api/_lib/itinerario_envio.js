@@ -2,12 +2,25 @@
 // y sus actividades de mtto separadas en individuales (🔧) y en cuadrilla (👥, con
 // co-responsables). Lógica PURA (testeable sin Firestore); el endpoint carga los
 // datos (bd_bloques + mtto_plan) y despacha el envío (whatsapp.js / avisos.js).
-import { decimalAHHMM } from './fecha.js';
 import { bloqueIncluye } from './plan_dia.js';
 
 const CANCELADO = 'CANCELADO';
 const sinRipley = (t) => String(t || '').replace(/^RIPLEY\s+/i, '');
-const hhmm = (h) => (h === '' || h == null ? '' : (typeof h === 'number' ? decimalAHHMM(h) : String(h)));
+// horaInicio/horaFin de bd_bloques se guardan como FRACCIÓN DEL DÍA (0..1) vía
+// horaToDecimal() = (h*60+m)/1440. Se formatea igual que fmtHora() de itinerario.html
+// (× 24 × 60), NO como horas decimales. Verificado en prod: los 566 valores son numéricos
+// y ∈ [0.04, 0.75); un dato inválido (fuera de rango, NaN, texto no-HH:MM) se omite ('')
+// para no imprimir un horario basura — la línea ⏰ solo se muestra si hi o hf tienen valor.
+const hhmm = (h) => {
+  if (h === '' || h == null) return '';
+  if (typeof h === 'string') { const s = h.trim(); return /^\d{1,2}:\d{2}$/.test(s) ? s : ''; }
+  const n = Number(h);
+  if (!Number.isFinite(n) || n < 0 || n >= 1) return '';
+  const totalMin = Math.round(n * 24 * 60);
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+};
 const numOr = (x) => { const n = Number(x); return Number.isFinite(n) ? n : null; }; // nBloque robusto (descarta NaN)
 
 // ¿el técnico participa en esta actividad de mtto? (array nuevo `tecnicos[]` o escalar legacy)
