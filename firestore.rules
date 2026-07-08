@@ -101,6 +101,11 @@ service cloud.firestore {
     match /insumos_instancias_fotos/{doc}  { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     match /insumos_movimientos_fotos/{doc} { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     match /insumos_catalogo_fotos/{doc}    { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
+    // comprobantes (Rendición de Caja): borrar una fila es corregir un escaneo mal
+    // leído por la IA — operación normal del módulo, no un borrado administrativo.
+    // comprobantes_fotos: 1 doc por foto, doc id = id del comprobante dueño.
+    match /comprobantes/{doc}              { allow read: if authorized(); allow create, update, delete: if canWrite('comprobantes'); }
+    match /comprobantes_fotos/{doc}        { allow read: if authorized(); allow create, update, delete: if canWrite('comprobantes'); }
 
     // ── Archivo CONGELADO de la base anterior de insumos (2026-07-06): la base "mal hecha"
     //    se copió a *_legacy con Admin SDK (que ignora reglas) antes de vaciar la base viva.
