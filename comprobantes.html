@@ -132,8 +132,19 @@ tr:hover td{background:var(--surface2)}
 .col-fecha{width:100px}.col-comp{width:68px}.col-num{min-width:130px}
 .col-ruc{min-width:130px}.col-prov{min-width:160px}.col-desc{min-width:170px}
 .col-monto{width:90px}.col-acc{width:42px;text-align:center}
+.col-foto{width:50px;text-align:center}
+.row-foto-thumb{width:32px;height:32px;object-fit:cover;border-radius:5px;cursor:zoom-in;border:1px solid var(--border);display:inline-block}
+.row-foto-empty{width:32px;height:32px;border-radius:5px;background:var(--surface3);display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
 .btn-camera{display:none}  /* solo visible en móvil */
 .empty-msg{text-align:center;color:var(--muted);padding:40px 20px;font-size:13px}
+
+/* ── TABS ─────────────────────────────────────────────────────────────────── */
+.tab-nav{display:flex;gap:4px;border-bottom:1.5px solid var(--border);margin-bottom:18px;flex-wrap:wrap}
+.tab-btn{padding:10px 16px;font-size:12px;font-weight:600;color:var(--muted2);background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;font-family:var(--font);transition:all .15s;white-space:nowrap}
+.tab-btn:hover{color:var(--blue)}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--orange)}
+.tab-view{display:none}
+.tab-view.active{display:block}
 
 /* ── MODAL ────────────────────────────────────────────────────────────────── */
 .modal-overlay{position:fixed;inset:0;background:rgba(10,20,50,.45);backdrop-filter:blur(2px);z-index:500;display:none;align-items:center;justify-content:center;padding:16px;cursor:pointer}
@@ -195,6 +206,13 @@ tr:hover td{background:var(--surface2)}
 <div style="flex:1;display:flex;flex-direction:column">
 <div class="page" id="main-page" style="display:none">
 
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('escanear')">🧾 Escanear</button>
+    <button class="tab-btn" onclick="switchTab('historial')">🕘 Historial</button>
+  </div>
+
+  <div class="tab-view active" id="tab-escanear">
+
   <!-- CONFIG CARD -->
   <div class="card">
     <div class="card-title">🤖 Configuración de IA — Gemini</div>
@@ -248,8 +266,7 @@ tr:hover td{background:var(--surface2)}
       <h3>📋 Comprobantes detectados</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-sm" onclick="addRow()">＋ Agregar fila</button>
-        <button class="btn btn-sm btn-green" onclick="exportExcel()">⬇ Exportar Excel</button>
-        <button class="btn btn-sm btn-red" onclick="clearAll()">🗑 Limpiar todo</button>
+        <button class="btn btn-sm btn-red" onclick="limpiarTabla()">🧹 Limpiar tabla</button>
       </div>
     </div>
     <div class="table-scroll">
@@ -263,21 +280,72 @@ tr:hover td{background:var(--surface2)}
             <th class="col-prov">Proveedor</th>
             <th class="col-desc">Descripción <span style="color:var(--orange)">*</span></th>
             <th class="col-monto">Valor</th>
+            <th class="col-foto">Imagen</th>
             <th class="col-acc"></th>
           </tr>
         </thead>
         <tbody id="results-body">
-          <tr><td colspan="8" class="empty-msg">Sin comprobantes. Sube imágenes y presiona Analizar.</td></tr>
+          <tr><td colspan="9" class="empty-msg">Sin comprobantes. Sube imágenes y presiona Analizar.</td></tr>
         </tbody>
       </table>
     </div>
     <p style="font-size:10px;color:var(--muted2);margin-top:6px">
-      <span style="color:var(--orange)">*</span> Descripción es obligatoria y se completa manualmente. Todos los campos son editables en la tabla.
+      <span style="color:var(--orange)">*</span> Descripción es obligatoria y se completa manualmente. Todos los campos son editables en la tabla — se guardan automáticamente.
     </p>
   </div>
 
+  </div><!-- /tab-escanear -->
+
+  <div class="tab-view" id="tab-historial">
+  <div class="card">
+    <div class="card-title">🕘 Historial de comprobantes</div>
+    <div class="form-row" style="margin-bottom:16px">
+      <div class="form-group" style="max-width:160px;min-width:140px">
+        <div class="form-label">Desde</div>
+        <input type="date" class="form-input" id="hist-desde">
+      </div>
+      <div class="form-group" style="max-width:160px;min-width:140px">
+        <div class="form-label">Hasta</div>
+        <input type="date" class="form-input" id="hist-hasta">
+      </div>
+      <button class="btn btn-primary" onclick="cargarHistorial()">🔄 Actualizar</button>
+      <div style="flex:3"></div>
+      <button class="btn btn-sm btn-green" onclick="exportExcelTexto()">⬇ Excel</button>
+      <button class="btn btn-sm btn-green" onclick="exportExcelImagenes()">⬇ Excel + fotos</button>
+      <button class="btn btn-sm btn-green" onclick="exportPdfTexto()">⬇ PDF</button>
+      <button class="btn btn-sm btn-green" onclick="exportPdfImagenes()">⬇ PDF + fotos</button>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:30px;text-align:center"><input type="checkbox" id="hist-chk-all" onchange="toggleAllHist(this.checked)"></th>
+            <th class="col-fecha">Fecha</th>
+            <th class="col-comp">N°Boleta / Factura</th>
+            <th class="col-num">Número</th>
+            <th class="col-ruc">RUC / DNI</th>
+            <th class="col-prov">Proveedor</th>
+            <th class="col-desc">Descripción</th>
+            <th class="col-monto">Valor</th>
+            <th class="col-foto">Imagen</th>
+          </tr>
+        </thead>
+        <tbody id="hist-body">
+          <tr><td colspan="9" class="empty-msg">Elige un rango de fechas y presiona Actualizar.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:10px;color:var(--muted2);margin-top:6px" id="hist-count"></p>
+  </div>
+  </div><!-- /tab-historial -->
+
 </div><!-- /.page -->
 </div><!-- flex:1 wrapper -->
+
+<!-- LIGHTBOX DE FOTO DE COMPROBANTE -->
+<div class="modal-overlay" id="foto-lightbox" onclick="if(event.target===this)closeCompLightbox()">
+  <img id="foto-lightbox-img" src="" style="max-width:92vw;max-height:92vh;border-radius:8px;box-shadow:var(--shadow-lg)" alt="">
+</div>
 
 <!-- MODAL GESTIÓN DE ACCESOS -->
 <div class="modal-overlay" id="modal-access" onclick="if(event.target===this)closeModal('modal-access')">
@@ -314,6 +382,7 @@ tr:hover td{background:var(--surface2)}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 <script>
@@ -485,6 +554,16 @@ function initApp(){
   ).join('');
 
   updateAnalyzeBtn();
+  initHistDefaults();
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
+  document.querySelector(`.tab-btn[onclick*="${tab}"]`).classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+  if(tab === 'historial' && !histLoaded) cargarHistorial();
 }
 
 function setKeyStatus(ok){
@@ -668,13 +747,11 @@ function fileToBase64(file){
       const img = new Image();
       img.onerror = reject;
       img.onload  = () => {
-        const dataUrl = canvasToJpeg(Object.assign(document.createElement('canvas'),
-          {width: img.width, height: img.height}));
-        // Actually draw it
         const c = document.createElement('canvas');
         c.width = img.width; c.height = img.height;
         c.getContext('2d').drawImage(img, 0, 0);
-        resolve({ b64: canvasToJpeg(c).split(',')[1], mime: 'image/jpeg' });
+        const dataUrl = canvasToJpeg(c);
+        resolve({ b64: dataUrl.split(',')[1], mime: 'image/jpeg', dataUrl });
       };
       img.src = e.target.result;
     };
@@ -749,7 +826,7 @@ async function analyzeAll(){
             : pendingFiles[i].file.name;
           try{
             const parsed = await callGeminiForImage(pages[p].b64, pages[p].mime);
-            appendRow(parsed, label);
+            await appendRow(parsed, label, pages[p].dataUrl);
             const hasData = parsed.fecha || parsed.numero || parsed.ruc || parsed.proveedor || parsed.monto;
             if(!hasData) toast(`${label}: sin datos detectados`, 'err');
           }catch(pageErr){
@@ -765,11 +842,11 @@ async function analyzeAll(){
         const ctx = `Analizando ${done + 1} de ${toProcess.length}`;
         if(callIdx++ > 0) await geminiRateDelay(statusEl, ctx);
         statusEl.textContent = ctx + '…';
-        const { b64, mime } = await fileToBase64(pendingFiles[i].file);
+        const { b64, mime, dataUrl } = await fileToBase64(pendingFiles[i].file);
         const parsed = await callGeminiForImage(b64, mime);
         pendingFiles[i].status = 'ok';
         pendingFiles[i].result = parsed;
-        appendRow(parsed, pendingFiles[i].file.name);
+        await appendRow(parsed, pendingFiles[i].file.name, dataUrl);
         const hasData = parsed.fecha || parsed.numero || parsed.ruc || parsed.proveedor || parsed.monto;
         if(!hasData) toast(`Imagen ${i+1}: sin datos detectados — sube una foto clara del comprobante`, 'err');
         done++;
@@ -796,13 +873,24 @@ async function analyzeAll(){
   }
 }
 
-// ── RESULTS TABLE ─────────────────────────────────────────────────────────────
-let rows  = [];
-let rowId = 0;
+// ── RESULTS TABLE (persistida en Firestore: colección `comprobantes` + fotos en
+//    `comprobantes_fotos`, doc id = id del comprobante) ────────────────────────
+let rows = [];
 
-function appendRow(data, filename){
-  rows.push({
-    _id:         rowId++,
+// Gemini entrega la fecha en DD/MM/YYYY (para mostrar/editar); fechaISO (YYYY-MM-DD)
+// es la que se guarda además para poder filtrar el Historial por rango con
+// where() de Firestore (un string DD/MM/YYYY no ordena igual que la fecha real).
+function parseFechaToISO(s){
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || '').trim());
+  if(!m) return '';
+  const [, d, mo, y] = m;
+  return y + '-' + mo.padStart(2, '0') + '-' + d.padStart(2, '0');
+}
+
+async function appendRow(data, filename, fotoDataUrl){
+  const ref = db.collection('comprobantes').doc();
+  const row = {
+    _id:         ref.id,
     fecha:       data.fecha     || '',
     tipo:        data.tipo      || 'FT',
     numero:      data.numero    || '',
@@ -810,22 +898,53 @@ function appendRow(data, filename){
     proveedor:   data.proveedor || '',
     descripcion: '',               // always manual
     monto:       data.monto != null ? String(data.monto) : '',
-    _file:       filename || ''
-  });
+    _file:       filename || '',
+    _foto:       fotoDataUrl || null
+  };
+  rows.push(row);
   renderTable();
   document.getElementById('results-section').style.display = 'block';
+  try{
+    await ref.set({
+      fecha: row.fecha, fechaISO: parseFechaToISO(row.fecha), tipo: row.tipo,
+      numero: row.numero, ruc: row.ruc, proveedor: row.proveedor,
+      descripcion: row.descripcion, monto: row.monto,
+      createdAt: new Date().toISOString(), createdBy: maUser?.email || ''
+    });
+    if(fotoDataUrl){
+      await db.collection('comprobantes_fotos').doc(ref.id).set({
+        foto: fotoDataUrl, createdAt: new Date().toISOString(), createdBy: maUser?.email || ''
+      });
+    }
+  }catch(e){
+    toast('Error guardando comprobante: ' + e.message, 'err');
+  }
 }
 
-function addRow(){
-  rows.push({ _id:rowId++, fecha:'', tipo:'FT', numero:'', ruc:'', proveedor:'', descripcion:'', monto:'', _file:'' });
+async function addRow(){
+  const ref = db.collection('comprobantes').doc();
+  const row = { _id:ref.id, fecha:'', tipo:'FT', numero:'', ruc:'', proveedor:'', descripcion:'', monto:'', _file:'', _foto:null };
+  rows.push(row);
   renderTable();
   document.getElementById('results-section').style.display = 'block';
+  try{
+    await ref.set({
+      fecha:'', fechaISO:'', tipo:'FT', numero:'', ruc:'', proveedor:'', descripcion:'', monto:'',
+      createdAt: new Date().toISOString(), createdBy: maUser?.email || ''
+    });
+  }catch(e){
+    toast('Error guardando fila: ' + e.message, 'err');
+  }
 }
 
 function deleteRow(id){
   rows = rows.filter(r => r._id !== id);
   renderTable();
   if(!rows.length) document.getElementById('results-section').style.display = 'none';
+  // Borra el registro y su foto en Firestore — corregir un escaneo mal leído es el
+  // único momento natural para hacerlo (best-effort, no bloquea la UI si falla).
+  db.collection('comprobantes').doc(id).delete().catch(() => {});
+  db.collection('comprobantes_fotos').doc(id).delete().catch(() => {});
 }
 
 function setField(id, field, val){
@@ -833,51 +952,80 @@ function setField(id, field, val){
   if(r) r[field] = val;
 }
 
+// Confirma en Firestore los cambios de una fila (llamado al salir del campo, no por
+// tecla — un solo write por edición en vez de uno por keystroke).
+function syncRow(id){
+  const r = rows.find(r => r._id === id);
+  if(!r) return;
+  db.collection('comprobantes').doc(id).update({
+    fecha: r.fecha, fechaISO: parseFechaToISO(r.fecha), tipo: r.tipo, numero: r.numero,
+    ruc: r.ruc, proveedor: r.proveedor, descripcion: r.descripcion, monto: r.monto,
+    updatedAt: new Date().toISOString(), updatedBy: maUser?.email || ''
+  }).catch(e => toast('Error guardando cambio: ' + e.message, 'err'));
+}
+
 function renderTable(){
   const tbody = document.getElementById('results-body');
   if(!rows.length){
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-msg">Sin comprobantes. Sube imágenes y presiona Analizar.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">Sin comprobantes. Sube imágenes y presiona Analizar.</td></tr>';
     return;
   }
   tbody.innerHTML = rows.map(r => `
     <tr>
       <td class="col-fecha">
         <input class="td-inp" value="${esc(r.fecha)}" placeholder="DD/MM/YYYY"
-               oninput="setField(${r._id},'fecha',this.value)">
+               oninput="setField('${r._id}','fecha',this.value)" onblur="syncRow('${r._id}')">
       </td>
       <td class="col-comp">
-        <select class="td-sel" onchange="setField(${r._id},'tipo',this.value)">
+        <select class="td-sel" onchange="setField('${r._id}','tipo',this.value); syncRow('${r._id}')">
           ${[['FT','Factura'],['BO','Boleta'],['TK','Ticket'],['NC','N. Crédito'],['OT','Otro']].map(([v,l]) => `<option value="${v}"${r.tipo===v?' selected':''}>${v}</option>`).join('')}
         </select>
       </td>
       <td class="col-num">
         <input class="td-inp" value="${esc(r.numero)}" placeholder="Serie-Número"
-               oninput="setField(${r._id},'numero',this.value)">
+               oninput="setField('${r._id}','numero',this.value)" onblur="syncRow('${r._id}')">
       </td>
       <td class="col-ruc">
         <input class="td-inp" value="${esc(r.ruc)}" placeholder="RUC / DNI"
-               oninput="setField(${r._id},'ruc',this.value)">
+               oninput="setField('${r._id}','ruc',this.value)" onblur="syncRow('${r._id}')">
       </td>
       <td class="col-prov">
         <input class="td-inp" value="${esc(r.proveedor)}" placeholder="Proveedor..."
-               oninput="setField(${r._id},'proveedor',this.value)">
+               oninput="setField('${r._id}','proveedor',this.value)" onblur="syncRow('${r._id}')">
       </td>
       <td class="col-desc">
         <input class="td-inp td-req" value="${esc(r.descripcion)}"
                placeholder="Descripción (obligatoria)"
-               oninput="setField(${r._id},'descripcion',this.value)">
+               oninput="setField('${r._id}','descripcion',this.value)" onblur="syncRow('${r._id}')">
       </td>
       <td class="col-monto">
         <input class="td-inp" value="${esc(r.monto)}" placeholder="0.00"
                style="text-align:right"
-               oninput="setField(${r._id},'monto',this.value)">
+               oninput="setField('${r._id}','monto',this.value)" onblur="syncRow('${r._id}')">
+      </td>
+      <td class="col-foto">
+        ${r._foto
+          ? `<img src="${r._foto}" class="row-foto-thumb" onclick="openRowLightbox('${r._id}')" alt="">`
+          : `<div class="row-foto-empty">—</div>`}
       </td>
       <td class="col-acc">
-        <button class="btn btn-sm btn-red" onclick="deleteRow(${r._id})"
+        <button class="btn btn-sm btn-red" onclick="deleteRow('${r._id}')"
                 style="padding:3px 8px" title="Eliminar fila">✕</button>
       </td>
     </tr>
   `).join('');
+}
+
+// ── LIGHTBOX DE FOTO ───────────────────────────────────────────────────────────
+function openRowLightbox(id){
+  const r = rows.find(x => x._id === id);
+  if(!r || !r._foto) return;
+  document.getElementById('foto-lightbox-img').src = r._foto;
+  document.getElementById('foto-lightbox').classList.add('open');
+}
+function closeCompLightbox(){
+  document.getElementById('foto-lightbox').classList.remove('open');
+  document.getElementById('foto-lightbox-img').src = '';
 }
 
 function esc(s){
@@ -1011,30 +1159,9 @@ async function addAccessUser(){
   }catch(e){ toast('Error: '+e.message, 'err'); }
 }
 
-// ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
-function exportExcel(){
-  if(!MA.can('exportar','comprobantes')){ toast('Sin permisos para exportar', 'err'); return; }
-  if(!rows.length){ toast('Sin datos para exportar', 'err'); return; }
-  const data = [
-    ['FECHA','N°BOLETA / FACTURA','NUMERO','RUC','PROVEEDOR','DESCRIPCION','VALOR'],
-    ...rows.map(r => [
-      r.fecha, r.tipo, r.numero, r.ruc, r.proveedor, r.descripcion,
-      r.monto !== '' ? (parseFloat(r.monto) || r.monto) : ''
-    ])
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{wch:13},{wch:7},{wch:20},{wch:13},{wch:32},{wch:38},{wch:11}];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Comprobantes');
-  const d  = new Date();
-  const ts = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-  XLSX.writeFile(wb, `comprobantes_${ts}.xlsx`);
-  toast('Excel exportado ✓', 'ok');
-}
-
-// ── CLEAR ALL ─────────────────────────────────────────────────────────────────
-function clearAll(){
-  if(!confirm('¿Borrar todos los comprobantes y las imágenes cargadas?')) return;
+// ── LIMPIAR TABLA (solo la vista de esta sesión — NO borra Firestore/Historial) ─
+function limpiarTabla(){
+  if(!confirm('¿Limpiar la tabla de esta sesión? (los comprobantes ya guardados siguen en el Historial, esto solo limpia la vista para empezar otro lote)')) return;
   pendingFiles.forEach(f => { if(f.objectUrl) URL.revokeObjectURL(f.objectUrl); });
   pendingFiles = [];
   rows = [];
@@ -1043,7 +1170,306 @@ function clearAll(){
   document.getElementById('results-section').style.display = 'none';
   document.getElementById('analyze-status').textContent    = '';
   updateAnalyzeBtn();
-  toast('Limpiado ✓', 'ok');
+  toast('Tabla limpiada ✓', 'ok');
+}
+
+// ── HISTORIAL ─────────────────────────────────────────────────────────────────
+let histRows       = [];
+let histFotos      = {};
+let selectedHistIds = new Set();
+let histLoaded     = false;
+
+function fmtDateInput(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function initHistDefaults(){
+  const hoy = new Date();
+  document.getElementById('hist-desde').value = fmtDateInput(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+  document.getElementById('hist-hasta').value = fmtDateInput(hoy);
+}
+
+async function cargarHistorial(){
+  if(!MA.can('editar','comprobantes')) return;
+  const desde = document.getElementById('hist-desde').value;
+  const hasta = document.getElementById('hist-hasta').value;
+  if(!desde || !hasta){ toast('Elige un rango de fechas', 'err'); return; }
+  const tbody = document.getElementById('hist-body');
+  tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">Cargando…</td></tr>';
+  try{
+    const snap = await db.collection('comprobantes')
+      .where('fechaISO', '>=', desde).where('fechaISO', '<=', hasta).get();
+    histRows = snap.docs.map(d => ({ _id: d.id, ...d.data() }))
+      .sort((a, b) => (b.fechaISO || '').localeCompare(a.fechaISO || ''));
+    const ids = histRows.map(r => r._id);
+    const fotoSnaps = await Promise.all(ids.map(id => db.collection('comprobantes_fotos').doc(id).get()));
+    histFotos = {};
+    fotoSnaps.forEach((s, i) => { if(s.exists) histFotos[ids[i]] = s.data().foto; });
+    [...selectedHistIds].forEach(id => { if(!ids.includes(id)) selectedHistIds.delete(id); });
+    histLoaded = true;
+    renderHistorial();
+  }catch(e){
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">Error: ' + esc(e.message) + '</td></tr>';
+  }
+}
+
+function renderHistorial(){
+  const tbody = document.getElementById('hist-body');
+  const countEl = document.getElementById('hist-count');
+  if(!histRows.length){
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">Sin comprobantes en ese rango.</td></tr>';
+    countEl.textContent = '';
+    document.getElementById('hist-chk-all').checked = false;
+    return;
+  }
+  countEl.textContent = histRows.length + ' comprobante' + (histRows.length !== 1 ? 's' : '') + ' en el rango';
+  tbody.innerHTML = histRows.map(r => {
+    const foto = histFotos[r._id];
+    return `<tr>
+      <td style="text-align:center"><input type="checkbox" class="hist-chk" data-id="${r._id}" ${selectedHistIds.has(r._id) ? 'checked' : ''} onchange="updateHistSelection(this)"></td>
+      <td class="col-fecha">${esc(r.fecha)}</td>
+      <td class="col-comp">${esc(r.tipo)}</td>
+      <td class="col-num">${esc(r.numero)}</td>
+      <td class="col-ruc">${esc(r.ruc)}</td>
+      <td class="col-prov">${esc(r.proveedor)}</td>
+      <td class="col-desc">${esc(r.descripcion)}</td>
+      <td class="col-monto" style="text-align:right">${esc(r.monto)}</td>
+      <td class="col-foto">${foto ? `<img src="${foto}" class="row-foto-thumb" onclick="openHistLightbox('${r._id}')" alt="">` : `<div class="row-foto-empty">—</div>`}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('hist-chk-all').checked = histRows.every(r => selectedHistIds.has(r._id));
+}
+
+function toggleAllHist(checked){
+  document.querySelectorAll('.hist-chk').forEach(chk => {
+    chk.checked = checked;
+    if(checked) selectedHistIds.add(chk.dataset.id);
+    else selectedHistIds.delete(chk.dataset.id);
+  });
+}
+function updateHistSelection(chk){
+  if(chk.checked) selectedHistIds.add(chk.dataset.id);
+  else selectedHistIds.delete(chk.dataset.id);
+  document.getElementById('hist-chk-all').checked = histRows.every(r => selectedHistIds.has(r._id));
+}
+function openHistLightbox(id){
+  const foto = histFotos[id];
+  if(!foto) return;
+  document.getElementById('foto-lightbox-img').src = foto;
+  document.getElementById('foto-lightbox').classList.add('open');
+}
+
+// Filas a exportar: la selección marcada, o si no hay ninguna marcada, todo el rango visible.
+function filasParaExportar(){
+  return selectedHistIds.size ? histRows.filter(r => selectedHistIds.has(r._id)) : histRows;
+}
+
+function tsNow(){
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// ── EXPORT EXCEL ──────────────────────────────────────────────────────────────
+function buildExcelWorkbook(rowsArr){
+  const data = [
+    ['FECHA','N°BOLETA / FACTURA','NUMERO','RUC','PROVEEDOR','DESCRIPCION','VALOR'],
+    ...rowsArr.map(r => [
+      r.fecha, r.tipo, r.numero, r.ruc, r.proveedor, r.descripcion,
+      r.monto !== '' ? (parseFloat(r.monto) || r.monto) : ''
+    ])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:13},{wch:7},{wch:20},{wch:13},{wch:32},{wch:38},{wch:11}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Comprobantes');
+  return wb;
+}
+
+function exportExcelTexto(){
+  if(!MA.can('exportar','comprobantes')){ toast('Sin permisos para exportar', 'err'); return; }
+  const rowsArr = filasParaExportar();
+  if(!rowsArr.length){ toast('Sin datos para exportar', 'err'); return; }
+  XLSX.writeFile(buildExcelWorkbook(rowsArr), `comprobantes_${tsNow()}.xlsx`);
+  toast('Excel exportado ✓', 'ok');
+}
+
+async function exportExcelImagenes(){
+  if(!MA.can('exportar','comprobantes')){ toast('Sin permisos para exportar', 'err'); return; }
+  const rowsArr = filasParaExportar();
+  if(!rowsArr.length){ toast('Sin datos para exportar', 'err'); return; }
+  XLSX.writeFile(buildExcelWorkbook(rowsArr), `comprobantes_${tsNow()}.xlsx`);
+  const conFoto = rowsArr.filter(r => histFotos[r._id]);
+  if(!conFoto.length){ toast('Excel exportado ✓ (sin fotos en la selección)', 'ok'); return; }
+  if(!(window.jspdf && window.jspdf.jsPDF)){ toast('Excel exportado ✓ (PDF de fotos no disponible)', 'ok'); return; }
+  const pdf = await _cpBuildFotosPdf(rowsArr);
+  pdf.save(`comprobantes_fotos_${tsNow()}.pdf`);
+  toast('Excel + PDF de fotos exportados ✓', 'ok');
+}
+
+// ── EXPORT PDF (tabla dibujada en canvas → jsPDF, mismo patrón que el reporte de
+//    material de insumos.html: _matPrepare/_matDraw*, paginado por fila completa) ──
+const _CP_COLS = [
+  { key:'fecha',       label:'FECHA',       w:0.85 },
+  { key:'tipo',        label:'TIPO',        w:0.55 },
+  { key:'numero',      label:'NÚMERO',      w:1.30 },
+  { key:'ruc',         label:'RUC/DNI',     w:0.95 },
+  { key:'proveedor',   label:'PROVEEDOR',   w:2.10 },
+  { key:'descripcion', label:'DESCRIPCIÓN', w:2.30 },
+  { key:'monto',       label:'VALOR',       w:0.75 },
+];
+const _CP_HEAD_H = 70, _CP_THEAD_H = 28, _CP_FOOT_H = 36, _CP_ROW_H = 24;
+
+function _cpFit(ctx, text, maxW){
+  text = String(text || '');
+  if(ctx.measureText(text).width <= maxW) return text;
+  let t = text;
+  while(t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+  return t + '…';
+}
+function _cpLayoutCols(innerW){
+  const cols = _CP_COLS.map(c => ({ ...c }));
+  const totalW = cols.reduce((s, c) => s + c.w, 0);
+  let x = 0;
+  cols.forEach(c => { c._x = x; c._w = innerW * c.w / totalW; x += c._w; });
+  return cols;
+}
+function _cpDrawHeader(ctx, W, padX, innerW, extra){
+  ctx.fillStyle = '#1B3F8B'; ctx.fillRect(0, 0, W, 6);
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#1a2540'; ctx.font = '700 20px Arial';
+  ctx.fillText('Rendición de Caja', padX, 38);
+  ctx.fillStyle = '#6a7a9a'; ctx.font = '400 12px Arial';
+  ctx.fillText('MultiAire · Comprobantes', padX, 58);
+  if(extra){
+    ctx.fillStyle = '#8a9ab8'; ctx.font = '400 11px Arial'; ctx.textAlign = 'right';
+    ctx.fillText(extra, padX + innerW, 36); ctx.textAlign = 'left';
+  }
+  return _CP_HEAD_H;
+}
+function _cpDrawThead(ctx, cols, padX, innerW, y){
+  ctx.fillStyle = '#e8eef8'; ctx.fillRect(padX, y, innerW, _CP_THEAD_H);
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#1B3F8B'; ctx.font = '700 10px Arial';
+  cols.forEach(c => ctx.fillText(c.label, padX + c._x + 5, y + _CP_THEAD_H / 2));
+  ctx.strokeStyle = '#d0daf0'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(padX + innerW, y); ctx.stroke();
+  return y + _CP_THEAD_H;
+}
+function _cpDrawRows(ctx, rowsArr, cols, padX, innerW, y, idxBase){
+  rowsArr.forEach((r, i) => {
+    if(((idxBase || 0) + i) % 2 === 1){ ctx.fillStyle = '#f5f8ff'; ctx.fillRect(padX, y, innerW, _CP_ROW_H); }
+    cols.forEach(c => {
+      ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      ctx.fillStyle = '#1a2540'; ctx.font = '400 11px Arial';
+      ctx.fillText(_cpFit(ctx, r[c.key], c._w - 10), padX + c._x + 5, y + _CP_ROW_H / 2);
+    });
+    y += _CP_ROW_H;
+  });
+  return y;
+}
+function _cpDrawFoot(ctx, padX, innerW, y, texto){
+  ctx.strokeStyle = '#d0daf0'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padX, y); ctx.lineTo(padX + innerW, y); ctx.stroke();
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#8a9ab8'; ctx.font = '400 9px Arial';
+  ctx.fillText(texto, padX, y + 18);
+}
+
+// Arma el jsPDF de la tabla (sin .save() todavía) — base de PDF-texto y PDF+fotos.
+async function _cpBuildTablaPdf(rowsArr){
+  const W = 900, padX = 28;
+  const pageH  = Math.round(W * 297 / 210);
+  const innerW = W - padX * 2;
+  const cols   = _cpLayoutCols(innerW);
+  const rowsPerPage = Math.max(1, Math.floor((pageH - _CP_HEAD_H - _CP_THEAD_H - _CP_FOOT_H) / _CP_ROW_H));
+  const nPages = Math.max(1, Math.ceil(rowsArr.length / rowsPerPage));
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+  const fechaTxt = new Date().toLocaleString('es-PE');
+  for(let p = 0; p < nPages; p++){
+    const slice = rowsArr.slice(p * rowsPerPage, (p + 1) * rowsPerPage);
+    const canvas = document.createElement('canvas');
+    canvas.width = W * 2; canvas.height = pageH * 2;
+    const ctx = canvas.getContext('2d'); ctx.scale(2, 2);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, pageH);
+    let y = _cpDrawHeader(ctx, W, padX, innerW, 'pág. ' + (p + 1) + '/' + nPages);
+    y = _cpDrawThead(ctx, cols, padX, innerW, y);
+    _cpDrawRows(ctx, slice, cols, padX, innerW, y, p * rowsPerPage);
+    _cpDrawFoot(ctx, padX, innerW, pageH - _CP_FOOT_H + 6, 'MultiAire · Rendición de Caja · ' + fechaTxt + ' · pág. ' + (p + 1) + '/' + nPages);
+    if(p > 0) pdf.addPage();
+    pdf.addImage(canvas.toDataURL('image/png', 1.0), 'PNG', 0, 0, pw, ph);
+  }
+  return pdf;
+}
+
+function _cpImgDims(dataUrl){
+  return new Promise(res => {
+    const im = new Image();
+    im.onload  = () => res({ w: im.width, h: im.height });
+    im.onerror = () => res({ w: 400, h: 300 });
+    im.src = dataUrl;
+  });
+}
+
+// Agrega, a un pdf ya con páginas de tabla, una página por foto (usado por PDF+fotos).
+async function _cpAddFotoPages(pdf, rowsArr){
+  const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+  const margin = 10;
+  for(const r of rowsArr){
+    const foto = histFotos[r._id];
+    if(!foto) continue;
+    pdf.addPage();
+    const dim = await _cpImgDims(foto);
+    const maxW = pw - margin * 2, maxH = ph - margin * 2 - 14;
+    const ratio = Math.min(maxW / dim.w, maxH / dim.h, 1);
+    const w = dim.w * ratio, h = dim.h * ratio;
+    pdf.setFontSize(9); pdf.setTextColor(120, 130, 150);
+    pdf.text(`${r.proveedor || ''} · ${r.fecha || ''} · ${r.monto || ''}`, margin, margin + 6);
+    pdf.addImage(foto, 'JPEG', (pw - w) / 2, margin + 14, w, h);
+  }
+}
+
+// PDF SOLO de fotos, un archivo nuevo (usado por Excel + fotos).
+async function _cpBuildFotosPdf(rowsArr){
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight();
+  const margin = 10;
+  const conFoto = rowsArr.filter(r => histFotos[r._id]);
+  for(let i = 0; i < conFoto.length; i++){
+    const r = conFoto[i];
+    if(i > 0) pdf.addPage();
+    const foto = histFotos[r._id];
+    const dim = await _cpImgDims(foto);
+    const maxW = pw - margin * 2, maxH = ph - margin * 2 - 14;
+    const ratio = Math.min(maxW / dim.w, maxH / dim.h, 1);
+    const w = dim.w * ratio, h = dim.h * ratio;
+    pdf.setFontSize(9); pdf.setTextColor(120, 130, 150);
+    pdf.text(`${r.proveedor || ''} · ${r.fecha || ''} · ${r.monto || ''}`, margin, margin + 6);
+    pdf.addImage(foto, 'JPEG', (pw - w) / 2, margin + 14, w, h);
+  }
+  return pdf;
+}
+
+async function exportPdfTexto(){
+  if(!MA.can('exportar','comprobantes')){ toast('Sin permisos para exportar', 'err'); return; }
+  const rowsArr = filasParaExportar();
+  if(!rowsArr.length){ toast('Sin datos para exportar', 'err'); return; }
+  if(!(window.jspdf && window.jspdf.jsPDF)){ toast('PDF no disponible', 'err'); return; }
+  const pdf = await _cpBuildTablaPdf(rowsArr);
+  pdf.save(`comprobantes_${tsNow()}.pdf`);
+  toast('PDF exportado ✓', 'ok');
+}
+
+async function exportPdfImagenes(){
+  if(!MA.can('exportar','comprobantes')){ toast('Sin permisos para exportar', 'err'); return; }
+  const rowsArr = filasParaExportar();
+  if(!rowsArr.length){ toast('Sin datos para exportar', 'err'); return; }
+  if(!(window.jspdf && window.jspdf.jsPDF)){ toast('PDF no disponible', 'err'); return; }
+  const pdf = await _cpBuildTablaPdf(rowsArr);
+  await _cpAddFotoPages(pdf, rowsArr);
+  pdf.save(`comprobantes_con_fotos_${tsNow()}.pdf`);
+  toast('PDF exportado ✓', 'ok');
 }
 </script>
 </body>
