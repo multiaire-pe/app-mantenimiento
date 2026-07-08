@@ -1188,6 +1188,10 @@ function registrarEjecucion(eqId, idxs, done){
       let plan = null;
       try { const s = await planRef.get(); plan = s.exists ? s.data() : null; }
       catch(e){ plan = planDocs[eqId+'|'+i] || null; }
+      // Guarda anti-carrera (marcar→desmarcar rápido): si al resolver la lectura la actividad
+      // YA NO está marcada, abortar — no escribir la ejecución ni borrar el plan.
+      const stNow = tareaStatus[eqId];
+      if(!(stNow === true || (stNow && typeof stNow === 'object' && stNow[i] === true))) return;
       const tecs = _ejecTecnicos(plan);
       try{
         await ejecRef.set({

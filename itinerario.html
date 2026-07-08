@@ -840,10 +840,32 @@ async function cargarPlanDia(fecha){
           return st === true || (st && typeof st === 'object' && st[p.tareaIdx] === true);
         });
         if (hechas.length && _planFecha === fecha) {
-          hechas.forEach(p => { window.__db.collection('mtto_plan').doc(p._id).delete().catch(()=>{}); });
+          // Red de seguridad KPIs: NO borrar un plan ejecutado sin que su ejecución quede
+          // registrada. Si mtto_ejecuciones/{p._id} no existe (el set de la app/bot falló), se
+          // escribe desde el propio plan (que trae la atribución); solo entonces se borra el plan.
+          // Si la escritura falla (p.ej. sin permiso mantenimiento), se CONSERVA el plan.
+          hechas.forEach(async p => {
+            try {
+              const ejecRef = window.__db.collection('mtto_ejecuciones').doc(p._id);
+              const es = await ejecRef.get();
+              if (!es.exists) {
+                const tecs = planTecnicos(p);
+                await ejecRef.set({
+                  eq_id: p.eq_id, nombreEq: p.nombreEq || p.eq_id, tipo: p.tipo || '', area: p.area || '',
+                  sede: p.sede, periodo, anio,
+                  tareaIdx: p.tareaIdx, tarea: p.tarea || ('Actividad ' + ((p.tareaIdx||0)+1)),
+                  minutos: (p.minutos != null) ? p.minutos : 5,
+                  tecnicoIds: tecs.map(t => t.id), tecnicos: tecs, modo: tecs.length >= 2 ? 'grupo' : 'individual',
+                  planificada: true,
+                  fechaEjec: p.fecha || '', registradoPor: 'sync-itinerario', origen: 'SYNC', ts: new Date().toISOString(),
+                });
+              }
+              await window.__db.collection('mtto_plan').doc(p._id).delete();   // solo tras asegurar la ejecución
+            } catch(e) { /* sin permiso mantenimiento o error: se conserva el plan (atribución recuperable) */ }
+          });
           const idsH = new Set(hechas.map(p => p._id));
           planDia = planDia.filter(p => !idsH.has(p._id));
-          console.log('[mtto_plan] ' + hechas.length + ' actividad(es) ya ejecutadas retiradas del plan');
+          console.log('[mtto_plan] ' + hechas.length + ' actividad(es) ejecutadas: ejecución asegurada + retiradas del plan');
         }
       }
     } catch(e) { console.warn('[mtto_plan sync]', e.message); }
