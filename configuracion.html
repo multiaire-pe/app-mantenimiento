@@ -301,6 +301,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>mantenimiento_fotos.csv</div>
             <div class="backup-file"><span></span>mtto_log.csv</div>
             <div class="backup-file"><span></span>mtto_plan.csv</div>
+            <div class="backup-file"><span></span>mtto_ejecuciones.csv</div>
             <div class="backup-file"><span></span>insumos_catalogo.csv</div>
             <div class="backup-file"><span></span>insumos_instancias.csv</div>
             <div class="backup-file"><span></span>insumos_paquetes.csv</div>
@@ -908,7 +909,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
@@ -941,6 +942,7 @@ async function exportBackup() {
       window.__db.collection('mantenimiento_fotos').get(),
       window.__db.collection('mtto_log').get(),
       window.__db.collection('mtto_plan').get(),
+      window.__db.collection('mtto_ejecuciones').get(),
     ]);
 
     const zip = new JSZip();
@@ -1171,6 +1173,14 @@ async function exportBackup() {
     });
     zip.file('mtto_plan.csv', [mttoPlanHeaders.join(','), ...mttoPlanRows].join('\n'));
 
+    // 14g. Mantenimiento — ejecuciones registradas (KPIs de desempeño; doc chico → JSON)
+    const mttoEjecHeaders = ['ID','PERIODO','DATA'];
+    const mttoEjecRows = mttoEjecSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.periodo||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('mtto_ejecuciones.csv', [mttoEjecHeaders.join(','), ...mttoEjecRows].join('\n'));
+
     // 15. Manta — maestro de equipos por tienda (Ripley)
     const mEquHeaders = ['ID','TIENDA','EQUIPO','ORDEN','ACTIVO','ORIGEN'];
     const mEquRows = mEquSnap.docs.map(d => {
@@ -1276,7 +1286,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1292,7 +1302,7 @@ async function processZip(file) {
     // "Reemplazar todo" fiel al backup: colecciones NUEVAS que un ZIP viejo no trae se
     // VACÍAN — antes quedaban datos fantasma (hallazgo del Council, cierra el backlog).
     if (mode === 'replace') {
-      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'insumos_catalogo_fotos'];
+      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'insumos_catalogo_fotos'];
       for (const colN of NUEVAS) {
         if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
         const _exN = await window.__db.collection(colN).get();
@@ -1654,6 +1664,13 @@ async function confirmImport() {
       const rows = parseCSV(pendingImport.files['mtto_plan.csv']);
       await batchWrite('mtto_plan', rows, r => { const data=JSON.parse(r.DATA||'{}'); delete data.id; return {_docId:r.ID, ...data}; });
       addLog('✓ Plan de actividades importado (' + rows.length + ' registros)', 'ok');
+    }
+
+    if (pendingImport.files['mtto_ejecuciones.csv']) {
+      addLog('✅ Importando ejecuciones de mantenimiento...', 'info');
+      const rows = parseCSV(pendingImport.files['mtto_ejecuciones.csv']);
+      await batchWrite('mtto_ejecuciones', rows, r => { const data=JSON.parse(r.DATA||'{}'); delete data.id; return {_docId:r.ID, ...data}; });
+      addLog('✓ Ejecuciones de mantenimiento importadas (' + rows.length + ' registros)', 'ok');
     }
 
     if (pendingImport.files['compras.csv']) {

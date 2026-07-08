@@ -389,6 +389,7 @@ option{background:#fff}
       <button class="tab-btn" onclick="switchTab('dashboard')">📊 Dashboard</button>
       <button class="tab-btn" onclick="switchTab('global')">🌐 Global</button>
       <button class="tab-btn" onclick="switchTab('historial')">🕘 Historial</button>
+      <button class="tab-btn" onclick="switchTab('desempeno')">👷 Desempeño</button>
     </div>
 
     <div class="tab-view active" id="tab-checklist">
@@ -422,6 +423,22 @@ option{background:#fff}
           <p>Selecciona una sede y período para ver el avance.</p>
         </div>
       </div>
+    </div>
+
+    <div class="tab-view" id="tab-desempeno">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <select id="dsp-periodo" onchange="renderDesempeno()" style="max-width:150px">
+          <option value="ENE-FEB">Ene – Feb</option><option value="MAR-ABR">Mar – Abr</option>
+          <option value="MAY-JUN">May – Jun</option><option value="JUL-AGO">Jul – Ago</option>
+          <option value="SEP-OCT">Sep – Oct</option><option value="NOV-DIC">Nov – Dic</option>
+        </select>
+        <select id="dsp-anio" onchange="renderDesempeno()" style="max-width:110px"></select>
+        <select id="dsp-sede" onchange="renderDesempenoFiltrado()" style="max-width:200px"><option value="">Todas las sedes</option></select>
+        <select id="dsp-tipo" onchange="renderDesempenoFiltrado()" style="max-width:180px"><option value="">Todos los tipos</option></select>
+        <select id="dsp-tecnico" onchange="renderDesempenoFiltrado()" style="max-width:200px"><option value="">Todos los técnicos</option></select>
+        <button class="btn btn-sm" onclick="renderDesempeno()" title="Recargar">↻</button>
+      </div>
+      <div id="dsp-content"></div>
     </div>
   </div>
 </div>
@@ -591,13 +608,14 @@ let _ftCtx = null;     // contexto del modal de fotos {eqId, idx, tarea}
 function _mttoKey(){ return currentSede + '|' + currentPeriodo + '|' + currentAnio; }
 
 let planBadges = {};   // `${eq_id}|${idx}` → fecha planificada (mtto_plan del período/sede)
+let planDocs = {};     // `${eq_id}|${idx}` → doc de plan COMPLETO (para atribuir la ejecución — Etapa 2)
 async function loadPlanBadges(){
-  planBadges = {};
+  planBadges = {}; planDocs = {};
   try{
     const { periodo, anio } = (() => { const k=_mttoKey().split('|'); return { periodo:k[1], anio:Number(k[2]) }; })();
     const snap = await window.__db.collection('mtto_plan')
       .where('sede','==',currentSede).where('periodo','==',periodo).where('anio','==',anio).get();
-    snap.docs.forEach(d => { const r=d.data(); planBadges[r.eq_id+'|'+r.tareaIdx] = r.fecha || ''; });
+    snap.docs.forEach(d => { const r=d.data(); const k=r.eq_id+'|'+r.tareaIdx; planBadges[k] = r.fecha || ''; planDocs[k] = r; });
   }catch(e){ console.warn('[mtto_plan]', e.message); }
   refreshPlanBadges();
 }
@@ -1139,11 +1157,60 @@ function updateStatusBar(stats) {
 // Bitácora de registros (tab Historial): un evento por acción — quién/qué/cuándo.
 // Fire-and-forget: si falla no interrumpe el marcado (el checklist es lo primario).
 // Lo ejecutado sale del plan del itinerario en automático (ids determinísticos)
-function limpiarPlanDe(eqId, idxs) {
-  try {
-    const [, periodo, anio] = _mttoKey().split('|');
-    idxs.forEach(i => window.__db.collection('mtto_plan').doc(`${eqId}|${periodo}|${anio}|${i}`).delete().catch(()=>{}));
-  } catch(e) { /* nunca romper el marcado */ }
+// Etapa 2 (mtto grupal + KPIs): registro persistente de lo EJECUTADO → base de los KPIs.
+// La ATRIBUCIÓN sale del PLAN (mtto_plan), no de quién marca; marcar sin plan → sin técnico (esperado).
+// Doc id determinístico EQ|PERIODO|AÑO|IDX (idempotente: re-marcar no duplica; desmarcar borra).
+function _ejecTecnicos(p){   // retrocompat escalar↔array, igual que planTecnicos del itinerario
+  if(!p) return [];
+  if(Array.isArray(p.tecnicos) && p.tecnicos.length){
+    const arr = p.tecnicos.map(t => ({ id:t&&t.id||'', nombre:t&&t.nombre||'' })).filter(t=>t.nombre);
+    if(arr.length) return arr;
+  }
+  if(p.tecnicoNombre) return [{ id:p.tecnicoId||'', nombre:p.tecnicoNombre }];
+  return [];
+}
+function registrarEjecucion(eqId, idxs, done){
+  try{
+    const [, periodo, anioStr] = _mttoKey().split('|');
+    const anio = Number(anioStr);
+    const eq = sedeEquipos.find(e => e.eq_id === eqId);
+    const act = eq ? actividadesDe(eq) : { tareas: [], minutos: [] };
+    const tareas = act.tareas || [], minutos = act.minutos || [];
+    let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
+    const fechaEjec = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);  // día en Lima (UTC-5)
+    // Fire-and-forget por índice (no bloquea la UI). El callback async corre en 2º plano.
+    idxs.forEach(async (i) => {
+      const ejecRef = window.__db.collection('mtto_ejecuciones').doc(`${eqId}|${periodo}|${anio}|${i}`);
+      const planRef = window.__db.collection('mtto_plan').doc(`${eqId}|${periodo}|${anio}|${i}`);
+      if(!done){ ejecRef.delete().catch(()=>{}); return; }   // desmarcar borra la ejecución
+      try{
+        // Transacción por índice: leer ejecución + plan (autoritativo) → registrar y sacar del plan.
+        await window.__db.runTransaction(async (tx) => {
+          const [esEjec, esPlan] = await Promise.all([tx.get(ejecRef), tx.get(planRef)]);  // reads antes de writes
+          // Guarda anti-carrera (marcar→desmarcar rápido): si ya NO está marcada, no registrar.
+          const stNow = tareaStatus[eqId];
+          if(!(stNow === true || (stNow && typeof stNow === 'object' && stNow[i] === true))) return;
+          const plan = esPlan.exists ? esPlan.data() : null;
+          // CREATE-IF-ABSENT: nunca sobrescribir una ejecución ya registrada (preserva su
+          // atribución canónica; una 2ª pasada con el plan ya consumido no la pisa como espontánea).
+          if(!esEjec.exists){
+            const tecs = _ejecTecnicos(plan);
+            tx.set(ejecRef, {
+              eq_id: eqId, nombreEq: eq?.nombre || eqId, tipo: eq?.tipo || '', area: eq?.area || '',
+              sede: currentSede, periodo, anio,
+              tareaIdx: i, tarea: tareas[i] || ('Actividad ' + (i+1)),
+              minutos: (plan && plan.minutos != null) ? plan.minutos : (Number(minutos[i]) || 5),
+              tecnicoIds: tecs.map(t=>t.id), tecnicos: tecs, modo: tecs.length>=2 ? 'grupo' : 'individual',
+              planificada: !!plan,
+              fechaEjec, registradoPor: _by, origen: 'APP', ts: new Date().toISOString(),
+            });
+          }
+          if(plan) tx.delete(planRef);   // lo ejecutado sale del itinerario (atómico con el registro)
+        });
+        delete planDocs[eqId+'|'+i];
+      }catch(e){ /* tx no confirmada: se conserva el plan, atribución recuperable */ }
+    });
+  }catch(e){ /* nunca romper el marcado por la ejecución */ }
 }
 
 function logRegistro(eqId, actividades, done) {
@@ -1165,7 +1232,11 @@ function toggleSoloMarcar(eqId, checked) {
   if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
   tareaStatus[eqId] = checked;
   logRegistro(eqId, ['(equipo completo)'], checked);
-  if (checked) { const eq = sedeEquipos.find(e => e.eq_id === eqId); const n = eq ? (actividadesDe(eq).tareas || []).length : 0; limpiarPlanDe(eqId, Array.from({length: n}, (_, i) => i)); }
+  { const eq = sedeEquipos.find(e => e.eq_id === eqId);
+    const n = eq ? (actividadesDe(eq).tareas || []).length : 0;
+    const allIdx = Array.from({length: n}, (_, i) => i);
+    registrarEjecucion(eqId, allIdx, checked);   // leer plan (Firestore) → escribir ejecución → borrar plan
+    if (checked) allIdx.forEach(i => { delete planBadges[eqId+'|'+i]; }); }   // UI: el 🗓 desaparece al instante
   markDirty(eqId);
   renderMain();
   updateStats();
@@ -1178,7 +1249,8 @@ function toggleTarea(eqId, idx, checked) {
   { const eq = sedeEquipos.find(e => e.eq_id === eqId);
     const acts = eq ? (actividadesDe(eq).tareas || []) : [];
     logRegistro(eqId, [acts[idx] || ('Actividad ' + (idx+1))], checked); }
-  if (checked) limpiarPlanDe(eqId, [idx]);
+  registrarEjecucion(eqId, [idx], checked);   // leer plan (Firestore) → escribir ejecución → borrar plan
+  if (checked) delete planBadges[eqId+'|'+idx];   // UI: el 🗓 desaparece al instante
   markDirty(eqId);
   renderMain();
   updateStats();
@@ -1581,6 +1653,7 @@ function switchTab(tab) {
   if(tab==='dashboard') renderDashboard();
   if(tab==='global') renderGlobal();
   if(tab==='historial') renderHistorialLog();
+  if(tab==='desempeno') renderDesempeno();
 }
 
 
@@ -1626,6 +1699,114 @@ function renderHistorialLogFiltrado(){
       + badge + '</div>';
   });
   document.getElementById('hl-list').innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:10px">Sin eventos aún. La bitácora registra desde hoy: cada marcado en la app y cada registro del bot.</div>';
+}
+
+// ── TAB DESEMPEÑO (KPIs de técnicos/cuadrillas — Etapa 3 de "mtto grupal + KPIs") ─
+// Lee mtto_ejecuciones (registro persistente de lo EJECUTADO; la atribución sale del plan).
+// Query por período+año (equality → Firestore la sirve con índices de un solo campo, sin
+// índice compuesto); sede/tipo/técnico se filtran en cliente (patrón del tab Historial).
+let _dspEjec = [];
+let _dspReq = 0;   // token anti-carrera: descarta respuestas de una consulta ya superada
+function _dspFmtH(min){ return min >= 60 ? (min/60).toFixed(1).replace(/\.0$/,'') + ' h' : (min||0) + ' min'; }
+function _dspInit(){
+  const sa = document.getElementById('dsp-anio');
+  if(sa.options.length) return;
+  const y = new Date().getFullYear();
+  for(let i=y-1;i<=y+1;i++){ const o=document.createElement('option'); o.value=i; o.textContent=i; if(i===y)o.selected=true; sa.appendChild(o); }
+  const m = new Date().getMonth();
+  const per = ['ENE-FEB','ENE-FEB','MAR-ABR','MAR-ABR','MAY-JUN','MAY-JUN','JUL-AGO','JUL-AGO','SEP-OCT','SEP-OCT','NOV-DIC','NOV-DIC'];
+  document.getElementById('dsp-periodo').value = per[m];
+}
+async function renderDesempeno(){
+  _dspInit();
+  const req = ++_dspReq;
+  const cont = document.getElementById('dsp-content');
+  const periodo = document.getElementById('dsp-periodo').value;
+  const anio = Number(document.getElementById('dsp-anio').value);
+  cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando desempeño…</div>';
+  try{
+    const snap = await window.__db.collection('mtto_ejecuciones')
+      .where('periodo','==',periodo).where('anio','==',anio).get();
+    if(req !== _dspReq) return;   // llegó una consulta más nueva: descarto esta
+    _dspEjec = snap.docs.map(d => d.data());
+    const fill = (id, vals, label) => {
+      const sel = document.getElementById(id); const cur = sel.value;
+      sel.innerHTML = '<option value="">'+label+'</option>' + [...new Set(vals.filter(Boolean))].sort()
+        .map(x=>'<option value="'+_actEsc(x)+'"'+(x===cur?' selected':'')+'>'+_actEsc(x)+'</option>').join('');
+    };
+    fill('dsp-sede', _dspEjec.map(e=>e.sede), 'Todas las sedes');
+    fill('dsp-tipo', _dspEjec.map(e=>e.tipo), 'Todos los tipos');
+    const tecs = [];
+    _dspEjec.forEach(e => (e.tecnicos||[]).forEach(t => { if(t && t.nombre) tecs.push(t.nombre); }));
+    fill('dsp-tecnico', tecs, 'Todos los técnicos');
+    renderDesempenoFiltrado();
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+_actEsc(e.message)+'</div>'; }
+}
+function renderDesempenoFiltrado(){
+  const cont = document.getElementById('dsp-content');
+  const sede = document.getElementById('dsp-sede').value;
+  const tipo = document.getElementById('dsp-tipo').value;
+  const tec  = document.getElementById('dsp-tecnico').value;
+  const evs = _dspEjec.filter(e =>
+    (!sede || e.sede === sede) && (!tipo || e.tipo === tipo) &&
+    (!tec  || (e.tecnicos||[]).some(t => t && t.nombre === tec)));
+  if(!evs.length){
+    cont.innerHTML = '<div class="empty"><div class="empty-icon">👷</div><h3>Sin ejecuciones</h3><p>No hay actividades registradas para este período/filtros. Los KPIs se llenan a medida que se marcan actividades (app o bot).</p></div>';
+    return;
+  }
+  const totalActs = evs.length;
+  const totalMin  = evs.reduce((s,e)=>s + (Number(e.minutos)||0), 0);
+  const planif    = evs.filter(e=>e.planificada).length;
+  const cuadr     = evs.filter(e=>e.modo==='grupo').length;
+  // Ranking por técnico: una ejecución de cuadrilla cuenta para CADA integrante (crédito al equipo)
+  const porTec = {};
+  evs.forEach(e => (e.tecnicos||[]).forEach(t => {
+    if(!t || !t.nombre) return;
+    const r = porTec[t.nombre] || (porTec[t.nombre] = { nombre:t.nombre, acts:0, min:0, indiv:0, grupo:0 });
+    r.acts++; r.min += Number(e.minutos)||0; if(e.modo==='grupo') r.grupo++; else r.indiv++;
+  }));
+  const ranking = Object.values(porTec).sort((a,b)=> b.acts-a.acts || b.min-a.min);
+  const agrupa = (campo) => {
+    const m = {};
+    evs.forEach(e => { const k=e[campo]||'—'; const r=m[k]||(m[k]={k, acts:0, min:0}); r.acts++; r.min+=Number(e.minutos)||0; });
+    return Object.values(m).sort((a,b)=>b.acts-a.acts);
+  };
+  const porSede = agrupa('sede'), porTipo = agrupa('tipo');
+
+  const kpi = (label,val,sub) => '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;min-width:120px;flex:1">'
+    + '<div style="font-size:22px;font-weight:800;color:var(--blue,#1B3F8B)">'+val+'</div>'
+    + '<div style="font-size:11px;color:var(--muted2);font-weight:600">'+label+'</div>'
+    + (sub?'<div style="font-size:10px;color:var(--muted2);margin-top:2px">'+sub+'</div>':'') + '</div>';
+
+  let html = '<div style="display:flex;gap:10px;flex-wrap:wrap">'
+    + kpi('Actividades ejecutadas', totalActs, planif+' planificadas · '+(totalActs-planif)+' espontáneas')
+    + kpi('Tiempo estimado', _dspFmtH(totalMin), 'según minutos de cada actividad')
+    + kpi('Técnicos activos', ranking.length, cuadr+' actividad(es) en cuadrilla')
+    + kpi('% planificado', totalActs?Math.round(100*planif/totalActs)+'%':'—', 'del total ejecutado')
+    + '</div>';
+
+  html += '<div style="margin-top:16px"><div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:6px">👷 Ranking por técnico</div>'
+    + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="text-align:left;color:var(--muted2);font-size:10px;text-transform:uppercase">'
+    + '<th style="padding:6px 8px">#</th><th style="padding:6px 8px">Técnico</th><th style="padding:6px 8px;text-align:right">Activ.</th><th style="padding:6px 8px;text-align:right">Indiv.</th><th style="padding:6px 8px;text-align:right">Cuadr.</th><th style="padding:6px 8px;text-align:right">Tiempo</th></tr></thead><tbody>'
+    + ranking.map((r,i)=>'<tr style="border-top:1px solid var(--border)"><td style="padding:6px 8px;color:var(--muted2)">'+(i+1)+'</td>'
+        + '<td style="padding:6px 8px;font-weight:600">'+_actEsc(r.nombre)+'</td>'
+        + '<td style="padding:6px 8px;text-align:right;font-weight:700">'+r.acts+'</td>'
+        + '<td style="padding:6px 8px;text-align:right;color:var(--muted2)">'+r.indiv+'</td>'
+        + '<td style="padding:6px 8px;text-align:right;color:var(--muted2)">'+r.grupo+'</td>'
+        + '<td style="padding:6px 8px;text-align:right">'+_dspFmtH(r.min)+'</td></tr>').join('')
+    + '</tbody></table></div></div>';
+
+  const mini = (titulo, rows) => '<div style="flex:1;min-width:220px"><div style="font-size:11px;font-weight:700;color:var(--muted2);margin-bottom:4px">'+titulo+'</div>'
+    + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>'
+    + rows.map(r=>'<tr style="border-top:1px solid var(--border)"><td style="padding:5px 8px">'+_actEsc(r.k)+'</td>'
+        + '<td style="padding:5px 8px;text-align:right;font-weight:700">'+r.acts+'</td>'
+        + '<td style="padding:5px 8px;text-align:right;color:var(--muted2)">'+_dspFmtH(r.min)+'</td></tr>').join('')
+    + '</tbody></table></div></div>';
+  html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px">' + mini('🏪 Por sede', porSede) + mini('❄️ Por tipo', porTipo) + '</div>';
+
+  html += '<div style="font-size:10px;color:var(--muted2);margin-top:14px;line-height:1.5">ℹ️ KPIs sobre <b>lo ejecutado</b> (registrado en la app o el bot desde que se activó esta función). La atribución sale del <b>plan del itinerario</b> (individual o cuadrilla); una actividad de cuadrilla cuenta para <b>cada</b> integrante. Marcar sin haber planificado no atribuye a un técnico (queda como “espontánea”). El cumplimiento vs lo planificado se irá viendo con el historial acumulado (el plan es estado vivo: se consume al ejecutar).</div>';
+
+  cont.innerHTML = html;
 }
 
 // ── EXPORT PNG ────────────────────────────────────────────────────────────────

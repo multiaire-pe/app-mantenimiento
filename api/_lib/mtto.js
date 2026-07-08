@@ -110,22 +110,34 @@ export async function esRegistroActividad(texto) {
 }
 
 // ── Lista efectiva de actividades del equipo (Firestore, caché 5 min) ────────
-const _cacheActs = new Map();  // eqId → {ts, actividades}
-export async function actividadesDeEquipo(eqId, tipo) {
+// Resuelve actividades Y minutos en paralelo (mismo criterio que actividadesDe de la app:
+// base − quitadas + agregadas; minutos por índice vigente, default 5) → los minutos alimentan
+// los KPIs de carga (Etapa 3) cuando la actividad no venía planificada.
+const _cacheActs = new Map();  // eqId → {ts, actividades, minutos}
+async function _resolverActs(eqId, tipo) {
   const hit = _cacheActs.get(eqId);
-  if (hit && Date.now() - hit.ts < 5 * 60 * 1000) return hit.actividades;
+  if (hit && Date.now() - hit.ts < 5 * 60 * 1000) return hit;
   const db = getDb();
   const [plSnap, ovSnap] = await Promise.all([
     db.collection('tareas_config').doc(String(tipo || '')).get(),
     db.collection('mtto_actividades_equipo').doc(String(eqId)).get(),
   ]);
-  const plantilla = plSnap.exists ? (plSnap.data().tareas || []) : [];
+  const pd = plSnap.exists ? plSnap.data() : {};
+  const plantilla = pd.tareas || [], plMin = pd.minutos || [];
   const ov = ovSnap.exists ? ovSnap.data() : null;
   const quitadas = new Set(ov?.quitadas || []);
-  const actividades = plantilla.filter((t) => !quitadas.has(t))
-    .concat((ov?.agregadas || []).map((a) => a.nombre));
-  _cacheActs.set(eqId, { ts: Date.now(), actividades });
-  return actividades;
+  const actividades = [], minutos = [];
+  plantilla.forEach((t, i) => { if (!quitadas.has(t)) { actividades.push(t); minutos.push(Number(plMin[i]) || 5); } });
+  (ov?.agregadas || []).forEach((a) => { actividades.push(a.nombre); minutos.push(Number(a.minutos) || 5); });
+  const val = { ts: Date.now(), actividades, minutos };
+  _cacheActs.set(eqId, val);
+  return val;
+}
+export async function actividadesDeEquipo(eqId, tipo) {
+  return (await _resolverActs(eqId, tipo)).actividades;
+}
+export async function minutosDeEquipo(eqId, tipo) {
+  return (await _resolverActs(eqId, tipo)).minutos;
 }
 
 // ── Textos ────────────────────────────────────────────────────────────────────
@@ -146,6 +158,36 @@ function pedirFotos(ses) {
 }
 
 // ── Escritura ─────────────────────────────────────────────────────────────────
+// Crédito de la ejecución: del PLAN si estaba planificada (retrocompat escalar↔array,
+// cuadrilla incluida); si no había plan, al técnico que REPORTA (individual). Sin nombre → [].
+export function ejecTecnicos(plan, tecnico) {
+  if (plan) {
+    // Con plan, la atribución sale SOLO del plan (aunque sea a nivel de bloque sin técnico → []),
+    // coherente con la app; el reportante solo aplica cuando NO había plan.
+    if (Array.isArray(plan.tecnicos) && plan.tecnicos.length) {
+      const arr = plan.tecnicos.map((t) => ({ id: (t && t.id) || '', nombre: (t && t.nombre) || '' })).filter((t) => t.nombre);
+      if (arr.length) return arr;
+    }
+    if (plan.tecnicoNombre) return [{ id: plan.tecnicoId || '', nombre: plan.tecnicoNombre }];
+    return [];
+  }
+  if (tecnico && tecnico.nombre) return [{ id: tecnico.id || '', nombre: tecnico.nombre }];
+  return [];
+}
+// Doc de mtto_ejecuciones (forma canónica; puro/testeable). minutos: del plan si estaba
+// planificada, si no del array de la plantilla (default 5).
+export function docEjecucion(ses, i, plan, tecnico, minutos, periodo, anio, fechaEjec) {
+  const tecs = ejecTecnicos(plan, tecnico);
+  return {
+    eq_id: ses.eqId, nombreEq: ses.nombreEq, tipo: ses.tipo || '', area: ses.area || '',
+    sede: ses.sede, periodo, anio,
+    tareaIdx: i, tarea: ses.actividades[i] || `Actividad ${i + 1}`,
+    minutos: (plan && plan.minutos != null) ? plan.minutos : (Number((minutos || [])[i]) || 5),
+    tecnicoIds: tecs.map((t) => t.id), tecnicos: tecs, modo: tecs.length >= 2 ? 'grupo' : 'individual',
+    planificada: !!plan,
+    fechaEjec, registradoPor: tecnico?.nombre || ses.nombre || ses.from, origen: 'BOT', ts: new Date().toISOString(),
+  };
+}
 async function guardarRegistro(ses, tecnico) {
   const { periodo, anio } = periodoLima();
   const clave = `${ses.sede}|${periodo}|${anio}`;
@@ -164,12 +206,29 @@ async function guardarRegistro(ses, tecnico) {
       updatedBy: `BOT · ${tecnico?.nombre || ses.nombre || ses.from}`,
     }, { merge: true });
   });
-  // Sincronización con el itinerario: lo EJECUTADO sale del plan en automático
-  // (pedido del usuario: si el técnico adelantó una actividad planificada para otro
-  // día, esa asignación ya no debe aparecer en el itinerario). Ids determinísticos.
-  await Promise.all(ses.marcadas.map((i) =>
-    db.collection('mtto_plan').doc(`${ses.eqId}|${periodo}|${anio}|${i}`).delete().catch(() => {})
-  ));
+  // Registro persistente de lo EJECUTADO (mtto_ejecuciones) → base de los KPIs (Etapa 2) +
+  // sincronización con el itinerario (lo ejecutado sale del plan). Por índice: LEER el plan
+  // (atribución) → ESCRIBIR la ejecución → BORRAR el plan SOLO si la ejecución quedó registrada.
+  // Si la escritura falla, se conserva el plan (atribución recuperable; el barrido del itinerario
+  // es la red de seguridad). Ids determinísticos, idempotente. Nunca frustra el registro.
+  try {
+    const minutos = await minutosDeEquipo(ses.eqId, ses.tipo);
+    const fechaEjec = hoyLima();
+    await Promise.all(ses.marcadas.map(async (i) => {
+      const ejecRef = db.collection('mtto_ejecuciones').doc(`${ses.eqId}|${periodo}|${anio}|${i}`);
+      const planRef = db.collection('mtto_plan').doc(`${ses.eqId}|${periodo}|${anio}|${i}`);
+      try {
+        await db.runTransaction(async (tx) => {
+          const [esEjec, esPlan] = await Promise.all([tx.get(ejecRef), tx.get(planRef)]);
+          const plan = esPlan.exists ? esPlan.data() : null;
+          // CREATE-IF-ABSENT: no sobrescribir una ejecución ya registrada (p.ej. por la app con la
+          // atribución del plan) con una espontánea del reportante.
+          if (!esEjec.exists) tx.set(ejecRef, docEjecucion(ses, i, plan, tecnico, minutos, periodo, anio, fechaEjec));
+          if (plan) tx.delete(planRef);   // lo ejecutado sale del itinerario (atómico con el registro)
+        });
+      } catch (err) { console.error('[mtto_ejecuciones]', ses.eqId, periodo, anio, i, err.message); }
+    }));
+  } catch (e) { console.error('[mtto_ejecuciones]', e.message); }
   // Bitácora (tab Historial de la app): quién registró qué y cuándo
   await db.collection('mtto_log').add({
     ts: new Date().toISOString(),
@@ -367,6 +426,7 @@ async function intentarResolver(ses, texto) {
   ses.sede = r.sede;
   ses.eqId = r.equipo.eqId;
   ses.tipo = r.equipo.tipo;
+  ses.area = r.equipo.area || '';
   ses.nombreEq = r.equipo.nombre;
   ses.actividades = acts;
   // ¿El mensaje ya menciona actividades de la lista? → pre-marcarlas y saltar a confirmar

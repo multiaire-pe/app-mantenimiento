@@ -786,6 +786,32 @@ function periodoDe(fechaStr){
 }
 const _pEsc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
+// Multi-técnico (mtto grupal): técnicos de un doc/objeto de plan.
+// Retrocompat: docs nuevos traen tecnicos[]/tecnicoIds[]/modo; los viejos, solo el escalar tecnicoNombre.
+function planTecnicos(p){
+  if(!p) return [];
+  if(Array.isArray(p.tecnicos) && p.tecnicos.length){
+    const arr = p.tecnicos.map(t => ({ id: t?.id||'', nombre: t?.nombre||'' })).filter(t => t.nombre);
+    if(arr.length) return arr;   // si todos vinieran sin nombre, cae al escalar (retrocompat)
+  }
+  if(p.tecnicoNombre) return [{ id: p.tecnicoId||'', nombre: p.tecnicoNombre }];
+  return [];
+}
+// Etiqueta de crédito: cuadrilla "A + B + C", individual "Nombre", "" si nadie.
+function planTecLabel(tecs){ return (tecs||[]).map(t => t.nombre).join(' + '); }
+// Normaliza el array de técnicos elegidos → campos del doc de plan (arrays + escalares retrocompat + modo + label).
+function _tecInfo(tecs){
+  const arr = (Array.isArray(tecs) ? tecs : (tecs ? [tecs] : [])).filter(t => t && t.nombre);
+  const tecnicos = arr.map(t => ({ id: t.id || '', nombre: t.nombre || '' }));
+  const t0 = tecnicos[0] || null;
+  return {
+    tecnicoIds: tecnicos.map(t => t.id), tecnicos,
+    modo: tecnicos.length >= 2 ? 'grupo' : 'individual',
+    tecnicoId: t0 ? t0.id : '', tecnicoNombre: t0 ? t0.nombre : '',   // retrocompat escalar (primer técnico)
+    label: planTecLabel(tecnicos),
+  };
+}
+
 async function cargarPlanDia(fecha){
   _planFecha = fecha;
   planDia = [];
@@ -814,10 +840,32 @@ async function cargarPlanDia(fecha){
           return st === true || (st && typeof st === 'object' && st[p.tareaIdx] === true);
         });
         if (hechas.length && _planFecha === fecha) {
-          hechas.forEach(p => { window.__db.collection('mtto_plan').doc(p._id).delete().catch(()=>{}); });
-          const idsH = new Set(hechas.map(p => p._id));
-          planDia = planDia.filter(p => !idsH.has(p._id));
-          console.log('[mtto_plan] ' + hechas.length + ' actividad(es) ya ejecutadas retiradas del plan');
+          // Red de seguridad KPIs: NO borrar un plan ejecutado sin que su ejecución quede
+          // registrada. Si mtto_ejecuciones/{p._id} no existe (el set de la app/bot falló), se
+          // escribe desde el propio plan (que trae la atribución); solo entonces se borra el plan.
+          // Si la escritura falla (p.ej. sin permiso mantenimiento), se CONSERVA el plan.
+          const _res = await Promise.allSettled(hechas.map(async p => {
+            const ejecRef = window.__db.collection('mtto_ejecuciones').doc(p._id);
+            const es = await ejecRef.get();
+            if (!es.exists) {   // create-if-absent: solo si la app/bot no la registró aún
+              const tecs = planTecnicos(p);
+              await ejecRef.set({
+                eq_id: p.eq_id, nombreEq: p.nombreEq || p.eq_id, tipo: p.tipo || '', area: p.area || '',
+                sede: p.sede, periodo, anio,
+                tareaIdx: p.tareaIdx, tarea: p.tarea || ('Actividad ' + ((p.tareaIdx||0)+1)),
+                minutos: (p.minutos != null) ? p.minutos : 5,
+                tecnicoIds: tecs.map(t => t.id), tecnicos: tecs, modo: tecs.length >= 2 ? 'grupo' : 'individual',
+                planificada: true,
+                fechaEjec: p.fecha || '', registradoPor: 'sync-itinerario', origen: 'SYNC', ts: new Date().toISOString(),
+              });
+            }
+            await window.__db.collection('mtto_plan').doc(p._id).delete();   // solo tras asegurar la ejecución
+            return p._id;
+          }));
+          // Retirar de la vista SOLO las que se aseguraron+borraron OK (si falló, el plan sigue vivo)
+          const okIds = new Set(_res.filter(r => r.status === 'fulfilled').map(r => r.value));
+          if (okIds.size) planDia = planDia.filter(p => !okIds.has(p._id));
+          console.log('[mtto_plan] ' + okIds.size + '/' + hechas.length + ' actividad(es) ejecutadas: ejecución asegurada + retiradas del plan');
         }
       }
     } catch(e) { console.warn('[mtto_plan sync]', e.message); }
@@ -829,9 +877,9 @@ function renderPlanChips(){
     const n = Number(cont.dataset.planBlq);
     const del = planDia.filter(p => p.nBloque === n);
     if (!del.length) { cont.innerHTML = ''; return; }
-    // AGRUPADAS POR TÉCNICO (pedido del usuario), no por orden de asignación
+    // AGRUPADAS POR TÉCNICO / CUADRILLA (pedido del usuario), no por orden de asignación
     const grupos = {};
-    del.forEach(p => { const k = p.tecnicoNombre || ''; (grupos[k] = grupos[k] || []).push(p); });
+    del.forEach(p => { const k = planTecLabel(planTecnicos(p)); (grupos[k] = grupos[k] || []).push(p); });
     cont.innerHTML = Object.keys(grupos).sort((a,b) => (a||'\uffff').localeCompare(b||'\uffff')).map(k => {
       // segundo nivel: por EQUIPO (nombre · área) — pedido del usuario
       const porEq = {};
@@ -846,7 +894,7 @@ function renderPlanChips(){
         return '<div style="margin:2px 0 4px 10px"><div style="font-size:10px;color:var(--accent,#1a2540);font-weight:600">❄️ '+_pEsc(nom)+(area?' <span style="color:var(--muted2,#667);font-weight:400">· 📍 '+_pEsc(area)+'</span>':'')+'</div><div class="plan-chips" style="margin-top:2px">'+chips+'</div></div>';
       }).join('');
       return '<div style="flex-basis:100%"><div style="font-size:10px;font-weight:700;color:var(--muted2,#667);margin:4px 0 1px">'
-        + (k ? '👷 ' + _pEsc(k) : '👷 Sin técnico asignado')
+        + (k ? (planTecnicos(grupos[k][0]).length >= 2 ? '👥 ' : '👷 ') + _pEsc(k) : '👷 Sin técnico asignado')
         + '</div>' + cuerpo + '</div>';
     }).join('');
   });
@@ -870,7 +918,8 @@ async function pendientesDeSede(sede, fecha){
     getDocs(collection(window.__db, 'tareas_config')),
     getDocs(collection(window.__db, 'mtto_actividades_equipo')),
   ]);
-  const plantillas = {}; tcS.docs.forEach(d => { plantillas[d.data().tipo] = d.data().tareas || []; });
+  const plantillas = {}, plantillasMin = {};
+  tcS.docs.forEach(d => { const dd = d.data(); plantillas[dd.tipo] = dd.tareas || []; plantillasMin[dd.tipo] = dd.minutos || []; });
   const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
   // La tienda del bloque puede traer el cliente adelante ("RIPLEY PLAZA NORTE") y el
   // inventario guarda solo la sede ("PLAZA NORTE"): match exacto o el sufijo MÁS LARGO
@@ -940,12 +989,16 @@ async function pendientesDeSede(sede, fecha){
     if((eq.sede||'').toUpperCase() !== target || !eq.eq_id) return;
     if(!sel[eq.eq_id]) return;   // no seleccionado para el período → no se planifica
     const ov = ovs[eq.eq_id], quit = new Set(ov?.quitadas || []);
-    const acts = (plantillas[eq.tipo] || []).filter(t => !quit.has(t)).concat((ov?.agregadas || []).map(a => a.nombre));
+    // acts + minutos en paralelo (mismo criterio que actividadesDe de mantenimiento: minutos por índice vigente, default 5)
+    const _bt = plantillas[eq.tipo] || [], _bm = plantillasMin[eq.tipo] || [];
+    const acts = [], actsMin = [];
+    _bt.forEach((t, i) => { if(!quit.has(t)){ acts.push(t); actsMin.push(Number(_bm[i]) || 5); } });
+    (ov?.agregadas || []).forEach(a => { acts.push(a.nombre); actsMin.push(Number(a.minutos) || 5); });
     const st = ts[eq.eq_id];
     acts.forEach((tarea, idx) => {
       const hecha = st === true || (st && typeof st === 'object' && st[idx] === true);
       const pid = `${eq.eq_id}|${periodo}|${anio}|${idx}`;
-      if (!hecha && !planificadas.has(pid)) out.push({ pid, eq_id: eq.eq_id, nombreEq: eq.nombre||eq.eq_id, tipo: eq.tipo||'', area: eq.area||'', tarea, idx, prev: arrastradas[pid] || '' });
+      if (!hecha && !planificadas.has(pid)) out.push({ pid, eq_id: eq.eq_id, nombreEq: eq.nombre||eq.eq_id, tipo: eq.tipo||'', area: eq.area||'', tarea, idx, minutos: actsMin[idx], prev: arrastradas[pid] || '' });
     });
   });
   return out.sort((a,b) => a.nombreEq.localeCompare(b.nombreEq) || a.idx - b.idx);
@@ -991,25 +1044,47 @@ function _paActualizarBoton(){
   const btn = document.getElementById('pa-asignar');
   if (btn) { btn.textContent = '🗓 Asignar seleccionadas (' + _paSel.size + ')'; btn.disabled = !_paSel.size; }
 }
+// Selector de técnico(s) reutilizable: checkboxes (1 marcado = individual, 2+ = cuadrilla) + atajo "Todos".
+// cb recibe el ARRAY de técnicos elegidos [{id,nombre}] (vacío = a nivel de bloque, sin técnico).
+let _ptCb = null, _ptPersonal = [];
+function pedirTecnicos(personal, subtitulo, cb){
+  _ptPersonal = personal || []; _ptCb = cb;
+  document.getElementById('pt-sub').textContent = subtitulo || '';
+  const cont = document.getElementById('pt-list');
+  cont.innerHTML =
+    '<label class="pt-chk" style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--muted2,#667);padding:5px 2px;cursor:pointer"><input type="checkbox" id="pt-todos" onchange="_ptTodos(this.checked)"> Todos</label>'
+    + _ptPersonal.map((t, i) =>
+        '<label class="pt-chk" style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 2px;cursor:pointer;border-top:1px solid var(--border)"><input type="checkbox" class="pt-t" value="'+i+'" onchange="_ptUpd()"> 👷 '+_pEsc(t.nombre)+'</label>').join('');
+  _ptUpd();
+  document.getElementById('pt-overlay').style.display = 'flex';
+}
+function _ptTodos(on){ document.querySelectorAll('#pt-list .pt-t').forEach(c => { c.checked = on; }); _ptUpd(); }
+function _ptUpd(){
+  const marcados = document.querySelectorAll('#pt-list .pt-t:checked').length;
+  const btn = document.getElementById('pt-confirm');
+  if (btn) { btn.disabled = !marcados; btn.textContent = marcados >= 2 ? '✓ Asignar a cuadrilla (' + marcados + ')' : '✓ Asignar' + (marcados ? ' (individual)' : ''); }
+  const todos = document.getElementById('pt-todos');
+  if (todos) todos.checked = marcados > 0 && marcados === _ptPersonal.length;
+}
+function _ptCerrar(){ document.getElementById('pt-overlay').style.display = 'none'; _ptCb = null; _ptPersonal = []; }
+function _ptConfirmar(){
+  const idxs = [...document.querySelectorAll('#pt-list .pt-t:checked')].map(c => Number(c.value));
+  if (!idxs.length) return;
+  const tecs = idxs.map(i => _ptPersonal[i]).filter(Boolean);
+  const cb = _ptCb;
+  _ptCerrar();   // oculta + limpia estado colgado (_ptCb/_ptPersonal)
+  if (cb) cb(tecs);
+}
 async function asignarSeleccionadas(){
   if (!_paSel.size || _panelBloque == null) return;
   const pids = [..._paSel];
   const nB = _panelBloque;   // POR VALOR: el callback diferido no debe leer el global
   const personal = personalDeBloque(nB);
-  if (personal.length <= 1) return _finalizarMulti(pids, nB, personal[0] || null);
-  const cont = document.getElementById('pt-list');
-  cont.innerHTML = personal.map((t, i) =>
-    '<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:6px" data-pt="'+i+'">👷 '+_pEsc(t.nombre)+'</button>').join('');
-  document.getElementById('pt-sub').textContent = pids.length + ' actividad(es) → Bloque ' + nB;
-  cont.onclick = (e) => {
-    const btn = e.target.closest('[data-pt]'); if(!btn) return;
-    document.getElementById('pt-overlay').style.display = 'none';
-    _finalizarMulti(pids, nB, personal[Number(btn.dataset.pt)]);
-  };
-  document.getElementById('pt-overlay').style.display = 'flex';
+  if (personal.length <= 1) return _finalizarMulti(pids, nB, personal.length ? [personal[0]] : []);
+  pedirTecnicos(personal, pids.length + ' actividad(es) → Bloque ' + nB, (tecs) => _finalizarMulti(pids, nB, tecs));
 }
 let _paBusy = false;   // lock: doble click en Asignar no debe duplicar el batch (Council)
-async function _finalizarMulti(pids, nBloque, tec){
+async function _finalizarMulti(pids, nBloque, tecs){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
   if (nBloque == null) { toast('El panel se cerró — vuelve a abrir 🔧 Asignar','err'); return; }
   if (_paBusy) return;
@@ -1019,6 +1094,7 @@ async function _finalizarMulti(pids, nBloque, tec){
   const fecha = document.getElementById('fecha-input').value;
   const { periodo, anio } = periodoDe(fecha);
   let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
+  const tk = _tecInfo(tecs);   // arrays + escalares retrocompat + modo + label de la cuadrilla
   const { writeBatch: wbP, doc: docP } = window.__fb;
   try{
     const batch = wbP(window.__db);
@@ -1027,12 +1103,14 @@ async function _finalizarMulti(pids, nBloque, tec){
       const p = (window._paPend||{})[pid]; if(!p) return;
       batch.set(docP(window.__db, 'mtto_plan', p.pid), {
         eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tareaIdx: p.idx, tarea: p.tarea,
+        minutos: p.minutos ?? null,
         sede: window._paSede || '', periodo, anio, fecha,
         itiId: currentIti?.id || '', itiVersion: Number(currentIti?.version) || 1, nBloque,
-        tecnicoId: tec?.id || '', tecnicoNombre: tec?.nombre || '',
+        tecnicoIds: tk.tecnicoIds, tecnicos: tk.tecnicos, modo: tk.modo,
+        tecnicoId: tk.tecnicoId, tecnicoNombre: tk.tecnicoNombre,   // retrocompat escalar
         asignadoPor: _by, ts: new Date().toISOString(),
       });
-      nuevos.push({ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, area: p.area || '', tarea: p.tarea, nBloque, fecha, tecnicoNombre: tec?.nombre || '' });
+      nuevos.push({ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, area: p.area || '', tarea: p.tarea, minutos: p.minutos ?? null, nBloque, fecha, tecnicoIds: tk.tecnicoIds, tecnicos: tk.tecnicos, modo: tk.modo, tecnicoNombre: tk.tecnicoNombre });
     });
     await batch.commit();
     const ids = new Set(nuevos.map(x => x._id));
@@ -1040,7 +1118,7 @@ async function _finalizarMulti(pids, nBloque, tec){
     renderPlanChips();
     pids.forEach(pid => { const c = document.querySelector('.pa-card[data-pid="'+CSS.escape(pid)+'"]'); if(c) c.remove(); });
     _paSel.clear(); _paActualizarBoton();
-    toast('🗓 ' + nuevos.length + ' actividad(es) → ' + (tec?.nombre || 'bloque ' + nBloque), 'ok');
+    toast('🗓 ' + nuevos.length + ' actividad(es) → ' + (tk.label || 'bloque ' + nBloque), 'ok');
   }catch(e){ toast('Error: '+e.message,'err'); }
   finally{ _paBusy = false; _paActualizarBoton(); }
 }
@@ -1070,38 +1148,31 @@ async function asignarPlan(pid, nBloqueDestino){
     }
   }
   const personal = personalDeBloque(nBloque);   // nBloque ya es local (por valor) ✓
-  if (personal.length <= 1) return _finalizarAsignacion(p, nBloque, personal[0] || null);
-  // selector de técnico
-  const cont = document.getElementById('pt-list');
-  cont.innerHTML = personal.map((t, i) =>
-    '<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:6px" data-pt="'+i+'">👷 '+_pEsc(t.nombre)+'</button>').join('');
-  document.getElementById('pt-sub').textContent = '"' + p.tarea + '" · ' + p.nombreEq + ' → Bloque ' + nBloque;
-  cont.onclick = (e) => {
-    const btn = e.target.closest('[data-pt]'); if(!btn) return;
-    document.getElementById('pt-overlay').style.display = 'none';
-    _finalizarAsignacion(p, nBloque, personal[Number(btn.dataset.pt)]);
-  };
-  document.getElementById('pt-overlay').style.display = 'flex';
+  if (personal.length <= 1) return _finalizarAsignacion(p, nBloque, personal.length ? [personal[0]] : []);
+  pedirTecnicos(personal, '"' + p.tarea + '" · ' + p.nombreEq + ' → Bloque ' + nBloque, (tecs) => _finalizarAsignacion(p, nBloque, tecs));
 }
 
-async function _finalizarAsignacion(p, nBloque, tec){
+async function _finalizarAsignacion(p, nBloque, tecs){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
   if (nBloque == null) { toast('El panel se cerró — vuelve a abrir 🔧 Asignar','err'); return; }
   const fecha = document.getElementById('fecha-input').value;
   const { periodo, anio } = periodoDe(fecha);
   let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
+  const tk = _tecInfo(tecs);   // arrays + escalares retrocompat + modo + label de la cuadrilla
   try{
     await window.__db.collection('mtto_plan').doc(p.pid).set({
       eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tareaIdx: p.idx, tarea: p.tarea,
+      minutos: p.minutos ?? null,
       sede: window._paSede || '', periodo, anio, fecha,
       itiId: currentIti?.id || '', itiVersion: Number(currentIti?.version) || 1, nBloque,
-      tecnicoId: tec?.id || '', tecnicoNombre: tec?.nombre || '',
+      tecnicoIds: tk.tecnicoIds, tecnicos: tk.tecnicos, modo: tk.modo,
+      tecnicoId: tk.tecnicoId, tecnicoNombre: tk.tecnicoNombre,   // retrocompat escalar
       asignadoPor: _by, ts: new Date().toISOString(),
     });
-    planDia = planDia.filter(x => x._id !== p.pid).concat([{ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, area: p.area || '', tarea: p.tarea, nBloque, fecha, tecnicoNombre: tec?.nombre || '' }]);
+    planDia = planDia.filter(x => x._id !== p.pid).concat([{ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, area: p.area || '', tarea: p.tarea, minutos: p.minutos ?? null, nBloque, fecha, tecnicoIds: tk.tecnicoIds, tecnicos: tk.tecnicos, modo: tk.modo, tecnicoNombre: tk.tecnicoNombre }]);
     renderPlanChips();
     const card = document.querySelector('.pa-card[data-pid="'+CSS.escape(p.pid)+'"]'); if(card) card.remove();
-    toast('🗓 "'+p.tarea+'" → '+(tec?.nombre || 'bloque '+nBloque),'ok');
+    toast('🗓 "'+p.tarea+'" → '+(tk.label || 'bloque '+nBloque),'ok');
   }catch(e){ toast('Error: '+e.message,'err'); }
 }
 
@@ -2183,11 +2254,13 @@ document.addEventListener('click', function(e) {
   </div>
 </div>
 <!-- SELECTOR: ¿a qué técnico del bloque? -->
-<div id="pt-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.55);z-index:700;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.style.display='none'">
+<div id="pt-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.55);z-index:700;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)_ptCerrar()">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:340px;max-width:100%;padding:18px">
-    <h2 style="font-size:13px;color:var(--blue,#1B3F8B)">👷 ¿Para qué técnico?</h2>
-    <div style="font-size:11px;color:var(--muted2);margin-bottom:10px" id="pt-sub"></div>
-    <div id="pt-list"></div>
+    <h2 style="font-size:13px;color:var(--blue,#1B3F8B)">👷 ¿Para qué técnico(s)?</h2>
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:6px" id="pt-sub"></div>
+    <div style="font-size:10px;color:var(--muted2);margin-bottom:8px">Marca <b>1</b> (individual) o <b>2+</b> técnicos (cuadrilla co-responsable).</div>
+    <div id="pt-list" style="max-height:44vh;overflow-y:auto"></div>
+    <button class="btn btn-primary" id="pt-confirm" onclick="_ptConfirmar()" style="width:100%;justify-content:center;margin-top:12px" disabled>✓ Asignar</button>
   </div>
 </div>
 </body>

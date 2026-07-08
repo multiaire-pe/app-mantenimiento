@@ -68,6 +68,10 @@ service cloud.firestore {
     // borrar una asignación también lo hace quien REGISTRA la ejecución en Mantenimiento
     // (sincronización automática: lo hecho sale del plan)
     match /mtto_plan/{doc}               { allow read: if authorized(); allow create, update: if canWrite('itinerario'); allow delete: if canWrite('itinerario') || canWrite('mantenimiento'); }
+    // registro persistente de lo EJECUTADO (KPIs de desempeño): la app/bot escribe al
+    // marcar una actividad y borra al desmarcar → create/update/delete = registrar mtto
+    // (el bot usa Admin SDK, que ignora las reglas)
+    match /mtto_ejecuciones/{doc}        { allow read: if authorized(); allow create, update, delete: if canWrite('mantenimiento'); }
     match /manta_guia/{doc}        { allow read: if authorized(); allow write: if isSuper(); }
     match /manta_equipos/{doc}     { allow read: if authorized(); allow write: if isSuper(); }
 
