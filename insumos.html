@@ -440,9 +440,9 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <button class="btn btn-sm btn-primary" onclick="exportInstQRZip()">⬇ Exportar etiquetas ZIP</button>
           <button class="btn btn-sm" onclick="exportInstCSVPhomemo()" title="CSV de códigos para impresión por lotes en Phomemo">📄 CSV (Phomemo)</button>
           <span id="inst-lote-actions" style="display:none;gap:8px">
-            <button id="btn-lote-salida" class="btn btn-sm" onclick="openModalSalidaLote('SALIDA')" title="Registrar salida de las instancias seleccionadas">⬆ Salida en lote</button>
-            <button id="btn-lote-baja" class="btn btn-sm" onclick="openModalSalidaLote('BAJA')" style="color:var(--red)" title="Dar de baja las instancias seleccionadas">⚠️ Baja en lote</button>
-            <button id="btn-lote-transf" class="btn btn-sm" onclick="openModalTransfLote()" title="Transferir las instancias seleccionadas (sede y/o responsable)">🔄 Transferir en lote</button>
+            <button id="btn-lote-salida" class="btn btn-sm" onclick="openModalSalidaLote('SALIDA')" title="Registrar salida de las instancias seleccionadas">⬆ Salida</button>
+            <button id="btn-lote-baja" class="btn btn-sm" onclick="openModalSalidaLote('BAJA')" style="color:var(--red)" title="Dar de baja las instancias seleccionadas">⚠️ Baja</button>
+            <button id="btn-lote-transf" class="btn btn-sm" onclick="openModalTransfLote()" title="Transferir las instancias seleccionadas (sede y/o responsable)">🔄 Transferencia</button>
           </span>
           <button class="btn btn-sm" onclick="clearInstQRSelection()">✕ Limpiar</button>
         </div>
@@ -1111,7 +1111,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 <div class="modal-overlay" id="modal-salida-lote" onclick="if(event.target===this)cerrarLoteModal('modal-salida-lote')">
   <div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:90vh">
     <div class="modal-header" style="flex-shrink:0">
-      <div class="modal-title" id="modal-lote-title">⬆ Salida en lote</div>
+      <div class="modal-title" id="modal-lote-title">⬆ Salida</div>
       <div onclick="cerrarLoteModal('modal-salida-lote')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
     </div>
     <div id="modal-lote-sub" class="modal-sub" style="margin-bottom:12px;flex-shrink:0"></div>
@@ -1160,7 +1160,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 <div class="modal-overlay" id="modal-transf-lote" onclick="if(event.target===this)cerrarLoteModal('modal-transf-lote')">
   <div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:90vh">
     <div class="modal-header" style="flex-shrink:0">
-      <div class="modal-title">🔄 Transferir en lote</div>
+      <div class="modal-title">🔄 Transferencia</div>
       <div onclick="cerrarLoteModal('modal-transf-lote')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
     </div>
     <div class="modal-sub" style="margin-bottom:12px;flex-shrink:0">🔄 Traslada varios bienes entre sedes y/o cambia su responsable. Cada bien mantiene su ID y QR. Si alguno está en un paquete, saldrá de él.</div>
@@ -1696,14 +1696,26 @@ async function addUser(){
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
+// Con instancias marcadas en la tabla (checkboxes de la selección múltiple), estos botones
+// del panel izquierdo actúan en LOTE sobre esa selección (mismo flujo que la barra de
+// selección); sin nada marcado, abren el modal individual de siempre.
+function sidebarSalida(tipo){
+  if(selectedInstQRIds.size > 0) openModalSalidaLote(tipo);
+  else openModalSalida(tipo);
+}
+function sidebarTransferencia(){
+  if(selectedInstQRIds.size > 0) openModalTransfLote();
+  else openModalTransferencia();
+}
+
 function buildSidebar(){
   let h='';
   if(can('crearItem'))          h+=`<button class="btn btn-orange btn-block" onclick="openModalInsumo(null)">+ Nuevo ítem</button>`;
   if(can('crearItem'))          h+=`<button class="btn btn-block" onclick="openModalCargaMasiva()" title="Importar/exportar catálogo e instancias en Excel">📊 Carga masiva</button>`;
   if(can('entrada')===1)        h+=`<button class="btn btn-block" onclick="openModalEntrada()">⬇ Registrar entrada</button>`;
-  if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('SALIDA')">⬆ Registrar salida</button>`;
-  if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="openModalSalida('BAJA')" style="color:var(--red)">⚠️ Dar de baja</button>`;
-  if(can('transferencia')===1)  h+=`<button class="btn btn-block" onclick="openModalTransferencia()">🔄 Transferencia</button>`;
+  if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="sidebarSalida('SALIDA')">⬆ Registrar salida</button>`;
+  if(can('salida')===1)         h+=`<button class="btn btn-block" onclick="sidebarSalida('BAJA')" style="color:var(--red)">⚠️ Dar de baja</button>`;
+  if(can('transferencia')===1)  h+=`<button class="btn btn-block" onclick="sidebarTransferencia()">🔄 Transferencia</button>`;
   // Botones de solicitud solo para TECNICO (no tiene salida/transf directos)
   if(can('salida')===0 && can('solicitarSalida')===1) {
     h+=`<button class="btn btn-block" onclick="openModalSolicitud('SALIDA')">📤 Solicitar salida</button>`;
@@ -2798,7 +2810,7 @@ function addToScanQueue(inst) {
 }
 
 function loteTipoLabel(tipo) {
-  return tipo === 'BAJA' ? 'Baja en lote' : tipo === 'TRANSFERENCIA' ? 'Transferencia en lote' : 'Salida en lote';
+  return tipo === 'BAJA' ? 'Baja' : tipo === 'TRANSFERENCIA' ? 'Transferencia' : 'Salida';
 }
 
 function renderScanLoteQueue() {
@@ -3305,7 +3317,7 @@ function openModalSalidaLote(tipo = 'SALIDA') {
   const esBaja = tipo === 'BAJA';
   loteFotos = { guia: null, entrega: null };
   loteFotoPrefix = 'flote';
-  document.getElementById('modal-lote-title').textContent = esBaja ? '⚠️ Baja en lote' : '⬆ Salida en lote';
+  document.getElementById('modal-lote-title').textContent = esBaja ? '⚠️ Baja' : '⬆ Salida';
   document.getElementById('modal-lote-sub').innerHTML = esBaja
     ? '⚠️ <strong>Baja:</strong> los bienes ya no sirven por daño, pérdida o robo. El motivo es obligatorio. Se eliminan del inventario.'
     : '📤 <strong>Salida:</strong> los bienes fueron consumidos o entregados definitivamente. Se eliminan del inventario.';
@@ -3416,7 +3428,7 @@ async function saveSalidaLote() {
     }
     instanciasData = instanciasData.filter(x => !ids.includes(x.id));
     movimientosData.unshift({ id: movRef.id, ...movData });
-    toast(`✓ ${esBaja ? 'Baja' : 'Salida'} en lote — ${ids.length} instancia(s)`, 'ok');
+    toast(`✓ ${esBaja ? 'Baja' : 'Salida'} — ${ids.length} instancia(s)`, 'ok');
     closeModal('modal-salida-lote');
     clearInstQRSelection();
     renderAll();
@@ -3547,7 +3559,7 @@ async function saveTransfLote() {
       movFotos[movRef.id] = { guia: loteFotos.guia || null, entrega: loteFotos.entrega || null };
     }
     movimientosData.unshift({ id: movRef.id, ...movData });
-    toast(`✓ Transferencia en lote — ${ids.length} instancia(s)${nPaquete ? ` · ${nPaquete} salió(eron) de su paquete` : ''}`, 'ok');
+    toast(`✓ Transferencia — ${ids.length} instancia(s)${nPaquete ? ` · ${nPaquete} salió(eron) de su paquete` : ''}`, 'ok');
     closeModal('modal-transf-lote');
     clearInstQRSelection();
     renderAll();
