@@ -328,10 +328,11 @@ tr:hover td{background:var(--surface2)}
             <th class="col-desc">Descripción</th>
             <th class="col-monto">Valor</th>
             <th class="col-foto">Imagen</th>
+            <th class="col-acc"></th>
           </tr>
         </thead>
         <tbody id="hist-body">
-          <tr><td colspan="9" class="empty-msg">Elige un rango de fechas y presiona Actualizar.</td></tr>
+          <tr><td colspan="10" class="empty-msg">Elige un rango de fechas y presiona Actualizar.</td></tr>
         </tbody>
       </table>
     </div>
@@ -1194,7 +1195,7 @@ async function cargarHistorial(){
   const hasta = document.getElementById('hist-hasta').value;
   if(!desde || !hasta){ toast('Elige un rango de fechas', 'err'); return; }
   const tbody = document.getElementById('hist-body');
-  tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">Cargando…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10" class="empty-msg">Cargando…</td></tr>';
   try{
     const snap = await db.collection('comprobantes')
       .where('fechaISO', '>=', desde).where('fechaISO', '<=', hasta).get();
@@ -1208,7 +1209,7 @@ async function cargarHistorial(){
     histLoaded = true;
     renderHistorial();
   }catch(e){
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">Error: ' + esc(e.message) + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-msg">Error: ' + esc(e.message) + '</td></tr>';
   }
 }
 
@@ -1216,7 +1217,7 @@ function renderHistorial(){
   const tbody = document.getElementById('hist-body');
   const countEl = document.getElementById('hist-count');
   if(!histRows.length){
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">Sin comprobantes en ese rango.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-msg">Sin comprobantes en ese rango.</td></tr>';
     countEl.textContent = '';
     document.getElementById('hist-chk-all').checked = false;
     return;
@@ -1234,9 +1235,30 @@ function renderHistorial(){
       <td class="col-desc">${esc(r.descripcion)}</td>
       <td class="col-monto" style="text-align:right">${esc(r.monto)}</td>
       <td class="col-foto">${foto ? `<img src="${foto}" class="row-foto-thumb" onclick="openHistLightbox('${r._id}')" alt="">` : `<div class="row-foto-empty">—</div>`}</td>
+      <td class="col-acc">
+        <button class="btn btn-sm btn-red" onclick="deleteHistRow('${r._id}')"
+                style="padding:3px 8px" title="Eliminar de la base de datos">✕</button>
+      </td>
     </tr>`;
   }).join('');
   document.getElementById('hist-chk-all').checked = histRows.every(r => selectedHistIds.has(r._id));
+}
+
+// Borra un comprobante y su foto directamente desde el Historial (permanente).
+async function deleteHistRow(id){
+  if(!confirm('¿Eliminar este comprobante de la base de datos? Esta acción no se puede deshacer.')) return;
+  try{
+    await db.collection('comprobantes').doc(id).delete();
+    await db.collection('comprobantes_fotos').doc(id).delete();
+  }catch(e){
+    toast('Error al eliminar: ' + e.message, 'err');
+    return;
+  }
+  histRows = histRows.filter(r => r._id !== id);
+  selectedHistIds.delete(id);
+  delete histFotos[id];
+  renderHistorial();
+  toast('Comprobante eliminado ✓', 'ok');
 }
 
 function toggleAllHist(checked){
