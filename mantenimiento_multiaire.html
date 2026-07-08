@@ -1765,7 +1765,10 @@ function renderDesempenoFiltrado(){
     const r = porTec[t.nombre] || (porTec[t.nombre] = { nombre:t.nombre, acts:0, min:0, indiv:0, grupo:0 });
     r.acts++; r.min += Number(e.minutos)||0; if(e.modo==='grupo') r.grupo++; else r.indiv++;
   }));
-  const ranking = Object.values(porTec).sort((a,b)=> b.acts-a.acts || b.min-a.min);
+  let ranking = Object.values(porTec).sort((a,b)=> b.acts-a.acts || b.min-a.min);
+  // Al filtrar por un técnico, el ranking muestra SOLO su fila (desempeño individual);
+  // en cuadrilla sus co-responsables ya no aparecen aunque compartan la actividad.
+  if(tec) ranking = ranking.filter(r => r.nombre === tec);
   const agrupa = (campo) => {
     const m = {};
     evs.forEach(e => { const k=e[campo]||'—'; const r=m[k]||(m[k]={k, acts:0, min:0}); r.acts++; r.min+=Number(e.minutos)||0; });
