@@ -1549,12 +1549,14 @@ function renderUserPill(){
   const pill=document.getElementById('user-pill');if(!pill||!maUser)return;
   const n=maUser.nombre||maUser.name||maUser.email;
   const init=n.split(' ').map(x=>x[0]).join('').substring(0,2).toUpperCase();
-  const avatar=maUser.picture?`<img class="user-avatar-img" src="${maUser.picture}">`:`<div class="user-avatar-init">${init}</div>`;
-  const rolBadge=`<span class="role-badge role-${maUser.rol}">${maUser.rol.replace('_',' ')}</span>`;
+  const avatar=maUser.picture?`<img class="user-avatar-img" src="${escB(maUser.picture)}">`:`<div class="user-avatar-init">${escB(init)}</div>`;
+  // rol saneado contra allowlist antes de ir a la clase CSS (evita romper el atributo con un rol manipulado)
+  const rolSafe=['SUPER_ADMIN','ADMIN','SUPERVISOR','TECNICO'].includes(maUser.rol)?maUser.rol:'TECNICO';
+  const rolBadge=`<span class="role-badge role-${rolSafe}">${escB(rolSafe.replace('_',' '))}</span>`;
   const adminItem=MA.isSuperAdmin()?`<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-div"></div>`:'';
-  pill.innerHTML=avatar+`<span class="user-pname">${n}</span>`
+  pill.innerHTML=avatar+`<span class="user-pname">${escB(n)}</span>`
     +`<div class="user-menu" id="user-menu">`
-    +`<div class="user-menu-head">${maUser.email} ${rolBadge}</div>`
+    +`<div class="user-menu-head">${escB(maUser.email)} ${rolBadge}</div>`
     +`<div class="user-menu-div"></div>`
     +adminItem
     +`<button class="user-menu-item danger" onclick="maSignOut()">→ Cerrar sesión</button>`
@@ -1614,7 +1616,7 @@ function renderAccessPanel(){
     const isAdminOrSuper=rol==='ADMIN'||rol==='SUPER_ADMIN';
     const canEdit=!isMe&&(isSuperTarget?iAmSuperAdmin:true);
     const canDelete=!isMe&&(isSuperTarget?iAmSuperAdmin:true);
-    const opts=ROLES.map(r=>`<option value="${r}"${rol===r?' selected':''}>${r.replace('_',' ')}</option>`).join('');
+    const opts=ROLES.map(r=>optHtml(r, r.replace('_',' '), rol===r?'selected':'')).join('');
     const userApps=u.apps||[];
     let appsHtml;
     if(isAdminOrSuper){
@@ -1624,18 +1626,18 @@ function renderAccessPanel(){
         const checked=userApps.indexOf(app.id)!==-1;
         const dis=!canEdit;
         return `<label style="display:flex;align-items:center;gap:3px;font-size:10px;padding:2px 6px;border-radius:10px;border:1px solid ${checked?'var(--blue)':'var(--border)'};background:${checked?'#e8eef8':'#fff'};color:${checked?'var(--blue)':'var(--muted)'};cursor:${dis?'not-allowed':'pointer'};${dis?'opacity:.5':''}">
-          <input type="checkbox" data-email="${u.email}" data-app="${app.id}"${checked?' checked':''}${dis?' disabled':''} onchange="toggleAppForUser(this)" style="margin:0;cursor:inherit">${app.label}</label>`;
+          <input type="checkbox" data-email="${escB(u.email)}" data-app="${escB(app.id)}"${checked?' checked':''}${dis?' disabled':''} onchange="toggleAppForUser(this)" style="margin:0;cursor:inherit">${escB(app.label)}</label>`;
       }).join('')+`</div>`;
     }
     const meMark=isMe?` <span style="font-size:9px;color:var(--blue);font-weight:700">(t\u00FA)</span>`:'';
     const superMark=(isSuperTarget&&!isMe)?` <span style="font-size:9px;color:var(--orange-dark);font-weight:700">\u2605</span>`:'';
     return`<div style="padding:9px 0;border-bottom:1px solid var(--border);font-size:12px">
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="flex:1;font-family:var(--mono);font-size:11px">${u.email}${meMark}${superMark}</div>
-        <select style="width:140px;font-size:11px;padding:4px 8px;${canEdit?'':'opacity:.6;cursor:not-allowed'}" ${canEdit?'':'disabled'} onchange="changeUserRol('${u.email}',this.value)">
+        <div style="flex:1;font-family:var(--mono);font-size:11px">${escB(u.email)}${meMark}${superMark}</div>
+        <select style="width:140px;font-size:11px;padding:4px 8px;${canEdit?'':'opacity:.6;cursor:not-allowed'}" ${canEdit?'':'disabled'} onchange="changeUserRol('${escJ(u.email)}',this.value)">
           ${opts}
         </select>
-        ${canDelete?`<button class="btn btn-sm btn-red" onclick="deleteUser('${u.email}')">\uD83D\uDDD1</button>`:'<span style="width:34px"></span>'}
+        ${canDelete?`<button class="btn btn-sm btn-red" onclick="deleteUser('${escJ(u.email)}')">\uD83D\uDDD1</button>`:'<span style="width:34px"></span>'}
       </div>
       ${appsHtml}
     </div>`;
@@ -1768,10 +1770,10 @@ async function loadAll(){
     renderAll();
     // Poblar filtro sede paquetes y selector técnico después de renderAll
     const fPkgSede = document.getElementById('f-pkg-sede');
-    if(fPkgSede) fPkgSede.innerHTML='<option value="">Todas las sedes</option>'+sedes.map(s=>`<option value="${s.sede}">${s.sede}</option>`).join('');
+    if(fPkgSede) fPkgSede.innerHTML='<option value="">Todas las sedes</option>'+sedes.map(s=>optHtml(s.sede)).join('');
     const fTec = document.getElementById('f-tec-persona');
     if(fTec) {
-      fTec.innerHTML = '<option value="">Seleccionar...</option><option value="__ALL__">👥 Todos</option>' + tecnicoResponsables().map(r=>`<option value="${r}">${r}</option>`).join('');
+      fTec.innerHTML = '<option value="">Seleccionar...</option><option value="__ALL__">👥 Todos</option>' + tecnicoResponsables().map(r=>optHtml(r)).join('');
       if(!fTec.value){ fTec.value='__ALL__'; renderPorTecnico(); }
     }
   }catch(e){toast('Error: '+e.message,'err');}
@@ -1782,8 +1784,8 @@ function sedeOpts(includeAll=false){
   sedes.forEach(s=>{if(!byC[s.cliente])byC[s.cliente]=[];byC[s.cliente].push(s.sede);});
   let h=includeAll?'<option value="">Todas</option>':'<option value="">Seleccionar...</option>';
   Object.entries(byC).forEach(([c,ss])=>{
-    h+=`<optgroup label="▸ ${c}">`;
-    ss.forEach(s=>{h+=`<option value="${s}">${s}</option>`;});
+    h+=`<optgroup label="▸ ${escB(c)}">`;
+    ss.forEach(s=>{h+=optHtml(s);});
     h+='</optgroup>';
   });
   return h;
@@ -1791,7 +1793,7 @@ function sedeOpts(includeAll=false){
 
 function populateSedes(){
   document.getElementById('f-sede').innerHTML=sedeOpts(true);
-  document.getElementById('f-mov-sede').innerHTML='<option value="">Todas</option>'+sedes.map(s=>`<option value="${s.sede}">${s.sede}</option>`).join('');
+  document.getElementById('f-mov-sede').innerHTML='<option value="">Todas</option>'+sedes.map(s=>optHtml(s.sede)).join('');
   ['fap-sede'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=sedeOpts(false);});
 }
 
@@ -1801,7 +1803,7 @@ function renderAll(){
   const fTec = document.getElementById('f-tec-persona');
   if(fTec) {
     const current = fTec.value;
-    fTec.innerHTML = '<option value="">Seleccionar...</option><option value="__ALL__">👥 Todos</option>' + tecnicoResponsables().map(r=>`<option value="${r}">${r}</option>`).join('');
+    fTec.innerHTML = '<option value="">Seleccionar...</option><option value="__ALL__">👥 Todos</option>' + tecnicoResponsables().map(r=>optHtml(r)).join('');
     if(current) fTec.value = current;
   }
 }
@@ -1816,13 +1818,25 @@ function fotoDeInstancia(inst){
 // Un backup/import manipulado no puede inyectar atributos (hallazgo Crítico del Council).
 function fotoSrc(f){ return /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(String(f||'')) ? f : ''; }
 function escB(v){ return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// Escape para incrustar un string de DATOS dentro de un onclick/onchange (doble contexto JS + atributo
+// HTML): JS-escapa \ y ' (delimitador del string) y los terminadores de línea JS (\n \r U+2028 U+2029,
+// que romperían el string inline), luego HTML-escapa & " < > (delimitador del atributo).
+// Al des-escapar el atributo, el navegador restituye " < > y el JS recibe el string íntegro y seguro.
+function escJ(v){ return String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r/g,'\\r').replace(/\n/g,'\\n').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// <option> seguro: value y etiqueta escapados como texto/atributo HTML. Centraliza el render de opciones
+// alimentadas con datos de Firestore/import (nombres, sedes, códigos) para que no inyecten HTML.
+function optHtml(value,label,extra){ return `<option value="${escB(value)}"${extra?' '+extra:''}>${escB(label??value)}</option>`; }
+// Anti-inyección de fórmulas al abrir un CSV en Excel/Sheets: un campo que empieza con = + - @ (o TAB/CR)
+// se ejecutaría como fórmula. Prefijar ' lo fuerza a texto. Se aplica ANTES del quoting CSV.
+function csvGuard(s){ s=String(s??''); return /^[=+\-@\t\r\n]/.test(s) ? "'"+s : s; }
 
 // Miniatura de la foto de una instancia (o placeholder clicable para agregar)
 function instThumb(id){
-  const f = fotoDeInstancia(instanciasData.find(x=>x.id===id));
-  return f
-    ? `<img class="inst-thumb" src="${fotoSrc(f)}" onclick="event.stopPropagation();openInstFotoLightbox('${id}')" title="Ampliar foto" alt="">`
-    : `<div class="inst-thumb-empty" onclick="openEditInstancia('${id}')" title="Sin foto — clic para agregar">📷</div>`;
+  // safe=fotoSrc(...) → una foto inválida/remota cae al placeholder (no <img src="">)
+  const safe = fotoSrc(fotoDeInstancia(instanciasData.find(x=>x.id===id)));
+  return safe
+    ? `<img class="inst-thumb" src="${safe}" onclick="event.stopPropagation();openInstFotoLightbox('${escJ(id)}')" title="Ampliar foto" alt="">`
+    : `<div class="inst-thumb-empty" onclick="openEditInstancia('${escJ(id)}')" title="Sin foto — clic para agregar">📷</div>`;
 }
 
 function renderInstancias() {
@@ -1880,16 +1894,16 @@ function renderInstancias() {
     const est = inst.estado || 'DISPONIBLE';
     const estColor = estadoColor[est] || 'ok';
     return `<tr>
-      <td style='text-align:center'><input type='checkbox' class='inst-qr-chk' data-id='${inst.id}' ${selectedInstQRIds.has(inst.id)?'checked':''} onchange='updateInstQRSelection(this)'></td>
-      <td class="td-code" style="font-weight:700"><div style="display:flex;align-items:center;gap:6px">${instThumb(inst.id)}<span>${inst.id}</span></div></td>
-      <td style="font-size:11px">${inst.nombre || (item ? item.nombre : '—')}</td>
-      <td style="font-size:11px">${inst.sede || '—'}</td>
+      <td style='text-align:center'><input type='checkbox' class='inst-qr-chk' data-id='${escB(inst.id)}' ${selectedInstQRIds.has(inst.id)?'checked':''} onchange='updateInstQRSelection(this)'></td>
+      <td class="td-code" style="font-weight:700"><div style="display:flex;align-items:center;gap:6px">${instThumb(inst.id)}<span>${escB(inst.id)}</span></div></td>
+      <td style="font-size:11px">${escB(inst.nombre || (item ? item.nombre : '—'))}</td>
+      <td style="font-size:11px">${escB(inst.sede || '—')}</td>
       <td>${nivelHtml}</td>
-      <td><span class="stock-pill stock-${estColor}" style="font-size:9px">${estadoLabel[est]||est}</span></td>
-      <td style="font-size:11px;color:var(--muted2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${inst.notas||''}">${inst.notas||'—'}</td>
+      <td><span class="stock-pill stock-${estColor}" style="font-size:9px">${escB(estadoLabel[est]||est)}</span></td>
+      <td style="font-size:11px;color:var(--muted2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escB(inst.notas||'')}">${escB(inst.notas||'—')}</td>
       <td><div style="display:flex;gap:4px">
-        <button class="btn btn-sm" onclick="openQRModal('${inst.id}')" title="Ver QR">▣</button>
-        <button class="btn btn-sm" onclick="openEditInstancia('${inst.id}')">✏️</button>
+        <button class="btn btn-sm" onclick="openQRModal('${escJ(inst.id)}')" title="Ver QR">▣</button>
+        <button class="btn btn-sm" onclick="openEditInstancia('${escJ(inst.id)}')">✏️</button>
       </div></td>
     </tr>`;
   }).join('')}
@@ -1936,12 +1950,15 @@ function totalS(id){
 function sEnSede(id,sede){
   return instanciasData.filter(i => i.itemId === id && i.sede === sede && i.estado !== 'BAJA').length;
 }
+// Nivel (0-100) robusto: un nivel string/NaN de Firestore manipulado no rompe promedios ni clasificación
+function nivelSafe(v){ const n=Number(v); return Number.isFinite(n)?Math.max(0,Math.min(100,Math.round(n))):0; }
+
 function sNivel(item){
   if(item.tipoCantidad==='RANGO'){
     // Para RANGO: usar promedio de nivel de instancias
     const insts = instanciasData.filter(i => i.itemId === item.id && i.nivel !== undefined);
     if(!insts.length) return 'out';
-    const prom = Math.round(insts.reduce((a,i)=>a+(i.nivel||0),0)/insts.length);
+    const prom = Math.round(insts.reduce((a,i)=>a+nivelSafe(i.nivel),0)/insts.length);
     if(prom<=0) return 'out'; if(prom<=25) return 'low'; return 'ok';
   }
   // Para UNIDAD: contar instancias activas
@@ -1952,14 +1969,18 @@ function sNivel(item){
 // Rangos visuales: el "stock" de un ítem RANGO es 0-100 (promedio de todas las sedes)
 function renderRangoBadge(val,item){
   const insts = instanciasData.filter(i => i.itemId === item.id && i.nivel !== undefined);
-  const prom = insts.length ? Math.round(insts.reduce((a,i)=>a+(i.nivel||0),0)/insts.length) : 0;
+  // nivelSafe coacciona/limita cada nivel → prom siempre numérico 0-100, nunca concatena HTML
+  const prom = insts.length ? Math.round(insts.reduce((a,i)=>a+nivelSafe(i.nivel),0)/insts.length) : 0;
   const cfg=prom>75?{cls:'stock-ok',ico:'🟢',lbl:'LLENO'}:prom>40?{cls:'stock-ok',ico:'🟡',lbl:'MEDIO'}:prom>10?{cls:'stock-low',ico:'🟠',lbl:'BAJO'}:{cls:'stock-out',ico:'🔴',lbl:'VACÍO'};
   return `<span class="stock-pill ${cfg.cls}">${cfg.ico} ${cfg.lbl} ${prom}%</span>`;
 }
 
 function renderRangoBadgeSede(pct){
-  const cfg=pct>75?{cls:'stock-ok',ico:'🟢',lbl:'LLENO'}:pct>40?{cls:'stock-ok',ico:'🟡',lbl:'MEDIO'}:pct>10?{cls:'stock-low',ico:'🟠',lbl:'BAJO'}:{cls:'stock-out',ico:'🔴',lbl:'VACÍO'};
-  return `<span class="stock-pill ${cfg.cls}" style="font-size:10px">${cfg.ico} ${cfg.lbl} ${pct}%</span>`;
+  // Coerción y clamp DENTRO del helper: pct llega de inst.nivel (dato de Firestore, puede ser
+  // un string malicioso); safe es siempre un número 0-100 → nunca inyecta HTML en el % renderizado.
+  const safe=nivelSafe(pct);
+  const cfg=safe>75?{cls:'stock-ok',ico:'🟢',lbl:'LLENO'}:safe>40?{cls:'stock-ok',ico:'🟡',lbl:'MEDIO'}:safe>10?{cls:'stock-low',ico:'🟠',lbl:'BAJO'}:{cls:'stock-out',ico:'🔴',lbl:'VACÍO'};
+  return `<span class="stock-pill ${cfg.cls}" style="font-size:10px">${cfg.ico} ${cfg.lbl} ${safe}%</span>`;
 }
 
 function applyFilters(){
@@ -1991,17 +2012,17 @@ function renderCatalogo(){
     const pC=n==='ok'?'stock-ok':n==='low'?'stock-low':'stock-out';
     const cC=item.categoria==='INSUMO'?'cat-insumo':'cat-herramienta';
     const cL=item.categoria==='INSUMO'?'🔧 Insumo':'🛠 Herramienta';
-    const stockDisplay=`<span class="stock-pill ${pC}">${t} ${item.unidad||'UND'}</span>`;
+    const stockDisplay=`<span class="stock-pill ${pC}">${t} ${escB(item.unidad||'UND')}</span>`;
     const acts=isEd?`<td><div class="td-actions">
-      <button class="btn btn-sm" onclick="openModalInsumo('${item.id}')">✏️</button>
-      <button class="qr-btn" onclick="openQRModal('${item.id}')" title="Ver QR">▣</button>
-      ${can('eliminarItem')?`<button class="btn btn-sm btn-red" onclick="deleteInsumo('${item.id}','${item.nombre.replace(/'/g,"\\'")}')">🗑</button>`:''}
-      ${isReset?`<button class="btn btn-sm" style="color:var(--muted2)" title="Resetear stock a 0" onclick="resetStockItem('${item.id}','${item.nombre.replace(/'/g,"\\'")}')">⟳</button>`:''}
+      <button class="btn btn-sm" onclick="openModalInsumo('${escJ(item.id)}')">✏️</button>
+      <button class="qr-btn" onclick="openQRModal('${escJ(item.id)}')" title="Ver QR">▣</button>
+      ${can('eliminarItem')?`<button class="btn btn-sm btn-red" onclick="deleteInsumo('${escJ(item.id)}','${escJ(item.nombre)}')">🗑</button>`:''}
+      ${isReset?`<button class="btn btn-sm" style="color:var(--muted2)" title="Resetear stock a 0" onclick="resetStockItem('${escJ(item.id)}','${escJ(item.nombre)}')">⟳</button>`:''}
     </div></td>`:'';
-    return `<tr><td style='text-align:center'><input type='checkbox' class='qr-chk' data-id='${item.id}' ${selectedQRIds.has(item.id)?'checked':''} onchange='updateQRSelection(this)'></td><td class="td-code">${item.codigo||'—'}</td><td class="td-name">${item.nombre}</td>
+    return `<tr><td style='text-align:center'><input type='checkbox' class='qr-chk' data-id='${escB(item.id)}' ${selectedQRIds.has(item.id)?'checked':''} onchange='updateQRSelection(this)'></td><td class="td-code">${escB(item.codigo||'—')}</td><td class="td-name">${escB(item.nombre)}</td>
     <td><span class="td-cat ${cC}">${cL}</span></td>
-    <td style="color:var(--muted2);font-size:11px">${item.marca||'—'}${item.modelo?' · '+item.modelo:''}</td>
-    <td style="font-family:var(--mono);font-size:11px">${item.unidad||'UND'}</td>
+    <td style="color:var(--muted2);font-size:11px">${escB(item.marca||'—')}${item.modelo?' · '+escB(item.modelo):''}</td>
+    <td style="font-family:var(--mono);font-size:11px">${escB(item.unidad||'UND')}</td>
     <td>${stockDisplay}</td>${acts}</tr>`;
   }).join('')}</tbody></table>`;
 }
@@ -2042,13 +2063,13 @@ function renderMovimientos(){
     const esDePaquete = !!(m.origenPaquete); // generado por transferencia de paquete — NO revertible
     const esPkgTransf = m.tipo==='TRANSFERENCIA_PAQUETE'; // el paquete SÍ es revertible
     const canMod=can('eliminarMov')&&!isPend&&!(esSolicitud&&(m.estado==='APROBADO'||m.estado==='RECHAZADO'))&&!esDePaquete;
-    const delBtn=canMod?`<button class="btn btn-sm btn-red" title="Revertir acción" onclick="revertirMovimiento('${m.id}')">↩ Revertir</button>`:'';
-    const editBtn=canMod&&can('editarMov')?`<button class="btn btn-sm" title="Editar" onclick="editarMovimiento('${m.id}')">✏️</button>`:'';
-    const aprobarBtn=isPend&&can('aprobar')===1?`<button class="btn btn-sm btn-green" onclick="aprobarSolicitud('${m.id}')">✓ Aprobar</button><button class="btn btn-sm btn-red" onclick="rechazarSolicitud('${m.id}')">✗ Rechazar</button>`:'';
+    const delBtn=canMod?`<button class="btn btn-sm btn-red" title="Revertir acción" onclick="revertirMovimiento('${escJ(m.id)}')">↩ Revertir</button>`:'';
+    const editBtn=canMod&&can('editarMov')?`<button class="btn btn-sm" title="Editar" onclick="editarMovimiento('${escJ(m.id)}')">✏️</button>`:'';
+    const aprobarBtn=isPend&&can('aprobar')===1?`<button class="btn btn-sm btn-green" onclick="aprobarSolicitud('${escJ(m.id)}')">✓ Aprobar</button><button class="btn btn-sm btn-red" onclick="rechazarSolicitud('${escJ(m.id)}')">✗ Rechazar</button>`:'';
     // Adjuntos: N° de guía de remisión + miniaturas de fotos (guía/entrega), clicables → lightbox
     const guiaTxt = m.guiaNumero ? `<span style="font-size:10px;color:var(--blue)"> · 📎 Guía ${escB(m.guiaNumero)}</span>` : '';
     const mf = movFotos[m.id];
-    const fotosThumbs = mf ? `<div class="mov-fotos">${mf.guia?`<img src="${fotoSrc(mf.guia)}" class="mov-foto-thumb" title="Foto de guía — ampliar" onclick="openMovFoto('${m.id}','guia')">`:''}${mf.entrega?`<img src="${fotoSrc(mf.entrega)}" class="mov-foto-thumb" title="Foto de entrega — ampliar" onclick="openMovFoto('${m.id}','entrega')">`:''}</div>` : '';
+    const fotosThumbs = mf ? `<div class="mov-fotos">${mf.guia?`<img src="${fotoSrc(mf.guia)}" class="mov-foto-thumb" title="Foto de guía — ampliar" onclick="openMovFoto('${escJ(m.id)}','guia')">`:''}${mf.entrega?`<img src="${fotoSrc(mf.entrega)}" class="mov-foto-thumb" title="Foto de entrega — ampliar" onclick="openMovFoto('${escJ(m.id)}','entrega')">`:''}</div>` : '';
     return `<div class="mov-item ${isPend?'pendiente':''}">
       <div class="mov-icon ${tCls}">${icons[m.tipo]||'📦'}</div>
       <div class="mov-body">
@@ -2105,24 +2126,24 @@ function renderStockSede(){
   sedes.forEach(s=>{if(!byC[s.cliente])byC[s.cliente]=[];byC[s.cliente].push(s.sede);});
   let h='';
   Object.entries(byC).forEach(([cliente,ss])=>{
-    h+=`<div class="sede-cliente-label">${cliente}</div><div class="sede-stock-grid">`;
+    h+=`<div class="sede-cliente-label">${escB(cliente)}</div><div class="sede-stock-grid">`;
     ss.forEach(sede=>{
       const items=catalogoData.filter(i=>sEnSede(i.id,sede)>0);
       // También mostrar instancias específicas en esta sede
       const instsSede = instanciasData.filter(i => i.sede === sede && i.estado !== 'BAJA');
       if(!items.length && !instsSede.length)return;
-      h+=`<div class="sede-stock-card"><div class="sede-stock-name">🏢 ${sede}</div>
+      h+=`<div class="sede-stock-card"><div class="sede-stock-name">🏢 ${escB(sede)}</div>
       ${items.map(i=>{
         const canEdit=can('editarItem');
         const instsDeEste = instanciasData.filter(x => x.itemId === i.id && x.sede === sede && x.estado !== 'BAJA');
         if(!instsDeEste.length) return '';
-        const header = `<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;padding:6px 0 2px">${i.nombre}</div>`;
+        const header = `<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;padding:6px 0 2px">${escB(i.nombre)}</div>`;
         const rows = instsDeEste.map(inst=>{
-          const editBtn = canEdit ? `<button class="btn btn-sm" style="font-size:10px;padding:3px 7px;flex-shrink:0" onclick="openEditInstancia('${inst.id}')">✏️</button>` : '';
+          const editBtn = canEdit ? `<button class="btn btn-sm" style="font-size:10px;padding:3px 7px;flex-shrink:0" onclick="openEditInstancia('${escJ(inst.id)}')">✏️</button>` : '';
           if(i.tipoCantidad==='RANGO'){
             const niv = inst.nivel !== undefined ? inst.nivel : 0;
             return `<div class="sede-stock-item">
-              <span style="flex:1;font-family:var(--mono);font-size:11px;font-weight:600">${inst.id}</span>
+              <span style="flex:1;font-family:var(--mono);font-size:11px;font-weight:600">${escB(inst.id)}</span>
               ${renderRangoBadgeSede(niv)}
               ${editBtn}
             </div>`;
@@ -2131,8 +2152,8 @@ function renderStockSede(){
           const estLabel = {DISPONIBLE:'✅',EN_USO:'🔧',MANTENIMIENTO:'⚠️',DETERIORADO:'🔴'};
           const est = inst.estado || 'DISPONIBLE';
           return `<div class="sede-stock-item">
-            <span style="flex:1;font-family:var(--mono);font-size:11px;font-weight:600">${inst.id}</span>
-            <span class="stock-pill ${estColor[est]||'stock-ok'}" style="font-size:10px;padding:1px 6px;flex-shrink:0">${estLabel[est]||''} ${est}</span>
+            <span style="flex:1;font-family:var(--mono);font-size:11px;font-weight:600">${escB(inst.id)}</span>
+            <span class="stock-pill ${estColor[est]||'stock-ok'}" style="font-size:10px;padding:1px 6px;flex-shrink:0">${estLabel[est]||''} ${escB(est)}</span>
             ${editBtn}
           </div>`;
         }).join('');
@@ -2188,7 +2209,7 @@ function validarCodigoItem(){
   if(!codigo){ statusEl.textContent=''; return; }
   const duplicado = catalogoData.find(x => x.codigo && x.codigo.toUpperCase()===codigo && x.id!==editingInsumoId);
   if(duplicado){
-    statusEl.innerHTML = '<span style="color:var(--red)">⚠️ Código ya usado por: '+duplicado.nombre+'</span>';
+    statusEl.innerHTML = '<span style="color:var(--red)">⚠️ Código ya usado por: '+escB(duplicado.nombre)+'</span>';
   } else {
     statusEl.innerHTML = '<span style="color:var(--green)">✓ Código disponible</span>';
   }
@@ -2373,11 +2394,11 @@ async function deleteInsumo(id,nombre){
 
 function openModalTransferencia(esSol){
   document.getElementById('btn-save-transf').textContent=esSol?'📤 Enviar solicitud':'🔄 Confirmar';
-  const opts=catalogoData.map(i=>`<option value="${i.id}">${i.nombre}${i.codigo?' ('+i.codigo+')':''}</option>`).join('');
+  const opts=catalogoData.map(i=>optHtml(i.id, i.nombre+(i.codigo?' ('+i.codigo+')':''))).join('');
   document.getElementById('ft-item').innerHTML='<option value="">Seleccionar...</option>'+opts;
   document.getElementById('ft-origen').innerHTML=sedeOpts(false);
   document.getElementById('ft-destino').innerHTML=sedeOpts(false);
-  const pOpts=personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  const pOpts=personalData.map(p=>optHtml(p.nombre)).join('');
   document.getElementById('ft-tecnico').innerHTML=`<option value="">—</option>${pOpts}`;
   document.getElementById('ft-qty').value='';document.getElementById('ft-obs').value='';
   document.getElementById('stock-origen-info').style.display='none';
@@ -2954,14 +2975,14 @@ let currentSalidaTipo = 'SALIDA';
 function openModalEntrada() {
   const sel = document.getElementById('fent-tipo');
   sel.innerHTML = '<option value="">Seleccionar...</option>' +
-    catalogoData.map(i => `<option value="${i.id}">${i.codigo ? i.codigo + ' — ' : ''}${i.nombre}</option>`).join('');
+    catalogoData.map(i => optHtml(i.id, (i.codigo ? i.codigo + ' — ' : '') + i.nombre)).join('');
   document.getElementById('fent-sede').innerHTML = sedeOpts(false);
   document.getElementById('fent-qty').value = '1';
   document.getElementById('fent-obs').value = '';
   document.getElementById('fent-preview').style.display = 'none';
   document.getElementById('fent-nivel-wrap').style.display = 'none';
   document.getElementById('fent-nivel').value = '100';
-  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  const pOpts = personalData.map(p => optHtml(p.nombre)).join('');
   document.getElementById('fent-personal').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('fent-guia-num').value = '';
   loteFotos = { guia: null, entrega: null };
@@ -3004,7 +3025,7 @@ async function previewInstancias() {
     }
     prev.style.display = 'block';
     prev.innerHTML = `<div style="font-weight:600;margin-bottom:6px;color:var(--blue)">Se crearán ${qty} instancia${qty > 1 ? 's' : ''}:</div>` +
-      ids.map(id => `<div style="font-family:var(--mono);padding:2px 0">• ${id}</div>`).join('');
+      ids.map(id => `<div style="font-family:var(--mono);padding:2px 0">• ${escB(id)}</div>`).join('');
   } catch(e) {
     // Fallback
     const existing = instanciasData.filter(i => i.id.startsWith(prefix + '-')).map(i => parseInt(i.id.replace(prefix + '-', '')) || 0).sort((a, b) => b - a);
@@ -3012,7 +3033,7 @@ async function previewInstancias() {
     const ids = Array.from({length: qty}, (_, i) => `${prefix}-${String(next + i).padStart(3, '0')}`);
     prev.style.display = 'block';
     prev.innerHTML = `<div style="font-weight:600;margin-bottom:6px;color:var(--blue)">Se crearán ${qty} instancia${qty > 1 ? 's' : ''}:</div>` +
-      ids.map(id => `<div style="font-family:var(--mono);padding:2px 0">• ${id}</div>`).join('');
+      ids.map(id => `<div style="font-family:var(--mono);padding:2px 0">• ${escB(id)}</div>`).join('');
   }
 }
 
@@ -3094,10 +3115,10 @@ function openModalSalida(tipo = 'SALIDA', instId = null) {
   document.getElementById('fsal-motivo-label').textContent = esBaja ? 'Motivo * (obligatorio)' : 'Observación';
   document.getElementById('btn-save-salida').textContent = esBaja ? '⚠️ Confirmar baja' : '⬆ Confirmar salida';
   document.getElementById('fsal-buscar').value = instId || '';
-  document.getElementById('fsal-sede-filtro').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s => `<option value="${s.sede}">${s.sede}</option>`).join('');
+  document.getElementById('fsal-sede-filtro').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s => optHtml(s.sede)).join('');
   document.getElementById('fsal-motivo').value = '';
   document.getElementById('fsal-inst-info').style.display = 'none';
-  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  const pOpts = personalData.map(p => optHtml(p.nombre)).join('');
   document.getElementById('fsal-personal').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('fsal-guia-num').value = '';
   loteFotos = { guia: null, entrega: null };
@@ -3117,7 +3138,7 @@ function buscarInstanciasSalida() {
   if (q) list = list.filter(i => (i.id + i.nombre + (i.sede || '')).toLowerCase().includes(q));
   const sel = document.getElementById('fsal-instancia');
   sel.innerHTML = '<option value="">Seleccionar instancia...</option>' +
-    list.map(i => `<option value="${i.id}">${i.id} — ${i.nombre} (${i.sede || 'sin sede'})</option>`).join('');
+    list.map(i => optHtml(i.id, `${i.id} — ${i.nombre} (${i.sede || 'sin sede'})`)).join('');
   document.getElementById('fsal-inst-info').style.display = 'none';
 }
 
@@ -3129,9 +3150,9 @@ function onSalidaInstanciaChange() {
   const item = catalogoData.find(x => x.id === inst.itemId);
   const esRango = item && item.tipoCantidad === 'RANGO';
   info.style.display = 'block';
-  info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>
-    📍 Sede: <strong>${inst.sede || '—'}</strong> · Estado: <strong>${inst.estado || 'DISPONIBLE'}</strong>
-    ${esRango && inst.nivel !== undefined ? '<br>📊 Nivel: ' + inst.nivel + '%' : ''}`;
+  info.innerHTML = `<strong>${escB(inst.id)}</strong> · ${escB(inst.nombre)}<br>
+    📍 Sede: <strong>${escB(inst.sede || '—')}</strong> · Estado: <strong>${escB(inst.estado || 'DISPONIBLE')}</strong>
+    ${esRango && inst.nivel !== undefined ? '<br>📊 Nivel: ' + escB(inst.nivel) + '%' : ''}`;
 }
 
 async function saveSalida() {
@@ -3234,7 +3255,7 @@ function renderLoteInst(which) {
     return `<div style="display:flex;align-items:center;gap:6px">
       <span style="font-family:var(--mono)">${escB(id)}</span>
       <span style="flex:1">— ${escB(inst.nombre)} <span style="color:var(--muted2)">(${escB(extra)})</span></span>
-      <button type="button" onclick="removeInstLote('${id}','${which}')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:13px;padding:0 2px" title="Quitar">✕</button>
+      <button type="button" onclick="removeInstLote('${escJ(id)}','${which}')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:13px;padding:0 2px" title="Quitar">✕</button>
     </div>`;
   }).join('');
 }
@@ -3252,7 +3273,7 @@ function buscarInstLote(which) {
     (!q || (i.id + i.nombre + (i.sede || '')).toLowerCase().includes(q))
   ).slice(0, 25);
   if (!list.length) { res.innerHTML = `<div style="padding:8px 10px;color:var(--muted2)">${q ? 'Sin resultados' : 'No hay instancias disponibles'}</div>`; res.style.display = 'block'; return; }
-  res.innerHTML = list.map(i => `<div onclick="addInstLote('${i.id}','${which}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background=''">
+  res.innerHTML = list.map(i => `<div onclick="addInstLote('${escJ(i.id)}','${which}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background=''">
       <span style="font-family:var(--mono);font-size:10px;font-weight:600;min-width:70px">${escB(i.id)}</span>
       <span style="font-size:11px;flex:1">${escB(i.nombre)}</span>
       <span style="font-size:10px;color:var(--muted2)">${escB(i.sede || '—')}</span>
@@ -3292,7 +3313,7 @@ function openModalSalidaLote(tipo = 'SALIDA') {
   document.getElementById('btn-save-lote').textContent = esBaja ? '⚠️ Confirmar baja' : '⬆ Confirmar salida';
   document.getElementById('flote-motivo').value = '';
   document.getElementById('flote-guia-num').value = '';
-  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  const pOpts = personalData.map(p => optHtml(p.nombre)).join('');
   document.getElementById('flote-personal').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('lote-inst-buscar').value = '';
   document.getElementById('lote-inst-resultados').style.display = 'none';
@@ -3326,8 +3347,11 @@ function refreshLoteFotoPreview(tipo) {
 
 // Lightbox genérico (reutiliza el visor de fotos de instancia) — recibe el dataURL directamente
 function openFotoSrc(src) {
-  if (!src) return;
-  document.getElementById('foto-lightbox-img').src = src;
+  // Chokepoint del lightbox: solo data:image base64 (mov/lote son dataURLs válidos) — una URL remota
+  // de un dato manipulado no llega a img.src (hallazgo del Council).
+  const safe = fotoSrc(src);
+  if (!safe) return;
+  document.getElementById('foto-lightbox-img').src = safe;
   document.getElementById('foto-lightbox').classList.add('open');
 }
 
@@ -3413,7 +3437,7 @@ function openModalTransfLote() {
   document.getElementById('ftl-guia-num').value = '';
   document.getElementById('ftl-chk-sede').checked = true;
   document.getElementById('ftl-chk-resp').checked = false;
-  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  const pOpts = personalData.map(p => optHtml(p.nombre)).join('');
   document.getElementById('ftl-tecnico').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('ftl-resp-destino').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('ftl-destino').innerHTML = sedeOpts(false);
@@ -3888,6 +3912,10 @@ function _cmValidar(catRows, instRows) {
     const sede = _cmStr(r.SEDE).toUpperCase();
     if (sede && !sedesValidas.has(sede)) { out.inst.err.push({ fila, msg: `SEDE no existe: ${sede}` }); return; }
     let id = _cmStr(r.ID);
+    // Allowlist estricta del ID importado (será doc id de Firestore y va a handlers/atributos):
+    // solo letras/números/guion/guion bajo, máx 40 → un ID con comillas/HTML no puede entrar (defensa
+    // en profundidad, además del escape en render). El autogenerado abajo ya cumple por construcción.
+    if (id && !/^[A-Za-z0-9_-]{1,40}$/.test(id)) { out.inst.err.push({ fila, msg: `ID inválido (solo letras, números, - y _, máx 40): ${id}` }); return; }
     if (!id) {
       const prefix = (item.codigo || item.nombre.replace(/[^A-Z0-9]/gi, '')).substring(0, 3).toUpperCase();
       corrInicial(prefix);
@@ -3914,7 +3942,7 @@ function _cmRenderPreview() {
     <div style="font-weight:600;margin-bottom:8px">Resumen de la importación</div>${linea('Catálogo', r.cat)}${linea('Instancias', r.inst)}`;
   const errs = [...r.cat.err.map(e => ({ ...e, t: 'Catálogo' })), ...r.inst.err.map(e => ({ ...e, t: 'Instancias' }))];
   if (errs.length) h += `<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px"><div style="font-size:11px;color:var(--red);font-weight:600;margin-bottom:4px">Filas omitidas por error:</div>
-    <div style="max-height:150px;overflow-y:auto;font-size:11px;display:flex;flex-direction:column;gap:2px">${errs.map(e => `<div>• ${e.t} fila ${e.fila}: ${e.msg}</div>`).join('')}</div></div>`;
+    <div style="max-height:150px;overflow-y:auto;font-size:11px;display:flex;flex-direction:column;gap:2px">${errs.map(e => `<div>• ${escB(e.t)} fila ${escB(e.fila)}: ${escB(e.msg)}</div>`).join('')}</div></div>`;
   h += `</div>`;
   if (nOk === 0) h += `<div style="font-size:12px;color:var(--red);margin-top:8px">No hay filas válidas para importar.</div>`;
   box.innerHTML = h;
@@ -3973,16 +4001,16 @@ async function confirmarImportInsumos() {
 
 // ── TRANSFERENCIA ─────────────────────────────────────────
 function openModalTransferencia() {
-  document.getElementById('ft-sede-origen').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s => `<option value="${s.sede}">${s.sede}</option>`).join('');
+  document.getElementById('ft-sede-origen').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s => optHtml(s.sede)).join('');
   const allInsts = instanciasData.filter(i => i.estado !== 'BAJA');
   document.getElementById('ft-instancia').innerHTML = '<option value="">Seleccionar...</option>' +
-    allInsts.map(i => `<option value="${i.id}">${i.id} — ${i.nombre} (${i.sede || 'sin sede'})</option>`).join('');
+    allInsts.map(i => optHtml(i.id, `${i.id} — ${i.nombre} (${i.sede || 'sin sede'})`)).join('');
   document.getElementById('ft-inst-info').style.display = 'none';
   document.getElementById('ft-buscar-inst').value = '';
   document.getElementById('ft-obs').value = '';
   document.getElementById('ft-chk-sede').checked = true;
   document.getElementById('ft-chk-resp').checked = false;
-  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  const pOpts = personalData.map(p => optHtml(p.nombre)).join('');
   document.getElementById('ft-tecnico').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('ft-resp-destino').innerHTML = `<option value="">—</option>${pOpts}`;
   document.getElementById('ft-destino').innerHTML = sedeOpts(false);
@@ -4024,7 +4052,7 @@ function onTransfOrigenChange() {
   let list = instanciasData.filter(i => i.estado !== 'BAJA');
   if (sede) list = list.filter(i => i.sede === sede);
   document.getElementById('ft-instancia').innerHTML = '<option value="">Seleccionar instancia...</option>' +
-    list.map(i => `<option value="${i.id}">${i.id} — ${i.nombre}</option>`).join('');
+    list.map(i => optHtml(i.id, `${i.id} — ${i.nombre}`)).join('');
   document.getElementById('ft-inst-info').style.display = 'none';
 }
 
@@ -4034,7 +4062,7 @@ function buscarInstanciasTransf() {
   document.getElementById('ft-sede-origen').value = '';
   let list = instanciasData.filter(i => i.estado !== 'BAJA' && (i.id + i.nombre + (i.sede || '')).toLowerCase().includes(q));
   document.getElementById('ft-instancia').innerHTML = '<option value="">Seleccionar instancia...</option>' +
-    list.map(i => `<option value="${i.id}">${i.id} — ${i.nombre} (${i.sede || 'sin sede'})</option>`).join('');
+    list.map(i => optHtml(i.id, `${i.id} — ${i.nombre} (${i.sede || 'sin sede'})`)).join('');
   document.getElementById('ft-inst-info').style.display = 'none';
 }
 
@@ -4044,9 +4072,9 @@ function onTransfInstanciaChange() {
   const info = document.getElementById('ft-inst-info');
   if (!inst) { info.style.display = 'none'; return; }
   info.style.display = 'block';
-  info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>
-    📍 Sede actual: <strong>${inst.sede || '—'}</strong>
-    ${inst.responsable ? ` · 👤 Responsable: <strong>${inst.responsable}</strong>` : ''}`;
+  info.innerHTML = `<strong>${escB(inst.id)}</strong> · ${escB(inst.nombre)}<br>
+    📍 Sede actual: <strong>${escB(inst.sede || '—')}</strong>
+    ${inst.responsable ? ` · 👤 Responsable: <strong>${escB(inst.responsable)}</strong>` : ''}`;
   // Actualizar sede origen SIN disparar onchange (evita loop que resetea el select)
   const origenSel = document.getElementById('ft-sede-origen');
   if (inst.sede) origenSel.value = inst.sede;
@@ -4262,7 +4290,7 @@ function exportInstCSVPhomemo() {
   if(!MA.can('exportar','insumos')){ toast('Sin permisos para exportar', 'err'); return; }
   const ids = selectedInstQRIds.size ? [...selectedInstQRIds] : instanciasData.map(i => i.id);
   if (!ids.length) { toast('No hay instancias para exportar', 'warn'); return; }
-  const esc = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const esc = v => { const s = csvGuard(v == null ? '' : v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const rows = ids.map(id => {
     const inst = instanciasData.find(x => x.id === id);
     return [esc(id), esc(inst ? (inst.nombre || '') : '')].join(',');
@@ -4279,7 +4307,7 @@ function exportInstCSVPhomemo() {
 // ── EXPORTAR MATERIAL (CSV Excel-compatible) ───────────────
 // Lista detallada de instancias (material) por persona o por paquete.
 // Mismo patrón que exportInstCSVPhomemo: BOM UTF-8 para que Excel lea acentos.
-function _matCsvEsc(v){ const s = String(v == null ? '' : v); return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function _matCsvEsc(v){ const s = csvGuard(v == null ? '' : v); return /[",\r\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 function _matSlug(s){ return (String(s||'').trim().toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'')) || 'X'; }
 
 // Construye el CSV de material a partir de una lista de instancias y lo descarga
@@ -4403,7 +4431,8 @@ async function _matPrepare(W, padX){
   cols.forEach(c => { c._x = x0; c._w = innerW * c.w/totalW; x0 += c._w; });
   const imgs = {};
   if(conFotos){
-    const withFoto = rows.map(r => ({ id: r.codigo, src: fotoDeInstancia({ id: r.codigo, itemId: r.itemId }) })).filter(x => x.src);
+    // fotoSrc() valida data:image base64 → una URL remota manipulada queda '' y se descarta en el filter
+    const withFoto = rows.map(r => ({ id: r.codigo, src: fotoSrc(fotoDeInstancia({ id: r.codigo, itemId: r.itemId })) })).filter(x => x.src);
     const loaded = await Promise.all(withFoto.map(x => _loadImg(x.src)));
     withFoto.forEach((x,k) => { if(loaded[k]) imgs[x.id] = loaded[k]; });
   }
@@ -4568,10 +4597,8 @@ function refreshInstFotoPreview() {
 
 // Amplía la foto de una instancia en un visor a pantalla completa
 function openInstFotoLightbox(id){
-  const f = fotoDeInstancia(instanciasData.find(x=>x.id===id));
-  if(!f) return;
-  document.getElementById('foto-lightbox-img').src = f;
-  document.getElementById('foto-lightbox').classList.add('open');
+  // Delega en openFotoSrc, que valida con fotoSrc() (solo data:image base64)
+  openFotoSrc(fotoDeInstancia(instanciasData.find(x=>x.id===id)));
 }
 function closeInstFotoLightbox(){
   document.getElementById('foto-lightbox').classList.remove('open');
@@ -5127,7 +5154,7 @@ async function editarMovimiento(movId) {
   const f = mov.fecha ? (mov.fecha.toDate ? mov.fecha.toDate() : new Date(mov.fecha)) : new Date();
   const fs = f.toLocaleDateString('es-PE', {day:'2-digit', month:'short', year:'numeric'});
   document.getElementById('em-info').textContent = `${mov.tipo} · ${mov.itemNombre || '—'} · ${fs}`;
-  const pOpts = personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  const pOpts = personalData.map(p => optHtml(p.nombre)).join('');
   const respSel = document.getElementById('em-responsable');
   respSel.innerHTML = `<option value="">—</option>${pOpts}`;
   respSel.value = mov.responsable || '';
@@ -5151,9 +5178,9 @@ async function editarMovimiento(movId) {
     instList.innerHTML = instIdsEdit.map(id => {
       const inst = instanciasData.find(x => x.id === id);
       const estado = inst
-        ? `<span style="color:var(--muted2)"> · ${inst.estado||'DISPONIBLE'}${inst.sede?' · '+inst.sede:''}</span>`
+        ? `<span style="color:var(--muted2)"> · ${escB(inst.estado||'DISPONIBLE')}${inst.sede?' · '+escB(inst.sede):''}</span>`
         : `<span style="color:var(--red)"> · ${esSalida ? 'ya no existe en inventario' : 'eliminada'}</span>`;
-      return `<div>${id}${estado}</div>`;
+      return `<div>${escB(id)}${estado}</div>`;
     }).join('');
     instWrap.style.display = 'block';
   } else {
@@ -5276,7 +5303,7 @@ function openModalSolicitud(tipo) {
   document.getElementById('fsol-paquete-fields').style.display = esPaquete ? 'block' : 'none';
   if (esEntrada) {
     const itemOpts = '<option value="">Seleccionar del catálogo...</option>' +
-      catalogoData.map(i => `<option value="${i.id}" data-nombre="${i.nombre}">${i.nombre} (${i.codigo||i.id})</option>`).join('');
+      catalogoData.map(i => optHtml(i.id, `${i.nombre} (${i.codigo||i.id})`, `data-nombre="${escB(i.nombre)}"`)).join('');
     document.getElementById('fsol-item-req').innerHTML = itemOpts;
     document.getElementById('fsol-sede-req').innerHTML = sedeOpts(false);
     document.getElementById('fsol-qty-req').value = '1';
@@ -5286,9 +5313,9 @@ function openModalSolicitud(tipo) {
     const instDisp = instanciasData.filter(i=>i.estado!=='BAJA'&&!i.paqueteId);
     document.getElementById('fsol-pkg-insts').innerHTML = instDisp.map(i=>
       `<label style="display:flex;align-items:center;gap:8px;font-size:11px;padding:4px 0;cursor:pointer">
-        <input type="checkbox" value="${i.id}" style="width:14px;height:14px">
-        <span style="font-family:var(--mono);font-weight:600">${i.id}</span>
-        <span style="color:var(--muted2)">${i.nombre} · ${i.sede||'—'}</span>
+        <input type="checkbox" value="${escB(i.id)}" style="width:14px;height:14px">
+        <span style="font-family:var(--mono);font-weight:600">${escB(i.id)}</span>
+        <span style="color:var(--muted2)">${escB(i.nombre)} · ${escB(i.sede||'—')}</span>
       </label>`
     ).join('') || '<div style="font-size:11px;color:var(--muted2)">Sin instancias disponibles</div>';
     document.getElementById('fsol-pkg-tipo').value = 'MOCHILA';
@@ -5298,15 +5325,15 @@ function openModalSolicitud(tipo) {
   document.getElementById('fsol-inst-info').style.display = 'none';
   // Poblar instancias
   const list = instanciasData.filter(i => i.estado !== 'BAJA');
-  const opts = '<option value="">Seleccionar...</option>' + list.map(i => `<option value="${i.id}">${i.id} — ${i.nombre} (${i.sede||'sin sede'})</option>`).join('');
+  const opts = '<option value="">Seleccionar...</option>' + list.map(i => optHtml(i.id, `${i.id} — ${i.nombre} (${i.sede||'sin sede'})`)).join('');
   if (!esTransf) {
-    document.getElementById('fsol-sede-filtro').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s => `<option value="${s.sede}">${s.sede}</option>`).join('');
+    document.getElementById('fsol-sede-filtro').innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(s => optHtml(s.sede)).join('');
     document.getElementById('fsol-buscar').value = '';
     document.getElementById('fsol-instancia').innerHTML = opts;
   } else if (esTransf) {
     document.getElementById('fsol-inst-transf').innerHTML = opts;
     document.getElementById('fsol-sede-dest').innerHTML = sedeOpts(false);
-    const pOpts = '<option value="">—</option>' + personalData.map(p => `<option value="${p.nombre}">${p.nombre}</option>`).join('');
+    const pOpts = '<option value="">—</option>' + personalData.map(p => optHtml(p.nombre)).join('');
     document.getElementById('fsol-resp-dest').innerHTML = pOpts;
     document.getElementById('fsol-chk-sede').checked = true;
     document.getElementById('fsol-chk-resp').checked = false;
@@ -5323,7 +5350,7 @@ function buscarInstanciasSolicitud() {
   if (sede) list = list.filter(i => i.sede === sede);
   if (q) list = list.filter(i => (i.id + i.nombre + (i.sede||'')).toLowerCase().includes(q));
   document.getElementById('fsol-instancia').innerHTML = '<option value="">Seleccionar...</option>' +
-    list.map(i => `<option value="${i.id}">${i.id} — ${i.nombre} (${i.sede||'sin sede'})</option>`).join('');
+    list.map(i => optHtml(i.id, `${i.id} — ${i.nombre} (${i.sede||'sin sede'})`)).join('');
   document.getElementById('fsol-inst-info').style.display = 'none';
 }
 
@@ -5333,7 +5360,7 @@ function onSolicitudInstanciaChange() {
   const info = document.getElementById('fsol-inst-info');
   if (!inst) { info.style.display = 'none'; return; }
   info.style.display = 'block';
-  info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>📍 Sede: <strong>${inst.sede||'—'}</strong> · Estado: <strong>${inst.estado||'DISPONIBLE'}</strong>`;
+  info.innerHTML = `<strong>${escB(inst.id)}</strong> · ${escB(inst.nombre)}<br>📍 Sede: <strong>${escB(inst.sede||'—')}</strong> · Estado: <strong>${escB(inst.estado||'DISPONIBLE')}</strong>`;
 }
 
 
@@ -5343,7 +5370,7 @@ function onSolicitudTransfInstChange() {
   const info = document.getElementById('fsol-transf-info');
   if (!inst) { info.style.display = 'none'; return; }
   info.style.display = 'block';
-  info.innerHTML = `<strong>${inst.id}</strong> · ${inst.nombre}<br>📍 Sede actual: <strong>${inst.sede||'—'}</strong>`;
+  info.innerHTML = `<strong>${escB(inst.id)}</strong> · ${escB(inst.nombre)}<br>📍 Sede actual: <strong>${escB(inst.sede||'—')}</strong>`;
   // Deshabilitar sede actual en destino
   const destSel = document.getElementById('fsol-sede-dest');
   Array.from(destSel.options).forEach(opt => { opt.disabled = opt.value === inst.sede; });
@@ -5526,7 +5553,7 @@ function abrirAprobacionPaquete(movId) {
   document.getElementById('apkg-estado').value = 'ACTIVO';
   document.getElementById('apkg-sede').innerHTML = sedeOpts(false);
   document.getElementById('apkg-notas').value = `Aprobado desde solicitud de ${mov.responsable||mov.usuario}`;
-  const pOpts = '<option value="">—</option>' + personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  const pOpts = '<option value="">—</option>' + personalData.map(p=>optHtml(p.nombre)).join('');
   document.getElementById('apkg-responsable').innerHTML = pOpts;
   document.getElementById('apkg-responsable').value = mov.responsable || '';
   document.getElementById('apkg-inst-buscar').value = '';
@@ -5550,10 +5577,10 @@ function buscarInstanciasApkg() {
     (i.id+i.nombre+(i.sede||'')).toLowerCase().includes(q)
   ).slice(0, 8);
   if (!list.length) { res.innerHTML='<div style="padding:8px 10px;color:var(--muted2)">Sin resultados</div>'; res.style.display='block'; return; }
-  res.innerHTML = list.map(i=>`<div onclick="apkgAddInst('${i.id}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background=''">
-    <span style="font-family:var(--mono);font-size:10px;font-weight:600;min-width:70px">${i.id}</span>
-    <span style="font-size:11px;flex:1">${i.nombre}</span>
-    <span style="font-size:10px;color:var(--muted2)">${i.sede||'—'}</span>
+  res.innerHTML = list.map(i=>`<div onclick="apkgAddInst('${escJ(i.id)}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background=''">
+    <span style="font-family:var(--mono);font-size:10px;font-weight:600;min-width:70px">${escB(i.id)}</span>
+    <span style="font-size:11px;flex:1">${escB(i.nombre)}</span>
+    <span style="font-size:10px;color:var(--muted2)">${escB(i.sede||'—')}</span>
   </div>`).join('');
   res.style.display='block';
 }
@@ -5578,9 +5605,9 @@ function renderApkgInstSeleccionadas() {
   wrap.innerHTML = [...apkgInstanciasSeleccionadas].map(id => {
     const inst = instanciasData.find(x=>x.id===id);
     return `<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px">
-      <span style="font-family:var(--mono);font-size:10px;font-weight:600">${id}</span>
-      <span style="font-size:11px;flex:1;color:var(--muted2)">${inst?inst.nombre:''} · ${inst?.sede||'—'}</span>
-      <button onclick="apkgRemoveInst('${id}')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:14px;padding:0 2px">✕</button>
+      <span style="font-family:var(--mono);font-size:10px;font-weight:600">${escB(id)}</span>
+      <span style="font-size:11px;flex:1;color:var(--muted2)">${inst?escB(inst.nombre):''} · ${escB(inst?.sede||'—')}</span>
+      <button onclick="apkgRemoveInst('${escJ(id)}')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:14px;padding:0 2px">✕</button>
     </div>`;
   }).join('');
 }
@@ -5684,18 +5711,18 @@ function renderPaquetes() {
     return `<div class="pkg-card ${estCls}">
       <div class="pkg-header">
         <div>
-          <div class="pkg-id">${ico} ${pkg.id}</div>
-          <div class="pkg-nombre">${pkg.nombre||'—'}</div>
+          <div class="pkg-id">${ico} ${escB(pkg.id)}</div>
+          <div class="pkg-nombre">${escB(pkg.nombre||'—')}</div>
           <div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <span class="pkg-tipo">${pkg.tipo||'OTRO'}</span>${estBadge}
+            <span class="pkg-tipo">${escB(pkg.tipo||'OTRO')}</span>${estBadge}
           </div>
         </div>
-        <button class="qr-btn" onclick="openQRModal('${pkg.id}')" title="Ver QR">▣</button>
+        <button class="qr-btn" onclick="openQRModal('${escJ(pkg.id)}')" title="Ver QR">▣</button>
       </div>
       <div class="pkg-meta">
-        <span>📍 ${pkg.sede||'—'}</span>
-        <span>👤 ${pkg.responsable||'—'}</span>
-        ${pkg.notas?`<span style="font-style:italic;color:var(--muted)">${pkg.notas}</span>`:''}
+        <span>📍 ${escB(pkg.sede||'—')}</span>
+        <span>👤 ${escB(pkg.responsable||'—')}</span>
+        ${pkg.notas?`<span style="font-style:italic;color:var(--muted)">${escB(pkg.notas)}</span>`:''}
       </div>
       <div class="pkg-insts">
         <div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">${insts.length} instancia${insts.length!==1?'s':''}</div>
@@ -5703,17 +5730,17 @@ function renderPaquetes() {
           const estColor={DISPONIBLE:'stock-ok',EN_USO:'stock-uso',MANTENIMIENTO:'stock-low',DETERIORADO:'stock-deteriorado',BAJA:'stock-out'};
           const est=i.estado||'DISPONIBLE';
           return `<div class="pkg-inst-row">
-            <span style="font-family:var(--mono);font-size:10px;font-weight:600;flex:1">${i.id}</span>
-            <span style="font-size:10px;color:var(--muted2);flex:2">${i.nombre}</span>
-            <span class="stock-pill ${estColor[est]||'stock-ok'}" style="font-size:9px;padding:1px 5px">${est}</span>
+            <span style="font-family:var(--mono);font-size:10px;font-weight:600;flex:1">${escB(i.id)}</span>
+            <span style="font-size:10px;color:var(--muted2);flex:2">${escB(i.nombre)}</span>
+            <span class="stock-pill ${estColor[est]||'stock-ok'}" style="font-size:9px;padding:1px 5px">${escB(est)}</span>
           </div>`;
         }).join('') : '<div style="font-size:11px;color:var(--muted2)">Sin instancias asignadas</div>'}
       </div>
       <div class="pkg-foot">
-        <button class="btn btn-sm" onclick="exportMaterialPaquete('${pkg.id}')" title="Exportar material del paquete (CSV)">⬇ Material</button>
-        ${canEdit?`<button class="btn btn-sm" onclick="openModalPaquete('${pkg.id}')">✏️ Editar</button>`:''}
-        <button class="btn btn-sm" onclick="openModalTransfPaquete('${pkg.id}')">🔄 Transferir</button>
-        ${MA.can('borrar')?`<button class="btn btn-sm btn-red" onclick="deletePaquete('${pkg.id}')">🗑</button>`:''}
+        <button class="btn btn-sm" onclick="exportMaterialPaquete('${escJ(pkg.id)}')" title="Exportar material del paquete (CSV)">⬇ Material</button>
+        ${canEdit?`<button class="btn btn-sm" onclick="openModalPaquete('${escJ(pkg.id)}')">✏️ Editar</button>`:''}
+        <button class="btn btn-sm" onclick="openModalTransfPaquete('${escJ(pkg.id)}')">🔄 Transferir</button>
+        ${MA.can('borrar')?`<button class="btn btn-sm btn-red" onclick="deletePaquete('${escJ(pkg.id)}')">🗑</button>`:''}
       </div>
     </div>`;
   }).join('');
@@ -5726,7 +5753,7 @@ function openModalPaquete(id) {
   document.getElementById('modal-pkg-title').textContent = id ? '✏️ Editar paquete' : '🎒 Nuevo paquete';
   document.getElementById('fpkg-btn-delete').style.display = (id && MA.can('borrar')) ? 'inline-flex' : 'none';
   document.getElementById('fpkg-sede').innerHTML = sedeOpts(false);
-  const pOpts = '<option value="">—</option>' + personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  const pOpts = '<option value="">—</option>' + personalData.map(p=>`<option value="${escB(p.nombre)}">${escB(p.nombre)}</option>`).join('');
   document.getElementById('fpkg-responsable').innerHTML = pOpts;
   document.getElementById('fpkg-inst-buscar').value = '';
   document.getElementById('fpkg-inst-resultados').style.display = 'none';
@@ -5778,7 +5805,7 @@ function buscarInstanciasPkg() {
   res.innerHTML = list.map(i=>{
     const enotro = i.paqueteId && i.paqueteId !== editingPaqueteId;
     const pkg = enotro ? paquetesData.find(p=>p.id===i.paqueteId) : null;
-    return `<div onclick="addInstToPkg('${i.id}','${enotro?i.paqueteId:''}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center${enotro?';opacity:.7':''}" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background=''">
+    return `<div onclick="addInstToPkg('${escJ(i.id)}','${enotro?escJ(i.paqueteId):''}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center${enotro?';opacity:.7':''}" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background=''">
       <span style="font-family:var(--mono);font-size:10px;font-weight:600;min-width:70px">${escB(i.id)}</span>
       <span style="font-size:11px;flex:1">${escB(i.nombre)}</span>
       <span style="font-size:10px;color:var(--muted2)">${escB(i.sede||'—')}</span>
@@ -5811,9 +5838,9 @@ function renderPkgInstSeleccionadas() {
   wrap.innerHTML = [...pkgInstanciasSeleccionadas].map(id => {
     const inst = instanciasData.find(x=>x.id===id);
     return `<div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px">
-      <span style="font-family:var(--mono);font-size:10px;font-weight:600">${id}</span>
-      <span style="font-size:11px;flex:1;color:var(--muted2)">${inst?inst.nombre:''}</span>
-      <button onclick="removeInstFromPkg('${id}')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:14px;padding:0 2px">✕</button>
+      <span style="font-family:var(--mono);font-size:10px;font-weight:600">${escB(id)}</span>
+      <span style="font-size:11px;flex:1;color:var(--muted2)">${inst?escB(inst.nombre):''}</span>
+      <button onclick="removeInstFromPkg('${escJ(id)}')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:14px;padding:0 2px">✕</button>
     </div>`;
   }).join('');
 }
@@ -5914,7 +5941,7 @@ function openModalTransfPaquete(pkgId) {
   Array.from(document.getElementById('fpkt-sede-dest').options).forEach(opt => {
     if (opt.value === sedeActual) opt.disabled = true;
   });
-  const pOpts = '<option value="">—</option>'+personalData.map(p=>`<option value="${p.nombre}">${p.nombre}</option>`).join('');
+  const pOpts = '<option value="">—</option>'+personalData.map(p=>optHtml(p.nombre)).join('');
   document.getElementById('fpkt-resp-dest').innerHTML = pOpts;
   document.getElementById('fpkt-realizado').innerHTML = pOpts;
   document.getElementById('fpkt-chk-sede').checked = true;
@@ -6047,13 +6074,13 @@ function renderTodosTecnicos(){
     const nSueltas = instanciasData.filter(i=>i.responsable===nom&&!i.paqueteId&&i.estado!=='BAJA').length;
     const inicial = (nom||'?').trim().charAt(0).toUpperCase();
     const av = persona && persona.foto
-      ? `<img class="tec-card-avatar" src="${persona.foto}" alt="${nom}">`
-      : `<div class="tec-card-init">${inicial}</div>`;
-    const nomEsc = nom.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return `<div class="tec-card" onclick="selectTecnico('${nomEsc}')" title="Ver detalle de ${nom}">
+      ? `<img class="tec-card-avatar" src="${fotoSrc(persona.foto)}" alt="${escB(nom)}">`
+      : `<div class="tec-card-init">${escB(inicial)}</div>`;
+    const nomEsc = escJ(nom);
+    return `<div class="tec-card" onclick="selectTecnico('${nomEsc}')" title="Ver detalle de ${escB(nom)}">
       ${av}
-      <div class="tec-card-name">${nom}</div>
-      ${persona&&persona.cargo?`<div class="tec-card-cargo">${persona.cargo}</div>`:''}
+      <div class="tec-card-name">${escB(nom)}</div>
+      ${persona&&persona.cargo?`<div class="tec-card-cargo">${escB(persona.cargo)}</div>`:''}
       <div class="tec-card-stats">🎒 ${nPkgs} · 🏷️ ${nSueltas}</div>
     </div>`;
   }).join('');
@@ -6070,9 +6097,9 @@ function renderTecnicoDetalle(tec){
   const persona = personalData.find(p=>p.nombre===tec);
   const inicial = (tec||'?').trim().charAt(0).toUpperCase();
   const avatarHtml = persona && persona.foto
-    ? `<img class="tec-head-avatar" src="${persona.foto}" alt="${tec}">`
-    : `<div class="tec-head-init">${inicial}</div>`;
-  h+=`<div class="tec-head">${avatarHtml}<div><div class="tec-head-name">${tec}</div>${persona&&persona.cargo?`<div class="tec-head-cargo">${persona.cargo}</div>`:''}</div></div>`;
+    ? `<img class="tec-head-avatar" src="${fotoSrc(persona.foto)}" alt="${escB(tec)}">`
+    : `<div class="tec-head-init">${escB(inicial)}</div>`;
+  h+=`<div class="tec-head">${avatarHtml}<div><div class="tec-head-name">${escB(tec)}</div>${persona&&persona.cargo?`<div class="tec-head-cargo">${escB(persona.cargo)}</div>`:''}</div></div>`;
   h+=`<div style="margin:-4px 0 14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="exportMaterialPersona()" title="Descargar todo el material asignado (paquetes + instancias sueltas)">⬇ Exportar material</button></div>`;
   // Paquetes
   h+=`<div class="tec-section"><div class="tec-section-title">🎒 Paquetes asignados (${pkgs.length})</div>`;
@@ -6084,16 +6111,16 @@ function renderTecnicoDetalle(tec){
       const estBadge=pkg.estado==='ACTIVO'?'<span class="stock-pill stock-ok" style="font-size:9px">✅ Activo</span>':'<span class="stock-pill stock-out" style="font-size:9px">⚫ Inactivo</span>';
       return `<div class="pkg-card ${pkg.estado==='ACTIVO'?'activo':'inactivo'}">
         <div class="pkg-header">
-          <div><div class="pkg-id">${ico} ${pkg.id}</div><div class="pkg-nombre">${pkg.nombre}</div><div style="margin-top:4px">${estBadge}</div></div>
+          <div><div class="pkg-id">${ico} ${escB(pkg.id)}</div><div class="pkg-nombre">${escB(pkg.nombre)}</div><div style="margin-top:4px">${estBadge}</div></div>
           <div style="display:flex;gap:4px">
-            <button class="qr-btn" onclick="exportMaterialPaquete('${pkg.id}')" title="Exportar material del paquete">⬇</button>
-            <button class="qr-btn" onclick="openQRModal('${pkg.id}')" title="Ver QR">▣</button>
+            <button class="qr-btn" onclick="exportMaterialPaquete('${escJ(pkg.id)}')" title="Exportar material del paquete">⬇</button>
+            <button class="qr-btn" onclick="openQRModal('${escJ(pkg.id)}')" title="Ver QR">▣</button>
           </div>
         </div>
-        <div class="pkg-meta"><span>📍 ${pkg.sede||'—'}</span></div>
+        <div class="pkg-meta"><span>📍 ${escB(pkg.sede||'—')}</span></div>
         <div class="pkg-insts">
           <div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${insts.length} instancia${insts.length!==1?'s':''}</div>
-          ${insts.slice(0,5).map(i=>`<div class="pkg-inst-row"><span style="font-family:var(--mono);font-size:10px;font-weight:600;flex:1">${i.id}</span><span style="font-size:10px;color:var(--muted2)">${i.nombre}</span></div>`).join('')}
+          ${insts.slice(0,5).map(i=>`<div class="pkg-inst-row"><span style="font-family:var(--mono);font-size:10px;font-weight:600;flex:1">${escB(i.id)}</span><span style="font-size:10px;color:var(--muted2)">${escB(i.nombre)}</span></div>`).join('')}
           ${insts.length>5?`<div style="font-size:10px;color:var(--muted2);padding-top:4px">+${insts.length-5} más...</div>`:''}
         </div>
       </div>`;
@@ -6107,7 +6134,7 @@ function renderTecnicoDetalle(tec){
     h+=`<div class="table-wrap"><table><thead><tr><th>ID</th><th>Tipo</th><th>Sede</th><th>Estado</th></tr></thead><tbody>`;
     h+=instsSueltas.map(i=>{
       const estColor={DISPONIBLE:'stock-ok',EN_USO:'stock-uso',MANTENIMIENTO:'stock-low',DETERIORADO:'stock-deteriorado'};
-      return `<tr><td class="td-code">${i.id}</td><td style="font-size:11px">${i.nombre}</td><td style="font-size:11px">${i.sede||'—'}</td><td><span class="stock-pill ${estColor[i.estado]||'stock-ok'}" style="font-size:9px">${i.estado||'DISPONIBLE'}</span></td><td style="font-size:11px;color:var(--muted2)" onclick="openEditInstancia('${i.id}')" style="cursor:pointer">✏️</td></tr>`;
+      return `<tr><td class="td-code">${escB(i.id)}</td><td style="font-size:11px">${escB(i.nombre)}</td><td style="font-size:11px">${escB(i.sede||'—')}</td><td><span class="stock-pill ${estColor[i.estado]||'stock-ok'}" style="font-size:9px">${escB(i.estado||'DISPONIBLE')}</span></td><td style="font-size:11px;color:var(--muted2)" onclick="openEditInstancia('${escJ(i.id)}')" style="cursor:pointer">✏️</td></tr>`;
     }).join('');
     h+='</tbody></table></div>';
   } else { h+='<div style="font-size:12px;color:var(--muted2)">Sin instancias sueltas asignadas</div>'; }
