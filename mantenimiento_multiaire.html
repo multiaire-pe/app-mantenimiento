@@ -474,7 +474,7 @@ function actividadesDe(eq){
 // Por TIPO edita la plantilla (tareas_config — reglas: solo SUPER_ADMIN escribe).
 // Por EQUIPO edita el override (mtto_actividades_equipo — canWrite mantenimiento).
 let _acts = null;  // estado del editor
-const _actEsc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const _actEsc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // cita un valor para un onclick inline: JSON para JS + escape para el atributo
 const _jsq = v => _actEsc(JSON.stringify(String(v??'')));
 // parse tolerante: campo string JSON u objeto; corrupto → {} (no tumbar la vista entera)
@@ -662,10 +662,10 @@ async function renderFotosTarea(){
       const _src = _fotoSrc(r.foto); if(!_src) return '';
       return '<div style="position:relative">'
         + '<img src="'+_actEsc(_src)+'" style="width:100%;height:110px;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:pointer" onclick="ftLightbox(this.src)">'
-        + (puedeBorrar ? '<button onclick="ftBorrar(\''+d.id+'\')" style="position:absolute;top:4px;right:4px;background:rgba(200,30,50,.85);color:#fff;border:none;border-radius:6px;width:22px;height:22px;cursor:pointer;font-size:11px">✕</button>' : '')
+        + (puedeBorrar ? '<button onclick="ftBorrar('+_jsq(d.id)+')" style="position:absolute;top:4px;right:4px;background:rgba(200,30,50,.85);color:#fff;border:none;border-radius:6px;width:22px;height:22px;cursor:pointer;font-size:11px">✕</button>' : '')
         + '</div>';
     }).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px">Sin fotos de esta actividad.</div>';
-  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+_actEsc(e.message)+'</div>'; }
 }
 async function ftAgregar(input){
   if(!input.files || !input.files.length) return;
@@ -738,7 +738,7 @@ async function openHistorialEq(eqId){
         + '<span style="font-size:12px;font-weight:700;color:'+(pct===100?'var(--green,#0a4)':pct>0?'#cc8800':'var(--red,#c33)')+'">'+pct+'%</span></div>';
     }).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px">Sin intervenciones registradas para este equipo.</div>';
     cont.innerHTML += '<div style="font-size:10px;color:var(--muted);padding:6px 2px">El total de actividades se calcula con la lista vigente del equipo.</div>';
-  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+_actEsc(e.message)+'</div>'; }
 }
 function closeHistorialEq(){ document.getElementById('he-overlay').style.display='none'; }
 
@@ -778,7 +778,7 @@ async function renderGlobal(){
         + '<div style="font-size:11px;color:var(--muted2)">'+tot+' equipos · 🟢 '+g+' · 🟡 '+y+' · 🔴 '+rr+'</div></div>';
     });
     cont.innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:10px">Ninguna sede tiene equipos seleccionados en '+_actEsc(currentPeriodo)+' '+_actEsc(currentAnio)+'.</div>';
-  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+_actEsc(e.message)+'</div>'; }
 }
 
 
@@ -1032,7 +1032,7 @@ function renderMain() {
       <div class="tipo-section">
         <div class="tipo-header">
           <span class="tipo-icon">${TIPO_ICON[tipo]||'🔧'}</span>
-          <span class="tipo-name">${tipo}</span>
+          <span class="tipo-name">${_actEsc(tipo)}</span>
           <span class="tipo-count">${equipos.length} equipo${equipos.length!==1?'s':''}</span>
           <div class="semaforo ${tipoSem}" title="${tipoSem}">${semEmoji}</div>
         </div>
@@ -1264,17 +1264,17 @@ function openSelEquipos() {
     const allSel = eqs.every(e => tempSel[e.eq_id]);
     html += `<div class="tipo-group-sel">
       <div class="tipo-group-sel-header">
-        ${TIPO_ICON[tipo]||'🔧'} ${tipo}
+        ${TIPO_ICON[tipo]||'🔧'} ${_actEsc(tipo)}
         <span style="margin-left:auto;font-size:10px;color:var(--muted)">${eqs.length} equipos</span>
-        <button class="btn btn-sm" onclick="toggleTipo('${tipo}',${!allSel})" style="padding:2px 8px;font-size:10px">${allSel?'Quitar todos':'Sel. todos'}</button>
+        <button class="btn btn-sm" onclick="toggleTipo(${_jsq(tipo)},${!allSel})" style="padding:2px 8px;font-size:10px">${allSel?'Quitar todos':'Sel. todos'}</button>
       </div>
       <div class="eq-sel-grid">
         ${eqs.map(e => `
-          <label class="eq-sel-item ${tempSel[e.eq_id]?'selected':''}" id="sel-${e.eq_id}">
-            <input type="checkbox" ${tempSel[e.eq_id]?'checked':''} onchange="toggleEqSel('${e.eq_id}',this.checked)">
+          <label class="eq-sel-item ${tempSel[e.eq_id]?'selected':''}" id="sel-${_actEsc(e.eq_id)}">
+            <input type="checkbox" ${tempSel[e.eq_id]?'checked':''} onchange="toggleEqSel(${_jsq(e.eq_id)},this.checked)">
             <div style="flex:1;min-width:0">
-              <div class="eq-sel-name">${e.nombre}</div>
-              <div class="eq-sel-id">${e.eq_id} · ${e.area||'—'}</div>
+              <div class="eq-sel-name">${_actEsc(e.nombre)}</div>
+              <div class="eq-sel-id">${_actEsc(e.eq_id)} · ${_actEsc(e.area||'—')}</div>
             </div>
           </label>`).join('')}
       </div>
@@ -1455,7 +1455,7 @@ function renderDashboard() {
   let html = `
   <!-- Global -->
   <div class="dash-card-full">
-    <h3>Avance Global — ${currentSede} · ${currentPeriodo} ${currentAnio}</h3>
+    <h3>Avance Global — ${_actEsc(currentSede)} · ${currentPeriodo} ${currentAnio}</h3>
     <div style="display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap">
       <div>
         <div class="big-pct ${gc}">${globalPct}%</div>
@@ -1483,7 +1483,7 @@ function renderDashboard() {
           return `<div class="bar-item">
             <div class="bar-item-header">
               <span>${TIPO_ICON[tipo]||'🔧'}</span>
-              <span class="bar-item-name">${tipo}</span>
+              <span class="bar-item-name">${_actEsc(tipo)}</span>
               <span class="bar-item-pct" style="color:var(--${col})">${pct}%</span>
             </div>
             <div class="bar-track"><div class="bar-fill ${col}" style="width:${pct}%"></div></div>
@@ -1519,7 +1519,7 @@ function renderDashboard() {
             const col=pctColor(pct);
             return `<div class="bar-item">
               <div class="bar-item-header">
-                <span class="bar-item-name" style="font-size:11px">${eq.nombre}</span>
+                <span class="bar-item-name" style="font-size:11px">${_actEsc(eq.nombre)}</span>
                 <span class="bar-item-pct" style="color:var(--${col})">${pct}%</span>
               </div>
               <div class="bar-track"><div class="bar-fill ${col}" style="width:${pct}%"></div></div>
@@ -1538,9 +1538,9 @@ function renderDashboard() {
         const pct=getPct(eq);
         const col=pctColor(pct);
         return `<div class="eq-dash-card" style="border-color:${pct===100?'var(--green-border)':pct>0?'var(--yellow-border)':'var(--border)'}">
-          <div class="eq-dash-id">${eq.eq_id}</div>
-          <div class="eq-dash-name">${eq.nombre}</div>
-          <div class="eq-dash-tipo">${eq.tipo} · ${eq.area||'—'}</div>
+          <div class="eq-dash-id">${_actEsc(eq.eq_id)}</div>
+          <div class="eq-dash-name">${_actEsc(eq.nombre)}</div>
+          <div class="eq-dash-tipo">${_actEsc(eq.tipo)} · ${_actEsc(eq.area||'—')}</div>
           <div class="eq-dash-pct ${col}">${pct}%</div>
           <div class="bar-track"><div class="bar-fill ${col}" style="width:${pct}%"></div></div>
         </div>`;
@@ -1575,7 +1575,7 @@ async function renderHistorialLog(){
     const cur = selS.value;
     selS.innerHTML = '<option value="">Todas las sedes</option>' + sedes.map(x => '<option'+(x===cur?' selected':'')+'>'+_actEsc(x)+'</option>').join('');
     renderHistorialLogFiltrado();
-  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+e.message+'</div>'; }
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+_actEsc(e.message)+'</div>'; }
 }
 function renderHistorialLogFiltrado(){
   const sede = document.getElementById('hl-sede').value;
@@ -1641,7 +1641,7 @@ function exportPDF() {
     const pct=Math.round(ta/tp);
     const col=pct===100?'#00aa44':pct>0?'#cc8800':'#cc2233';
     return `<tr>
-      <td style="padding:6px 10px;font-size:12px">${TIPO_ICON[tipo]||''} ${tipo}</td>
+      <td style="padding:6px 10px;font-size:12px">${TIPO_ICON[tipo]||''} ${_actEsc(tipo)}</td>
       <td style="padding:6px 10px">
         <div style="background:#e8e8e8;border-radius:4px;height:10px;width:100%">
           <div style="background:${col};height:10px;border-radius:4px;width:${pct}%"></div>
@@ -1658,7 +1658,7 @@ function exportPDF() {
   tipoList.forEach(([tipo, eqs]) => {
     detailHtml += `<div style="margin-bottom:8px;break-inside:avoid">
       <div style="background:#1e3a5f;color:#fff;padding:7px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.05em">
-        ${TIPO_ICON[tipo]||''} ${tipo}
+        ${TIPO_ICON[tipo]||''} ${_actEsc(tipo)}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;background:#f8f9fc;border:1px solid #dde;border-top:none;border-radius:0 0 6px 6px">`;
 
@@ -1684,11 +1684,11 @@ function exportPDF() {
 
       detailHtml += `<div style="background:#fff;border:1px solid #dde;border-radius:6px;padding:10px;break-inside:avoid">
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-          <span style="background:#e8f4e8;color:#00aa44;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;font-family:monospace">${eq.eq_id}</span>
+          <span style="background:#e8f4e8;color:#00aa44;font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;font-family:monospace">${_actEsc(eq.eq_id)}</span>
           <span style="font-size:11px;font-weight:700;color:${col};margin-left:auto">${pct}%</span>
         </div>
-        <div style="font-size:12px;font-weight:700;margin-bottom:2px">${eq.nombre}</div>
-        <div style="font-size:10px;color:#888;margin-bottom:8px">${eq.area||''}</div>
+        <div style="font-size:12px;font-weight:700;margin-bottom:2px">${_actEsc(eq.nombre)}</div>
+        <div style="font-size:10px;color:#888;margin-bottom:8px">${_actEsc(eq.area||'')}</div>
         <div style="background:#f0f0f0;border-radius:3px;height:6px;margin-bottom:8px">
           <div style="background:${col};height:6px;border-radius:3px;width:${pct}%"></div>
         </div>
@@ -1702,7 +1702,7 @@ function exportPDF() {
   const html = `<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8">
-<title>Mantenimiento ${currentSede} ${currentPeriodo} ${currentAnio}${updDateStr ? ' – ' + updDateStr.replace(/[/:]/g,'-') : ''}</title>
+<title>Mantenimiento ${_actEsc(currentSede)} ${currentPeriodo} ${currentAnio}${updDateStr ? ' – ' + updDateStr.replace(/[/:]/g,'-') : ''}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, sans-serif; background: #fff; color: #111; font-size: 13px; }
@@ -1731,12 +1731,12 @@ function exportPDF() {
         <div style="font-size:13px;color:#666;margin-top:2px">Reporte de Mantenimiento de Equipos</div>
       </div>
       <div style="text-align:right">
-        <div style="font-size:15px;font-weight:700">${currentSede}</div>
+        <div style="font-size:15px;font-weight:700">${_actEsc(currentSede)}</div>
         <div style="font-size:12px;color:#666">${currentPeriodo} ${currentAnio}</div>
         ${updDateStr ? `<div style="margin-top:8px;padding:7px 10px;background:#f0f4ff;border:1px solid #c8d8f0;border-radius:6px;text-align:left">
           <div style="font-size:9px;font-weight:700;color:#4466aa;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Última actualización</div>
           <div style="font-size:11px;font-weight:700;color:#1e3a5f;font-family:monospace">${updDateStr}</div>
-          ${updByStr ? `<div style="font-size:10px;color:#555;margin-top:2px">${updByStr}</div>` : ''}
+          ${updByStr ? `<div style="font-size:10px;color:#555;margin-top:2px">${_actEsc(updByStr)}</div>` : ''}
         </div>` : ''}
       </div>
     </div>
@@ -1782,7 +1782,7 @@ function exportPDF() {
       <span>Generado: ${dateStr}</span>
     </div>
     ${updDateStr ? `<div style="display:flex;justify-content:space-between;color:#aaa">
-      <span>Últ. actualización guardada: ${updDateStr}${updByStr ? ' · ' + updByStr : ''}</span>
+      <span>Últ. actualización guardada: ${updDateStr}${updByStr ? ' · ' + _actEsc(updByStr) : ''}</span>
     </div>` : ''}
   </div>
 </div>
@@ -1988,14 +1988,14 @@ function maRenderPill(){
   try{n=decodeURIComponent(escape(n));}catch(e){}
   var init=n.split(' ').map(function(x){return x[0];}).join('').substring(0,2).toUpperCase();
   var avatarHtml=maUser.picture
-    ?'<img class="user-avatar" src="'+maUser.picture+'" alt="'+n+'">'
-    :'<div class="user-avatar-init">'+init+'</div>';
+    ?'<img class="user-avatar" src="'+_actEsc(maUser.picture)+'" alt="'+_actEsc(n)+'">'
+    :'<div class="user-avatar-init">'+_actEsc(init)+'</div>';
   var adminItem=MA.isSuperAdmin()
     ?'<button class="user-menu-item" onclick="openAccessPanel()">⚙️ Gestión de accesos</button><div class="user-menu-divider"></div>'
     :'';
-  pill.innerHTML=avatarHtml+'<span class="user-name">'+n+'</span>'
+  pill.innerHTML=avatarHtml+'<span class="user-name">'+_actEsc(n)+'</span>'
     +'<div class="user-menu" id="user-menu">'
-    +'<div class="user-menu-header">'+maUser.email+'</div>'
+    +'<div class="user-menu-header">'+_actEsc(maUser.email)+'</div>'
     +'<div class="user-menu-divider"></div>'
     +adminItem
     +'<button class="user-menu-item danger" onclick="maSignOut()">&#x2192; Cerrar sesión</button>'
@@ -2031,12 +2031,12 @@ function maRenderAdmin(){
       var isA=rol==='ADMIN';
       var onlyAdmin=isA&&adminCount===1;
       return '<div class="email-item'+(isA?' is-admin':'')+'">'
-        +'<span class="email-addr">'+e+'</span>'
+        +'<span class="email-addr">'+_actEsc(e)+'</span>'
         +'<button class="email-role '+(isA?'role-admin':'role-user')+'" '
         +(onlyAdmin?'disabled title="Debe haber al menos un admin"':'')
-        +' onclick="maToggleRole(this.dataset.e)" data-e="'+e+'">'
-        +rol+'</button>'
-        +'<button class="email-del" onclick="maRemoveEmail(this.dataset.e)" data-e="'+e+'" '
+        +' onclick="maToggleRole(this.dataset.e)" data-e="'+_actEsc(e)+'">'
+        +_actEsc(rol)+'</button>'
+        +'<button class="email-del" onclick="maRemoveEmail(this.dataset.e)" data-e="'+_actEsc(e)+'" '
         +(onlyAdmin?'disabled title="No puedes eliminar el único admin"':'')
         +'>&#x2715;</button>'
         +'</div>';
@@ -2115,7 +2115,7 @@ async function loadAccessUsers() {
     accessUsers = snap.docs.map(d => d.data()).sort((a,b) => a.email.localeCompare(b.email));
     renderAccessUsers();
   } catch(e) {
-    list.innerHTML = '<div style="color:#d63344;font-size:12px;padding:16px">Error cargando usuarios: ' + e.message + '</div>';
+    list.innerHTML = '<div style="color:#d63344;font-size:12px;padding:16px">Error cargando usuarios: ' + _actEsc(e.message) + '</div>';
   }
 }
 
@@ -2132,15 +2132,15 @@ function renderAccessUsers() {
     var rolColor = u.rol === 'ADMIN' ? '#1B3F8B' : '#6a7a9a';
     var rolBg = u.rol === 'ADMIN' ? '#e8eef8' : '#f5f8ff';
     html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f5f8ff;border:1.5px solid #d0daf0;border-radius:8px;margin-bottom:4px">';
-    html += '<div style="flex:1;font-size:13px;color:#1a2540">' + u.email;
+    html += '<div style="flex:1;font-size:13px;color:#1a2540">' + _actEsc(u.email);
     if (isMe) html += ' <span style="font-size:10px;color:#1B3F8B">(tú)</span>';
     html += '</div>';
-    html += '<select data-email="' + u.email + '" onchange="changeUserRolByEl(this)" style="padding:4px 8px;border:1px solid #d0daf0;border-radius:6px;font-size:11px;font-weight:700;color:' + rolColor + ';background:' + rolBg + ';outline:none"' + (isMe ? ' disabled' : '') + '>';
+    html += '<select data-email="' + _actEsc(u.email) + '" onchange="changeUserRolByEl(this)" style="padding:4px 8px;border:1px solid #d0daf0;border-radius:6px;font-size:11px;font-weight:700;color:' + rolColor + ';background:' + rolBg + ';outline:none"' + (isMe ? ' disabled' : '') + '>';
     ['TECNICO','SUPERVISOR','ADMIN','SUPER_ADMIN'].forEach(function(r){
       html += '<option value="'+r+'"'+(u.rol===r?' selected':'')+'>'+r.replace('_',' ')+'</option>';
     });
     html += '</select>';
-    if (!isMe) html += '<button data-email="' + u.email + '" onclick="removeUserAccessByEl(this)" style="background:none;border:none;color:#d63344;cursor:pointer;font-size:16px;padding:2px 6px" title="Eliminar">x</button>';
+    if (!isMe) html += '<button data-email="' + _actEsc(u.email) + '" onclick="removeUserAccessByEl(this)" style="background:none;border:none;color:#d63344;cursor:pointer;font-size:16px;padding:2px 6px" title="Eliminar">x</button>';
     html += '</div>';
   }
   list.innerHTML = html;
@@ -2252,15 +2252,15 @@ function maRenderAccessPanel() {
         var checked = userApps.indexOf(app.id) !== -1;
         var dis = !canEdit;
         return '<label style="display:flex;align-items:center;gap:3px;font-size:10px;padding:2px 6px;border-radius:10px;border:1px solid ' + (checked?'#1B3F8B':'#d0daf0') + ';background:' + (checked?'#e8eef8':'#fff') + ';color:' + (checked?'#1B3F8B':'#8a9ab8') + ';cursor:' + (dis?'not-allowed':'pointer') + ';' + (dis?'opacity:.5':'') + '">'
-          + '<input type="checkbox" data-email="' + u.email + '" data-app="' + app.id + '"' + (checked?' checked':'') + (dis?' disabled':'') + ' onchange="maToggleApp(this)" style="margin:0;cursor:inherit">'
-          + app.label + '</label>';
+          + '<input type="checkbox" data-email="' + _actEsc(u.email) + '" data-app="' + _actEsc(app.id) + '"' + (checked?' checked':'') + (dis?' disabled':'') + ' onchange="maToggleApp(this)" style="margin:0;cursor:inherit">'
+          + _actEsc(app.label) + '</label>';
       }).join('') + '</div>';
     }
     return '<div style="padding:10px 0;border-bottom:1px solid #e8eef8;font-size:12px">'
       + '<div style="display:flex;align-items:center;gap:10px">'
-      + '<div style="flex:1;font-family:monospace;font-size:11px;color:#1a2540">' + u.email + meMark + superMark + '</div>'
-      + '<select data-email="' + u.email + '" onchange="maChangeRol(this.dataset.email,this.value)" ' + (canEdit ? '' : 'disabled ') + 'style="' + selStyle + '">' + opts + '</select>'
-      + (canDelete ? '<button data-email="' + u.email + '" onclick="maDeleteUser(this.dataset.email)" style="background:none;border:1px solid #f0c0c8;color:#d63344;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px" title="Eliminar">\uD83D\uDDD1</button>' : '<span style="width:34px"></span>')
+      + '<div style="flex:1;font-family:monospace;font-size:11px;color:#1a2540">' + _actEsc(u.email) + meMark + superMark + '</div>'
+      + '<select data-email="' + _actEsc(u.email) + '" onchange="maChangeRol(this.dataset.email,this.value)" ' + (canEdit ? '' : 'disabled ') + 'style="' + selStyle + '">' + opts + '</select>'
+      + (canDelete ? '<button data-email="' + _actEsc(u.email) + '" onclick="maDeleteUser(this.dataset.email)" style="background:none;border:1px solid #f0c0c8;color:#d63344;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:12px" title="Eliminar">\uD83D\uDDD1</button>' : '<span style="width:34px"></span>')
       + '</div>'
       + appsHtml
       + '</div>';
