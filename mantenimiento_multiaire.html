@@ -1183,32 +1183,32 @@ function registrarEjecucion(eqId, idxs, done){
       const ejecRef = window.__db.collection('mtto_ejecuciones').doc(`${eqId}|${periodo}|${anio}|${i}`);
       const planRef = window.__db.collection('mtto_plan').doc(`${eqId}|${periodo}|${anio}|${i}`);
       if(!done){ ejecRef.delete().catch(()=>{}); return; }   // desmarcar borra la ejecución
-      // ATRIBUCIÓN AUTORITATIVA: leer el plan de Firestore (el caché planDocs puede estar
-      // desactualizado si se asignó en el itinerario con esta app ya abierta). Fallback al caché.
-      let plan = null;
-      try { const s = await planRef.get(); plan = s.exists ? s.data() : null; }
-      catch(e){ plan = planDocs[eqId+'|'+i] || null; }
-      // Guarda anti-carrera (marcar→desmarcar rápido): si al resolver la lectura la actividad
-      // YA NO está marcada, abortar — no escribir la ejecución ni borrar el plan.
-      const stNow = tareaStatus[eqId];
-      if(!(stNow === true || (stNow && typeof stNow === 'object' && stNow[i] === true))) return;
-      const tecs = _ejecTecnicos(plan);
       try{
-        await ejecRef.set({
-          eq_id: eqId, nombreEq: eq?.nombre || eqId, tipo: eq?.tipo || '', area: eq?.area || '',
-          sede: currentSede, periodo, anio,
-          tareaIdx: i, tarea: tareas[i] || ('Actividad ' + (i+1)),
-          minutos: (plan && plan.minutos != null) ? plan.minutos : (Number(minutos[i]) || 5),
-          tecnicoIds: tecs.map(t=>t.id), tecnicos: tecs, modo: tecs.length>=2 ? 'grupo' : 'individual',
-          planificada: !!plan,
-          fechaEjec, registradoPor: _by, origen: 'APP', ts: new Date().toISOString(),
+        // Transacción por índice: leer ejecución + plan (autoritativo) → registrar y sacar del plan.
+        await window.__db.runTransaction(async (tx) => {
+          const [esEjec, esPlan] = await Promise.all([tx.get(ejecRef), tx.get(planRef)]);  // reads antes de writes
+          // Guarda anti-carrera (marcar→desmarcar rápido): si ya NO está marcada, no registrar.
+          const stNow = tareaStatus[eqId];
+          if(!(stNow === true || (stNow && typeof stNow === 'object' && stNow[i] === true))) return;
+          const plan = esPlan.exists ? esPlan.data() : null;
+          // CREATE-IF-ABSENT: nunca sobrescribir una ejecución ya registrada (preserva su
+          // atribución canónica; una 2ª pasada con el plan ya consumido no la pisa como espontánea).
+          if(!esEjec.exists){
+            const tecs = _ejecTecnicos(plan);
+            tx.set(ejecRef, {
+              eq_id: eqId, nombreEq: eq?.nombre || eqId, tipo: eq?.tipo || '', area: eq?.area || '',
+              sede: currentSede, periodo, anio,
+              tareaIdx: i, tarea: tareas[i] || ('Actividad ' + (i+1)),
+              minutos: (plan && plan.minutos != null) ? plan.minutos : (Number(minutos[i]) || 5),
+              tecnicoIds: tecs.map(t=>t.id), tecnicos: tecs, modo: tecs.length>=2 ? 'grupo' : 'individual',
+              planificada: !!plan,
+              fechaEjec, registradoPor: _by, origen: 'APP', ts: new Date().toISOString(),
+            });
+          }
+          if(plan) tx.delete(planRef);   // lo ejecutado sale del itinerario (atómico con el registro)
         });
-        // Sale del plan (sincronización con el itinerario) SOLO tras registrar la ejecución con
-        // su atribución. Si la escritura falla, se conserva el plan → la atribución no se pierde
-        // (el barrido del itinerario es la red de seguridad para lo ya ejecutado).
-        if(plan) planRef.delete().catch(()=>{});
         delete planDocs[eqId+'|'+i];
-      }catch(e){ /* ejecución no registrada: se conserva el plan, atribución recuperable */ }
+      }catch(e){ /* tx no confirmada: se conserva el plan, atribución recuperable */ }
     });
   }catch(e){ /* nunca romper el marcado por la ejecución */ }
 }

@@ -213,22 +213,21 @@ async function guardarRegistro(ses, tecnico) {
   // es la red de seguridad). Ids determinísticos, idempotente. Nunca frustra el registro.
   try {
     const minutos = await minutosDeEquipo(ses.eqId, ses.tipo);
-    const planSnaps = await Promise.all(ses.marcadas.map((i) =>
-      db.collection('mtto_plan').doc(`${ses.eqId}|${periodo}|${anio}|${i}`).get().catch(() => null)
-    ));
     const fechaEjec = hoyLima();
-    const escritas = await Promise.all(ses.marcadas.map((i, k) => {
-      const plan = planSnaps[k] && planSnaps[k].exists ? planSnaps[k].data() : null;
-      return db.collection('mtto_ejecuciones').doc(`${ses.eqId}|${periodo}|${anio}|${i}`)
-        .set(docEjecucion(ses, i, plan, tecnico, minutos, periodo, anio, fechaEjec))
-        .then(() => true)
-        .catch((err) => { console.error('[mtto_ejecuciones]', ses.eqId, periodo, anio, i, err.message); return false; });
+    await Promise.all(ses.marcadas.map(async (i) => {
+      const ejecRef = db.collection('mtto_ejecuciones').doc(`${ses.eqId}|${periodo}|${anio}|${i}`);
+      const planRef = db.collection('mtto_plan').doc(`${ses.eqId}|${periodo}|${anio}|${i}`);
+      try {
+        await db.runTransaction(async (tx) => {
+          const [esEjec, esPlan] = await Promise.all([tx.get(ejecRef), tx.get(planRef)]);
+          const plan = esPlan.exists ? esPlan.data() : null;
+          // CREATE-IF-ABSENT: no sobrescribir una ejecución ya registrada (p.ej. por la app con la
+          // atribución del plan) con una espontánea del reportante.
+          if (!esEjec.exists) tx.set(ejecRef, docEjecucion(ses, i, plan, tecnico, minutos, periodo, anio, fechaEjec));
+          if (plan) tx.delete(planRef);   // lo ejecutado sale del itinerario (atómico con el registro)
+        });
+      } catch (err) { console.error('[mtto_ejecuciones]', ses.eqId, periodo, anio, i, err.message); }
     }));
-    await Promise.all(ses.marcadas.map((i, k) =>
-      escritas[k]
-        ? db.collection('mtto_plan').doc(`${ses.eqId}|${periodo}|${anio}|${i}`).delete().catch(() => {})
-        : Promise.resolve()
-    ));
   } catch (e) { console.error('[mtto_ejecuciones]', e.message); }
   // Bitácora (tab Historial de la app): quién registró qué y cuándo
   await db.collection('mtto_log').add({
