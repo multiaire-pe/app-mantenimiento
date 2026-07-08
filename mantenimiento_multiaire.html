@@ -714,7 +714,8 @@ async function openHistorialEq(eqId){
     ]);
     const fotosPorClave = {};
     fSnap.docs.forEach(d => { const c=d.data().clave; fotosPorClave[c]=(fotosPorClave[c]||0)+1; });
-    const nTareas = (actividadesDe(eq).tareas || []).length;
+    const _tEq = actividadesDe(eq).tareas || [];
+    const nTareas = _tEq.length;
     const ORD = {'ENE-FEB':1,'MAR-ABR':2,'MAY-JUN':3,'JUL-AGO':4,'SEP-OCT':5,'NOV-DIC':6};
     const filas = [];
     mSnap.docs.forEach(d => {
@@ -724,7 +725,7 @@ async function openHistorialEq(eqId){
       const sel = _safeObj(r.seleccionados), ts = _safeObj(r.tareaStatus);
       if(!sel[eqId] && !ts[eqId]) return;
       const st = ts[eqId] || {};
-      const done = (typeof st === 'boolean') ? (st ? nTareas : 0) : Object.values(st).filter(v=>v===true).length;
+      const done = (typeof st === 'boolean') ? (st ? nTareas : 0) : _tEq.filter((_,i)=>st[i]===true).length;
       filas.push({ periodo, anio: parseInt(anio)||0, done, fotos: fotosPorClave[r.clave || d.id] || 0, upd: r.updatedAt||'' });
     });
     filas.sort((a,b) => b.anio - a.anio || (ORD[b.periodo]||0) - (ORD[a.periodo]||0));
@@ -770,8 +771,9 @@ async function renderGlobal(){
         const _a = eq ? actividadesDe(eq) : {tareas:null,minutos:[]};
         const tareas = _a.tareas || [], mins = _a.minutos || [], nT = tareas.length;
         const st = ts[id];
+        // solo cuenta actividades VIGENTES marcadas (índices 0..nT-1), igual que getPct — ignora marcas obsoletas de actividades ya quitadas
         const done = (st === true) ? nT
-                   : (st && typeof st === 'object') ? Object.keys(st).filter(k=>st[k]===true).length : 0;
+                   : (st && typeof st === 'object') ? tareas.filter((_,i)=>st[i]===true).length : 0;
         // % de avance del equipo — mismo criterio que getPct (0 si no tiene actividades, ponderado por minutos, con fallback a peso igual)
         let eqPct = 0;
         if(nT){
