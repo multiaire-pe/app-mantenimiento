@@ -71,6 +71,9 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .iti-item-estado{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-top:4px}
 .estado-actualizado{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
 .estado-registrado{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
+.iti-confirm-badge{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:6px;background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
+.iti-draft-badge{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:6px;background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
+.iti-confirm-btn{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border);font-weight:700}
 
 /* MAIN CONTENT */
 .iti-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;flex-wrap:wrap}
@@ -234,6 +237,7 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;text-a
     collection: (db, col) => db.collection(col),
     doc: (db, col, id) => db.collection(col).doc(id),
     setDoc: (ref, data) => ref.set(data),
+    updateDoc: (ref, data) => ref.update(data),
     deleteDoc: (ref) => ref.delete(),
     writeBatch: (db) => db.batch(),
     query: (col, ...args) => col, // simplified
@@ -699,13 +703,18 @@ function renderItinerario(iti, bloques, fecha) {
         <h2>${fechaStr}</h2>
         <div class="iti-title-meta">${iti.id} · v${iti.version} · ${bloques.length} bloques
           <span class="iti-item-estado ${estadoClass}" style="margin-left:8px">${iti.estado}</span>
+          ${iti.confirmado
+            ? `<span class="iti-confirm-badge" title="Confirmada por ${escI(iti.confirmadoPor||'')}${iti.confirmadoTs?(' · '+new Date(iti.confirmadoTs).toLocaleString('es-PE')):''}">✓ Versión confirmada</span>`
+            : `<span class="iti-draft-badge" title="Aún no confirmada — confírmala para poder enviarla a los técnicos">✎ Borrador</span>`}
         </div>
         ${versionsHtml}
       </div>
       <div class="iti-actions">
         <button class="btn iti-export" onclick="exportPNG()" title="Exportar PNG">🖼 PNG</button>
         <button class="btn iti-export" onclick="exportPDF()" title="Exportar PDF">📄 PDF</button>
-        <button class="btn iti-export" onclick="exportWhatsApp()" title="Enviar WhatsApp">💬 WhatsApp</button>
+        ${!MA.isAdmin() ? '' : (iti.confirmado
+          ? '<button class="btn iti-export" onclick="enviarItinerarioTecnicos()" title="Enviar a cada técnico sus tareas por WhatsApp">📲 Enviar a técnicos</button>'
+          : '<button class="btn iti-confirm-btn" onclick="confirmarVersion()" title="Marcar esta versión como final para poder enviarla a los técnicos">✓ Confirmar versión</button>')}
         <button class="btn btn-danger iti-del" onclick="openDeleteModal()" title="Eliminar">🗑 Eliminar</button>
         <button class="btn btn-primary iti-edit" onclick="editarItinerario()">✏️ Editar / Nueva versión</button>
       </div>
@@ -1639,6 +1648,81 @@ async function deleteAllVersions() {
 }
 
 // ── EXPORT WHATSAPP ───────────────────────────────────────────────────────────
+// ── CONFIRMAR VERSIÓN ──────────────────────────────────────────────────────────
+// Marca la versión cargada como "final". Requisito para enviarla a los técnicos
+// (el envío se habilita solo sobre una versión confirmada). Como "Editar" siempre
+// crea una versión NUEVA (version+1, nace sin confirmar), editar obliga a reconfirmar.
+async function confirmarVersion() {
+  if(!MA.can('editar','itinerario')){ toast('Sin permisos para confirmar', 'err'); return; }
+  const iti = currentIti;                       // fija la versión objetivo antes de cualquier await
+  if(!iti) return;
+  if(iti.confirmado){ toast('Esta versión ya está confirmada', 'ok'); return; }
+  const id = iti.id, version = Number(iti.version);
+  if(!confirm('¿Confirmar la v'+version+' del itinerario '+id+' como versión final?\n\n'
+    + 'Una vez confirmada podrás enviarla a los técnicos. Si luego la editas, se creará una versión nueva que tendrás que volver a confirmar.')) return;
+  try {
+    const { updateDoc, doc } = window.__fb;
+    const ts = new Date().toISOString();
+    const por = maUser?.email || 'sistema';
+    await updateDoc(doc(window.__db, 'bd_itinerarios', id+'_v'+version), {
+      confirmado: true, confirmadoPor: por, confirmadoTs: ts
+    });
+    // Marca la versión OBJETIVO (no la que esté visible ahora si el usuario navegó durante el await)
+    iti.confirmado = true; iti.confirmadoPor = por; iti.confirmadoTs = ts;
+    const _a = (allItis||[]).find(x => x.id===id && Number(x.version)===version);
+    if(_a){ _a.confirmado = true; _a.confirmadoPor = por; _a.confirmadoTs = ts; }
+    toast('Versión v'+version+' confirmada ✓', 'ok');
+    // Re-render solo si la versión confirmada sigue siendo la visible
+    if(currentIti && currentIti.id===id && Number(currentIti.version)===version){
+      renderItinerario(currentIti, window._bloquesDia || [], document.getElementById('fecha-input').value);
+    }
+  } catch(e){ toast('No se pudo confirmar: '+(e.message||e), 'err'); }
+}
+
+// ── ENVIAR ITINERARIO POR TÉCNICO ───────────────────────────────────────────────
+// Llama al backend, que manda a CADA técnico solo sus tareas (individuales + cuadrilla)
+// por WhatsApp. Requiere versión confirmada. Ofrece modo PRUEBA (a un número) antes del real.
+async function enviarItinerarioTecnicos() {
+  if(!MA.isAdmin()){ toast('Solo un admin puede enviar el itinerario', 'err'); return; }
+  const iti = currentIti;
+  if(!iti) return;
+  if(!iti.confirmado){ toast('Confirma la versión antes de enviarla a los técnicos', 'err'); return; }
+  const puedeProbar = MA.isSuperAdmin();
+  const modo = prompt(
+    'ENVIAR ITINERARIO A LOS TÉCNICOS\n\n'
+    + (puedeProbar ? '• PRUEBA: escribe un número de WhatsApp (ej: 51987654321) y recibirás tú todos los mensajes.\n' : '')
+    + '• ENVÍO REAL a cada técnico: deja el campo vacío y acepta.', '');
+  if(modo === null) return;                                  // canceló
+  const prueba = modo.trim() !== '';
+  if(prueba && !puedeProbar){ toast('El modo prueba es solo para super admin', 'err'); return; }
+  const telefonoPrueba = modo.replace(/\D/g, '');
+  if(prueba && telefonoPrueba.length < 9){ toast('Número de prueba inválido', 'err'); return; }
+  if(!prueba && !confirm('¿Enviar el itinerario '+iti.id+' v'+iti.version+' por WhatsApp a TODOS los técnicos con tareas?\n\nCada uno recibe SOLO lo suyo (individuales y de cuadrilla).')) return;
+  try {
+    const user = firebase.auth().currentUser;
+    if(!user){ toast('Sesión no válida', 'err'); return; }
+    const idToken = await user.getIdToken();
+    toast(prueba ? 'Enviando prueba…' : 'Enviando a los técnicos…', 'ok');
+    const res = await fetch('/api/enviar_itinerario', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+idToken },
+      body: JSON.stringify({ idIti: iti.id, version: Number(iti.version), prueba, telefonoPrueba }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok){ toast('Error: '+(j.error || ('HTTP '+res.status)), 'err'); return; }
+    const sinTel = (j.detalle||[]).filter(d => d.estado==='sin_telefono').map(d => d.nombre);
+    const errs   = (j.detalle||[]).filter(d => d.estado==='error').map(d => d.nombre);
+    let msg = (j.prueba?'🧪 Prueba · ':'')+'✅ '+j.enviados+'/'+j.total+' técnicos'+(j.actualizacion?' (actualización)':'');
+    if(j.aviso) msg = j.aviso;
+    if(sinTel.length) msg += ' · ⚠️ sin teléfono: '+sinTel.join(', ');
+    if(errs.length)   msg += ' · ❌ error: '+errs.join(', ');
+    toast(msg, (sinTel.length||errs.length) ? 'err' : 'ok');
+    console.log('[enviar_itinerario]', j);
+  } catch(e){ toast('No se pudo enviar: '+(e.message||e), 'err'); }
+}
+
+// Compartir el itinerario COMPLETO (todos los bloques) en un solo mensaje — queda disponible
+// como helper (sin botón) por si se quiere reactivar el modo "compartir a un grupo".
 function exportWhatsApp() {
   if(!MA.can('exportar','itinerario')){ toast('Sin permisos para exportar', 'err'); return; }
   if (!currentIti) return;

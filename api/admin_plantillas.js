@@ -25,6 +25,17 @@ const PLANTILLAS = [
       example: { body_text: [['RAFAEL SANTOS', 'AA Roof Top 05', 'PLAZA NORTE', 'JUL-AGO 2026', 'Lavado de filtros · Limpieza de siroco']] },
     }],
   },
+  {
+    // Fallback FUERA de la ventana de 24h para el envío de itinerario por técnico (aviso corto:
+    // variables de una línea; el detalle completo va por texto libre dentro de la ventana).
+    // Orden de las variables = params del endpoint enviar_itinerario.js: nombre, fecha, nº, sedes.
+    name: 'itinerario_tecnico', language: 'es', category: 'UTILITY',
+    components: [{
+      type: 'BODY',
+      text: '📋 *Tu itinerario — MultiAire*\nHola {{1}}, tu itinerario del {{2}} ya está listo: {{3}} actividad(es) en {{4}}. Abre este chat para ver el detalle de tus tareas.',
+      example: { body_text: [['Rafael Santos', 'martes 08 de julio', '3', 'PLAZA NORTE, MEGAPLAZA']] },
+    }],
+  },
 ];
 
 export default async function handler(req, res) {
