@@ -317,6 +317,8 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>manta_observaciones_fotos.csv</div>
             <div class="backup-file"><span></span>manta_guia.csv</div>
             <div class="backup-file"><span></span>asistencia_registros_fotos.csv</div>
+            <div class="backup-file"><span></span>comprobantes.csv</div>
+            <div class="backup-file"><span></span>comprobantes_fotos.csv</div>
           </div>
           <button class="btn btn-primary" onclick="exportBackup()" id="export-btn" style="width:100%">
             ⬇ Descargar ZIP
@@ -910,7 +912,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
@@ -945,6 +947,8 @@ async function exportBackup() {
       window.__db.collection('mtto_plan').get(),
       window.__db.collection('mtto_ejecuciones').get(),
       window.__db.collection('itinerario_envios').get(),
+      window.__db.collection('comprobantes').get(),
+      window.__db.collection('comprobantes_fotos').get(),
     ]);
 
     const zip = new JSZip();
@@ -1231,6 +1235,22 @@ async function exportBackup() {
     });
     zip.file('manta_guia.csv', [mGuiaHeaders.join(','), ...mGuiaRows].join('\n'));
 
+    // 19. Rendición de Caja — comprobantes escaneados
+    const comprobHeaders = ['ID','FECHA','FECHA_ISO','TIPO','NUMERO','RUC','PROVEEDOR','DESCRIPCION','MONTO','CREATED_AT','CREATED_BY','UPDATED_AT','UPDATED_BY'];
+    const comprobRows = comprobSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.fecha||'', r.fechaISO||'', r.tipo||'', r.numero||'', r.ruc||'', r.proveedor||'', r.descripcion||'', r.monto||'', r.createdAt||'', r.createdBy||'', r.updatedAt||'', r.updatedBy||''].map(escapeCSV).join(',');
+    });
+    zip.file('comprobantes.csv', [comprobHeaders.join(','), ...comprobRows].join('\n'));
+
+    // 20. Rendición de Caja — foto de cada comprobante (base64; colección aparte, doc id = id del comprobante)
+    const comprobFotoHeaders = ['ID','FOTO'];
+    const comprobFotoRows = comprobFotoSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.foto||''].map(escapeCSV).join(',');
+    });
+    zip.file('comprobantes_fotos.csv', [comprobFotoHeaders.join(','), ...comprobFotoRows].join('\n'));
+
     // Generate and download
     const blob = await zip.generateAsync({type:'blob'});
     const url = URL.createObjectURL(blob);
@@ -1296,7 +1316,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1312,7 +1332,7 @@ async function processZip(file) {
     // "Reemplazar todo" fiel al backup: colecciones NUEVAS que un ZIP viejo no trae se
     // VACÍAN — antes quedaban datos fantasma (hallazgo del Council, cierra el backlog).
     if (mode === 'replace') {
-      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos'];
+      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos'];
       for (const colN of NUEVAS) {
         if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
         const _exN = await window.__db.collection(colN).get();
@@ -1736,6 +1756,22 @@ async function confirmImport() {
       const conFoto = rows.filter(r => r.FOTO_ENTRADA || r.FOTO_SALIDA);
       await batchWrite('asistencia_registros_fotos', conFoto, r => { const o={_docId:r.ID, registroId:r.ID}; if(r.FOTO_ENTRADA)o.fotoEntrada=r.FOTO_ENTRADA; if(r.FOTO_SALIDA)o.fotoSalida=r.FOTO_SALIDA; return o; });
       addLog('✓ Selfies de asistencia importadas (' + conFoto.length + ')', 'ok');
+    }
+
+    // Rendición de Caja — comprobantes escaneados
+    if (pendingImport.files['comprobantes.csv']) {
+      addLog('🧾 Importando comprobantes...', 'info');
+      const rows = parseCSV(pendingImport.files['comprobantes.csv']);
+      await batchWrite('comprobantes', rows, r => ({_docId:r.ID, fecha:r.FECHA||'', fechaISO:r.FECHA_ISO||'', tipo:r.TIPO||'', numero:r.NUMERO||'', ruc:r.RUC||'', proveedor:r.PROVEEDOR||'', descripcion:r.DESCRIPCION||'', monto:r.MONTO||'', createdAt:r.CREATED_AT||'', createdBy:r.CREATED_BY||'', updatedAt:r.UPDATED_AT||'', updatedBy:r.UPDATED_BY||''}));
+      addLog('✓ Comprobantes importados (' + rows.length + ')', 'ok');
+    }
+
+    // Rendición de Caja — foto de cada comprobante (base64; colección aparte)
+    if (pendingImport.files['comprobantes_fotos.csv']) {
+      addLog('📷 Importando fotos de comprobantes...', 'info');
+      const rows = parseCSV(pendingImport.files['comprobantes_fotos.csv']);
+      await batchWrite('comprobantes_fotos', rows.filter(r=>r.FOTO), r => ({_docId:r.ID, foto:r.FOTO}));
+      addLog('✓ Fotos de comprobantes importadas (' + rows.filter(r=>r.FOTO).length + ')', 'ok');
     }
 
     addLog('✅ Importación completada', 'ok');
