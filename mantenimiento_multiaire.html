@@ -1157,16 +1157,6 @@ function updateStatusBar(stats) {
 // Bitácora de registros (tab Historial): un evento por acción — quién/qué/cuándo.
 // Fire-and-forget: si falla no interrumpe el marcado (el checklist es lo primario).
 // Lo ejecutado sale del plan del itinerario en automático (ids determinísticos)
-function limpiarPlanDe(eqId, idxs) {
-  try {
-    const [, periodo, anio] = _mttoKey().split('|');
-    idxs.forEach(i => {
-      window.__db.collection('mtto_plan').doc(`${eqId}|${periodo}|${anio}|${i}`).delete().catch(()=>{});
-      delete planBadges[eqId+'|'+i]; delete planDocs[eqId+'|'+i];   // caché local coherente (el 🗓 desaparece al ejecutar)
-    });
-  } catch(e) { /* nunca romper el marcado */ }
-}
-
 // Etapa 2 (mtto grupal + KPIs): registro persistente de lo EJECUTADO → base de los KPIs.
 // La ATRIBUCIÓN sale del PLAN (mtto_plan), no de quién marca; marcar sin plan → sin técnico (esperado).
 // Doc id determinístico EQ|PERIODO|AÑO|IDX (idempotente: re-marcar no duplica; desmarcar borra).
@@ -1188,20 +1178,33 @@ function registrarEjecucion(eqId, idxs, done){
     const tareas = act.tareas || [], minutos = act.minutos || [];
     let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
     const fechaEjec = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);  // día en Lima (UTC-5)
-    idxs.forEach(i => {
-      const ref = window.__db.collection('mtto_ejecuciones').doc(`${eqId}|${periodo}|${anio}|${i}`);
-      if(!done){ ref.delete().catch(()=>{}); return; }   // desmarcar borra la ejecución
-      const plan = planDocs[eqId+'|'+i] || null;
+    // Fire-and-forget por índice (no bloquea la UI). El callback async corre en 2º plano.
+    idxs.forEach(async (i) => {
+      const ejecRef = window.__db.collection('mtto_ejecuciones').doc(`${eqId}|${periodo}|${anio}|${i}`);
+      const planRef = window.__db.collection('mtto_plan').doc(`${eqId}|${periodo}|${anio}|${i}`);
+      if(!done){ ejecRef.delete().catch(()=>{}); return; }   // desmarcar borra la ejecución
+      // ATRIBUCIÓN AUTORITATIVA: leer el plan de Firestore (el caché planDocs puede estar
+      // desactualizado si se asignó en el itinerario con esta app ya abierta). Fallback al caché.
+      let plan = null;
+      try { const s = await planRef.get(); plan = s.exists ? s.data() : null; }
+      catch(e){ plan = planDocs[eqId+'|'+i] || null; }
       const tecs = _ejecTecnicos(plan);
-      ref.set({
-        eq_id: eqId, nombreEq: eq?.nombre || eqId, tipo: eq?.tipo || '', area: eq?.area || '',
-        sede: currentSede, periodo, anio,
-        tareaIdx: i, tarea: tareas[i] || ('Actividad ' + (i+1)),
-        minutos: (plan && plan.minutos != null) ? plan.minutos : (Number(minutos[i]) || 5),
-        tecnicoIds: tecs.map(t=>t.id), tecnicos: tecs, modo: tecs.length>=2 ? 'grupo' : 'individual',
-        planificada: !!plan,
-        fechaEjec, registradoPor: _by, origen: 'APP', ts: new Date().toISOString(),
-      }).catch(()=>{});
+      try{
+        await ejecRef.set({
+          eq_id: eqId, nombreEq: eq?.nombre || eqId, tipo: eq?.tipo || '', area: eq?.area || '',
+          sede: currentSede, periodo, anio,
+          tareaIdx: i, tarea: tareas[i] || ('Actividad ' + (i+1)),
+          minutos: (plan && plan.minutos != null) ? plan.minutos : (Number(minutos[i]) || 5),
+          tecnicoIds: tecs.map(t=>t.id), tecnicos: tecs, modo: tecs.length>=2 ? 'grupo' : 'individual',
+          planificada: !!plan,
+          fechaEjec, registradoPor: _by, origen: 'APP', ts: new Date().toISOString(),
+        });
+        // Sale del plan (sincronización con el itinerario) SOLO tras registrar la ejecución con
+        // su atribución. Si la escritura falla, se conserva el plan → la atribución no se pierde
+        // (el barrido del itinerario es la red de seguridad para lo ya ejecutado).
+        if(plan) planRef.delete().catch(()=>{});
+        delete planDocs[eqId+'|'+i];
+      }catch(e){ /* ejecución no registrada: se conserva el plan, atribución recuperable */ }
     });
   }catch(e){ /* nunca romper el marcado por la ejecución */ }
 }
@@ -1228,8 +1231,8 @@ function toggleSoloMarcar(eqId, checked) {
   { const eq = sedeEquipos.find(e => e.eq_id === eqId);
     const n = eq ? (actividadesDe(eq).tareas || []).length : 0;
     const allIdx = Array.from({length: n}, (_, i) => i);
-    registrarEjecucion(eqId, allIdx, checked);   // leer plan → escribir/borrar ejecución
-    if (checked) limpiarPlanDe(eqId, allIdx); }
+    registrarEjecucion(eqId, allIdx, checked);   // leer plan (Firestore) → escribir ejecución → borrar plan
+    if (checked) allIdx.forEach(i => { delete planBadges[eqId+'|'+i]; }); }   // UI: el 🗓 desaparece al instante
   markDirty(eqId);
   renderMain();
   updateStats();
@@ -1242,8 +1245,8 @@ function toggleTarea(eqId, idx, checked) {
   { const eq = sedeEquipos.find(e => e.eq_id === eqId);
     const acts = eq ? (actividadesDe(eq).tareas || []) : [];
     logRegistro(eqId, [acts[idx] || ('Actividad ' + (idx+1))], checked); }
-  registrarEjecucion(eqId, [idx], checked);   // leer plan → escribir/borrar ejecución (Etapa 2)
-  if (checked) limpiarPlanDe(eqId, [idx]);
+  registrarEjecucion(eqId, [idx], checked);   // leer plan (Firestore) → escribir ejecución → borrar plan
+  if (checked) delete planBadges[eqId+'|'+idx];   // UI: el 🗓 desaparece al instante
   markDirty(eqId);
   renderMain();
   updateStats();

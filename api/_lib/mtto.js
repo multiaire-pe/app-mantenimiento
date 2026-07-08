@@ -206,27 +206,30 @@ async function guardarRegistro(ses, tecnico) {
       updatedBy: `BOT · ${tecnico?.nombre || ses.nombre || ses.from}`,
     }, { merge: true });
   });
-  // Registro persistente de lo EJECUTADO (mtto_ejecuciones) → base de los KPIs (Etapa 2).
-  // Orden: LEER el plan (atribución) → ESCRIBIR la ejecución → BORRAR el plan (abajo).
-  // Doc id determinístico EQ|PERIODO|AÑO|IDX (idempotente). Nunca frustra el registro.
+  // Registro persistente de lo EJECUTADO (mtto_ejecuciones) → base de los KPIs (Etapa 2) +
+  // sincronización con el itinerario (lo ejecutado sale del plan). Por índice: LEER el plan
+  // (atribución) → ESCRIBIR la ejecución → BORRAR el plan SOLO si la ejecución quedó registrada.
+  // Si la escritura falla, se conserva el plan (atribución recuperable; el barrido del itinerario
+  // es la red de seguridad). Ids determinísticos, idempotente. Nunca frustra el registro.
   try {
     const minutos = await minutosDeEquipo(ses.eqId, ses.tipo);
     const planSnaps = await Promise.all(ses.marcadas.map((i) =>
       db.collection('mtto_plan').doc(`${ses.eqId}|${periodo}|${anio}|${i}`).get().catch(() => null)
     ));
     const fechaEjec = hoyLima();
-    await Promise.all(ses.marcadas.map((i, k) => {
+    const escritas = await Promise.all(ses.marcadas.map((i, k) => {
       const plan = planSnaps[k] && planSnaps[k].exists ? planSnaps[k].data() : null;
       return db.collection('mtto_ejecuciones').doc(`${ses.eqId}|${periodo}|${anio}|${i}`)
-        .set(docEjecucion(ses, i, plan, tecnico, minutos, periodo, anio, fechaEjec)).catch(() => {});
+        .set(docEjecucion(ses, i, plan, tecnico, minutos, periodo, anio, fechaEjec))
+        .then(() => true)
+        .catch((err) => { console.error('[mtto_ejecuciones]', ses.eqId, periodo, anio, i, err.message); return false; });
     }));
+    await Promise.all(ses.marcadas.map((i, k) =>
+      escritas[k]
+        ? db.collection('mtto_plan').doc(`${ses.eqId}|${periodo}|${anio}|${i}`).delete().catch(() => {})
+        : Promise.resolve()
+    ));
   } catch (e) { console.error('[mtto_ejecuciones]', e.message); }
-  // Sincronización con el itinerario: lo EJECUTADO sale del plan en automático
-  // (pedido del usuario: si el técnico adelantó una actividad planificada para otro
-  // día, esa asignación ya no debe aparecer en el itinerario). Ids determinísticos.
-  await Promise.all(ses.marcadas.map((i) =>
-    db.collection('mtto_plan').doc(`${ses.eqId}|${periodo}|${anio}|${i}`).delete().catch(() => {})
-  ));
   // Bitácora (tab Historial de la app): quién registró qué y cuándo
   await db.collection('mtto_log').add({
     ts: new Date().toISOString(),
