@@ -2072,13 +2072,29 @@ function renderMovimientos(){
 async function resetStockItem(itemId,nombre){
   if(!can('eliminarItem')){toast('Solo el super admin puede eliminar','err');return;}
   const instanciasDelTipo = instanciasData.filter(i => i.itemId === itemId);
-  if(!confirm(`¿Eliminar todas las instancias de "${nombre}"?\nSe eliminarán ${instanciasDelTipo.length} instancia(s). Esta acción no se puede deshacer.`))return;
+  if(!instanciasDelTipo.length){toast('No hay instancias para este ítem','warn');return;}
+  if(instanciasDelTipo.length>449){toast('Demasiadas instancias para un reseteo atómico (máx 449) — usa Baja en lote por tandas','err');return;}
+  if(!confirm(`¿Eliminar todas las instancias de "${nombre}"?\nSe eliminarán ${instanciasDelTipo.length} instancia(s) y se registrará una BAJA en el historial (reversible desde Movimientos).`))return;
   try{
-    for(const inst of instanciasDelTipo){
-      await db.collection('insumos_instancias').doc(inst.id).delete();
-    }
+    const ids = instanciasDelTipo.map(i=>i.id);
+    const sedesUnq = [...new Set(instanciasDelTipo.map(i=>i.sede||''))];
+    // Registra una BAJA (con snapshot → trazable y reversible) en vez de borrar sin dejar rastro
+    const movData = {
+      tipo:'BAJA', itemId, itemNombre:nombre,
+      instancias:ids, instanciasSnapshot:instanciasDelTipo.map(i=>({...i})),
+      sede: sedesUnq.length===1?sedesUnq[0]:'', cantidad:ids.length, unidad:'UND',
+      motivo:'Reseteo de stock del ítem', responsable:'', usuario:maUser.email,
+      estado:'CONFIRMADO', fecha:new Date()
+    };
+    // Atómico: borrar todas las instancias + registrar la BAJA en un solo batch
+    const movRef = db.collection('insumos_movimientos').doc();
+    const batch = db.batch();
+    ids.forEach(id=>batch.delete(db.collection('insumos_instancias').doc(id)));
+    batch.set(movRef,movData);
+    await batch.commit();
     instanciasData = instanciasData.filter(i => i.itemId !== itemId);
-    toast(`${instanciasDelTipo.length} instancia(s) eliminadas`, 'ok');
+    movimientosData.unshift({id:movRef.id,...movData});
+    toast(`${ids.length} instancia(s) dadas de baja`, 'ok');
     renderAll();
   }catch(e){toast('Error: '+e.message,'err');}
 }
@@ -2229,35 +2245,34 @@ async function crearInstanciasIniciales(item,docId,qty,sede,resp,nivel){
   const prefix=(item.codigo||item.nombre.replace(/[^A-Z0-9]/gi,'')).substring(0,3).toUpperCase();
   const existing=instanciasData.filter(i=>i.id.startsWith(prefix+'-')).map(i=>parseInt(i.id.replace(prefix+'-',''))||0).sort((a,b)=>b-a);
   let next=(existing[0]||0)+1;
-  // Reservar EXACTAMENTE qty ids libres (verifica contra Firestore por si otro usuario tomó el
-  // correlativo). Si no se logran todas, se ABORTA sin escribir nada (no crea stock parcial silencioso).
-  const objs=[]; const tope=next+qty+2000;
-  while(objs.length<qty && next<tope){
-    const id=`${prefix}-${String(next).padStart(3,'0')}`; next++;
-    const snap=await db.collection('insumos_instancias').doc(id).get();
-    if(snap.exists) continue;
-    objs.push({id,inst:{itemId:docId,nombre:item.nombre.toUpperCase(),sede,estado:'DISPONIBLE',
-      creadoEn:new Date().toISOString(),creadoPor:maUser.email,
-      ...(resp&&{responsable:resp}),
-      ...(item.tipoCantidad==='RANGO'&&{nivel:Number(nivel)||100})}});
-  }
-  if(objs.length<qty) throw new Error(`No se pudieron reservar ${qty} códigos libres para ${prefix} (solo ${objs.length})`);
-  const nuevas=objs.map(o=>o.id);
-  const movData={tipo:'ENTRADA',itemId:docId,itemNombre:item.nombre,sede,cantidad:nuevas.length,
-    instancias:nuevas,responsable:resp,motivo:'Stock inicial al crear el ítem',
-    usuario:maUser.email,estado:'CONFIRMADO',fecha:new Date()};
+  if(qty>449) throw new Error('Máximo 449 unidades por operación');
+  // Reserva RACE-SAFE (M2): una transacción lee cada id candidato y crea las instancias + el
+  // movimiento ENTRADA atómicamente. Si otro usuario toma un id en paralelo, Firestore reintenta
+  // sola la transacción → nunca se sobrescribe una instancia ajena. Aborta si no logra las qty.
   const movRef=db.collection('insumos_movimientos').doc();
-  // Atómico + troceado a ≤449 (límite de 500 ops/batch): el movimiento va en el primer bloque
-  // (todo-o-nada hasta 449 uds; lotes mayores: bloques siguientes best-effort).
-  for(let k=0;k<objs.length;k+=449){
-    const bloque=objs.slice(k,k+449); const batch=db.batch();
-    if(k===0) batch.set(movRef,movData);
-    bloque.forEach(o=>batch.set(db.collection('insumos_instancias').doc(o.id),o.inst));
-    await batch.commit();
-  }
-  objs.forEach(o=>instanciasData.push({id:o.id,...o.inst}));
-  movimientosData.unshift({id:movRef.id,...movData});
-  return nuevas;
+  const start=next;
+  const res=await db.runTransaction(async tx=>{
+    const objs=[]; let n=start; const tope=start+qty+2000;
+    while(objs.length<qty && n<tope){
+      const ref=db.collection('insumos_instancias').doc(`${prefix}-${String(n).padStart(3,'0')}`); n++;
+      const snap=await tx.get(ref);
+      if(snap.exists) continue;
+      objs.push({ref,id:ref.id,inst:{itemId:docId,nombre:item.nombre.toUpperCase(),sede,estado:'DISPONIBLE',
+        creadoEn:new Date().toISOString(),creadoPor:maUser.email,
+        ...(resp&&{responsable:resp}),
+        ...(item.tipoCantidad==='RANGO'&&{nivel:Number(nivel)||100})}});
+    }
+    if(objs.length<qty) throw new Error(`No se pudieron reservar ${qty} códigos libres para ${prefix} (solo ${objs.length})`);
+    const movData={tipo:'ENTRADA',itemId:docId,itemNombre:item.nombre,sede,cantidad:objs.length,
+      instancias:objs.map(o=>o.id),responsable:resp,motivo:'Stock inicial al crear el ítem',
+      usuario:maUser.email,estado:'CONFIRMADO',fecha:new Date()};
+    objs.forEach(o=>tx.set(o.ref,o.inst));
+    tx.set(movRef,movData);
+    return {objs:objs.map(o=>({id:o.id,inst:o.inst})),movData};
+  });
+  res.objs.forEach(o=>instanciasData.push({id:o.id,...o.inst}));
+  movimientosData.unshift({id:movRef.id,...res.movData});
+  return res.objs.map(o=>o.id);
 }
 
 async function saveInsumo(){
@@ -3019,40 +3034,40 @@ async function saveEntrada() {
   const obs = document.getElementById('fent-obs').value.trim();
   const resp = document.getElementById('fent-personal').value;
   const guiaNumero = document.getElementById('fent-guia-num').value.trim();
-  const nuevasInstancias = [];
+  const nivelEnt = item.tipoCantidad === 'RANGO' ? Number(document.getElementById('fent-nivel').value) : undefined;
+  let nuevasInstancias = [];
   try {
-    // Reservar EXACTAMENTE qty ids libres (verifica contra Firestore por si otro usuario tomó el
-    // correlativo). Si no se logran todas, abortar sin escribir nada (no crear entrada parcial silenciosa).
-    const objs = []; const tope = next + qty + 2000;
-    const nivelEnt = item.tipoCantidad === 'RANGO' ? Number(document.getElementById('fent-nivel').value) : undefined;
-    while (nuevasInstancias.length < qty && next < tope) {
-      const id = `${prefix}-${String(next).padStart(3, '0')}`; next++;
-      const snap = await db.collection('insumos_instancias').doc(id).get();
-      if (snap.exists) continue;
-      const inst = { itemId, nombre: item.nombre.toUpperCase(), sede, estado: 'DISPONIBLE',
-        creadoEn: new Date().toISOString(), creadoPor: maUser.email,
-        ...(resp && { responsable: resp }),
-        ...(nivelEnt !== undefined && { nivel: nivelEnt }) };
-      objs.push({ id, inst }); nuevasInstancias.push(id);
-    }
-    if (nuevasInstancias.length < qty) { toast(`No se pudieron reservar ${qty} códigos libres (solo ${nuevasInstancias.length})`, 'err'); return; }
-    const movData = {
-      tipo: 'ENTRADA', itemId, itemNombre: item.nombre, sede, cantidad: nuevasInstancias.length,
-      instancias: nuevasInstancias, responsable: resp, motivo: obs,
-      usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
-    };
-    if (guiaNumero) movData.guiaNumero = guiaNumero;
-    if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
-    // Atómico + troceado a ≤449 (límite de 500 ops/batch): el movimiento va en el primer bloque
+    // Reserva RACE-SAFE (M2): una transacción lee cada id candidato y crea las instancias + el
+    // movimiento ENTRADA atómicamente. Si otro usuario toma un id en paralelo, Firestore reintenta
+    // sola la transacción → nunca se sobrescribe una instancia ajena. Aborta si no logra las qty.
     const movRef = db.collection('insumos_movimientos').doc();
-    for (let k = 0; k < objs.length; k += 449) {
-      const bloque = objs.slice(k, k + 449); const batch = db.batch();
-      if (k === 0) batch.set(movRef, movData);
-      bloque.forEach(o => batch.set(db.collection('insumos_instancias').doc(o.id), o.inst));
-      await batch.commit();
-    }
-    objs.forEach(o => instanciasData.push({ id: o.id, ...o.inst }));
-    movimientosData.unshift({ id: movRef.id, ...movData });
+    const start = next;
+    const res = await db.runTransaction(async tx => {
+      const objs = []; let n = start; const tope = start + qty + 2000;
+      while (objs.length < qty && n < tope) {
+        const ref = db.collection('insumos_instancias').doc(`${prefix}-${String(n).padStart(3, '0')}`); n++;
+        const snap = await tx.get(ref);
+        if (snap.exists) continue;
+        objs.push({ ref, id: ref.id, inst: { itemId, nombre: item.nombre.toUpperCase(), sede, estado: 'DISPONIBLE',
+          creadoEn: new Date().toISOString(), creadoPor: maUser.email,
+          ...(resp && { responsable: resp }),
+          ...(nivelEnt !== undefined && { nivel: nivelEnt }) } });
+      }
+      if (objs.length < qty) throw new Error(`No se pudieron reservar ${qty} códigos libres (solo ${objs.length})`);
+      const movData = {
+        tipo: 'ENTRADA', itemId, itemNombre: item.nombre, sede, cantidad: objs.length,
+        instancias: objs.map(o => o.id), responsable: resp, motivo: obs,
+        usuario: maUser.email, estado: 'CONFIRMADO', fecha: new Date()
+      };
+      if (guiaNumero) movData.guiaNumero = guiaNumero;
+      if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
+      objs.forEach(o => tx.set(o.ref, o.inst));
+      tx.set(movRef, movData);
+      return { objs: objs.map(o => ({ id: o.id, inst: o.inst })), movData };
+    });
+    nuevasInstancias = res.objs.map(o => o.id);
+    res.objs.forEach(o => instanciasData.push({ id: o.id, ...o.inst }));
+    movimientosData.unshift({ id: movRef.id, ...res.movData });
     if (loteFotos.guia || loteFotos.entrega) {
       const fotoDoc = { movimientoId: movRef.id, createdAt: new Date().toISOString(), createdBy: maUser.email };
       if (guiaNumero) fotoDoc.guiaNumero = guiaNumero;
@@ -3430,6 +3445,7 @@ async function saveTransfLote() {
   const guiaNumero = document.getElementById('ftl-guia-num').value.trim();
   const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
   if (!ids.length) { toast('No hay instancias válidas seleccionadas', 'err'); return; }
+  if (ids.length > 449) { toast('Máximo 449 instancias por transferencia en lote — divide en tandas', 'err'); return; }
   if (!transferSede && !transferResp) { toast('Selecciona qué deseas transferir', 'err'); return; }
   const destino = transferSede ? document.getElementById('ftl-destino').value : null;
   const respDestino = transferResp ? document.getElementById('ftl-resp-destino').value : null;
@@ -3448,9 +3464,11 @@ async function saveTransfLote() {
       if (transferResp) s.responsable = i.responsable || '';
       return s;
     });
-    // Aplicar a cada instancia + sacarla de su paquete si pertenece a uno
+    // Preparar los cambios SIN escribir: instancias + paquetes afectados (se aplican en UN batch)
     let nPaquete = 0;
     const pkgTouched = {};  // pkgId -> [instIds a remover]
+    const instMemUpdates = [];  // {id, updates} para aplicar a memoria tras el commit
+    const batch = db.batch();
     for (const inst of insts) {
       const instUpdates = { updatedAt: new Date().toISOString(), updatedBy: maUser.email };
       if (transferSede) instUpdates.sede = destino;
@@ -3460,18 +3478,17 @@ async function saveTransfLote() {
         (pkgTouched[inst.paqueteId] = pkgTouched[inst.paqueteId] || []).push(inst.id);
         nPaquete++;
       }
-      await db.collection('insumos_instancias').doc(inst.id).update(instUpdates);
-      const idx = instanciasData.findIndex(x => x.id === inst.id);
-      if (idx >= 0) Object.assign(instanciasData[idx], instUpdates);
+      batch.update(db.collection('insumos_instancias').doc(inst.id), instUpdates);
+      instMemUpdates.push({ id: inst.id, updates: instUpdates });
     }
-    // Quitar las instancias de los paquetes afectados
+    // Quitar las instancias de los paquetes afectados (mismo batch)
+    const pkgMemUpdates = [];
     for (const [pkgId, removeIds] of Object.entries(pkgTouched)) {
       const pkg = paquetesData.find(x => x.id === pkgId);
       if (!pkg) continue;
       const newInsts = (pkg.instancias || []).filter(i => !removeIds.includes(i));
-      await db.collection('insumos_paquetes').doc(pkgId).update({ instancias: newInsts, updatedAt: new Date().toISOString() });
-      const pIdx = paquetesData.findIndex(x => x.id === pkgId);
-      if (pIdx >= 0) paquetesData[pIdx].instancias = newInsts;
+      batch.update(db.collection('insumos_paquetes').doc(pkgId), { instancias: newInsts, updatedAt: new Date().toISOString() });
+      pkgMemUpdates.push({ id: pkgId, newInsts });
     }
     const labelParts = [];
     if (transferSede) labelParts.push(`→ ${destino}`);
@@ -3489,7 +3506,14 @@ async function saveTransfLote() {
     };
     if (guiaNumero) movData.guiaNumero = guiaNumero;
     if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
-    const movRef = await db.collection('insumos_movimientos').add(movData);
+    // Atómico: todas las instancias + los paquetes afectados + el movimiento en UN batch
+    // (ids ≤449 validado arriba; paquetes afectados + movimiento caben con margen bajo el límite de 500 ops)
+    const movRef = db.collection('insumos_movimientos').doc();
+    batch.set(movRef, movData);
+    await batch.commit();
+    // Aplicar a memoria tras el commit
+    instMemUpdates.forEach(u => { const idx = instanciasData.findIndex(x => x.id === u.id); if (idx >= 0) Object.assign(instanciasData[idx], u.updates); });
+    pkgMemUpdates.forEach(u => { const pIdx = paquetesData.findIndex(x => x.id === u.id); if (pIdx >= 0) paquetesData[pIdx].instancias = u.newInsts; });
     if (loteFotos.guia || loteFotos.entrega) {
       const fotoDoc = { movimientoId: movRef.id, createdAt: new Date().toISOString(), createdBy: maUser.email };
       if (guiaNumero) fotoDoc.guiaNumero = guiaNumero;
@@ -4068,15 +4092,15 @@ async function saveTransferencia() {
 
   if (!diffs.length) { toast('Selecciona qué deseas transferir', 'err'); return; }
 
-  // Si la instancia pertenece a un paquete, sacarla del paquete
+  // Si la instancia pertenece a un paquete, se saca del paquete (en el MISMO batch atómico)
   let paqueteMsg = '';
+  let pkgRef = null, pkgNewInsts = null, pkgIdx = -1;
   if (inst.paqueteId) {
     const pkg = paquetesData.find(x => x.id === inst.paqueteId);
     if (pkg) {
-      const newInsts = (pkg.instancias || []).filter(i => i !== instId);
-      await db.collection('insumos_paquetes').doc(pkg.id).update({ instancias: newInsts, updatedAt: new Date().toISOString() });
-      const pkgIdx = paquetesData.findIndex(x => x.id === pkg.id);
-      if (pkgIdx >= 0) paquetesData[pkgIdx].instancias = newInsts;
+      pkgNewInsts = (pkg.instancias || []).filter(i => i !== instId);
+      pkgRef = db.collection('insumos_paquetes').doc(pkg.id);
+      pkgIdx = paquetesData.findIndex(x => x.id === pkg.id);
       instUpdates.paqueteId = null;
       paqueteMsg = ` · salió del paquete ${pkg.id}`;
     }
@@ -4089,10 +4113,6 @@ async function saveTransferencia() {
   if (sedeD) labelParts.push(`${sedeOrig} → ${sedeD}`);
   if (respD) labelParts.push(`Resp: ${inst.responsable || '—'} → ${respD}`);
 
-  await db.collection('insumos_instancias').doc(instId).update(instUpdates);
-  const idx = instanciasData.findIndex(x => x.id === instId);
-  if (idx >= 0) Object.assign(instanciasData[idx], instUpdates);
-
   const movData = {
     tipo: 'TRANSFERENCIA', itemId: inst.itemId, itemNombre: inst.nombre,
     instanciaId: instId,
@@ -4103,7 +4123,16 @@ async function saveTransferencia() {
   };
   if (guiaNumero) movData.guiaNumero = guiaNumero;
   if (loteFotos.guia || loteFotos.entrega) movData.tieneFotos = true;
-  const movRef = await db.collection('insumos_movimientos').add(movData);
+  // Atómico: (sacar del paquete +) actualizar la instancia + crear el movimiento en un solo batch
+  const movRef = db.collection('insumos_movimientos').doc();
+  const batch = db.batch();
+  if (pkgRef) batch.update(pkgRef, { instancias: pkgNewInsts, updatedAt: new Date().toISOString() });
+  batch.update(db.collection('insumos_instancias').doc(instId), instUpdates);
+  batch.set(movRef, movData);
+  await batch.commit();
+  if (pkgIdx >= 0) paquetesData[pkgIdx].instancias = pkgNewInsts;
+  const idx = instanciasData.findIndex(x => x.id === instId);
+  if (idx >= 0) Object.assign(instanciasData[idx], instUpdates);
   movimientosData.unshift({ id: movRef.id, ...movData });
   if (loteFotos.guia || loteFotos.entrega) {
     const fotoDoc = { movimientoId: movRef.id, createdAt: new Date().toISOString(), createdBy: maUser.email };
