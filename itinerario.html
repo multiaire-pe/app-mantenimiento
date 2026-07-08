@@ -712,8 +712,9 @@ function renderItinerario(iti, bloques, fecha) {
       <div class="iti-actions">
         <button class="btn iti-export" onclick="exportPNG()" title="Exportar PNG">🖼 PNG</button>
         <button class="btn iti-export" onclick="exportPDF()" title="Exportar PDF">📄 PDF</button>
-        <button class="btn iti-export" onclick="exportWhatsApp()" title="Enviar WhatsApp">💬 WhatsApp</button>
-        ${iti.confirmado ? '' : '<button class="btn iti-confirm-btn" onclick="confirmarVersion()" title="Marcar esta versión como final para poder enviarla a los técnicos">✓ Confirmar versión</button>'}
+        ${!MA.isAdmin() ? '' : (iti.confirmado
+          ? '<button class="btn iti-export" onclick="enviarItinerarioTecnicos()" title="Enviar a cada técnico sus tareas por WhatsApp">📲 Enviar a técnicos</button>'
+          : '<button class="btn iti-confirm-btn" onclick="confirmarVersion()" title="Marcar esta versión como final para poder enviarla a los técnicos">✓ Confirmar versión</button>')}
         <button class="btn btn-danger iti-del" onclick="openDeleteModal()" title="Eliminar">🗑 Eliminar</button>
         <button class="btn btn-primary iti-edit" onclick="editarItinerario()">✏️ Editar / Nueva versión</button>
       </div>
@@ -1678,6 +1679,50 @@ async function confirmarVersion() {
   } catch(e){ toast('No se pudo confirmar: '+(e.message||e), 'err'); }
 }
 
+// ── ENVIAR ITINERARIO POR TÉCNICO ───────────────────────────────────────────────
+// Llama al backend, que manda a CADA técnico solo sus tareas (individuales + cuadrilla)
+// por WhatsApp. Requiere versión confirmada. Ofrece modo PRUEBA (a un número) antes del real.
+async function enviarItinerarioTecnicos() {
+  if(!MA.isAdmin()){ toast('Solo un admin puede enviar el itinerario', 'err'); return; }
+  const iti = currentIti;
+  if(!iti) return;
+  if(!iti.confirmado){ toast('Confirma la versión antes de enviarla a los técnicos', 'err'); return; }
+  const puedeProbar = MA.isSuperAdmin();
+  const modo = prompt(
+    'ENVIAR ITINERARIO A LOS TÉCNICOS\n\n'
+    + (puedeProbar ? '• PRUEBA: escribe un número de WhatsApp (ej: 51987654321) y recibirás tú todos los mensajes.\n' : '')
+    + '• ENVÍO REAL a cada técnico: deja el campo vacío y acepta.', '');
+  if(modo === null) return;                                  // canceló
+  const prueba = modo.trim() !== '';
+  if(prueba && !puedeProbar){ toast('El modo prueba es solo para super admin', 'err'); return; }
+  const telefonoPrueba = modo.replace(/\D/g, '');
+  if(prueba && telefonoPrueba.length < 9){ toast('Número de prueba inválido', 'err'); return; }
+  if(!prueba && !confirm('¿Enviar el itinerario '+iti.id+' v'+iti.version+' por WhatsApp a TODOS los técnicos con tareas?\n\nCada uno recibe SOLO lo suyo (individuales y de cuadrilla).')) return;
+  try {
+    const user = firebase.auth().currentUser;
+    if(!user){ toast('Sesión no válida', 'err'); return; }
+    const idToken = await user.getIdToken();
+    toast(prueba ? 'Enviando prueba…' : 'Enviando a los técnicos…', 'ok');
+    const res = await fetch('/api/enviar_itinerario', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+idToken },
+      body: JSON.stringify({ idIti: iti.id, version: Number(iti.version), prueba, telefonoPrueba }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok){ toast('Error: '+(j.error || ('HTTP '+res.status)), 'err'); return; }
+    const sinTel = (j.detalle||[]).filter(d => d.estado==='sin_telefono').map(d => d.nombre);
+    const errs   = (j.detalle||[]).filter(d => d.estado==='error').map(d => d.nombre);
+    let msg = (j.prueba?'🧪 Prueba · ':'')+'✅ '+j.enviados+'/'+j.total+' técnicos'+(j.actualizacion?' (actualización)':'');
+    if(j.aviso) msg = j.aviso;
+    if(sinTel.length) msg += ' · ⚠️ sin teléfono: '+sinTel.join(', ');
+    if(errs.length)   msg += ' · ❌ error: '+errs.join(', ');
+    toast(msg, (sinTel.length||errs.length) ? 'err' : 'ok');
+    console.log('[enviar_itinerario]', j);
+  } catch(e){ toast('No se pudo enviar: '+(e.message||e), 'err'); }
+}
+
+// Compartir el itinerario COMPLETO (todos los bloques) en un solo mensaje — queda disponible
+// como helper (sin botón) por si se quiere reactivar el modo "compartir a un grupo".
 function exportWhatsApp() {
   if(!MA.can('exportar','itinerario')){ toast('Sin permisos para exportar', 'err'); return; }
   if (!currentIti) return;

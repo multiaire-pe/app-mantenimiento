@@ -64,6 +64,9 @@ service cloud.firestore {
     match /mantenimiento_fotos/{doc}     { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
     // bitácora de registros (tab Historial): el cliente solo AGREGA eventos; editar/borrar, solo super
     match /mtto_log/{doc}                { allow read: if authorized(); allow create: if canWrite('mantenimiento'); allow update, delete: if isSuper(); }
+    // registro de envíos del itinerario por técnico (WhatsApp): lo escribe el backend (admin SDK);
+    // el cliente lo lee; import de backup = super. Log inmutable para no-super.
+    match /itinerario_envios/{doc}       { allow read: if authorized(); allow create, update, delete: if isSuper(); }
     // plan de actividades de mtto en el itinerario (asignar/mover/quitar = editar itinerario)
     // borrar una asignación también lo hace quien REGISTRA la ejecución en Mantenimiento
     // (sincronización automática: lo hecho sale del plan)
