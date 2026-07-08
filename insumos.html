@@ -1442,7 +1442,17 @@ const PERMS = {
   SUPERVISOR:  { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:1,transferencia:1,aprobar:1,paquetes:0,editarMov:0,eliminarMov:0,solicitarSalida:1,solicitarTransf:1 },
   TECNICO:     { crearItem:0,editarItem:0,eliminarItem:0,entrada:0,salida:0,transferencia:0,aprobar:0,paquetes:0,editarMov:0,eliminarMov:0,solicitarSalida:1,solicitarTransf:1 },
 };
-function can(p){ return (PERMS[maUser?.rol]||PERMS.TECNICO)[p]||0; }
+// Flujo "técnico solicita → supervisor aprueba" DESACTIVADO (decisión M1, 2026-07-07): estaba
+// bloqueado server-side por firestore.rules (un TECNICO no puede escribir en insumos_movimientos)
+// y no se usa; con la UX visible, un técnico recibía "Missing or insufficient permissions".
+// Reactivar = poner true + ajustar reglas (permitir SOLICITUD_* a TECNICO) + hacer aprobar/rechazar
+// concurrency-safe con runTransaction. Con false, `can()` niega solicitar/aprobar → se ocultan todos
+// los botones (Solicitar salida/baja/transf/entrada/paquete, Solicitudes pendientes, ✓Aprobar/✗Rechazar).
+const FLUJO_SOLICITUDES = false;
+function can(p){
+  if(!FLUJO_SOLICITUDES && (p==='solicitarSalida'||p==='solicitarTransf'||p==='aprobar')) return 0;
+  return (PERMS[maUser?.rol]||PERMS.TECNICO)[p]||0;
+}
 
 let maUser=null, catalogoData=[], movimientosData=[], stockData={}, sedes=[], personalData=[], paquetesData=[], instanciasData=[], instFotos={}, movFotos={}, catFotos={};
 let filteredCatalogo=[], currentMovTipo='SALIDA', editingInsumoId=null, editingPaqId=null, applyingPaqId=null, paqRowIdx=0;
@@ -2266,6 +2276,7 @@ async function saveInsumo(){
   const sedeIni=document.getElementById('fi-sede-inicial').value;
   const respIni=document.getElementById('fi-resp-inicial').value;
   if(qtyIni>0&&!sedeIni){toast('Elige la sede del stock inicial (o deja la cantidad en 0)','err');return;}
+  if(qtyIni>449){toast('Máximo 449 unidades de stock inicial — usa "Registrar entrada" para más','err');return;}
   const item={nombre,categoria:document.getElementById('fi-cat').value,unidad:document.getElementById('fi-unidad').value,
     codigo:codigo,
     marca:document.getElementById('fi-marca').value.trim(),modelo:document.getElementById('fi-modelo').value.trim(),
@@ -2291,9 +2302,17 @@ async function saveInsumo(){
         catFotos[docId]=pendingCatFoto;
         pendingCatFoto=null;
       }
-      // Stock inicial opcional: crear las N unidades de una vez (con su código y QR) + movimiento ENTRADA
+      // Stock inicial opcional: crear las N unidades de una vez (con su código y QR) + movimiento ENTRADA.
+      // El ítem YA quedó creado arriba; si el stock inicial falla, se avisa y se cierra (no se trata como
+      // fallo del ítem ni se bloquea un reintento por "código duplicado" — el ítem ya existe).
       if(qtyIni>0){
-        nInst=(await crearInstanciasIniciales(item,docId,qtyIni,sedeIni,respIni)).length;
+        try {
+          nInst=(await crearInstanciasIniciales(item,docId,qtyIni,sedeIni,respIni)).length;
+        } catch(errStock) {
+          toast('Ítem creado ✓, pero el stock inicial no: '+errStock.message+'. Regístralo desde "Registrar entrada".','warn');
+          closeModal('modal-insumo'); renderAll();
+          return;
+        }
       }
     }
     else{const idx=catalogoData.findIndex(x=>x.id===docId);if(idx>=0)catalogoData[idx]={id:docId,...item};}
@@ -2991,6 +3010,7 @@ async function saveEntrada() {
   const sede = document.getElementById('fent-sede').value;
   const qty = parseInt(document.getElementById('fent-qty').value) || 0;
   if (!itemId || !sede || qty <= 0) { toast('Completa todos los campos', 'err'); if(btn){btn.disabled=false;btn.textContent=btn._origText;} return; }
+  if (qty > 449) { toast('Máximo 449 unidades por entrada — divide en varias', 'err'); if(btn){btn.disabled=false;btn.textContent=btn._origText;} return; }
   const item = catalogoData.find(x => x.id === itemId);
   if (!item) { if(btn){btn.disabled=false;btn.textContent=btn._origText;} return; }
   const prefix = (item.codigo || item.nombre.replace(/[^A-Z0-9]/gi, '')).substring(0, 3).toUpperCase();
@@ -3312,6 +3332,7 @@ async function saveSalidaLote() {
   const guiaNumero = document.getElementById('flote-guia-num').value.trim();
   const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
   if (!ids.length) { toast('No hay instancias válidas seleccionadas', 'err'); return; }
+  if (ids.length > 449) { toast('Máximo 449 instancias por salida/baja en lote — divide en tandas', 'err'); return; }
   if (esBaja && !motivo) { toast('El motivo es obligatorio para dar de baja', 'err'); return; }
   if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
   try {
