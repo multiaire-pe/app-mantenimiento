@@ -764,14 +764,34 @@ async function renderGlobal(){
       const sel = _safeObj(r.seleccionados), ts = _safeObj(r.tareaStatus);
       const ids = Object.keys(sel).filter(k => sel[k]);
       if(!ids.length) return;
-      let g=0,y=0,rr=0;
+      let g=0,y=0,rr=0, totalPeso=0, totalAvance=0;
       ids.forEach(id => {
-        const eq = eqIdx[id]; const nT = eq ? (actividadesDe(eq).tareas||[]).length : 0;
-        const st = ts[id] || {};
-        const done = (typeof st === 'boolean') ? (st ? nT : 0) : Object.values(st).filter(v=>v===true).length;
+        const eq = eqIdx[id];
+        const _a = eq ? actividadesDe(eq) : {tareas:null,minutos:[]};
+        const tareas = _a.tareas || [], mins = _a.minutos || [], nT = tareas.length;
+        const st = ts[id];
+        const done = (st === true) ? nT
+                   : (st && typeof st === 'object') ? Object.keys(st).filter(k=>st[k]===true).length : 0;
+        // % de avance del equipo — mismo criterio que getPct (0 si no tiene actividades, ponderado por minutos, con fallback a peso igual)
+        let eqPct = 0;
+        if(nT){
+          if(st === true) eqPct = 100;
+          else if(st && typeof st === 'object'){
+            if(mins.length){
+              const tm = mins.reduce((a,b)=>a+(b||0),0);
+              let dw=0; tareas.forEach((_,i)=>{ if(st[i]===true) dw += (mins[i]||0); });
+              eqPct = tm ? Math.round(dw/tm*100) : 0;
+            } else {
+              eqPct = Math.round(done/nT*100);
+            }
+          }
+        }
+        const peso = PESO_TIPO[eq && eq.tipo] || 2;
+        totalPeso += peso; totalAvance += eqPct*peso;
         if(nT && done >= nT) g++; else if(done > 0) y++; else rr++;
       });
-      const tot = ids.length, pct = tot ? Math.round(100*g/tot) : 0;
+      // % de avance ponderado de la sede (idéntico al globalPct del Dashboard), no el conteo de equipos completos
+      const tot = ids.length, pct = totalPeso ? Math.round(totalAvance/totalPeso) : 0;
       html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'
         + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:700;flex:1">'+_actEsc(sede)+'</span>'
         + '<span style="font-size:12px;font-weight:700;color:'+(pct===100?'var(--green,#0a4)':pct>0?'#cc8800':'var(--red,#c33)')+'">'+pct+'%</span></div>'
