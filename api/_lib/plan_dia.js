@@ -19,7 +19,7 @@ function fechaAYMD(f) {
 // ¿El bloque tiene asignado a este colaborador? El array `personal[]` guarda OBJETOS
 // {id,nombre} (ver itinerario.html:955), aunque toleramos también ids sueltos por robustez;
 // además revisamos los campos legacy personal1..4 ({id,nombre}).
-function bloqueIncluye(bloque, colabId) {
+export function bloqueIncluye(bloque, colabId) {
   if (!colabId) return false;
   if (Array.isArray(bloque.personal) && bloque.personal.some((p) => p === colabId || (p && p.id === colabId))) return true;
   for (const k of ['personal1', 'personal2', 'personal3', 'personal4']) {
