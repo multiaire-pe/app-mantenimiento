@@ -20,8 +20,13 @@ export const RE_MTTO = /(mantenimientos?|mtto\.?|preventiv[oa]s?)(?![a-z])/i;
 export function esIntencionMtto(texto) {
   const t = norm(texto);
   if (/registr\w*/.test(t) && /actividad/.test(t)) return true;   // "quiero registrar ... actividad(es)"
+  // "realizado <equipo> de <sede>": hay actividades que se llaman literalmente "Realizado"
+  // (esActividadConocida las excluye a propósito por cortas) y el técnico reporta así. Un
+  // mensaje que EMPIEZA con "realizado/a" es un registro — misma filosofía "empieza con la
+  // intención" de la última regla; la guarda RE_PROBLEMA sigue aplicando después.
+  if (/^\s*realizad[oa]s?\b/.test(t)) return true;
   if (!RE_MTTO.test(t)) return false;
-  if (/(registr|hice|realic|complet|termin|marcar|actividades)/.test(t)) return true;
+  if (/(registr|hice|realic|realizad|complet|termin|marcar|actividades)/.test(t)) return true;
   return /^\s*(mantenimiento|mtto|preventiv)/.test(t);
 }
 
