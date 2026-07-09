@@ -94,11 +94,17 @@ function matchEquipo(equipoRaw, sede, equipos, cliente) {
   const qNum = conNumeros(equipoRaw);                    // "extractor uno" → "extractor 1"
   const qToks = tokens(qNum);
   const qNumsTodos = (qNum.match(/\d+/g) || []).map((n) => parseInt(n, 10));
-  // Números que acompañan una palabra de UBICACIÓN ("piso 2", "nivel 3") no compiten por el
-  // match FUERTE del número propio del equipo — solo por el de área (más débil). Sin esto,
-  // repetir la ubicación que el propio bot sugirió ("Cortina 04 — Piso 2") podía coincidir
-  // por azar con el número de OTRO equipo y producir un empate (bucle de repregunta).
-  const qNumsFuertes = (qNum.replace(/\b(PISO|NIVEL|NRO|NUMERO)\s+\d+/g, ' ').match(/\d+/g) || [])
+  // Números que acompañan una palabra de UBICACIÓN ("piso 2", "1er nivel", "piso nro 2") no
+  // compiten por el match FUERTE del número propio del equipo — solo por el de área (más
+  // débil). Sin esto, repetir la ubicación que el propio bot sugirió ("Cortina 04 — Piso 2")
+  // podía coincidir por azar con el número de OTRO equipo y producir un empate (bucle de
+  // repregunta). OJO: "NRO/NUMERO + número" a secas ("cortina numero 4") es el número DEL
+  // EQUIPO — solo cuenta como ubicación pegado a PISO/NIVEL. Orden de los replace: primero
+  // "palabra + número" para que en "extractor 1 nivel 2" el 1 (equipo) sobreviva al 2º regex.
+  const qNumsFuertes = (qNum
+    .replace(/\b(PISO|NIVEL)\s+((NRO|NUMERO)\s+)?\d+/g, ' ')   // "piso 2", "nivel nro 3"
+    .replace(/\b\d+[A-Z]{0,3}\s+(PISO|NIVEL)\b/g, ' ')         // "2do piso", "1 nivel" (de "1° nivel")
+    .match(/\d+/g) || [])
     .map((n) => parseInt(n, 10));
   const scored = pool.map((e) => {
     const nombreTxt = norm(e.nombre);
