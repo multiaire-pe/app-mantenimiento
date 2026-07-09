@@ -4,6 +4,7 @@
 // bot de asistencia a diario); si falla y hay plantilla aprobada, cae a plantilla.
 // Requisito: la versión debe estar CONFIRMADA. Solo ADMIN/SUPER_ADMIN. Registra cada
 // envío en `itinerario_envios` (auditoría + detección de "actualización" + resumen).
+import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 import { getDb } from './_lib/firestore.js';
 import { enviarTexto, enviarPlantilla } from './_lib/whatsapp.js';
@@ -49,7 +50,7 @@ export default async function handler(req, res) {
     try { user = await requireAdmin(idToken, db); }
     catch (e) { return res.status(e.code || 401).json({ error: e.msg || 'Sesión no válida.' }); }
 
-    const { idIti, version, prueba, telefonoPrueba } = req.body || {};
+    const { idIti, version, prueba, telefonoPrueba, preview, previewHash: clientHash } = req.body || {};
     if (!idIti || version == null) return res.status(400).json({ error: 'Falta idIti o version.' });
     const to_prueba = String(telefonoPrueba || '').replace(/\D/g, '');
     if (prueba && to_prueba.length < 9) return res.status(400).json({ error: 'Número de prueba inválido.' });
@@ -87,6 +88,33 @@ export default async function handler(req, res) {
       const t = String((d.data() || {}).telefono || '').replace(/\D/g, '');
       if (t.length >= 9) telById[d.id] = t;
     });
+
+    // Hash del contenido exacto a enviar (por técnico): el preview lo devuelve y el envío real lo
+    // reenvía; si los datos (bloques/actividades) cambiaron entre "ver" y "enviar", no coincide y
+    // se aborta → garantiza que lo enviado sea lo que se previsualizó (idea de Codex).
+    const previewHash = crypto.createHash('sha1').update(JSON.stringify(msgs.map((m) => [m.tecnicoId, m.texto]))).digest('hex');
+
+    // PREVIEW: devuelve los mensajes por técnico SIN enviar ni registrar en itinerario_envios.
+    // Usa la MISMA carga y la MISMA función (mensajesPorTecnico) que el envío real → lo que se
+    // ve en pantalla es exactamente lo que se mandará. Solo expone si el técnico tiene teléfono
+    // (no el número). Requiere versión confirmada (gate de arriba), igual que enviar.
+    if (preview) {
+      const mensajes = msgs.map((m) => ({
+        tecnicoId: m.tecnicoId, nombre: m.nombre, texto: m.texto,
+        nTareas: m.nTareas, sedes: m.sedes || [], tieneTelefono: !!telById[m.tecnicoId],
+      }));
+      return res.status(200).json({
+        preview: true, previewHash, total: mensajes.length, actualizacion,
+        sinTelefono: mensajes.filter((x) => !x.tieneTelefono).length, mensajes,
+      });
+    }
+    // Envío real: SIEMPRE debe venir de una vista previa (garantiza que se envíe lo previsualizado).
+    if (!clientHash) {
+      return res.status(400).json({ error: 'Genera la vista previa antes de enviar (falta la verificación de contenido).' });
+    }
+    if (clientHash !== previewHash) {
+      return res.status(409).json({ error: 'El itinerario cambió desde la vista previa. Vuelve a abrirla antes de enviar.' });
+    }
 
     // 6) Auditoría PRE-envío: se crea el registro ANTES del loop (incluye pruebas, con target
     // enmascarado). Si el proceso muere a mitad, queda traza → no se puede "reintentar limpio"

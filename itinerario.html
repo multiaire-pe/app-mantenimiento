@@ -1337,7 +1337,7 @@ function renderModal(fecha, d, iti) {
     html += '<option value="CANCELADO"' + (b.estado==='CANCELADO'?' selected':'') + '>CANCELADO</option>';
     html += '</select></div>';
     html += '<div class="form-group full"><div class="form-label">Detalle de trabajo</div>';
-    html += '<textarea class="form-textarea" id="bf-detalle-' + i + '" placeholder="Describe las actividades...">' + (b.detalle||'') + '</textarea></div>';
+    html += '<textarea class="form-textarea" id="bf-detalle-' + i + '" placeholder="Describe las actividades...">' + escI(b.detalle||'') + '</textarea></div>';
     html += '</div>';
     html += '<div class="bloque-sep">Personal asignado</div>';
     html += '<div id="personal-slots-' + i + '">' + personalSlotsHtml + '</div>';
@@ -1682,22 +1682,93 @@ async function confirmarVersion() {
 // ── ENVIAR ITINERARIO POR TÉCNICO ───────────────────────────────────────────────
 // Llama al backend, que manda a CADA técnico solo sus tareas (individuales + cuadrilla)
 // por WhatsApp. Requiere versión confirmada. Ofrece modo PRUEBA (a un número) antes del real.
+// Paso 1: VISTA PREVIA. Pide al backend (modo preview) los mensajes que se enviarían — la MISMA
+// carga/función que el envío real, para que lo que ves sea lo que se manda — y los muestra en el
+// modal pv-overlay. El envío real recién se dispara desde ahí (_pvEnviarReal / _pvEnviarPrueba).
+let _pvIti = null, _pvHash = null, _pvSending = false;
 async function enviarItinerarioTecnicos() {
   if(!MA.isAdmin()){ toast('Solo un admin puede enviar el itinerario', 'err'); return; }
   const iti = currentIti;
   if(!iti) return;
   if(!iti.confirmado){ toast('Confirma la versión antes de enviarla a los técnicos', 'err'); return; }
-  const puedeProbar = MA.isSuperAdmin();
-  const modo = prompt(
-    'ENVIAR ITINERARIO A LOS TÉCNICOS\n\n'
-    + (puedeProbar ? '• PRUEBA: escribe un número de WhatsApp (ej: 51987654321) y recibirás tú todos los mensajes.\n' : '')
-    + '• ENVÍO REAL a cada técnico: deja el campo vacío y acepta.', '');
-  if(modo === null) return;                                  // canceló
-  const prueba = modo.trim() !== '';
-  if(prueba && !puedeProbar){ toast('El modo prueba es solo para super admin', 'err'); return; }
-  const telefonoPrueba = modo.replace(/\D/g, '');
-  if(prueba && telefonoPrueba.length < 9){ toast('Número de prueba inválido', 'err'); return; }
-  if(!prueba && !confirm('¿Enviar el itinerario '+iti.id+' v'+iti.version+' por WhatsApp a TODOS los técnicos con tareas?\n\nCada uno recibe SOLO lo suyo (individuales y de cuadrilla).')) return;
+  try {
+    const user = firebase.auth().currentUser;
+    if(!user){ toast('Sesión no válida', 'err'); return; }
+    const idToken = await user.getIdToken();
+    toast('Generando vista previa…', 'ok');
+    const res = await fetch('/api/enviar_itinerario', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+idToken },
+      body: JSON.stringify({ idIti: iti.id, version: Number(iti.version), preview: true }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok){ toast('Error: '+(j.error || ('HTTP '+res.status)), 'err'); return; }
+    if(!(j.mensajes||[]).length){ toast(j.aviso || 'No hay técnicos con tareas en esta versión.', 'err'); return; }
+    mostrarPreviewEnvio(iti, j);
+  } catch(e){ toast('No se pudo generar la vista previa: '+(e.message||e), 'err'); }
+}
+
+// Llena y abre el modal de vista previa. Usa textContent para el cuerpo del mensaje (anti-XSS:
+// los nombres de sedes/actividades vienen de Firestore).
+function mostrarPreviewEnvio(iti, data) {
+  _pvIti = iti;
+  _pvHash = data.previewHash || null;
+  _pvSending = false; _pvBotones(false);
+  document.getElementById('pv-head').textContent = iti.id + ' · v' + iti.version + (data.actualizacion ? ' · 🔄 actualización' : ' · primer envío');
+  document.getElementById('pv-sub').textContent = (data.total||0) + ' técnico(s) con tareas' + (data.sinTelefono ? ' · ⚠️ ' + data.sinTelefono + ' sin teléfono' : '');
+  const body = document.getElementById('pv-body');
+  body.innerHTML = '';
+  (data.mensajes||[]).forEach(m => {
+    const card = document.createElement('div');
+    card.style.cssText = 'border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden';
+    const h = document.createElement('div');
+    h.style.cssText = 'background:var(--surface2,#f2f5fb);padding:6px 10px;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px';
+    const nom = document.createElement('span');
+    nom.textContent = m.nombre + (m.nTareas ? ' · ' + m.nTareas + ' act.' : '');
+    h.appendChild(nom);
+    if(!m.tieneTelefono){
+      const warn = document.createElement('span');
+      warn.style.cssText = 'color:var(--red,#c0392b);font-size:10px;font-weight:600';
+      warn.textContent = '⚠️ sin teléfono — no le llegará';
+      h.appendChild(warn);
+    }
+    const pre = document.createElement('pre');
+    pre.style.cssText = 'margin:0;padding:10px;font-size:11px;white-space:pre-wrap;word-break:break-word;font-family:var(--mono,monospace);background:var(--surface);color:var(--text)';
+    pre.textContent = m.texto;
+    card.appendChild(h); card.appendChild(pre);
+    body.appendChild(card);
+  });
+  document.getElementById('pv-prueba').style.display = MA.isSuperAdmin() ? '' : 'none';
+  document.getElementById('pv-overlay').style.display = 'flex';
+}
+function _pvCerrar(force){ if(_pvSending && !force) return; document.getElementById('pv-overlay').style.display = 'none'; _pvIti = null; _pvHash = null; }
+function _pvBotones(disabled){
+  const e = document.getElementById('pv-enviar'), p = document.getElementById('pv-prueba');
+  if(e) e.disabled = disabled;
+  if(p) p.disabled = disabled;
+}
+function _pvEnviarReal(){
+  if(_pvSending) return;
+  const iti = _pvIti; if(!iti) return;
+  if(!confirm('¿Enviar el itinerario '+iti.id+' v'+iti.version+' por WhatsApp a TODOS los técnicos con tareas?\n\nCada uno recibe SOLO lo suyo (individuales y de cuadrilla).')) return;
+  _enviarItinerarioReal(false, '');
+}
+function _pvEnviarPrueba(){
+  if(_pvSending) return;
+  if(!MA.isSuperAdmin()){ toast('El modo prueba es solo para super admin', 'err'); return; }
+  const num = prompt('PRUEBA — número de WhatsApp que recibirá TODOS los mensajes (ej: 51987654321):', '');
+  if(num === null) return;
+  const tel = String(num).replace(/\D/g, '');
+  if(tel.length < 9){ toast('Número de prueba inválido', 'err'); return; }
+  _enviarItinerarioReal(true, tel);
+}
+// Paso 2: ENVÍO REAL (desde el modal de preview). prueba=true manda todo a un número (solo super).
+// _pvSending + botones deshabilitados evitan envíos duplicados por doble clic; previewHash asegura
+// que se envíe exactamente lo previsualizado (el backend rechaza con 409 si los datos cambiaron).
+async function _enviarItinerarioReal(prueba, telefonoPrueba) {
+  const iti = _pvIti; if(!iti) return;
+  if(_pvSending) return;
+  _pvSending = true; _pvBotones(true);
   try {
     const user = firebase.auth().currentUser;
     if(!user){ toast('Sesión no válida', 'err'); return; }
@@ -1706,7 +1777,7 @@ async function enviarItinerarioTecnicos() {
     const res = await fetch('/api/enviar_itinerario', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+idToken },
-      body: JSON.stringify({ idIti: iti.id, version: Number(iti.version), prueba, telefonoPrueba }),
+      body: JSON.stringify({ idIti: iti.id, version: Number(iti.version), prueba, telefonoPrueba, previewHash: _pvHash }),
     });
     const j = await res.json().catch(() => ({}));
     if(!res.ok){ toast('Error: '+(j.error || ('HTTP '+res.status)), 'err'); return; }
@@ -1718,7 +1789,9 @@ async function enviarItinerarioTecnicos() {
     if(errs.length)   msg += ' · ❌ error: '+errs.join(', ');
     toast(msg, (sinTel.length||errs.length) ? 'err' : 'ok');
     console.log('[enviar_itinerario]', j);
+    if(!prueba) _pvCerrar(true);   // tras el envío real cierro el modal (force: aún está _pvSending); tras prueba lo dejo abierto
   } catch(e){ toast('No se pudo enviar: '+(e.message||e), 'err'); }
+  finally { _pvSending = false; _pvBotones(false); }
 }
 
 // Compartir el itinerario COMPLETO (todos los bloques) en un solo mensaje — queda disponible
@@ -2345,6 +2418,24 @@ document.addEventListener('click', function(e) {
     <div style="font-size:10px;color:var(--muted2);margin-bottom:8px">Marca <b>1</b> (individual) o <b>2+</b> técnicos (cuadrilla co-responsable).</div>
     <div id="pt-list" style="max-height:44vh;overflow-y:auto"></div>
     <button class="btn btn-primary" id="pt-confirm" onclick="_ptConfirmar()" style="width:100%;justify-content:center;margin-top:12px" disabled>✓ Asignar</button>
+  </div>
+</div>
+
+<!-- Vista previa del envío por técnico: muestra el mensaje EXACTO que recibirá cada uno antes de mandar -->
+<div id="pv-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.55);z-index:710;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)_pvCerrar()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:540px;max-width:100%;max-height:88vh;display:flex;flex-direction:column">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      <h2 style="font-size:14px;color:var(--blue,#1B3F8B);margin:0">📲 Vista previa del envío</h2>
+      <div id="pv-head" style="font-size:12px;color:var(--muted2);margin-top:3px"></div>
+      <div id="pv-sub" style="font-size:11px;color:var(--muted2)"></div>
+      <div style="font-size:10px;color:var(--muted2);margin-top:4px">Esto es exactamente lo que recibirá cada técnico por WhatsApp.</div>
+    </div>
+    <div id="pv-body" style="padding:14px 16px;overflow-y:auto;flex:1"></div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn" onclick="_pvCerrar()">Cancelar</button>
+      <button class="btn" id="pv-prueba" onclick="_pvEnviarPrueba()">🧪 Prueba a mi número</button>
+      <button class="btn btn-primary" id="pv-enviar" onclick="_pvEnviarReal()">📲 Enviar a todos</button>
+    </div>
   </div>
 </div>
 </body>
