@@ -87,10 +87,26 @@ function matchEquipo(equipoRaw, sede, equipos, cliente) {
   if (!pool.length) pool = delSede;
 
   // 3) scoring por NOMBRE + ÁREA (ubicación) + número. El tipo ya filtró el pool;
-  //    NO se puntúa por eq_id (su prefijo "MA" está en todos los códigos).
+  //    NO se puntúa por eq_id (su prefijo "MA" y su numeración de IMPORTACIÓN están en
+  //    todos los códigos y no tienen por qué coincidir con el número que el técnico ve
+  //    en el nombre — mezclarlos generaba empates falsos entre dos equipos del mismo
+  //    tipo, ej. "Cortina de aire 04" contra el eq_id de "Cortina de aire 02").
   const qNum = conNumeros(equipoRaw);                    // "extractor uno" → "extractor 1"
   const qToks = tokens(qNum);
-  const qNums = (qNum.match(/\d+/g) || []).map((n) => parseInt(n, 10));
+  const qNumsTodos = (qNum.match(/\d+/g) || []).map((n) => parseInt(n, 10));
+  // Números que acompañan una palabra de UBICACIÓN ("piso 2", "1er nivel", "piso nro 2",
+  // "piso n° 2") no compiten por el match FUERTE del número propio del equipo — solo por el
+  // de área (más débil). Sin esto, repetir la ubicación que el propio bot sugirió ("Cortina
+  // 04 — Piso 2") podía coincidir por azar con el número de OTRO equipo y producir un empate
+  // (bucle de repregunta). El conector cubre n°/no/nro/numero (norm() deja "n°"→"N", "nro"→"NRO").
+  // OJO: "NRO/NUMERO + número" a secas ("cortina numero 4") es el número DEL EQUIPO — solo
+  // cuenta como ubicación pegado a PISO/NIVEL. Orden de los replace: primero "palabra + número"
+  // para que en "extractor 1 nivel 2" el 1 (equipo) sobreviva al 2º regex.
+  const qNumsFuertes = (qNum
+    .replace(/\b(PISO|NIVEL)\s+((N|NO|NRO|NUMERO)\s+)?\d+/g, ' ')   // "piso 2", "nivel nro 3", "piso n° 2"
+    .replace(/\b\d+[A-Z]{0,3}\s+(PISO|NIVEL)\b/g, ' ')         // "2do piso", "1 nivel" (de "1° nivel")
+    .match(/\d+/g) || [])
+    .map((n) => parseInt(n, 10));
   const scored = pool.map((e) => {
     const nombreTxt = norm(e.nombre);
     const areaTxt = norm(e.area);
@@ -100,13 +116,13 @@ function matchEquipo(equipoRaw, sede, equipos, cliente) {
       if (areaTxt.includes(t)) s += 2;                     // palabra de UBICACIÓN: distintiva e intencional
       else if (nombreTxt.includes(t)) s += 1;              // palabra del nombre: poco distintiva
     }
-    if (qNums.length) {
-      // Número canónico del equipo (nombre/eq_id, "Extractor 02") pesa fuerte; el de la
-      // ubicación ("GRAN VOLUMEN 01", "1° Nivel") solo desempata, para no confundir "extractor 2".
-      const nombreNums = (norm(`${e.nombre} ${e.eqId}`).match(/\d+/g) || []).map((n) => parseInt(n, 10));
+    if (qNumsTodos.length) {
+      // Número canónico: SOLO del propio NOMBRE ("Extractor 02"); el de la ubicación
+      // ("GRAN VOLUMEN 01", "1° Nivel") solo desempata, para no confundir "extractor 2".
+      const nombreNums = (nombreTxt.match(/\d+/g) || []).map((n) => parseInt(n, 10));
       const areaNums = (areaTxt.match(/\d+/g) || []).map((n) => parseInt(n, 10));
-      if (qNums.some((n) => nombreNums.includes(n))) s += 3;
-      else if (qNums.some((n) => areaNums.includes(n))) s += 1;
+      if (qNumsFuertes.some((n) => nombreNums.includes(n))) s += 3;
+      else if (qNumsTodos.some((n) => areaNums.includes(n))) s += 1;
     }
     return { e, s };
   }).filter((x) => x.s > 0).sort((a, b) => b.s - a.s);
