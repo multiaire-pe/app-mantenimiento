@@ -125,7 +125,7 @@ export default async function handler(req, res) {
       await envRef.set({
         idIti, version: Number(version), fecha: iti.fecha || '', fechaStr,
         actualizacion, prueba: !!prueba, ...(prueba ? { pruebaTarget: masked } : {}),
-        enviadoPor: user.email, ts: new Date().toISOString(), estado: 'en_progreso', totalTecnicos: msgs.length,
+        previewHash, enviadoPor: user.email, ts: new Date().toISOString(), estado: 'en_progreso', totalTecnicos: msgs.length,
       });
     } catch (e) {
       // Sin traza previa NO enviamos: la auditoría es requisito para no arriesgar duplicados ciegos.
@@ -139,7 +139,7 @@ export default async function handler(req, res) {
     const detalle = [];
     for (const m of msgs) {
       const to = prueba ? to_prueba : telById[m.tecnicoId];
-      if (!to) { detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: 'sin_telefono', nTareas: m.nTareas }); continue; }
+      if (!to) { detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: 'sin_telefono', nTareas: m.nTareas, texto: (m.texto || '').slice(0, 4000) }); continue; }
       let ok = false, canal = 'texto';
       try { ok = await enviarTexto(to, m.texto); } catch { /* intenta plantilla abajo */ }
       if (!ok && plantilla) {
@@ -147,7 +147,7 @@ export default async function handler(req, res) {
           .map((x) => ({ type: 'text', text: (String(x || '').replace(/\s+/g, ' ').trim() || '—').slice(0, 600) }));
         try { ok = await enviarPlantilla(to, plantilla, idioma, [{ type: 'body', parameters: params }]); canal = 'plantilla'; } catch { /* queda error */ }
       }
-      detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: ok ? 'enviado' : 'error', nTareas: m.nTareas, ...(ok ? { canal } : {}) });
+      detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: ok ? 'enviado' : 'error', nTareas: m.nTareas, texto: (m.texto || '').slice(0, 4000), ...(ok ? { canal } : {}) });
     }
     const enviados = detalle.filter((d) => d.estado === 'enviado').length;
     const sinTelefono = detalle.filter((d) => d.estado === 'sin_telefono').length;
@@ -156,7 +156,13 @@ export default async function handler(req, res) {
     // 8) Cerrar la auditoría con el resultado real (si esto falla, el doc 'en_progreso' queda como traza).
     try {
       await envRef.update({ estado: 'completado', enviados, sinTelefono, errores, detalle, finTs: new Date().toISOString() });
-    } catch (e) { console.error('[enviar_itinerario] cierre', e.message); }
+    } catch (e) {
+      console.error('[enviar_itinerario] cierre', e.message);
+      // Reintento mínimo (sin detalle) para no dejar el registro colgado en 'en_progreso' — al menos
+      // queda el resumen (el envío ya ocurrió; el detalle es secundario).
+      try { await envRef.update({ estado: 'completado_sin_detalle', enviados, sinTelefono, errores, finTs: new Date().toISOString() }); }
+      catch (e2) { console.error('[enviar_itinerario] cierre-min', e2.message); }
+    }
 
     return res.status(200).json({ enviados, total: msgs.length, actualizacion, prueba: !!prueba, sinTelefono, errores, detalle });
   } catch (e) {
