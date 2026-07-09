@@ -4,6 +4,7 @@
 // bot de asistencia a diario); si falla y hay plantilla aprobada, cae a plantilla.
 // Requisito: la versión debe estar CONFIRMADA. Solo ADMIN/SUPER_ADMIN. Registra cada
 // envío en `itinerario_envios` (auditoría + detección de "actualización" + resumen).
+import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 import { getDb } from './_lib/firestore.js';
 import { enviarTexto, enviarPlantilla } from './_lib/whatsapp.js';
@@ -49,7 +50,7 @@ export default async function handler(req, res) {
     try { user = await requireAdmin(idToken, db); }
     catch (e) { return res.status(e.code || 401).json({ error: e.msg || 'Sesión no válida.' }); }
 
-    const { idIti, version, prueba, telefonoPrueba } = req.body || {};
+    const { idIti, version, prueba, telefonoPrueba, preview, previewHash: clientHash } = req.body || {};
     if (!idIti || version == null) return res.status(400).json({ error: 'Falta idIti o version.' });
     const to_prueba = String(telefonoPrueba || '').replace(/\D/g, '');
     if (prueba && to_prueba.length < 9) return res.status(400).json({ error: 'Número de prueba inválido.' });
@@ -88,6 +89,33 @@ export default async function handler(req, res) {
       if (t.length >= 9) telById[d.id] = t;
     });
 
+    // Hash del contenido exacto a enviar (por técnico): el preview lo devuelve y el envío real lo
+    // reenvía; si los datos (bloques/actividades) cambiaron entre "ver" y "enviar", no coincide y
+    // se aborta → garantiza que lo enviado sea lo que se previsualizó (idea de Codex).
+    const previewHash = crypto.createHash('sha1').update(JSON.stringify(msgs.map((m) => [m.tecnicoId, m.texto]))).digest('hex');
+
+    // PREVIEW: devuelve los mensajes por técnico SIN enviar ni registrar en itinerario_envios.
+    // Usa la MISMA carga y la MISMA función (mensajesPorTecnico) que el envío real → lo que se
+    // ve en pantalla es exactamente lo que se mandará. Solo expone si el técnico tiene teléfono
+    // (no el número). Requiere versión confirmada (gate de arriba), igual que enviar.
+    if (preview) {
+      const mensajes = msgs.map((m) => ({
+        tecnicoId: m.tecnicoId, nombre: m.nombre, texto: m.texto,
+        nTareas: m.nTareas, sedes: m.sedes || [], tieneTelefono: !!telById[m.tecnicoId],
+      }));
+      return res.status(200).json({
+        preview: true, previewHash, total: mensajes.length, actualizacion,
+        sinTelefono: mensajes.filter((x) => !x.tieneTelefono).length, mensajes,
+      });
+    }
+    // Envío real: SIEMPRE debe venir de una vista previa (garantiza que se envíe lo previsualizado).
+    if (!clientHash) {
+      return res.status(400).json({ error: 'Genera la vista previa antes de enviar (falta la verificación de contenido).' });
+    }
+    if (clientHash !== previewHash) {
+      return res.status(409).json({ error: 'El itinerario cambió desde la vista previa. Vuelve a abrirla antes de enviar.' });
+    }
+
     // 6) Auditoría PRE-envío: se crea el registro ANTES del loop (incluye pruebas, con target
     // enmascarado). Si el proceso muere a mitad, queda traza → no se puede "reintentar limpio"
     // sin dejar rastro (mitiga duplicados ciegos por reintento).
@@ -97,7 +125,7 @@ export default async function handler(req, res) {
       await envRef.set({
         idIti, version: Number(version), fecha: iti.fecha || '', fechaStr,
         actualizacion, prueba: !!prueba, ...(prueba ? { pruebaTarget: masked } : {}),
-        enviadoPor: user.email, ts: new Date().toISOString(), estado: 'en_progreso', totalTecnicos: msgs.length,
+        previewHash, enviadoPor: user.email, ts: new Date().toISOString(), estado: 'en_progreso', totalTecnicos: msgs.length,
       });
     } catch (e) {
       // Sin traza previa NO enviamos: la auditoría es requisito para no arriesgar duplicados ciegos.
@@ -111,7 +139,7 @@ export default async function handler(req, res) {
     const detalle = [];
     for (const m of msgs) {
       const to = prueba ? to_prueba : telById[m.tecnicoId];
-      if (!to) { detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: 'sin_telefono', nTareas: m.nTareas }); continue; }
+      if (!to) { detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: 'sin_telefono', nTareas: m.nTareas, texto: (m.texto || '').slice(0, 4000) }); continue; }
       let ok = false, canal = 'texto';
       try { ok = await enviarTexto(to, m.texto); } catch { /* intenta plantilla abajo */ }
       if (!ok && plantilla) {
@@ -119,7 +147,7 @@ export default async function handler(req, res) {
           .map((x) => ({ type: 'text', text: (String(x || '').replace(/\s+/g, ' ').trim() || '—').slice(0, 600) }));
         try { ok = await enviarPlantilla(to, plantilla, idioma, [{ type: 'body', parameters: params }]); canal = 'plantilla'; } catch { /* queda error */ }
       }
-      detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: ok ? 'enviado' : 'error', nTareas: m.nTareas, ...(ok ? { canal } : {}) });
+      detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: ok ? 'enviado' : 'error', nTareas: m.nTareas, texto: (m.texto || '').slice(0, 4000), ...(ok ? { canal } : {}) });
     }
     const enviados = detalle.filter((d) => d.estado === 'enviado').length;
     const sinTelefono = detalle.filter((d) => d.estado === 'sin_telefono').length;
@@ -128,7 +156,13 @@ export default async function handler(req, res) {
     // 8) Cerrar la auditoría con el resultado real (si esto falla, el doc 'en_progreso' queda como traza).
     try {
       await envRef.update({ estado: 'completado', enviados, sinTelefono, errores, detalle, finTs: new Date().toISOString() });
-    } catch (e) { console.error('[enviar_itinerario] cierre', e.message); }
+    } catch (e) {
+      console.error('[enviar_itinerario] cierre', e.message);
+      // Reintento mínimo (sin detalle) para no dejar el registro colgado en 'en_progreso' — al menos
+      // queda el resumen (el envío ya ocurrió; el detalle es secundario).
+      try { await envRef.update({ estado: 'completado_sin_detalle', enviados, sinTelefono, errores, finTs: new Date().toISOString() }); }
+      catch (e2) { console.error('[enviar_itinerario] cierre-min', e2.message); }
+    }
 
     return res.status(200).json({ enviados, total: msgs.length, actualizacion, prueba: !!prueba, sinTelefono, errores, detalle });
   } catch (e) {

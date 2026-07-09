@@ -715,6 +715,7 @@ function renderItinerario(iti, bloques, fecha) {
         ${!MA.isAdmin() ? '' : (iti.confirmado
           ? '<button class="btn iti-export" onclick="enviarItinerarioTecnicos()" title="Enviar a cada técnico sus tareas por WhatsApp">📲 Enviar a técnicos</button>'
           : '<button class="btn iti-confirm-btn" onclick="confirmarVersion()" title="Marcar esta versión como final para poder enviarla a los técnicos">✓ Confirmar versión</button>')}
+        ${!MA.isAdmin() ? '' : `<button class="btn iti-export" onclick="verHistorialEnvios('${escI(iti.id)}')" title="Ver el historial de envíos de este itinerario">🕘 Historial</button>`}
         <button class="btn btn-danger iti-del" onclick="openDeleteModal()" title="Eliminar">🗑 Eliminar</button>
         <button class="btn btn-primary iti-edit" onclick="editarItinerario()">✏️ Editar / Nueva versión</button>
       </div>
@@ -757,7 +758,7 @@ function renderBloqueCard(b, i) {
           <div class="bloque-detalle">${escI(b.detalle) || '—'}</div>
         </div>
         <div class="bloque-field full">
-          <div class="bloque-field-label">Actividades de mtto. <a class="mant-edit-btn" style="cursor:pointer;font-weight:700;color:var(--blue,#1B3F8B)" data-abrir-acts="${b.nBloque}">🔧 Asignar</a></div>
+          <div class="bloque-field-label">Actividades de mtto. ${_versionSellada() ? '<span style="font-size:10px;color:var(--muted2,#667)" title="Versión confirmada — editá / creá una versión nueva para cambiar las actividades">🔒 confirmada</span>' : '<a class="mant-edit-btn" style="cursor:pointer;font-weight:700;color:var(--blue,#1B3F8B)" data-abrir-acts="' + b.nBloque + '">🔧 Asignar</a>'}</div>
           <div class="plan-chips" data-plan-blq="${b.nBloque}"></div>
         </div>
       </div>
@@ -898,7 +899,7 @@ function renderPlanChips(){
         const chips = porEq[ek]
           .sort((a,b) => String(a.tarea).localeCompare(String(b.tarea)))
           .map(p => '<span class="plan-chip" data-tec="'+_pEsc(k)+'" data-eq="'+_pEsc(nom + (area ? ' · ' + area : ''))+'" title="'+_pEsc(p.tarea)+'">🔧 '+_pEsc(p.tarea)
-            + (window.MA && MA.can('editar','itinerario') ? ' <a data-plan-del="'+_pEsc(p._id)+'" title="Quitar del plan">✕</a>' : '')
+            + (window.MA && MA.can('editar','itinerario') && !_versionSellada() ? ' <a data-plan-del="'+_pEsc(p._id)+'" title="Quitar del plan">✕</a>' : '')
             + '</span>').join('');
         return '<div style="margin:2px 0 4px 10px"><div style="font-size:10px;color:var(--accent,#1a2540);font-weight:600">❄️ '+_pEsc(nom)+(area?' <span style="color:var(--muted2,#667);font-weight:400">· 📍 '+_pEsc(area)+'</span>':'')+'</div><div class="plan-chips" style="margin-top:2px">'+chips+'</div></div>';
       }).join('');
@@ -908,14 +909,129 @@ function renderPlanChips(){
     }).join('');
   });
 }
+// Una versión CONFIRMADA queda sellada: no se asignan/quitan actividades manualmente sobre ella
+// (para cambiarlas hay que "✏️ Editar / Nueva versión" → v+1 en borrador). El barrido de ejecución
+// NO pasa por acá, así que las actividades ya hechas siguen saliendo del plan en automático.
+function _versionSellada(){ return !!(currentIti && currentIti.confirmado); }
+function _avisoSellada(){ toast('🔒 Versión confirmada. Usá "✏️ Editar / Nueva versión" para cambiar las actividades.', 'err'); }
+// Revalida el sello contra Firestore justo antes de escribir: cubre el caso colaborativo
+// (Adrián confirma la versión en otra pestaña mientras acá seguía como borrador en memoria).
+// Contrato: devuelve true SOLO si se confirmó que la versión sigue siendo un borrador editable;
+// en los casos no-editables (sellada o no-verificable) ya avisa al usuario → el llamador solo hace return.
+async function _sigueEditable(){
+  if(!currentIti) return false;
+  if(currentIti.confirmado){ _avisoSellada(); return false; }
+  try{
+    const { getDoc, doc } = window.__fb;
+    const s = await getDoc(doc(window.__db, 'bd_itinerarios', currentIti.id+'_v'+currentIti.version));
+    if(s.exists && s.data().confirmado){
+      currentIti.confirmado = true;            // sello detectado en otra pestaña → reflejá el estado real
+      _avisoSellada();
+      // Refrescá la UI para que aparezca el 🔒 y se oculten los ✕ sin esperar otra acción
+      try{ renderItinerario(currentIti, window._bloquesDia || [], document.getElementById('fecha-input').value); }catch(_e){}
+      return false;
+    }
+  }catch(e){
+    // fail-closed: si no se puede revalidar el sello (red/permisos/offline) NO escribimos sobre datos
+    // compartidos; pedimos reintentar (la escritura que seguía habría fallado igual por lo mismo).
+    toast('No se pudo verificar si la versión sigue editable. Reintentá.', 'err');
+    return false;
+  }
+  // Llegar acá = doc existe y NO confirmado, o s.exists===false (versión borrada/inexistente
+  // remotamente, caso rarísimo). Se deja editar: el invariant es que una versión cargada existe;
+  // fail-closed en not-found bloquearía itinerarios viejos con otro esquema de id, y el peor daño
+  // de ese caso extremo sería un mtto_plan huérfano (no corrupción), que el filtrado por versión ignora.
+  return true;
+}
 async function quitarPlan(id){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  if(_versionSellada()){ _avisoSellada(); return; }
   try{
+    if(!(await _sigueEditable())) return;
     await window.__db.collection('mtto_plan').doc(id).delete();
     planDia = planDia.filter(p => p._id !== id);
     renderPlanChips();
     toast('Actividad quitada del plan','ok');
   }catch(e){ toast('Error: '+e.message,'err'); }
+}
+
+// Resuelve la sede REAL de una tienda de bloque (puede venir "RIPLEY PLAZA NORTE" con el
+// cliente adelante; el inventario guarda solo "PLAZA NORTE"): match exacto, o el sufijo MÁS
+// LARGO que sea una sede real del inventario (así "MAC PLAZA NORTE" no se confunde con "PLAZA
+// NORTE"). Devuelve '' si no resuelve. Compartido por pendientesDeSede y la migración (3b).
+function _resolverSede(tiendaCruda, sedesInv){
+  const t = String(tiendaCruda||'').toUpperCase().trim();
+  if(sedesInv.has(t)) return t;
+  const toks = t.split(/\s+/);
+  for(let i=1;i<toks.length;i++){
+    const suf = toks.slice(i).join(' ');
+    if(sedesInv.has(suf)) return suf;
+  }
+  return '';
+}
+
+// Etapa 3b — al crear una versión NUEVA de un itinerario ya existente, ofrecer MOVER las
+// actividades de mtto asignadas en la versión anterior a la nueva, remapeando el bloque por
+// sede (decisión de José: "automática con confirmación"). Las que no encajen (su sede ya no
+// está en la v nueva) NO se tocan → quedan re-seleccionables como pendientes (flujo actual) y
+// se avisan. El doc-id de mtto_plan es determinístico (EQ|PERIODO|AÑO|IDX): actualizar sus
+// campos itiVersion/nBloque MUEVE la actividad, no la duplica.
+async function _migrarPlanAVersionNueva(idIti, vNueva, bloques){
+  try{
+    const { getDocs, getDoc, collection, writeBatch, doc } = window.__fb;
+    // Todas las actividades VIVAS del itinerario en cualquier versión anterior. El doc-id de
+    // mtto_plan es determinístico (EQ|PERIODO|AÑO|IDX, SIN versión) → hay una sola por actividad,
+    // con la itiVersion de su última asignación. Se buscan TODAS las versiones < vNueva (no solo
+    // vNueva-1) para arrastrar también lo que quedó sin migrar en ciclos previos.
+    const planSnap = await window.__db.collection('mtto_plan').where('itiId','==',idIti).get();
+    let planes = planSnap.docs.filter(pd => (Number(pd.data().itiVersion)||0) < vNueva);
+    if(!planes.length) return;   // nada asignado en versiones anteriores: no preguntar
+    // Sede real de cada bloque de la v nueva → primer nBloque de esa sede (nBloque = i+1, igual que el guardado)
+    const invS = await getDocs(collection(window.__db, 'inventario'));
+    const sedesInv = new Set(invS.docs.map(d => (d.data().sede||'').toUpperCase()).filter(Boolean));
+    // Excluir las YA EJECUTADAS (mismo criterio que el barrido de cargarPlanDia): una actividad
+    // hecha no debe re-aparecer en la versión nueva aunque el sweep aún no la haya limpiado. Se
+    // lee mantenimiento/{sede|periodo|anio}.tareaStatus, indexado por eq_id (true = equipo
+    // completo, o {tareaIdx:true}).
+    const claveDe = p => (p.sede||'')+'|'+(p.periodo||'')+'|'+(p.anio||'');
+    const claves = [...new Set(planes.map(pd => claveDe(pd.data())))].filter(k => !k.startsWith('|'));
+    const tsPorClave = {};
+    const mSnaps = await Promise.all(claves.map(k => getDoc(doc(window.__db, 'mantenimiento', k))));
+    mSnaps.forEach((sp, i) => {
+      const dd = sp.exists ? sp.data() : {};
+      tsPorClave[claves[i]] = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } })(dd.tareaStatus);
+    });
+    planes = planes.filter(pd => {
+      const p = pd.data();
+      const st = (tsPorClave[claveDe(p)] || {})[p.eq_id];
+      const ejecutada = st === true || (st && typeof st === 'object' && st[p.tareaIdx] === true);
+      return !ejecutada;
+    });
+    if(!planes.length) return;   // todas las anteriores ya se ejecutaron: nada que migrar
+    if(!confirm('Hay '+planes.length+' actividad(es) de mantenimiento asignadas a técnicos en versiones anteriores.\n\n'
+      + '¿Moverlas a la nueva v'+vNueva+'?\n\nLas que ya no encajen (su sede no está en la versión nueva) quedarán pendientes para re-asignar a mano.')) return;
+    const sedeABloque = {};
+    bloques.forEach((b, i) => {
+      const s = _resolverSede(b.tienda, sedesInv);
+      if(s && sedeABloque[s] == null) sedeABloque[s] = i + 1;
+    });
+    // Clasifica: las que tienen bloque destino se mueven; el resto son huérfanas. La sede del
+    // plan se re-resuelve con _resolverSede (normaliza case/espacios; docs viejos no dan huérfana falsa).
+    const mover = [], huerfanas = [];
+    planes.forEach(pd => {
+      const nB = sedeABloque[_resolverSede(pd.data().sede, sedesInv)];
+      (nB == null ? huerfanas : mover).push({ id: pd.id, nBloque: nB });
+    });
+    // Escritura por lotes de ≤450 (límite de 500 ops de Firestore)
+    for(let i=0;i<mover.length;i+=450){
+      const batch = writeBatch(window.__db);
+      mover.slice(i, i+450).forEach(m => batch.update(doc(window.__db, 'mtto_plan', m.id), { itiVersion: vNueva, nBloque: m.nBloque }));
+      await batch.commit();
+    }
+    let msg = '🔄 '+mover.length+' actividad(es) movida(s) a la v'+vNueva;
+    if(huerfanas.length) msg += ' · ⚠️ '+huerfanas.length+' quedaron pendientes (su sede no está en la versión nueva)';
+    toast(msg, huerfanas.length ? 'err' : 'ok');
+  }catch(e){ toast('No se pudieron migrar las actividades: '+(e.message||e), 'err'); }
 }
 
 // Pendientes de la sede (efectivas − hechas − planificadas en el período)
@@ -930,19 +1046,9 @@ async function pendientesDeSede(sede, fecha){
   const plantillas = {}, plantillasMin = {};
   tcS.docs.forEach(d => { const dd = d.data(); plantillas[dd.tipo] = dd.tareas || []; plantillasMin[dd.tipo] = dd.minutos || []; });
   const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
-  // La tienda del bloque puede traer el cliente adelante ("RIPLEY PLAZA NORTE") y el
-  // inventario guarda solo la sede ("PLAZA NORTE"): match exacto o el sufijo MÁS LARGO
-  // que sea una sede real (así "MAC PLAZA NORTE" no se confunde con "PLAZA NORTE").
+  // Sede real del bloque (ver _resolverSede: exacto o sufijo más largo que sea sede del inventario)
   const sedesInv = new Set(invS.docs.map(d => (d.data().sede||'').toUpperCase()).filter(Boolean));
-  const tRaw = String(sede||'').toUpperCase().trim();
-  let target = sedesInv.has(tRaw) ? tRaw : null;
-  if (!target) {
-    const toks = tRaw.split(/\s+/);
-    for (let i = 1; i < toks.length && !target; i++) {
-      const suf = toks.slice(i).join(' ');
-      if (sedesInv.has(suf)) target = suf;
-    }
-  }
+  const target = _resolverSede(sede, sedesInv) || null;
   const out = [];
   window._paSede = target || '';   // la sede REAL: la usan asignación y badges
   window._paZonaLibre = !target;   // zona tipeada/fuera del inventario: mensaje específico
@@ -1015,6 +1121,7 @@ async function pendientesDeSede(sede, fecha){
 
 async function abrirPanelActs(nBloque, tienda){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  if(_versionSellada()){ _avisoSellada(); return; }
   _panelBloque = nBloque;
   window._paTienda = String(tienda||'').trim();   // para vetar drops a bloques de OTRA sede
   _paSel.clear(); _paActualizarBoton();   // selección limpia al abrir (Council)
@@ -1095,6 +1202,7 @@ async function asignarSeleccionadas(){
 let _paBusy = false;   // lock: doble click en Asignar no debe duplicar el batch (Council)
 async function _finalizarMulti(pids, nBloque, tecs){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  if(_versionSellada()){ _avisoSellada(); return; }
   if (nBloque == null) { toast('El panel se cerró — vuelve a abrir 🔧 Asignar','err'); return; }
   if (_paBusy) return;
   if (pids.length > 450) { toast('Máximo 450 actividades por lote', 'err'); return; }
@@ -1121,6 +1229,7 @@ async function _finalizarMulti(pids, nBloque, tecs){
       });
       nuevos.push({ _id: p.pid, eq_id: p.eq_id, nombreEq: p.nombreEq, area: p.area || '', tarea: p.tarea, minutos: p.minutos ?? null, nBloque, fecha, tecnicoIds: tk.tecnicoIds, tecnicos: tk.tecnicos, modo: tk.modo, tecnicoNombre: tk.tecnicoNombre });
     });
+    if(!(await _sigueEditable())) return;
     await batch.commit();
     const ids = new Set(nuevos.map(x => x._id));
     planDia = planDia.filter(x => !ids.has(x._id)).concat(nuevos);
@@ -1144,6 +1253,7 @@ function personalDeBloque(n){
 // La actividad se asigna a UN TÉCNICO del bloque (pedido del usuario): con un solo
 // técnico va directo; con varios, mini-selector; sin personal, queda a nivel de bloque.
 async function asignarPlan(pid, nBloqueDestino){
+  if(_versionSellada()){ _avisoSellada(); return; }
   const p = (window._paPend||{})[pid]; if(!p) return;
   const nBloque = nBloqueDestino != null ? nBloqueDestino : _panelBloque;
   if(nBloque == null) return;
@@ -1163,12 +1273,14 @@ async function asignarPlan(pid, nBloqueDestino){
 
 async function _finalizarAsignacion(p, nBloque, tecs){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
+  if(_versionSellada()){ _avisoSellada(); return; }
   if (nBloque == null) { toast('El panel se cerró — vuelve a abrir 🔧 Asignar','err'); return; }
   const fecha = document.getElementById('fecha-input').value;
   const { periodo, anio } = periodoDe(fecha);
   let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
   const tk = _tecInfo(tecs);   // arrays + escalares retrocompat + modo + label de la cuadrilla
   try{
+    if(!(await _sigueEditable())) return;
     await window.__db.collection('mtto_plan').doc(p.pid).set({
       eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tareaIdx: p.idx, tarea: p.tarea,
       minutos: p.minutos ?? null,
@@ -1187,7 +1299,7 @@ async function _finalizarAsignacion(p, nBloque, tecs){
 
 // Drag & drop (desktop): card del panel → cualquier bloque-card
 function paDragStart(ev){ ev.dataTransfer.setData('text/plain', ev.target.dataset.pid); ev.dataTransfer.effectAllowed = 'copy'; }
-function paDragOver(ev){ ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; ev.currentTarget.classList.add('drop-hover'); }
+function paDragOver(ev){ if(_versionSellada()) return; ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; ev.currentTarget.classList.add('drop-hover'); }
 function paDragLeave(ev){ ev.currentTarget.classList.remove('drop-hover'); }
 function paDrop(ev){
   ev.preventDefault(); ev.currentTarget.classList.remove('drop-hover');
@@ -1337,7 +1449,7 @@ function renderModal(fecha, d, iti) {
     html += '<option value="CANCELADO"' + (b.estado==='CANCELADO'?' selected':'') + '>CANCELADO</option>';
     html += '</select></div>';
     html += '<div class="form-group full"><div class="form-label">Detalle de trabajo</div>';
-    html += '<textarea class="form-textarea" id="bf-detalle-' + i + '" placeholder="Describe las actividades...">' + (b.detalle||'') + '</textarea></div>';
+    html += '<textarea class="form-textarea" id="bf-detalle-' + i + '" placeholder="Describe las actividades...">' + escI(b.detalle||'') + '</textarea></div>';
     html += '</div>';
     html += '<div class="bloque-sep">Personal asignado</div>';
     html += '<div id="personal-slots-' + i + '">' + personalSlotsHtml + '</div>';
@@ -1482,19 +1594,17 @@ async function saveItinerario() {
       });
     });
     await batch.commit();
-    const d = { ok: true };
-    if (d.ok) {
-      toast('Itinerario guardado ✓', 'ok');
-      closeModal();
-      await loadFecha(fecha);
-      const { getDocs, collection } = window.__fb;
-      const iSnap = await getDocs(collection(window.__db, 'bd_itinerarios'));
-      const rRes = { itinerarios: iSnap.docs.map(d=>d.data()).sort((a,b)=>{ const fa=a.fecha&&a.fecha.toDate?a.fecha.toDate():a.fecha&&a.fecha.seconds?new Date(a.fecha.seconds*1000):new Date(a.fecha); const fb=b.fecha&&b.fecha.toDate?b.fecha.toDate():b.fecha&&b.fecha.seconds?new Date(b.fecha.seconds*1000):new Date(b.fecha); return fb-fa; }).slice(0,30) };
-      renderRecientes(rRes.itinerarios || []);
-    } else {
-      toast('Error guardando: ' + (d.error || ''), 'err');
-      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Guardar itinerario'; }
-    }
+    toast('Itinerario guardado ✓', 'ok');
+    closeModal();
+    // Etapa 3b: si esto creó una versión NUEVA (v≥2) de un itinerario existente, ofrecer mover
+    // las actividades de mtto de la versión anterior a la nueva ANTES de recargar la vista
+    // (así el toast de la migración queda como el último visible y loadFecha trae los chips ya migrados).
+    if (version >= 2) { await _migrarPlanAVersionNueva(idIti, version, bloques); }
+    await loadFecha(fecha);
+    const { getDocs, collection } = window.__fb;
+    const iSnap = await getDocs(collection(window.__db, 'bd_itinerarios'));
+    const rRes = { itinerarios: iSnap.docs.map(d=>d.data()).sort((a,b)=>{ const fa=a.fecha&&a.fecha.toDate?a.fecha.toDate():a.fecha&&a.fecha.seconds?new Date(a.fecha.seconds*1000):new Date(a.fecha); const fb=b.fecha&&b.fecha.toDate?b.fecha.toDate():b.fecha&&b.fecha.seconds?new Date(b.fecha.seconds*1000):new Date(b.fecha); return fb-fa; }).slice(0,30) };
+    renderRecientes(rRes.itinerarios || []);
   } catch(e) {
     toast('Error de conexión', 'err');
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Guardar itinerario'; }
@@ -1682,22 +1792,93 @@ async function confirmarVersion() {
 // ── ENVIAR ITINERARIO POR TÉCNICO ───────────────────────────────────────────────
 // Llama al backend, que manda a CADA técnico solo sus tareas (individuales + cuadrilla)
 // por WhatsApp. Requiere versión confirmada. Ofrece modo PRUEBA (a un número) antes del real.
+// Paso 1: VISTA PREVIA. Pide al backend (modo preview) los mensajes que se enviarían — la MISMA
+// carga/función que el envío real, para que lo que ves sea lo que se manda — y los muestra en el
+// modal pv-overlay. El envío real recién se dispara desde ahí (_pvEnviarReal / _pvEnviarPrueba).
+let _pvIti = null, _pvHash = null, _pvSending = false;
 async function enviarItinerarioTecnicos() {
   if(!MA.isAdmin()){ toast('Solo un admin puede enviar el itinerario', 'err'); return; }
   const iti = currentIti;
   if(!iti) return;
   if(!iti.confirmado){ toast('Confirma la versión antes de enviarla a los técnicos', 'err'); return; }
-  const puedeProbar = MA.isSuperAdmin();
-  const modo = prompt(
-    'ENVIAR ITINERARIO A LOS TÉCNICOS\n\n'
-    + (puedeProbar ? '• PRUEBA: escribe un número de WhatsApp (ej: 51987654321) y recibirás tú todos los mensajes.\n' : '')
-    + '• ENVÍO REAL a cada técnico: deja el campo vacío y acepta.', '');
-  if(modo === null) return;                                  // canceló
-  const prueba = modo.trim() !== '';
-  if(prueba && !puedeProbar){ toast('El modo prueba es solo para super admin', 'err'); return; }
-  const telefonoPrueba = modo.replace(/\D/g, '');
-  if(prueba && telefonoPrueba.length < 9){ toast('Número de prueba inválido', 'err'); return; }
-  if(!prueba && !confirm('¿Enviar el itinerario '+iti.id+' v'+iti.version+' por WhatsApp a TODOS los técnicos con tareas?\n\nCada uno recibe SOLO lo suyo (individuales y de cuadrilla).')) return;
+  try {
+    const user = firebase.auth().currentUser;
+    if(!user){ toast('Sesión no válida', 'err'); return; }
+    const idToken = await user.getIdToken();
+    toast('Generando vista previa…', 'ok');
+    const res = await fetch('/api/enviar_itinerario', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+idToken },
+      body: JSON.stringify({ idIti: iti.id, version: Number(iti.version), preview: true }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if(!res.ok){ toast('Error: '+(j.error || ('HTTP '+res.status)), 'err'); return; }
+    if(!(j.mensajes||[]).length){ toast(j.aviso || 'No hay técnicos con tareas en esta versión.', 'err'); return; }
+    mostrarPreviewEnvio(iti, j);
+  } catch(e){ toast('No se pudo generar la vista previa: '+(e.message||e), 'err'); }
+}
+
+// Llena y abre el modal de vista previa. Usa textContent para el cuerpo del mensaje (anti-XSS:
+// los nombres de sedes/actividades vienen de Firestore).
+function mostrarPreviewEnvio(iti, data) {
+  _pvIti = iti;
+  _pvHash = data.previewHash || null;
+  _pvSending = false; _pvBotones(false);
+  document.getElementById('pv-head').textContent = iti.id + ' · v' + iti.version + (data.actualizacion ? ' · 🔄 actualización' : ' · primer envío');
+  document.getElementById('pv-sub').textContent = (data.total||0) + ' técnico(s) con tareas' + (data.sinTelefono ? ' · ⚠️ ' + data.sinTelefono + ' sin teléfono' : '');
+  const body = document.getElementById('pv-body');
+  body.innerHTML = '';
+  (data.mensajes||[]).forEach(m => {
+    const card = document.createElement('div');
+    card.style.cssText = 'border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden';
+    const h = document.createElement('div');
+    h.style.cssText = 'background:var(--surface2,#f2f5fb);padding:6px 10px;font-size:12px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px';
+    const nom = document.createElement('span');
+    nom.textContent = m.nombre + (m.nTareas ? ' · ' + m.nTareas + ' act.' : '');
+    h.appendChild(nom);
+    if(!m.tieneTelefono){
+      const warn = document.createElement('span');
+      warn.style.cssText = 'color:var(--red,#c0392b);font-size:10px;font-weight:600';
+      warn.textContent = '⚠️ sin teléfono — no le llegará';
+      h.appendChild(warn);
+    }
+    const pre = document.createElement('pre');
+    pre.style.cssText = 'margin:0;padding:10px;font-size:11px;white-space:pre-wrap;word-break:break-word;font-family:var(--mono,monospace);background:var(--surface);color:var(--text)';
+    pre.textContent = m.texto;
+    card.appendChild(h); card.appendChild(pre);
+    body.appendChild(card);
+  });
+  document.getElementById('pv-prueba').style.display = MA.isSuperAdmin() ? '' : 'none';
+  document.getElementById('pv-overlay').style.display = 'flex';
+}
+function _pvCerrar(force){ if(_pvSending && !force) return; document.getElementById('pv-overlay').style.display = 'none'; _pvIti = null; _pvHash = null; }
+function _pvBotones(disabled){
+  const e = document.getElementById('pv-enviar'), p = document.getElementById('pv-prueba');
+  if(e) e.disabled = disabled;
+  if(p) p.disabled = disabled;
+}
+function _pvEnviarReal(){
+  if(_pvSending) return;
+  const iti = _pvIti; if(!iti) return;
+  if(!confirm('¿Enviar el itinerario '+iti.id+' v'+iti.version+' por WhatsApp a TODOS los técnicos con tareas?\n\nCada uno recibe SOLO lo suyo (individuales y de cuadrilla).')) return;
+  _enviarItinerarioReal(false, '');
+}
+function _pvEnviarPrueba(){
+  if(_pvSending) return;
+  if(!MA.isSuperAdmin()){ toast('El modo prueba es solo para super admin', 'err'); return; }
+  const num = prompt('PRUEBA — número de WhatsApp que recibirá TODOS los mensajes (ej: 51987654321):', '');
+  if(num === null) return;
+  const tel = String(num).replace(/\D/g, '');
+  if(tel.length < 9){ toast('Número de prueba inválido', 'err'); return; }
+  _enviarItinerarioReal(true, tel);
+}
+// Paso 2: ENVÍO REAL (desde el modal de preview). prueba=true manda todo a un número (solo super).
+// _pvSending + botones deshabilitados evitan envíos duplicados por doble clic; previewHash asegura
+// que se envíe exactamente lo previsualizado (el backend rechaza con 409 si los datos cambiaron).
+async function _enviarItinerarioReal(prueba, telefonoPrueba) {
+  const iti = _pvIti; if(!iti) return;
+  if(_pvSending) return;
+  _pvSending = true; _pvBotones(true);
   try {
     const user = firebase.auth().currentUser;
     if(!user){ toast('Sesión no válida', 'err'); return; }
@@ -1706,7 +1887,7 @@ async function enviarItinerarioTecnicos() {
     const res = await fetch('/api/enviar_itinerario', {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+idToken },
-      body: JSON.stringify({ idIti: iti.id, version: Number(iti.version), prueba, telefonoPrueba }),
+      body: JSON.stringify({ idIti: iti.id, version: Number(iti.version), prueba, telefonoPrueba, previewHash: _pvHash }),
     });
     const j = await res.json().catch(() => ({}));
     if(!res.ok){ toast('Error: '+(j.error || ('HTTP '+res.status)), 'err'); return; }
@@ -1718,8 +1899,79 @@ async function enviarItinerarioTecnicos() {
     if(errs.length)   msg += ' · ❌ error: '+errs.join(', ');
     toast(msg, (sinTel.length||errs.length) ? 'err' : 'ok');
     console.log('[enviar_itinerario]', j);
+    if(!prueba) _pvCerrar(true);   // tras el envío real cierro el modal (force: aún está _pvSending); tras prueba lo dejo abierto
   } catch(e){ toast('No se pudo enviar: '+(e.message||e), 'err'); }
+  finally { _pvSending = false; _pvBotones(false); }
 }
+
+// ── HISTORIAL DE ENVÍOS (Etapa 2 de trazabilidad) ──────────────────────────────
+// Lista los envíos registrados en itinerario_envios de este itinerario (todas las versiones),
+// con el snapshot del mensaje que recibió cada técnico (lo que realmente se mandó).
+async function verHistorialEnvios(idIti){
+  if(!MA.isAdmin()){ toast('Solo un admin puede ver el historial', 'err'); return; }
+  const body = document.getElementById('he-body');
+  body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted2)">Cargando…</div>';
+  document.getElementById('he-overlay').style.display = 'flex';
+  try {
+    const snap = await window.__db.collection('itinerario_envios').where('idIti','==',idIti).get();
+    // Orden en cliente (ts desc) para no requerir índice compuesto.
+    const envios = snap.docs.map(d => d.data()).sort((a,b) => String(b.ts||'').localeCompare(String(a.ts||'')));
+    body.innerHTML = '';
+    if(!envios.length){ body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted2)">Este itinerario todavía no se ha enviado.</div>'; return; }
+    envios.forEach(e => body.appendChild(_heCard(e)));
+  } catch(err){
+    body.innerHTML = '';
+    const p = document.createElement('div'); p.style.cssText = 'padding:20px;color:var(--red,#c0392b)';
+    p.textContent = 'No se pudo cargar el historial: ' + (err.message || err);
+    body.appendChild(p);
+  }
+}
+function _heChip(txt, css){ const s = document.createElement('span'); s.style.cssText = 'font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;'+css; s.textContent = txt; return s; }
+function _heCard(e){
+  const card = document.createElement('div');
+  card.style.cssText = 'border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden';
+  const head = document.createElement('div');
+  head.style.cssText = 'padding:8px 12px;background:var(--surface2,#f2f5fb);font-size:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center';
+  const ver = document.createElement('b'); ver.textContent = 'v'+(e.version!=null?e.version:'?'); head.appendChild(ver);
+  const f = document.createElement('span'); f.style.color = 'var(--muted2)'; f.textContent = e.ts ? new Date(e.ts).toLocaleString('es-PE') : ''; head.appendChild(f);
+  if(e.prueba) head.appendChild(_heChip('🧪 prueba', 'background:#fff3cd;color:#8a6d00'));
+  head.appendChild(_heChip(e.actualizacion ? '🔄 actualización' : 'primer envío', 'background:#e8eef8;color:#1B3F8B'));
+  if(e.estado && e.estado !== 'completado') head.appendChild(_heChip('⚠️ '+e.estado, 'background:#fde2e2;color:#c0392b'));
+  const total = e.totalTecnicos!=null ? e.totalTecnicos : (e.detalle||[]).length;
+  head.appendChild(_heChip('✅ '+(e.enviados!=null?e.enviados:0)+'/'+total, 'background:#e6f4ea;color:#1e7e34'));
+  if(e.sinTelefono) head.appendChild(_heChip('⚠️ '+e.sinTelefono+' sin tel', 'background:#fff3cd;color:#8a6d00'));
+  if(e.errores) head.appendChild(_heChip('❌ '+e.errores, 'background:#fde2e2;color:#c0392b'));
+  card.appendChild(head);
+  const by = document.createElement('div'); by.style.cssText = 'padding:4px 12px;font-size:10px;color:var(--muted2)';
+  by.textContent = 'por ' + (e.enviadoPor||'—') + (e.prueba && e.pruebaTarget ? (' · a '+e.pruebaTarget) : '');
+  card.appendChild(by);
+  const det = e.detalle || [];
+  if(det.length){
+    const dwrap = document.createElement('details'); dwrap.style.cssText = 'padding:0 12px 8px';
+    const sum = document.createElement('summary'); sum.style.cssText = 'font-size:11px;color:var(--blue,#1B3F8B);cursor:pointer;padding:4px 0';
+    sum.textContent = 'Ver mensajes (' + det.length + ' técnico(s))';
+    dwrap.appendChild(sum);
+    det.forEach(d => {
+      const ic = d.estado==='enviado' ? '✅' : d.estado==='sin_telefono' ? '⚠️' : '❌';
+      const t = document.createElement('details'); t.style.cssText = 'margin:4px 0;border:1px solid var(--border);border-radius:6px';
+      const ts = document.createElement('summary'); ts.style.cssText = 'font-size:11px;padding:5px 8px;cursor:pointer';
+      ts.textContent = ic + ' ' + (d.nombre||'—') + (d.estado!=='enviado' ? (' — ' + String(d.estado||'').replace('_',' ')) : '');
+      t.appendChild(ts);
+      const pre = document.createElement('pre'); pre.style.cssText = 'margin:0;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-word;font-family:var(--mono,monospace);background:var(--surface);color:var(--text);border-top:1px solid var(--border)';
+      const nota = d.estado !== 'enviado'
+        ? '⚠️ Mensaje preparado — NO recibido (' + String(d.estado||'').replace('_',' ') + ')\n\n'
+        : (d.canal === 'plantilla'
+            ? '📋 Recibió la PLANTILLA corta de aviso (estaba fuera de la ventana de 24 h). El texto de abajo es el que se preparó, no el literal que le llegó.\n\n'
+            : '');
+      pre.textContent = nota + (d.texto || '(sin copia del mensaje — envío anterior a esta función)');
+      t.appendChild(pre);
+      dwrap.appendChild(t);
+    });
+    card.appendChild(dwrap);
+  }
+  return card;
+}
+function _heCerrar(){ document.getElementById('he-overlay').style.display = 'none'; }
 
 // Compartir el itinerario COMPLETO (todos los bloques) en un solo mensaje — queda disponible
 // como helper (sin botón) por si se quiere reactivar el modo "compartir a un grupo".
@@ -2345,6 +2597,35 @@ document.addEventListener('click', function(e) {
     <div style="font-size:10px;color:var(--muted2);margin-bottom:8px">Marca <b>1</b> (individual) o <b>2+</b> técnicos (cuadrilla co-responsable).</div>
     <div id="pt-list" style="max-height:44vh;overflow-y:auto"></div>
     <button class="btn btn-primary" id="pt-confirm" onclick="_ptConfirmar()" style="width:100%;justify-content:center;margin-top:12px" disabled>✓ Asignar</button>
+  </div>
+</div>
+
+<!-- Vista previa del envío por técnico: muestra el mensaje EXACTO que recibirá cada uno antes de mandar -->
+<div id="pv-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.55);z-index:710;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)_pvCerrar()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:540px;max-width:100%;max-height:88vh;display:flex;flex-direction:column">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+      <h2 style="font-size:14px;color:var(--blue,#1B3F8B);margin:0">📲 Vista previa del envío</h2>
+      <div id="pv-head" style="font-size:12px;color:var(--muted2);margin-top:3px"></div>
+      <div id="pv-sub" style="font-size:11px;color:var(--muted2)"></div>
+      <div style="font-size:10px;color:var(--muted2);margin-top:4px">Esto es exactamente lo que recibirá cada técnico por WhatsApp.</div>
+    </div>
+    <div id="pv-body" style="padding:14px 16px;overflow-y:auto;flex:1"></div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn" onclick="_pvCerrar()">Cancelar</button>
+      <button class="btn" id="pv-prueba" onclick="_pvEnviarPrueba()">🧪 Prueba a mi número</button>
+      <button class="btn btn-primary" id="pv-enviar" onclick="_pvEnviarReal()">📲 Enviar a todos</button>
+    </div>
+  </div>
+</div>
+
+<!-- Historial de envíos del itinerario (todas las versiones) con snapshot del mensaje enviado -->
+<div id="he-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.55);z-index:710;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)_heCerrar()">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:560px;max-width:100%;max-height:88vh;display:flex;flex-direction:column">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <h2 style="font-size:14px;color:var(--blue,#1B3F8B);margin:0">🕘 Historial de envíos</h2>
+      <button class="btn" onclick="_heCerrar()" style="padding:4px 10px">✕</button>
+    </div>
+    <div id="he-body" style="padding:14px 16px;overflow-y:auto;flex:1"></div>
   </div>
 </div>
 </body>
