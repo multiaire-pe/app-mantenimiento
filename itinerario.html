@@ -955,6 +955,85 @@ async function quitarPlan(id){
   }catch(e){ toast('Error: '+e.message,'err'); }
 }
 
+// Resuelve la sede REAL de una tienda de bloque (puede venir "RIPLEY PLAZA NORTE" con el
+// cliente adelante; el inventario guarda solo "PLAZA NORTE"): match exacto, o el sufijo MÁS
+// LARGO que sea una sede real del inventario (así "MAC PLAZA NORTE" no se confunde con "PLAZA
+// NORTE"). Devuelve '' si no resuelve. Compartido por pendientesDeSede y la migración (3b).
+function _resolverSede(tiendaCruda, sedesInv){
+  const t = String(tiendaCruda||'').toUpperCase().trim();
+  if(sedesInv.has(t)) return t;
+  const toks = t.split(/\s+/);
+  for(let i=1;i<toks.length;i++){
+    const suf = toks.slice(i).join(' ');
+    if(sedesInv.has(suf)) return suf;
+  }
+  return '';
+}
+
+// Etapa 3b — al crear una versión NUEVA de un itinerario ya existente, ofrecer MOVER las
+// actividades de mtto asignadas en la versión anterior a la nueva, remapeando el bloque por
+// sede (decisión de José: "automática con confirmación"). Las que no encajen (su sede ya no
+// está en la v nueva) NO se tocan → quedan re-seleccionables como pendientes (flujo actual) y
+// se avisan. El doc-id de mtto_plan es determinístico (EQ|PERIODO|AÑO|IDX): actualizar sus
+// campos itiVersion/nBloque MUEVE la actividad, no la duplica.
+async function _migrarPlanAVersionNueva(idIti, vNueva, bloques){
+  try{
+    const { getDocs, getDoc, collection, writeBatch, doc } = window.__fb;
+    // Todas las actividades VIVAS del itinerario en cualquier versión anterior. El doc-id de
+    // mtto_plan es determinístico (EQ|PERIODO|AÑO|IDX, SIN versión) → hay una sola por actividad,
+    // con la itiVersion de su última asignación. Se buscan TODAS las versiones < vNueva (no solo
+    // vNueva-1) para arrastrar también lo que quedó sin migrar en ciclos previos.
+    const planSnap = await window.__db.collection('mtto_plan').where('itiId','==',idIti).get();
+    let planes = planSnap.docs.filter(pd => (Number(pd.data().itiVersion)||0) < vNueva);
+    if(!planes.length) return;   // nada asignado en versiones anteriores: no preguntar
+    // Sede real de cada bloque de la v nueva → primer nBloque de esa sede (nBloque = i+1, igual que el guardado)
+    const invS = await getDocs(collection(window.__db, 'inventario'));
+    const sedesInv = new Set(invS.docs.map(d => (d.data().sede||'').toUpperCase()).filter(Boolean));
+    // Excluir las YA EJECUTADAS (mismo criterio que el barrido de cargarPlanDia): una actividad
+    // hecha no debe re-aparecer en la versión nueva aunque el sweep aún no la haya limpiado. Se
+    // lee mantenimiento/{sede|periodo|anio}.tareaStatus, indexado por eq_id (true = equipo
+    // completo, o {tareaIdx:true}).
+    const claveDe = p => (p.sede||'')+'|'+(p.periodo||'')+'|'+(p.anio||'');
+    const claves = [...new Set(planes.map(pd => claveDe(pd.data())))].filter(k => !k.startsWith('|'));
+    const tsPorClave = {};
+    const mSnaps = await Promise.all(claves.map(k => getDoc(doc(window.__db, 'mantenimiento', k))));
+    mSnaps.forEach((sp, i) => {
+      const dd = sp.exists ? sp.data() : {};
+      tsPorClave[claves[i]] = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } })(dd.tareaStatus);
+    });
+    planes = planes.filter(pd => {
+      const p = pd.data();
+      const st = (tsPorClave[claveDe(p)] || {})[p.eq_id];
+      const ejecutada = st === true || (st && typeof st === 'object' && st[p.tareaIdx] === true);
+      return !ejecutada;
+    });
+    if(!planes.length) return;   // todas las anteriores ya se ejecutaron: nada que migrar
+    if(!confirm('Hay '+planes.length+' actividad(es) de mantenimiento asignadas a técnicos en versiones anteriores.\n\n'
+      + '¿Moverlas a la nueva v'+vNueva+'?\n\nLas que ya no encajen (su sede no está en la versión nueva) quedarán pendientes para re-asignar a mano.')) return;
+    const sedeABloque = {};
+    bloques.forEach((b, i) => {
+      const s = _resolverSede(b.tienda, sedesInv);
+      if(s && sedeABloque[s] == null) sedeABloque[s] = i + 1;
+    });
+    // Clasifica: las que tienen bloque destino se mueven; el resto son huérfanas. La sede del
+    // plan se re-resuelve con _resolverSede (normaliza case/espacios; docs viejos no dan huérfana falsa).
+    const mover = [], huerfanas = [];
+    planes.forEach(pd => {
+      const nB = sedeABloque[_resolverSede(pd.data().sede, sedesInv)];
+      (nB == null ? huerfanas : mover).push({ id: pd.id, nBloque: nB });
+    });
+    // Escritura por lotes de ≤450 (límite de 500 ops de Firestore)
+    for(let i=0;i<mover.length;i+=450){
+      const batch = writeBatch(window.__db);
+      mover.slice(i, i+450).forEach(m => batch.update(doc(window.__db, 'mtto_plan', m.id), { itiVersion: vNueva, nBloque: m.nBloque }));
+      await batch.commit();
+    }
+    let msg = '🔄 '+mover.length+' actividad(es) movida(s) a la v'+vNueva;
+    if(huerfanas.length) msg += ' · ⚠️ '+huerfanas.length+' quedaron pendientes (su sede no está en la versión nueva)';
+    toast(msg, huerfanas.length ? 'err' : 'ok');
+  }catch(e){ toast('No se pudieron migrar las actividades: '+(e.message||e), 'err'); }
+}
+
 // Pendientes de la sede (efectivas − hechas − planificadas en el período)
 async function pendientesDeSede(sede, fecha){
   const { periodo, anio } = periodoDe(fecha);
@@ -967,19 +1046,9 @@ async function pendientesDeSede(sede, fecha){
   const plantillas = {}, plantillasMin = {};
   tcS.docs.forEach(d => { const dd = d.data(); plantillas[dd.tipo] = dd.tareas || []; plantillasMin[dd.tipo] = dd.minutos || []; });
   const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
-  // La tienda del bloque puede traer el cliente adelante ("RIPLEY PLAZA NORTE") y el
-  // inventario guarda solo la sede ("PLAZA NORTE"): match exacto o el sufijo MÁS LARGO
-  // que sea una sede real (así "MAC PLAZA NORTE" no se confunde con "PLAZA NORTE").
+  // Sede real del bloque (ver _resolverSede: exacto o sufijo más largo que sea sede del inventario)
   const sedesInv = new Set(invS.docs.map(d => (d.data().sede||'').toUpperCase()).filter(Boolean));
-  const tRaw = String(sede||'').toUpperCase().trim();
-  let target = sedesInv.has(tRaw) ? tRaw : null;
-  if (!target) {
-    const toks = tRaw.split(/\s+/);
-    for (let i = 1; i < toks.length && !target; i++) {
-      const suf = toks.slice(i).join(' ');
-      if (sedesInv.has(suf)) target = suf;
-    }
-  }
+  const target = _resolverSede(sede, sedesInv) || null;
   const out = [];
   window._paSede = target || '';   // la sede REAL: la usan asignación y badges
   window._paZonaLibre = !target;   // zona tipeada/fuera del inventario: mensaje específico
@@ -1525,19 +1594,17 @@ async function saveItinerario() {
       });
     });
     await batch.commit();
-    const d = { ok: true };
-    if (d.ok) {
-      toast('Itinerario guardado ✓', 'ok');
-      closeModal();
-      await loadFecha(fecha);
-      const { getDocs, collection } = window.__fb;
-      const iSnap = await getDocs(collection(window.__db, 'bd_itinerarios'));
-      const rRes = { itinerarios: iSnap.docs.map(d=>d.data()).sort((a,b)=>{ const fa=a.fecha&&a.fecha.toDate?a.fecha.toDate():a.fecha&&a.fecha.seconds?new Date(a.fecha.seconds*1000):new Date(a.fecha); const fb=b.fecha&&b.fecha.toDate?b.fecha.toDate():b.fecha&&b.fecha.seconds?new Date(b.fecha.seconds*1000):new Date(b.fecha); return fb-fa; }).slice(0,30) };
-      renderRecientes(rRes.itinerarios || []);
-    } else {
-      toast('Error guardando: ' + (d.error || ''), 'err');
-      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Guardar itinerario'; }
-    }
+    toast('Itinerario guardado ✓', 'ok');
+    closeModal();
+    // Etapa 3b: si esto creó una versión NUEVA (v≥2) de un itinerario existente, ofrecer mover
+    // las actividades de mtto de la versión anterior a la nueva ANTES de recargar la vista
+    // (así el toast de la migración queda como el último visible y loadFecha trae los chips ya migrados).
+    if (version >= 2) { await _migrarPlanAVersionNueva(idIti, version, bloques); }
+    await loadFecha(fecha);
+    const { getDocs, collection } = window.__fb;
+    const iSnap = await getDocs(collection(window.__db, 'bd_itinerarios'));
+    const rRes = { itinerarios: iSnap.docs.map(d=>d.data()).sort((a,b)=>{ const fa=a.fecha&&a.fecha.toDate?a.fecha.toDate():a.fecha&&a.fecha.seconds?new Date(a.fecha.seconds*1000):new Date(a.fecha); const fb=b.fecha&&b.fecha.toDate?b.fecha.toDate():b.fecha&&b.fecha.seconds?new Date(b.fecha.seconds*1000):new Date(b.fecha); return fb-fa; }).slice(0,30) };
+    renderRecientes(rRes.itinerarios || []);
   } catch(e) {
     toast('Error de conexión', 'err');
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Guardar itinerario'; }
