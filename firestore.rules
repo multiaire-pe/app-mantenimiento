@@ -56,6 +56,9 @@ service cloud.firestore {
     match /maestros_grupos/{doc}   { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_feriados/{doc} { allow read: if authorized(); allow write: if isSuper(); }
     match /tareas_config/{doc}     { allow read: if authorized(); allow write: if isSuper(); }
+    // maestros_criticidad: peso 1-5 por tipo de equipo (pondera el % de operatividad de la sede).
+    // Maestro → lectura autorizada, escritura solo super (mismo criterio que los demás maestros).
+    match /maestros_criticidad/{doc} { allow read: if authorized(); allow write: if isSuper(); }
     // actividades personalizadas por equipo (mantenimiento): editarlas —incluido borrar el
     // override para volver a heredar la plantilla— es operación normal del módulo
     match /mtto_actividades_equipo/{doc} { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
@@ -110,6 +113,13 @@ service cloud.firestore {
     // comprobantes_fotos: 1 doc por foto, doc id = id del comprobante dueño.
     match /comprobantes/{doc}              { allow read: if authorized(); allow create, update, delete: if canWrite('comprobantes'); }
     match /comprobantes_fotos/{doc}        { allow read: if authorized(); allow create, update, delete: if canWrite('comprobantes'); }
+    // operatividad_eventos: historial de reportes de operatividad (log). El bot escribe vía Admin SDK
+    // (ignora reglas); desde la app, la edición manual AGREGA un evento y en el MISMO batch actualiza el
+    // estado vivo en `inventario` (update → exige canWrite('inventario') = ADMIN/SUPER). Por eso el create
+    // aquí es isAdmin() y NO canWrite('operatividad'): un supervisor pasaría el create pero fallaría el
+    // update de inventario → batch a medias. Alineado con el gate de UI (edición manual = ADMIN/SUPER).
+    // Editar/borrar el log = solo super (inmutable para el resto, mismo criterio que mtto_log).
+    match /operatividad_eventos/{doc}      { allow read: if authorized(); allow create: if isAdmin(); allow update, delete: if isSuper(); }
 
     // ── Archivo CONGELADO de la base anterior de insumos (2026-07-06): la base "mal hecha"
     //    se copió a *_legacy con Admin SDK (que ignora reglas) antes de vaciar la base viva.
