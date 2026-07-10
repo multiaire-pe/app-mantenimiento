@@ -76,7 +76,7 @@ Un documento por cada reporte (doc-id autogenerado con `.add()`). Nunca se edita
 | `tecnicoId` | `string \| null` | Id en `maestros_personal` (bot) |
 | `registradoPor` | string | Nombre del técnico / email del admin |
 | `fecha` | string | `'YYYY-MM-DD'` |
-| `createdAt` | timestamp | serverTimestamp (panel) / Date ISO (bot) |
+| `createdAt` | string | **ISO 8601** (`new Date().toISOString()`) en AMBOS frentes — bot y panel. Se usa como clave de orden del historial; unificado a string para evitar tipos mixtos (Timestamp vs string) en la misma colección. Fallback de orden: `fecha`. |
 | `createdBy` | string | Igual que `registradoPor` |
 
 ### 3) Colección NUEVA `maestros_criticidad` — pesos por tipo (solo panel)
@@ -124,8 +124,8 @@ Un equipo `stale` se muestra con badge ⚠️ "a re-verificar / sin verificar". 
 
 El bot usa Admin SDK y **no** pasa por reglas, así que el Frente A no toca `firestore.rules` (así el único archivo compartido queda `CLAUDE.md`). El Frente B agrega:
 
-- `operatividad_eventos`: `read` para autenticado; `create` para ADMIN/SUPERVISOR (edición manual); `update/delete` solo SUPER_ADMIN.
-- `maestros_criticidad`: `read` para autenticado; `write` para SUPER_ADMIN (config es super-only) — o ADMIN, según decidan con el patrón existente.
+- `operatividad_eventos`: `read` para autenticado; `create` para **ADMIN/SUPER_ADMIN** (`isAdmin()`); `update/delete` solo SUPER_ADMIN. **Nota:** la edición manual del panel escribe el evento **y** en el mismo `db.batch()` actualiza el estado vivo en `inventario` (update ⇒ exige `canWrite('inventario')` = ADMIN/SUPER). Un SUPERVISOR pasaría el `create` pero fallaría el `update` de inventario (batch a medias); por eso `create` es `isAdmin()` y el gate de UI también (`MA.isAdmin()`). El bot no se ve afectado (Admin SDK ignora reglas). El SUPERVISOR con la app `operatividad` mantiene lectura/entrada al panel, sin edición manual.
+- `maestros_criticidad`: `read` para autenticado; `write` para SUPER_ADMIN (maestro ⇒ super-only, mismo criterio que los demás `maestros_*`). El gate de UI del maestro de criticidad es `MA.isSuperAdmin()`.
 
 Seguir el patrón de reglas ya existente en el repo. **Regla de oro del proyecto:** antes de `firebase deploy --only firestore:rules`, `git pull` (un deploy REEMPLAZA todo el ruleset).
 
