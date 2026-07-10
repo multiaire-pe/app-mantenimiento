@@ -14,6 +14,7 @@ import { textoGuia } from './guia.js';
 import { getSesion, guardarSesion, limpiarSesion, nuevaSesion, guardarUltimaObs, getUltimaObs, limpiarUltimaObs } from './sesiones.js';
 import { guardarFotoPendiente, getFotoPendiente, tieneFotoPendiente, limpiarFotoPendiente } from './fotos.js';
 import { agregarFotoAObservacion } from './escritura.js';
+import { menuOperatividad, parsearOperatividad, registrarOperatividad, nivelDeOperatividad } from './operatividad.js';
 
 // Termina la conversación: borra la sesión y la foto pendiente.
 async function limpiarTodo(from) {
@@ -41,6 +42,7 @@ export async function manejarMensaje({
   guardar,                              // (borrador, tecnico, foto) => {id,...}  (escribe + avisos)
   analizar = estructurarObservacion,    // (texto, imgB64, mime, guiaTexto) => {tienda,equipo,observacion,estado,faltaDetalle,pregunta}
   adjuntarFoto = agregarFotoAObservacion, // (obsId, foto) => bool  (adjunta foto a una obs ya guardada)
+  registrarOp = registrarOperatividad,  // (datos) => evento  (evento + estado vivo en inventario)
 }) {
   const t = (texto || '').trim();
   let ses = await getSesion(from);
@@ -56,6 +58,11 @@ export async function manejarMensaje({
   // ── Agregar foto a la ÚLTIMA observación guardada (la olvidó al registrar) ──────
   if (ses && ses.fase === 'ADJUNTAR_FOTO') {
     return manejarAdjuntarFoto(ses, tecnico, from, { t, imagenB64, mime, adjuntarFoto, analizar });
+  }
+
+  // ── Operatividad del equipo tras registrar la observación (opcional) ────────────
+  if (ses && ses.fase === 'OPERATIVIDAD') {
+    return manejarOperatividad(ses, tecnico, from, { t, imagenB64, mime, registrarOp, adjuntarFoto });
   }
   if (!ses) {
     const ult = await getUltimaObs(from);
@@ -114,11 +121,26 @@ export async function manejarMensaje({
         console.error('[conversacion] error al guardar:', e?.message);
         return '⚠️ No pude guardar la observación ahora mismo. Inténtalo de nuevo en un momento (responde *SÍ*).';
       }
+      // La observación YA está guardada. Todo lo que sigue es best-effort: un fallo NO debe
+      // dejar la sesión en CONFIRMANDO (un reintento/"SÍ" re-ejecutaría `guardar` y duplicaría la obs).
       const b = ses.borrador;
-      await limpiarTodo(from);
-      // Recordamos la obs ~30 min por si el técnico olvidó la foto y la quiere adjuntar.
-      if (obs?.id) await guardarUltimaObs(from, obs.id, b.equipo);
-      return resumenGuardado(b, !!foto);
+      await limpiarFotoPendiente(from).catch(() => {});   // la foto pendiente ya se escribió con la obs
+      if (obs?.id) await guardarUltimaObs(from, obs.id, b.equipo).catch(() => {});
+      // Preguntamos la operatividad del equipo (opcional). La sesión sigue viva en fase OPERATIVIDAD.
+      try {
+        ses.fase = 'OPERATIVIDAD';
+        ses.opObsId = obs?.id || null;
+        ses.opEquipo = { eqId: b.eqId, sede: b.sede, cliente: b.cliente, tipo: b.tipo, nombre: b.equipo, area: b.area };
+        ses.opConFoto = !!foto;
+        ses.opIntentos = 0;
+        await guardarSesion(from, ses);
+        return guardadoConPreguntaOp(b);
+      } catch (e) {
+        // No se pudo abrir la fase OPERATIVIDAD: cerramos limpio (la obs está guardada; el % es opcional).
+        console.error('[conversacion] no se pudo abrir OPERATIVIDAD:', e?.message);
+        await limpiarSesion(from).catch(() => {});
+        return cierreTrasOperatividad(!!foto, '');
+      }
     }
     if (t) ses.historial.push(t);             // corrección → reextraer con el texto nuevo
     return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar });
@@ -256,13 +278,78 @@ function resumenConfirmar(b, conFoto) {
     '\nResponde *SÍ* para guardar. Si algo está mal, dime la corrección (o el estado correcto), o escribe *cancelar*.';
 }
 
-function resumenGuardado(b, conFoto) {
-  return '✅ *Observación registrada.*\n\n' +
-    `🏪 ${sinPrefijo(b.sede)} · ❄️ ${b.equipo}\n` +
-    `📌 ${ESTADO_LABEL[b.estado] || b.estado}${conFoto ? ' · 📷' : ''}\n\n` +
+// Acuse tras guardar la observación + la pregunta de operatividad del equipo.
+function guardadoConPreguntaOp(b) {
+  return '✅ *Observación registrada.* ' +
+    `(🏪 ${sinPrefijo(b.sede)} · ❄️ ${b.equipo})\n\n` +
+    menuOperatividad();
+}
+
+// Cierre del flujo tras responder/omitir la operatividad (incluye el recordatorio de foto si no hubo).
+function cierreTrasOperatividad(conFoto, acuseOp) {
+  return (acuseOp ? acuseOp + '\n\n' : '') +
     (conFoto
       ? 'Gracias. Mándame otra cuando quieras.'
       : '📷 _¿Olvidaste la foto? Mándamela ahora y la adjunto a esta observación._\n\nGracias. Mándame otra cuando quieras.');
+}
+
+// ── Operatividad del equipo tras registrar la observación (estado OPERATIVIDAD) ────
+// El técnico responde el % (1..5 / 100/75/50/25/0) u "omitir". Una foto aquí se adjunta
+// a la observación (la olvidó al registrar) y se sigue pidiendo el %. Nada bloquea el flujo.
+async function manejarOperatividad(ses, tecnico, from, { t, imagenB64, mime, registrarOp, adjuntarFoto }) {
+  const conFoto = !!ses.opConFoto;
+
+  // Foto enviada aquí → adjuntar a la observación ya guardada y seguir pidiendo el %.
+  if (imagenB64 && ses.opObsId) {
+    let ok = false;
+    try { ok = await adjuntarFoto(ses.opObsId, { base64: imagenB64, mime }); }
+    catch (e) { console.error('[operatividad] adjuntar foto falló:', e?.message); }
+    if (ok) { ses.opConFoto = true; await guardarSesion(from, ses); }
+    return (ok ? '✅ 📷 Foto agregada a la observación.\n\n' : '') + menuOperatividad();
+  }
+
+  // "nueva/otra observación" → cerrar esta (la obs ya se guardó) y arrancar otra de cero.
+  if (RE_NUEVA.test(t)) {
+    await limpiarTodo(from);
+    return '🔄 Empecemos de nuevo. Cuéntame la observación (tienda, equipo y el hallazgo).';
+  }
+
+  const val = parsearOperatividad(t);
+
+  // "cancelar" u "omitir" → cerrar sin registrar operatividad (la observación ya quedó guardada).
+  if (RE_CANCELA.test(t) || val === 'OMITIR') {
+    await limpiarSesion(from);
+    return cierreTrasOperatividad(conFoto, '');
+  }
+
+  // No entendido → repreguntar una vez; a la 2ª entrada inválida, omitir para no trabar al técnico.
+  if (val === null) {
+    ses.opIntentos = (ses.opIntentos || 0) + 1;
+    if (ses.opIntentos >= 2) {
+      await limpiarSesion(from);
+      return cierreTrasOperatividad(conFoto, '');
+    }
+    await guardarSesion(from, ses);
+    return 'No te entendí 🤔. Responde el *número* del estado (o escribe *omitir*):\n\n' + menuOperatividad();
+  }
+
+  // Valor válido (0/25/50/75/100) → registrar operatividad + estado vivo del equipo.
+  await limpiarSesion(from);
+  let acuse;
+  try {
+    const eq = ses.opEquipo || {};
+    await registrarOp({
+      eqId: eq.eqId, sede: eq.sede, cliente: eq.cliente, tipo: eq.tipo, nombre: eq.nombre, area: eq.area,
+      porcentaje: val, obsId: ses.opObsId || null,
+      tecnicoId: tecnico?.id || null, registradoPor: tecnico?.nombre || 'WhatsApp', origen: 'WHATSAPP',
+    });
+    const n = nivelDeOperatividad(val);
+    acuse = `✅ Operatividad registrada: *${val} %* ${n.emoji} _(${n.etiqueta})_`;
+  } catch (e) {
+    console.error('[operatividad] registrar falló:', e?.message);
+    acuse = '⚠️ No pude registrar la operatividad, pero la observación quedó guardada.';
+  }
+  return cierreTrasOperatividad(conFoto, acuse);
 }
 
 // ── Adjuntar una foto a la última observación guardada (estado ADJUNTAR_FOTO) ──────
