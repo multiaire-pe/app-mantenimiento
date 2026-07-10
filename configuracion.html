@@ -319,6 +319,8 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>asistencia_registros_fotos.csv</div>
             <div class="backup-file"><span></span>comprobantes.csv</div>
             <div class="backup-file"><span></span>comprobantes_fotos.csv</div>
+            <div class="backup-file"><span></span>operatividad_eventos.csv</div>
+            <div class="backup-file"><span></span>maestros_criticidad.csv</div>
           </div>
           <button class="btn btn-primary" onclick="exportBackup()" id="export-btn" style="width:100%">
             ⬇ Descargar ZIP
@@ -912,7 +914,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
@@ -949,6 +951,8 @@ async function exportBackup() {
       window.__db.collection('itinerario_envios').get(),
       window.__db.collection('comprobantes').get(),
       window.__db.collection('comprobantes_fotos').get(),
+      window.__db.collection('operatividad_eventos').get(),
+      window.__db.collection('maestros_criticidad').get(),
     ]);
 
     const zip = new JSZip();
@@ -1038,11 +1042,14 @@ async function exportBackup() {
     });
     zip.file('bd_bloques.csv', [bloqHeaders.join(','), ...bloqRows].join('\n'));
 
-    // 8. Inventario CSV
-    const invHeaders = ['EQ_ID','SEDE','CLIENTE','TIPO','NOMBRE','AREA','MARCA','MODELO','SERIE'];
+    // 8. Inventario CSV. Incluye el ESTADO VIVO de operatividad (campos operatividad*), que es
+    //    donde el panel lee el % actual de cada equipo — sin estas columnas, un restore lo perdería.
+    //    operatividad null (nunca reportado) → celda vacía; 0 (inoperativo) NO es vacío y se conserva.
+    const invHeaders = ['EQ_ID','SEDE','CLIENTE','TIPO','NOMBRE','AREA','MARCA','MODELO','SERIE','OPERATIVIDAD','OP_FECHA','OP_POR','OP_OBSID','OP_ORIGEN'];
     const invRows = invSnap.docs.map(d => {
       const r = d.data();
-      return [r.eq_id||d.id,r.sede||'',r.cliente||'',r.tipo||'',r.nombre||'',r.area||'',r.marca||'',r.modelo||'',r.serie||''].map(escapeCSV).join(',');
+      return [r.eq_id||d.id,r.sede||'',r.cliente||'',r.tipo||'',r.nombre||'',r.area||'',r.marca||'',r.modelo||'',r.serie||'',
+        (r.operatividad==null?'':r.operatividad),r.operatividadFecha||'',r.operatividadPor||'',r.operatividadObsId||'',r.operatividadOrigen||''].map(escapeCSV).join(',');
     });
     zip.file('inventario.csv', [invHeaders.join(','), ...invRows].join('\n'));
 
@@ -1251,6 +1258,22 @@ async function exportBackup() {
     });
     zip.file('comprobantes_fotos.csv', [comprobFotoHeaders.join(','), ...comprobFotoRows].join('\n'));
 
+    // 21. Operatividad — historial de eventos (log; doc con % + nivel + origen → JSON)
+    const opEvHeaders = ['ID','EQ_ID','FECHA','DATA'];
+    const opEvRows = opEvSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.eqId||'', r.fecha||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('operatividad_eventos.csv', [opEvHeaders.join(','), ...opEvRows].join('\n'));
+
+    // 22. Operatividad — maestro de criticidad por tipo (doc id = tipo; {tipo, peso 1-5})
+    const critHeaders = ['ID','PESO','DATA'];
+    const critRows = critSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.peso??'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('maestros_criticidad.csv', [critHeaders.join(','), ...critRows].join('\n'));
+
     // Generate and download
     const blob = await zip.generateAsync({type:'blob'});
     const url = URL.createObjectURL(blob);
@@ -1316,7 +1339,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv','operatividad_eventos.csv','maestros_criticidad.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1332,7 +1355,7 @@ async function processZip(file) {
     // "Reemplazar todo" fiel al backup: colecciones NUEVAS que un ZIP viejo no trae se
     // VACÍAN — antes quedaban datos fantasma (hallazgo del Council, cierra el backlog).
     if (mode === 'replace') {
-      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos'];
+      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad'];
       for (const colN of NUEVAS) {
         if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
         const _exN = await window.__db.collection(colN).get();
@@ -1540,8 +1563,30 @@ async function confirmImport() {
       const rows = parseCSV(pendingImport.files['inventario.csv']);
       const {writeBatch:_wb2,doc:_doc2,collection:_col2,getDocs:_dg2}=window.__fb;
       const _b2=_wb2(window.__db);
-      if(mode==='replace'){const _ex=await _dg2(_col2(window.__db,'inventario'));_ex.docs.forEach(d=>_b2.delete(d.ref));}
-      rows.forEach(r=>{if(r.EQ_ID)_b2.set(_doc2(window.__db,'inventario',r.EQ_ID),{eq_id:r.EQ_ID,sede:r.SEDE||'',cliente:r.CLIENTE||'RIPLEY',tipo:r.TIPO||'',nombre:r.NOMBRE||'',area:r.AREA||'',marca:r.MARCA||'',modelo:r.MODELO||'',serie:r.SERIE||''});});
+      // ¿El backup trae el estado vivo de operatividad? Se detecta desde el HEADER crudo del CSV
+      // (no desde rows[0]): un backup nuevo con header pero 0 equipos debe seguir contando como "nuevo"
+      // para que 'replace' borre fielmente. Los headers son identificadores simples (sin comas/comillas).
+      const _hasOp = ((pendingImport.files['inventario.csv'].split(/\r?\n/)[0]||'').split(',').map(h=>h.trim()).indexOf('OPERATIVIDAD') !== -1);
+      // El delete-all de 'replace' solo aplica si el backup ES nuevo (trae operatividad): así el restore
+      // es fiel. Con un backup VIEJO (sin la columna) NO borramos la colección, porque recrear los docs
+      // con set/merge SIN operatividad perdería el estado vivo actual (el delete-all lo aniquilaría antes
+      // de que el merge por fila pueda preservarlo). En ese caso se hace upsert-merge (no elimina equipos
+      // ausentes del backup viejo — tradeoff consciente para no perder operatividad).
+      if(mode==='replace' && _hasOp){const _ex=await _dg2(_col2(window.__db,'inventario'));_ex.docs.forEach(d=>_b2.delete(d.ref));}
+      if(mode==='replace' && !_hasOp){ addLog('ℹ️ Backup previo a operatividad: se preservó el estado vivo (sin borrado total del inventario).', 'info'); }
+      rows.forEach(r=>{
+        if(!r.EQ_ID) return;
+        const p={eq_id:r.EQ_ID,sede:r.SEDE||'',cliente:r.CLIENTE||'RIPLEY',tipo:r.TIPO||'',nombre:r.NOMBRE||'',area:r.AREA||'',marca:r.MARCA||'',modelo:r.MODELO||'',serie:r.SERIE||''};
+        if(_hasOp){
+          // backup NUEVO (trae el estado vivo): restaurar tal cual. '' → null (nunca reportado); '0' se conserva.
+          p.operatividad=(r.OPERATIVIDAD!==''&&r.OPERATIVIDAD!=null)?+r.OPERATIVIDAD:null;
+          p.operatividadFecha=r.OP_FECHA||null; p.operatividadPor=r.OP_POR||''; p.operatividadObsId=r.OP_OBSID||null; p.operatividadOrigen=r.OP_ORIGEN||'';
+          _b2.set(_doc2(window.__db,'inventario',r.EQ_ID),p);
+        } else {
+          // backup VIEJO (sin columnas operatividad*): merge para NO borrar el estado vivo actual.
+          _b2.set(_doc2(window.__db,'inventario',r.EQ_ID),p,{merge:true});
+        }
+      });
       await _b2.commit();
       addLog('✓ Inventario importado (' + rows.length + ' equipos)', 'ok');
     }
@@ -1772,6 +1817,22 @@ async function confirmImport() {
       const rows = parseCSV(pendingImport.files['comprobantes_fotos.csv']);
       await batchWrite('comprobantes_fotos', rows.filter(r=>r.FOTO), r => ({_docId:r.ID, foto:r.FOTO}));
       addLog('✓ Fotos de comprobantes importadas (' + rows.filter(r=>r.FOTO).length + ')', 'ok');
+    }
+
+    // Operatividad — historial de eventos (log; DATA = doc completo)
+    if (pendingImport.files['operatividad_eventos.csv']) {
+      addLog('🚦 Importando historial de operatividad...', 'info');
+      const rows = parseCSV(pendingImport.files['operatividad_eventos.csv']);
+      await batchWrite('operatividad_eventos', rows, r => { const data=JSON.parse(r.DATA||'{}'); delete data.id; return {_docId:r.ID, ...data}; });
+      addLog('✓ Operatividad — eventos importados (' + rows.length + ')', 'ok');
+    }
+
+    // Operatividad — maestro de criticidad por tipo (doc id = tipo; DATA = {tipo, peso})
+    if (pendingImport.files['maestros_criticidad.csv']) {
+      addLog('⚙️ Importando criticidad por tipo...', 'info');
+      const rows = parseCSV(pendingImport.files['maestros_criticidad.csv']);
+      await batchWrite('maestros_criticidad', rows, r => { const data=JSON.parse(r.DATA||'{}'); delete data.id; return {_docId:r.ID, ...data}; });
+      addLog('✓ Criticidad importada (' + rows.length + ')', 'ok');
     }
 
     addLog('✅ Importación completada', 'ok');

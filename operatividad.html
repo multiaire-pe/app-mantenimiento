@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MultiAire – Operatividad</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+:root{
+  --bg:#f0f4fa;--surface:#fff;--surface2:#f5f8ff;--surface3:#e8eef8;
+  --border:#d0daf0;--border2:#b8cce8;
+  --accent:#1a2540;--muted:#8a9ab8;--muted2:#6a7a9a;
+  --blue:#1B3F8B;--blue-light:#2a52b0;--blue-pale:#e8eef8;
+  --orange:#F47920;--orange-dark:#d4621a;--orange-pale:#fff3eb;
+  --green:#1a9e5a;--green-bg:#f0faf5;--green-border:#b0e0c8;
+  --yellow:#d48a00;--yellow-bg:#fff8ee;--yellow-border:#f5d080;
+  --red:#d63344;--red-bg:#fdf0f2;--red-border:#f0c0c8;
+  --purple:#6b3fa0;--purple-bg:#f3eeff;--purple-border:#d0b0f0;
+  --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow:0 2px 12px rgba(27,63,139,.10);--shadow-lg:0 8px 32px rgba(27,63,139,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height:100vh;font-size:14px;display:flex;flex-direction:column}
+
+/* ── HEADER ─── */
+header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
+.logo{font-weight:700;font-size:16px;letter-spacing:.03em;color:#fff;display:flex;align-items:center;gap:8px}
+.hpill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
+.hpill.ok{color:#4ddd88;border-color:rgba(77,221,136,.4)}
+.hpill.loading{color:#ffd866;border-color:rgba(255,216,102,.4)}
+.hactions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.role-badge{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700}
+.role-SUPER_ADMIN{background:#fff3eb;color:var(--orange-dark)}
+.role-ADMIN{background:#e8eef8;color:var(--blue)}
+.role-SUPERVISOR{background:var(--purple-bg);color:var(--purple)}
+.role-TECNICO{background:#f0faf5;color:#1a9e5a}
+
+/* ── USER PILL ─── */
+.user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative}
+.user-pill:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.1)}
+.user-avatar-init{width:26px;height:26px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.user-avatar-img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.user-pname{font-size:11px;color:rgba(255,255,255,.85);font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1.5px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);min-width:200px;overflow:hidden;z-index:999}
+.user-menu.open{display:block}
+.user-menu-head{padding:10px 14px 6px;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.user-menu-item{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;color:var(--accent);cursor:pointer;background:none;border:none;width:100%;text-align:left;font-family:var(--font);transition:background .15s}
+.user-menu-item:hover{background:var(--bg)}
+.user-menu-item.danger{color:var(--red)}
+.user-menu-item.danger:hover{background:var(--red-bg)}
+.user-menu-div{height:1px;background:var(--border);margin:4px 0}
+.back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:8px;white-space:nowrap;transition:all .15s}
+.back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
+
+/* ── AUTH OVERLAY ─── */
+#auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:36px 32px;max-width:380px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
+.auth-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px}
+.auth-logo-dot{width:10px;height:10px;border-radius:50%;background:var(--orange)}
+.auth-logo-text{font-weight:700;font-size:20px;color:var(--blue)}
+.auth-title{font-size:15px;font-weight:700;color:var(--accent);margin-bottom:6px}
+.auth-sub{font-size:12px;color:var(--muted2);margin-bottom:24px;line-height:1.5}
+.auth-err{margin-top:14px;padding:10px 14px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:8px;font-size:12px;color:var(--red);display:none;line-height:1.5;text-align:left}
+.auth-err.show{display:block}
+.auth-loading{font-size:12px;color:var(--muted2);margin-top:10px;display:none}
+.auth-loading.show{display:block}
+
+/* ── TOAST ─── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a2540;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:all .25s;z-index:9998;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{background:#1a9e5a}.toast.err{background:#d63344}
+
+/* ── BUTTONS ─── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--accent);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--surface3);border-color:var(--border2)}
+.btn-primary{background:#1B3F8B;border-color:#1B3F8B;color:#fff;font-weight:600}.btn-primary:hover{opacity:.9}
+.btn-green{color:var(--green);border-color:var(--green-border)}.btn-green:hover{background:var(--green-bg)}
+.btn-red{color:var(--red);border-color:var(--red-border)}.btn-red:hover{background:var(--red-bg)}
+.btn-sm{padding:5px 10px;font-size:11px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── PAGE ─── */
+.page{flex:1;padding:24px;max-width:1100px;width:100%;margin:0 auto}
+.card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
+.card-title{font-size:13px;font-weight:700;color:var(--blue);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.form-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.form-group{display:flex;flex-direction:column;gap:4px;flex:1;min-width:180px}
+.form-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2)}
+.form-input,.form-select{background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:12px;padding:8px 10px;border-radius:6px;outline:none;width:100%}
+.form-input:focus,.form-select:focus{border-color:var(--blue);background:#fff}
+.form-input:disabled,.form-select:disabled{opacity:.7;cursor:not-allowed;background:var(--surface3)}
+
+/* ── TABS ─── */
+.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:2px solid var(--border);flex-wrap:wrap}
+.tab-btn{padding:9px 16px;border:none;background:none;font-family:var(--font);font-size:13px;font-weight:600;color:var(--muted2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.tab-btn:hover{color:var(--blue)}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-view{display:none}
+.tab-view.active{display:block}
+
+/* ── STAT TILES ─── */
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.stat-tile{background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow)}
+.stat-val{font-size:22px;font-weight:700;color:var(--blue);line-height:1}
+.stat-lbl{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-top:6px;font-weight:600}
+
+/* ── SEDE CARDS ─── */
+.sede-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.sede-card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:16px;box-shadow:var(--shadow);cursor:pointer;transition:all .15s;border-left:5px solid var(--muted)}
+.sede-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px)}
+.sede-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px}
+.sede-name{font-size:14px;font-weight:700;color:var(--accent);line-height:1.3}
+.sede-cliente{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px}
+.sede-pct{font-size:26px;font-weight:700;line-height:1;white-space:nowrap}
+.sede-meta{font-size:11px;color:var(--muted2);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.op-bar{height:7px;border-radius:4px;background:var(--surface3);overflow:hidden;margin:8px 0}
+.op-bar-fill{height:100%;border-radius:4px;transition:width .3s}
+.stale-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
+
+/* ── EQUIPO ROWS (drill / por equipo) ─── */
+.eq-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)}
+.eq-row:last-child{border-bottom:none}
+.eq-dot{font-size:15px;flex-shrink:0}
+.eq-info{flex:1;min-width:0}
+.eq-name{font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eq-sub{font-size:10px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eq-pct{font-family:var(--mono);font-size:13px;font-weight:700;white-space:nowrap}
+
+/* ── DETAIL / TIMELINE ─── */
+.det-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-top:14px}
+.det-hero{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.det-pct{font-size:34px;font-weight:700;line-height:1}
+.timeline{margin-top:8px}
+.tl-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed var(--border)}
+.tl-item:last-child{border-bottom:none}
+.tl-dot{font-size:14px;flex-shrink:0;width:20px;text-align:center}
+.tl-body{flex:1;min-width:0}
+.tl-top{font-size:12px;font-weight:600;color:var(--accent)}
+.tl-meta{font-size:10px;color:var(--muted2);font-family:var(--mono)}
+.empty-msg{text-align:center;color:var(--muted);padding:36px 20px;font-size:13px}
+
+/* ── % PICKER (modal) ─── */
+.pct-opts{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.pct-opt{display:flex;align-items:center;gap:10px;padding:11px 14px;border:1.5px solid var(--border);border-radius:9px;cursor:pointer;transition:all .12s;background:var(--surface2)}
+.pct-opt:hover{border-color:var(--blue-light);background:#fff}
+.pct-opt.sel{border-color:var(--blue);background:var(--blue-pale);box-shadow:0 0 0 2px rgba(27,63,139,.12)}
+.pct-opt-emoji{font-size:20px}
+.pct-opt-txt{font-size:13px;font-weight:600;color:var(--accent)}
+.pct-opt-sub{font-size:11px;color:var(--muted2)}
+
+/* ── MODAL ─── */
+.modal-overlay{position:fixed;inset:0;background:rgba(10,20,50,.45);backdrop-filter:blur(2px);z-index:500;display:none;align-items:center;justify-content:center;padding:16px;cursor:pointer}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:12px;box-shadow:var(--shadow-lg);width:520px;max-width:100%;max-height:90vh;overflow-y:auto;padding:22px;cursor:default}
+.modal h2{font-size:15px;font-weight:700;margin-bottom:4px;color:var(--blue)}
+.modal-sub{font-size:11px;color:var(--muted2);margin-bottom:16px;line-height:1.6;padding:8px 10px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--blue)}
+.modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+.crit-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.crit-row:last-child{border-bottom:none}
+.crit-tipo{flex:1;font-size:12px;font-weight:600;color:var(--accent)}
+.crit-input{width:70px}
+
+@media(max-width:768px){
+  header{padding:0 12px;height:52px;gap:8px}
+  .logo{font-size:14px}.hpill{display:none}.hactions{gap:6px}
+  .user-pname{display:none}.user-pill{padding:2px;border-radius:50%}
+  .user-avatar-init,.user-avatar-img{width:32px;height:32px}
+  .back-link{border-radius:8px}
+  .page{padding:14px 12px}.card{padding:14px}
+  .form-row{flex-direction:column;align-items:stretch}
+  .sede-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Operatividad</div>
+  <div class="hpill loading" id="conn-pill">⟳ Conectando...</div>
+  <div class="hactions">
+    <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
+    <a href="index.html" class="back-link">← Inicio</a>
+  </div>
+</header>
+
+<div id="auth-overlay" style="display:none">
+  <div class="auth-card">
+    <div class="auth-logo"><div class="auth-logo-dot"></div><div class="auth-logo-text">MultiAire</div></div>
+    <div class="auth-title">Operatividad de equipos</div>
+    <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada.</div>
+    <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="auth-loading" id="auth-loading"></div>
+  </div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column">
+<div class="page" id="main-page" style="display:none">
+
+  <div class="tabs">
+    <button class="tab-btn active" id="tabbtn-sede" onclick="switchTab('sede')">🏪 Por sede</button>
+    <button class="tab-btn" id="tabbtn-equipo" onclick="switchTab('equipo')">❄️ Por equipo</button>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <select id="f-cliente" class="form-select" style="width:auto;min-width:140px;display:none" onchange="renderAll()"><option value="">Todos los clientes</option></select>
+      <button class="btn btn-sm" id="btn-crit" onclick="openCriticidad()" style="display:none">⚙️ Criticidad</button>
+    </div>
+  </div>
+
+  <!-- ── VISTA POR SEDE ── -->
+  <div class="tab-view active" id="view-sede">
+    <div class="stat-row" id="stat-row"></div>
+    <div class="sede-grid" id="sede-grid">
+      <div class="empty-msg">Cargando operatividad…</div>
+    </div>
+    <p style="font-size:10px;color:var(--muted2);margin-top:14px;line-height:1.6">
+      El % de cada sede es el <strong>promedio ponderado por criticidad</strong> de sus equipos (peso 1–5 por tipo).
+      Un equipo <strong>sin reporte</strong> se asume operativo (100%) pero se marca <span class="stale-badge">⚠️ a re-verificar</span>
+      si nunca se reportó o pasaron más de 60 días. Clic en una sede para ver sus equipos.
+    </p>
+  </div>
+
+  <!-- ── VISTA POR EQUIPO ── -->
+  <div class="tab-view" id="view-equipo">
+    <div class="card">
+      <div class="card-title">🔎 Buscar equipo</div>
+      <div class="form-row">
+        <div class="form-group" id="eq-cliente-group" style="flex:0 0 190px;min-width:150px;display:none">
+          <label class="form-label">Cliente</label>
+          <select id="eq-cliente" class="form-select" onchange="onEqClienteChange()"><option value="">Seleccionar…</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Sede</label>
+          <select id="eq-sede" class="form-select" onchange="onEqSedeChange()"><option value="">Seleccionar…</option></select>
+        </div>
+        <div class="form-group" style="flex:0 0 190px;min-width:150px">
+          <label class="form-label">Tipo (filtro)</label>
+          <select id="eq-tipo" class="form-select" onchange="onEqTipoChange()"><option value="">Todos los tipos</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Equipo</label>
+          <select id="eq-equipo" class="form-select" onchange="onEqEquipoChange()"><option value="">Seleccionar…</option></select>
+        </div>
+      </div>
+      <div id="eq-detail"></div>
+    </div>
+  </div>
+
+</div><!-- /.page -->
+</div>
+
+<!-- MODAL: drill-down de una sede (equipos) -->
+<div class="modal-overlay" id="modal-sede" onclick="if(event.target===this)closeModal('modal-sede')">
+  <div class="modal">
+    <h2 id="modal-sede-title">Sede</h2>
+    <div class="modal-sub" id="modal-sede-sub"></div>
+    <div id="modal-sede-body" style="max-height:56vh;overflow-y:auto"></div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal('modal-sede')">Cerrar</button></div>
+  </div>
+</div>
+
+<!-- MODAL: fijar operatividad manual -->
+<div class="modal-overlay" id="modal-pct" style="z-index:600" onclick="if(event.target===this)closeModal('modal-pct')">
+  <div class="modal" style="width:440px">
+    <h2>✎ Fijar operatividad</h2>
+    <div class="modal-sub" id="modal-pct-sub"></div>
+    <div class="pct-opts" id="pct-opts"></div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-pct')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-pct" onclick="saveOperatividadManual()" disabled>💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: criticidad por tipo -->
+<div class="modal-overlay" id="modal-crit" onclick="if(event.target===this)closeModal('modal-crit')">
+  <div class="modal">
+    <h2>⚙️ Criticidad por tipo de equipo</h2>
+    <div class="modal-sub">
+      Peso <strong>1 a 5</strong> por tipo (5 = más crítico). Pondera el % de operatividad de cada sede.
+      Un tipo sin valor pesa <strong>3</strong> por defecto.
+    </div>
+    <div id="crit-body" style="max-height:52vh;overflow-y:auto"></div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('modal-crit')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-crit" onclick="saveCriticidad()">💾 Guardar pesos</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script>
+// ── FIREBASE / AUTH (scaffold idéntico a los demás módulos) ───────────────────
+const MA_ADM  = 'marchenaangulojoseluis@gmail.com';
+const _fbApp  = firebase.initializeApp(window.__firebaseConfig);
+const db      = firebase.firestore();
+window.__auth = firebase.auth();
+window.__prov = new firebase.auth.GoogleAuthProvider();
+window.__fb   = {
+  onAuthStateChanged: (auth, cb) => firebase.auth().onAuthStateChanged(cb),
+  signInWithPopup:    (auth, prov) => firebase.auth().signInWithPopup(prov),
+  signOut:            () => firebase.auth().signOut(),
+};
+let maUser = null;
+
+(function(){
+  function waitForFirebase(){
+    if(window.__auth && window.__fb){
+      window.__fb.onAuthStateChanged(window.__auth, function(user){
+        if(user && !window._maInitDone){ window._maInitDone = true; maVerify({email:user.email, name:user.displayName, picture:user.photoURL}, true); }
+        else if(!user && !window._maInitDone){ window._maInitDone = true; maShowLogin(); }
+      });
+    } else { setTimeout(waitForFirebase, 50); }
+  }
+  waitForFirebase();
+})();
+
+function maShowLogin(){
+  var ov = document.getElementById('auth-overlay');
+  if(ov){ ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+  var btn = document.getElementById('g-btn');
+  if(btn){ btn.innerHTML = '<button onclick="maFirebaseSignIn()" style="display:flex;align-items:center;gap:10px;padding:10px 20px;border:1.5px solid #d0daf0;border-radius:8px;background:#fff;font-family:IBM Plex Sans,sans-serif;font-size:14px;cursor:pointer;font-weight:500"><img src=\'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg\' width=18>Continuar con Google</button>'; }
+}
+async function maFirebaseSignIn(){
+  try{
+    const result = await window.__fb.signInWithPopup(window.__auth, window.__prov);
+    maVerify({email:result.user.email, name:result.user.displayName, picture:result.user.photoURL}, true);
+  }catch(e){
+    var errEl = document.getElementById('auth-err');
+    if(errEl){ errEl.textContent = 'Error al iniciar sesión: ' + e.message; errEl.classList.add('show'); }
+  }
+}
+async function maVerify(payload, save){
+  var email = (payload.email || '').toLowerCase();
+  var errEl = document.getElementById('auth-err'), ldEl = document.getElementById('auth-loading');
+  if(ldEl){ ldEl.textContent = 'Verificando acceso...'; ldEl.classList.add('show'); }
+  if(errEl) errEl.classList.remove('show');
+  try{
+    const snap = await db.collection('usuarios').doc(email).get();
+    if(!snap.exists){
+      if(ldEl) ldEl.classList.remove('show');
+      if(errEl){ errEl.textContent = 'Acceso denegado para ' + email + '. Contacta al administrador.'; errEl.classList.add('show'); }
+      return;
+    }
+    const fsData = snap.data();
+    maUser = { email, name: payload.name || fsData.nombre || fsData.name || email, picture: payload.picture || fsData.picture || '', ...fsData, name: payload.name || fsData.nombre || fsData.name || email, apps: fsData.apps || [] };
+    if(maUser.email === MA_ADM) maUser.rol = 'SUPER_ADMIN';
+    MA.setUser(maUser);
+    if(save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
+    if(ldEl) ldEl.classList.remove('show');
+    document.getElementById('auth-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    document.getElementById('main-page').style.display = 'block';
+    document.getElementById('conn-pill').textContent = '✓ Conectado';
+    document.getElementById('conn-pill').className   = 'hpill ok';
+    renderUserPill();
+    initApp();
+  }catch(e){
+    if(ldEl) ldEl.classList.remove('show');
+    if(errEl){ errEl.textContent = 'Error: ' + e.message; errEl.classList.add('show'); }
+  }
+}
+function renderUserPill(){
+  const pill = document.getElementById('user-pill');
+  if(!pill || !maUser) return;
+  const n = maUser.nombre || maUser.name || maUser.email;
+  const init = n.split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase();
+  const avatar = maUser.picture ? `<img class="user-avatar-img" src="${esc(maUser.picture)}">` : `<div class="user-avatar-init">${esc(init)}</div>`;
+  const rol = (maUser.rol || 'ADMIN').replace(/[^A-Z_]/g,'') || 'ADMIN';
+  const rolBadge = `<span class="role-badge role-${rol}">${esc(rol.replace('_',' '))}</span>`;
+  pill.innerHTML = avatar + `<span class="user-pname">${esc(n)}</span>`
+    + `<div class="user-menu" id="user-menu"><div class="user-menu-head">${esc(maUser.email)} ${rolBadge}</div>`
+    + `<div class="user-menu-div"></div>`
+    + `<button class="user-menu-item danger" onclick="maSignOut()">→ Cerrar sesión</button></div>`;
+  pill.style.display = 'flex';
+}
+function toggleUserMenu(){ const m=document.getElementById('user-menu'); if(m) m.classList.toggle('open'); }
+function maSignOut(){ firebase.auth().signOut().then(()=>{ sessionStorage.removeItem('ma_user'); location.href='index.html'; }); }
+document.addEventListener('click', e => { const pill=document.getElementById('user-pill'), menu=document.getElementById('user-menu'); if(menu && pill && !pill.contains(e.target)) menu.classList.remove('open'); });
+
+let _toastT = null;
+function toast(msg, type){ const t=document.getElementById('toast'); t.textContent=msg; t.className='toast'+(type?' '+type:''); t.classList.add('show'); clearTimeout(_toastT); _toastT=setTimeout(()=>t.classList.remove('show'),3000); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;'); }
+function closeModal(id){ document.getElementById(id)?.classList.remove('open'); }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  OPERATIVIDAD DE EQUIPOS (Etapa 1) — panel. Contrato: docs/operatividad-spec.md
+//  Estado vivo en `inventario` (campos operatividad*) · historial en `operatividad_eventos`
+//  · pesos por tipo en `maestros_criticidad`. Mismo shape que escribe el bot de WhatsApp.
+// ═══════════════════════════════════════════════════════════════════════════════
+let inventario = [];       // [{eqId, sede, cliente, tipo, nombre, area, operatividad, operatividadFecha, operatividadPor, operatividadOrigen}]
+let clientes   = [];       // clientes distintos
+let criticidad = {};       // { tipo: peso 1..5 }
+const STALE_DIAS = 60;
+
+// Escala % → nivel → emoji → etiqueta → color (MISMA tabla que api/_lib/operatividad.js del bot).
+const NIVELES = [
+  { p:100, nivel:'OPERATIVO',   emoji:'🟢', etiqueta:'Operativo',                 color:'#16a34a' },
+  { p:75,  nivel:'OBSERVADO',   emoji:'🟡', etiqueta:'Operativo c/observaciones', color:'#eab308' },
+  { p:50,  nivel:'PARCIAL',     emoji:'🟠', etiqueta:'Parcial',                   color:'#f97316' },
+  { p:25,  nivel:'CRITICO',     emoji:'🔴', etiqueta:'Crítico',                   color:'#dc2626' },
+  { p:0,   nivel:'INOPERATIVO', emoji:'⚫', etiqueta:'Inoperativo',               color:'#1f2937' },
+];
+const VALORES = NIVELES.map(n => n.p);
+// Nivel discreto del % de un equipo (redondea al más cercano por robustez).
+function nivelDe(pct){ let b=NIVELES[0], bd=Infinity; for(const it of NIVELES){ const d=Math.abs(it.p-Number(pct)); if(d<bd){bd=d;b=it;} } return b; }
+// Banda de color del agregado CONTINUO de una sede/cliente.
+function bandaAgregado(pct){
+  if(pct>=90) return NIVELES[0];
+  if(pct>=75) return NIVELES[1];
+  if(pct>=50) return NIVELES[2];
+  if(pct>=25) return NIVELES[3];
+  return NIVELES[4];
+}
+function pesoTipo(tipo){ const w=criticidad[tipo]; return (w>=1 && w<=5) ? w : 3; }
+// % de un equipo para el rollup: su reporte, o 100 si nunca se reportó (sin reporte = operativo).
+function pctEquipo(eq){ return (eq.operatividad==null) ? 100 : Number(eq.operatividad); }
+function tieneReporte(eq){ return eq.operatividad != null; }
+// Frescura: nunca reportado, o reporte de hace más de STALE_DIAS → "a re-verificar" (señal interna).
+function esStale(eq){
+  if(!eq.operatividadFecha) return true;
+  const d = new Date(eq.operatividadFecha + 'T12:00:00').getTime();
+  if(isNaN(d)) return true;
+  return (Date.now() - d) / 86400000 > STALE_DIAS;
+}
+// Promedio ponderado por criticidad de una lista de equipos.
+function rollup(eqs){
+  let num=0, den=0;
+  for(const eq of eqs){ const w=pesoTipo(eq.tipo); num += w*pctEquipo(eq); den += w; }
+  return den ? Math.round(num/den) : 100;
+}
+function hoyISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function fmtFecha(f){ return f ? esc(f) : '—'; }
+
+function isOpAdmin(){ return MA.can('editar','operatividad'); }        // fija el % a mano (ADMIN/SUPER + supervisor con la app)
+function canEditManual(){ return MA.isAdmin(); }                        // update de inventario exige canWrite('inventario') → limitamos a ADMIN/SUPER
+function canEditCriticidad(){ return MA.isSuperAdmin(); }              // maestro → solo super (regla isSuper)
+
+// ── INIT ──
+function initApp(){
+  if(!MA.canEnter('operatividad')){
+    document.getElementById('main-page').style.display = 'none';
+    MA.showNoAccess('Operatividad');
+    return;
+  }
+  if(canEditCriticidad()){ const b=document.getElementById('btn-crit'); if(b) b.style.display='inline-flex'; }
+  loadAll();
+}
+
+async function loadAll(){
+  try{
+    const [invS, critS] = await Promise.all([
+      db.collection('inventario').get(),
+      db.collection('maestros_criticidad').get(),
+    ]);
+    inventario = invS.docs.map(d => { const x=d.data(); return {
+      eqId:d.id, sede:x.sede||'', cliente:x.cliente||'', tipo:x.tipo||'', nombre:x.nombre||'', area:x.area||'',
+      operatividad:(x.operatividad==null?null:Number(x.operatividad)),
+      operatividadFecha:x.operatividadFecha||null, operatividadPor:x.operatividadPor||'', operatividadOrigen:x.operatividadOrigen||'',
+    }; }).filter(e => e.sede && e.nombre);
+    inventario.sort((a,b)=> (a.sede||'').localeCompare(b.sede||'','es') || (a.tipo||'').localeCompare(b.tipo||'','es') || (a.nombre||'').localeCompare(b.nombre||'','es',{numeric:true}));
+    clientes = [...new Set(inventario.map(e=>e.cliente).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+    criticidad = {}; critS.docs.forEach(d => { const w=Number(d.data().peso); if(w>=1&&w<=5) criticidad[d.id]=w; });
+  }catch(e){
+    document.getElementById('sede-grid').innerHTML = `<div class="empty-msg">Error al cargar: ${esc(e.message)}</div>`;
+    toast('Error al cargar: '+e.message,'err');
+    return;
+  }
+  // filtro de cliente (solo si hay >1)
+  const fc = document.getElementById('f-cliente');
+  fc.innerHTML = '<option value="">Todos los clientes</option>' + clientes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  fc.style.display = clientes.length>1 ? '' : 'none';
+  // selector "por equipo": cliente
+  const ec = document.getElementById('eq-cliente'), ecg = document.getElementById('eq-cliente-group');
+  ec.innerHTML = '<option value="">Seleccionar…</option>' + clientes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  if(clientes.length<=1){ ec.value = clientes[0]||''; if(ecg) ecg.style.display='none'; } else { if(ecg) ecg.style.display=''; }
+  fillEqSede();
+  renderAll();
+}
+
+function clienteFiltro(){ return document.getElementById('f-cliente').value; }
+
+function renderAll(){ renderStats(); renderSedes(); }
+
+function renderStats(){
+  const fc = clienteFiltro();
+  const eqs = inventario.filter(e=>!fc || e.cliente===fc);
+  const conReporte = eqs.filter(tieneReporte);
+  const inop = conReporte.filter(e=>Number(e.operatividad)===0).length;
+  const stale = eqs.filter(esStale).length;
+  const global = rollup(eqs);
+  const b = bandaAgregado(global);
+  const el = document.getElementById('stat-row');
+  el.innerHTML = `
+    <div class="stat-tile"><div class="stat-val" style="color:${b.color}">${b.emoji} ${global}%</div><div class="stat-lbl">Operatividad global</div></div>
+    <div class="stat-tile"><div class="stat-val">${eqs.length}</div><div class="stat-lbl">Equipos</div></div>
+    <div class="stat-tile"><div class="stat-val" style="color:${inop?'#dc2626':'var(--blue)'}">${inop}</div><div class="stat-lbl">Inoperativos ⚫</div></div>
+    <div class="stat-tile"><div class="stat-val" style="color:${stale?'#d48a00':'var(--blue)'}">${stale}</div><div class="stat-lbl">A re-verificar ⚠️</div></div>`;
+}
+
+function renderSedes(){
+  const fc = clienteFiltro();
+  const grid = document.getElementById('sede-grid');
+  const eqs = inventario.filter(e=>!fc || e.cliente===fc);
+  // agrupar por cliente|sede
+  const groups = {};
+  for(const e of eqs){ const k=e.cliente+'|'+e.sede; (groups[k]=groups[k]||{cliente:e.cliente,sede:e.sede,eqs:[]}).eqs.push(e); }
+  const arr = Object.values(groups).map(g => ({ ...g, pct:rollup(g.eqs), stale:g.eqs.filter(esStale).length, inop:g.eqs.filter(e=>Number(e.operatividad)===0).length }));
+  arr.sort((a,b)=> a.pct-b.pct || a.sede.localeCompare(b.sede,'es'));   // peores primero
+  if(!arr.length){ grid.innerHTML='<div class="empty-msg">No hay equipos para este filtro.</div>'; return; }
+  // data-* + listener (NO interpolar cliente/sede en un onclick inline: esc() escapa
+  // para HTML pero el parser decodifica &#39; antes de ejecutar el handler → un ' en
+  // el nombre rompería el click / permitiría inyección. dataset devuelve el literal).
+  grid.innerHTML = arr.map(g => {
+    const b = bandaAgregado(g.pct);
+    return `<div class="sede-card" style="border-left-color:${b.color}" data-cliente="${esc(g.cliente)}" data-sede="${esc(g.sede)}">
+      <div class="sede-card-head">
+        <div><div class="sede-name">${esc(g.sede)}</div>${clientes.length>1?`<div class="sede-cliente">${esc(g.cliente)}</div>`:''}</div>
+        <div class="sede-pct" style="color:${b.color}">${g.pct}%</div>
+      </div>
+      <div class="op-bar"><div class="op-bar-fill" style="width:${g.pct}%;background:${b.color}"></div></div>
+      <div class="sede-meta">
+        <span>${b.emoji} ${esc(b.etiqueta)}</span>
+        <span>· ${g.eqs.length} equipos</span>
+        ${g.inop?`<span style="color:#dc2626">· ${g.inop} ⚫</span>`:''}
+        ${g.stale?`<span class="stale-badge">⚠️ ${g.stale} s/verif.</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.sede-card').forEach(el => { el.onclick = () => openSede(el.dataset.cliente, el.dataset.sede); });
+}
+
+// ── DRILL-DOWN de una sede ──
+let _sedeCur = null;
+function openSede(cliente, sede){
+  _sedeCur = {cliente, sede};
+  const eqs = inventario.filter(e=>e.cliente===cliente && e.sede===sede);
+  const pct = rollup(eqs), b = bandaAgregado(pct);
+  document.getElementById('modal-sede-title').textContent = sede + (clientes.length>1?` · ${cliente}`:'');
+  document.getElementById('modal-sede-sub').innerHTML = `<span style="color:${b.color};font-weight:700">${b.emoji} ${pct}% ${esc(b.etiqueta)}</span> · ${eqs.length} equipos (ponderado por criticidad).`;
+  renderSedeBody();
+  document.getElementById('modal-sede').classList.add('open');
+}
+function renderSedeBody(){
+  if(!_sedeCur) return;
+  const {cliente, sede} = _sedeCur;
+  const admin = canEditManual();
+  const eqs = inventario.filter(e=>e.cliente===cliente && e.sede===sede)
+    .sort((a,b)=> pctEquipo(a)-pctEquipo(b) || (a.tipo||'').localeCompare(b.tipo||'','es') || (a.nombre||'').localeCompare(b.nombre||'','es',{numeric:true}));
+  const body = document.getElementById('modal-sede-body');
+  body.innerHTML = eqs.map(e=>{
+    const rep = tieneReporte(e), pct = pctEquipo(e), n = nivelDe(pct);
+    const stale = esStale(e);
+    return `<div class="eq-row">
+      <div class="eq-dot">${n.emoji}</div>
+      <div class="eq-info">
+        <div class="eq-name">${esc(e.nombre)}</div>
+        <div class="eq-sub">${esc((e.tipo||'').toLowerCase())}${e.area?' · 📍 '+esc(e.area):''} · peso ${pesoTipo(e.tipo)}${stale?' · <span style="color:#d48a00">⚠️ '+(rep?'dato viejo':'sin verificar')+'</span>':''}</div>
+      </div>
+      <div class="eq-pct" style="color:${n.color}">${rep?pct+'%':'—'}</div>
+      ${admin?`<button class="btn btn-sm op-edit-btn" data-eqid="${esc(e.eqId)}">✎</button>`:''}
+    </div>`;
+  }).join('');
+  body.querySelectorAll('.op-edit-btn').forEach(el => { el.onclick = () => openPct(el.dataset.eqid); });
+}
+
+// ── VISTA POR EQUIPO ──
+function fillEqSede(){
+  const cli = document.getElementById('eq-cliente').value;
+  const sedes = [...new Set(inventario.filter(e=>!cli||e.cliente===cli).map(e=>e.sede).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  const sel = document.getElementById('eq-sede');
+  sel.innerHTML = '<option value="">Seleccionar…</option>' + sedes.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  document.getElementById('eq-tipo').innerHTML = '<option value="">Todos los tipos</option>';
+  document.getElementById('eq-equipo').innerHTML = '<option value="">Seleccionar…</option>';
+  document.getElementById('eq-detail').innerHTML = '';
+}
+function onEqClienteChange(){ fillEqSede(); }
+function onEqSedeChange(){
+  const cli=document.getElementById('eq-cliente').value, sede=document.getElementById('eq-sede').value;
+  const tipos=[...new Set(inventario.filter(e=>(!cli||e.cliente===cli)&&e.sede===sede).map(e=>e.tipo).filter(Boolean))].sort();
+  document.getElementById('eq-tipo').innerHTML='<option value="">Todos los tipos</option>'+tipos.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  fillEqEquipo();
+}
+function onEqTipoChange(){ fillEqEquipo(); }
+function fillEqEquipo(){
+  const cli=document.getElementById('eq-cliente').value, sede=document.getElementById('eq-sede').value, tipo=document.getElementById('eq-tipo').value;
+  let eqs=inventario.filter(e=>(!cli||e.cliente===cli)&&e.sede===sede); if(tipo) eqs=eqs.filter(e=>e.tipo===tipo);
+  document.getElementById('eq-equipo').innerHTML='<option value="">Seleccionar…</option>'+eqs.map(e=>`<option value="${esc(e.eqId)}">${esc(e.nombre)} · ${esc((e.tipo||'').toLowerCase())}</option>`).join('');
+  document.getElementById('eq-detail').innerHTML='';
+}
+async function onEqEquipoChange(){
+  const eqId=document.getElementById('eq-equipo').value;
+  const box=document.getElementById('eq-detail');
+  if(!eqId){ box.innerHTML=''; return; }
+  const e=inventario.find(x=>x.eqId===eqId);
+  if(!e){ box.innerHTML=''; return; }
+  const rep=tieneReporte(e), pct=pctEquipo(e), n=nivelDe(pct), stale=esStale(e);
+  box.innerHTML = `<div class="det-box">
+    <div class="det-hero">
+      <div class="det-pct" style="color:${n.color}">${n.emoji} ${rep?pct+'%':'s/rep.'}</div>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:700">${esc(e.nombre)}</div>
+        <div style="font-size:11px;color:var(--muted2)">${esc(e.tipo)}${e.area?' · 📍 '+esc(e.area):''} · <span class="mono">${esc(e.eqId)}</span></div>
+        <div style="font-size:11px;color:var(--muted2);margin-top:3px">${rep?`Último reporte: ${fmtFecha(e.operatividadFecha)}${e.operatividadPor?' · '+esc(e.operatividadPor):''}${e.operatividadOrigen?' · '+esc(e.operatividadOrigen):''}`:'Sin reportes — se asume operativo (100%)'}${stale?' · <span style="color:#d48a00;font-weight:700">⚠️ a re-verificar</span>':''}</div>
+      </div>
+      ${canEditManual()?`<button class="btn btn-sm btn-primary op-edit-btn">✎ Fijar estado</button>`:''}
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--blue);margin-bottom:4px">🕘 Historial</div>
+    <div class="timeline" id="tl-box"><div class="empty-msg" style="padding:16px">Cargando historial…</div></div>
+  </div>`;
+  const editBtn = box.querySelector('.op-edit-btn'); if(editBtn) editBtn.onclick = () => openPct(e.eqId);
+  // historial on-demand (query por eqId, solo igualdad → sin índice compuesto)
+  try{
+    const snap = await db.collection('operatividad_eventos').where('eqId','==',eqId).get();
+    // Orden por createdAt (ISO string en ambos frentes; ver docs/operatividad-spec.md);
+    // fallback a `fecha` si createdAt falta o no es string (robusto ante Timestamp/vacío).
+    const ordKey = ev => (ev && typeof ev.createdAt==='string' && ev.createdAt) ? ev.createdAt : ((ev && ev.fecha) || '');
+    const evs = snap.docs.map(d=>d.data()).sort((a,b)=> ordKey(b).localeCompare(ordKey(a)));
+    const tl = document.getElementById('tl-box');
+    if(!tl) return;
+    if(!evs.length){ tl.innerHTML='<div class="empty-msg" style="padding:16px">Sin reportes de operatividad todavía.</div>'; return; }
+    tl.innerHTML = evs.map(ev=>{ const nn=nivelDe(ev.porcentaje);
+      return `<div class="tl-item">
+        <div class="tl-dot">${nn.emoji}</div>
+        <div class="tl-body">
+          <div class="tl-top">${Number(ev.porcentaje)}% · ${esc(nn.etiqueta)}</div>
+          <div class="tl-meta">${esc(ev.fecha||'')} · ${esc(ev.origen||'')}${ev.registradoPor?' · '+esc(ev.registradoPor):''}</div>
+        </div>
+      </div>`; }).join('');
+  }catch(err){
+    const tl=document.getElementById('tl-box'); if(tl) tl.innerHTML=`<div class="empty-msg" style="padding:16px">No se pudo cargar el historial: ${esc(err.message)}</div>`;
+  }
+}
+
+// ── FIJAR OPERATIVIDAD MANUAL ──
+let _pctEqId=null, _pctVal=null;
+function openPct(eqId){
+  if(!canEditManual()){ toast('Sin permiso para editar','err'); return; }
+  const e=inventario.find(x=>x.eqId===eqId); if(!e) return;
+  _pctEqId=eqId; _pctVal=(e.operatividad==null?null:Number(e.operatividad));
+  document.getElementById('modal-pct-sub').innerHTML = `<strong>${esc(e.nombre)}</strong> · ${esc(e.sede)}${clientes.length>1?' · '+esc(e.cliente):''}. Elige en qué % quedó operativo el equipo.`;
+  document.getElementById('pct-opts').innerHTML = NIVELES.map(n=>`
+    <div class="pct-opt${_pctVal===n.p?' sel':''}" data-p="${n.p}" onclick="pickPct(${n.p})">
+      <div class="pct-opt-emoji">${n.emoji}</div>
+      <div><div class="pct-opt-txt">${n.p}% · ${esc(n.etiqueta)}</div></div>
+    </div>`).join('');
+  document.getElementById('btn-save-pct').disabled = (_pctVal==null);
+  document.getElementById('modal-pct').classList.add('open');
+}
+function pickPct(p){
+  _pctVal=p;
+  document.querySelectorAll('#pct-opts .pct-opt').forEach(el=>el.classList.toggle('sel', Number(el.dataset.p)===p));
+  document.getElementById('btn-save-pct').disabled=false;
+}
+async function saveOperatividadManual(){
+  if(_pctEqId==null || _pctVal==null) return;
+  const btn=document.getElementById('btn-save-pct'); if(btn.disabled) return;
+  const e=inventario.find(x=>x.eqId===_pctEqId); if(!e){ toast('Equipo no encontrado','err'); return; }
+  btn.disabled=true; btn.textContent='⏳ Guardando...';
+  const now=new Date().toISOString(), fecha=now.slice(0,10), pct=Number(_pctVal), niv=nivelDe(pct);
+  const evento={ eqId:e.eqId, sede:e.sede, cliente:e.cliente, tipo:e.tipo, nombre:e.nombre, area:e.area,
+    porcentaje:pct, nivel:niv.nivel, origen:'APP', obsId:null, tecnicoId:null,
+    registradoPor:maUser.email, fecha, createdAt:now, createdBy:maUser.email };
+  try{
+    const batch=db.batch();
+    batch.set(db.collection('operatividad_eventos').doc(), evento);
+    batch.set(db.collection('inventario').doc(e.eqId), { operatividad:pct, operatividadFecha:fecha, operatividadPor:maUser.email, operatividadObsId:null, operatividadOrigen:'APP' }, {merge:true});
+    await batch.commit();
+    Object.assign(e, { operatividad:pct, operatividadFecha:fecha, operatividadPor:maUser.email, operatividadOrigen:'APP' });
+    toast('Operatividad actualizada ✓','ok');
+    closeModal('modal-pct');
+    renderAll();
+    if(document.getElementById('modal-sede').classList.contains('open')) renderSedeBody();
+    if(document.getElementById('eq-equipo').value===e.eqId) onEqEquipoChange();
+  }catch(err){
+    toast('Error al guardar: '+err.message,'err');
+  }finally{ btn.disabled=false; btn.textContent='💾 Guardar'; }
+}
+
+// ── CRITICIDAD ──
+function openCriticidad(){
+  if(!canEditCriticidad()){ toast('Solo el super admin edita la criticidad','err'); return; }
+  const tipos=[...new Set(inventario.map(e=>e.tipo).filter(Boolean))].sort();
+  document.getElementById('crit-body').innerHTML = tipos.map(t=>`
+    <div class="crit-row">
+      <div class="crit-tipo">${esc(t)}</div>
+      <input type="number" class="form-input crit-input" min="1" max="5" step="1" value="${pesoTipo(t)}" data-tipo="${esc(t)}">
+    </div>`).join('') || '<div class="empty-msg">No hay tipos en el inventario.</div>';
+  document.getElementById('modal-crit').classList.add('open');
+}
+async function saveCriticidad(){
+  if(!canEditCriticidad()) return;
+  const btn=document.getElementById('btn-save-crit'); if(btn.disabled) return;
+  btn.disabled=true; btn.textContent='⏳ Guardando...';
+  try{
+    const inputs=[...document.querySelectorAll('#crit-body .crit-input')];
+    const batch=db.batch();
+    inputs.forEach(inp=>{
+      const tipo=inp.dataset.tipo; let w=Math.round(Number(inp.value)); if(!(w>=1&&w<=5)) w=3;
+      batch.set(db.collection('maestros_criticidad').doc(tipo), {tipo, peso:w}, {merge:true});
+      criticidad[tipo]=w;
+    });
+    await batch.commit();
+    toast('Pesos de criticidad guardados ✓','ok');
+    closeModal('modal-crit');
+    renderAll();
+  }catch(err){ toast('Error al guardar: '+err.message,'err'); }
+  finally{ btn.disabled=false; btn.textContent='💾 Guardar pesos'; }
+}
+
+// ── TABS ──
+function switchTab(which){
+  document.getElementById('tabbtn-sede').classList.toggle('active', which==='sede');
+  document.getElementById('tabbtn-equipo').classList.toggle('active', which==='equipo');
+  document.getElementById('view-sede').classList.toggle('active', which==='sede');
+  document.getElementById('view-equipo').classList.toggle('active', which==='equipo');
+}
+</script>
+</body>
+</html>
