@@ -284,6 +284,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
           <p>Descarga un ZIP con todos los datos del sistema en formato CSV.</p>
           <div class="backup-files">
             <div class="backup-file"><span></span>asistencia.csv</div>
+            <div class="backup-file"><span></span>maestros_clientes.csv</div>
             <div class="backup-file"><span></span>maestros_personal.csv</div>
             <div class="backup-file"><span></span>personal_confidencial.csv</div>
             <div class="backup-file"><span></span>personal_eventos.csv</div>
@@ -593,7 +594,8 @@ async function loadTareas(editable) {
     const { getDocs, collection } = window.__fb;
     const snap = await getDocs(collection(window.__db, 'tareas_config'));
     const _tareas = {}, _minutos = {};
-    snap.docs.forEach(dd => { const data = dd.data(); _tareas[data.tipo]=data.tareas||[]; _minutos[data.tipo]=data.minutos||[]; });
+    // Editor de plantilla GLOBAL: ignora overrides por cliente (`cliente|tipo`, Etapa 2).
+    snap.docs.forEach(dd => { if (dd.id.includes('|')) return; const data = dd.data(); _tareas[data.tipo]=data.tareas||[]; _minutos[data.tipo]=data.minutos||[]; });
     const d = { tareas: _tareas, minutos: _minutos };
     const tareas = d.tareas || {};
     const minutos = d.minutos || {};
@@ -761,7 +763,9 @@ async function saveTareas() {
     const {writeBatch:_wbT,doc:_docT,collection:_colT,getDocs:_dgT}=window.__fb;
     const _bT=_wbT(window.__db);
     const _exT=await _dgT(_colT(window.__db,'tareas_config'));
-    _exT.docs.forEach(dd=>_bT.delete(dd.ref));
+    // Solo reescribe las plantillas GLOBALES: borra y recrea docs por `tipo`, PRESERVANDO los overrides
+    // por cliente (`cliente|tipo`, Etapa 2) — si no, guardar la plantilla global borraría todos los overrides.
+    _exT.docs.forEach(dd=>{ if(dd.id.includes('|')) return; _bT.delete(dd.ref); });
     Object.keys(tareasData).forEach(tipo=>{
       const ts=tareasData[tipo]||[];
       _bT.set(_docT(window.__db,'tareas_config',tipo),{tipo,tareas:ts.map(t=>t.nombre),minutos:ts.map(t=>t.minutos||5)});
@@ -914,7 +918,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap, cliCliSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
@@ -953,6 +957,7 @@ async function exportBackup() {
       window.__db.collection('comprobantes_fotos').get(),
       window.__db.collection('operatividad_eventos').get(),
       window.__db.collection('maestros_criticidad').get(),
+      window.__db.collection('maestros_clientes').get(),
     ]);
 
     const zip = new JSZip();
@@ -1070,13 +1075,18 @@ async function exportBackup() {
     zip.file('usuarios.csv', [userHeaders.join(','), ...userRows].join('\n'));
 
     // 4. Tareas config CSV
-    const tareasHeaders = ['TIPO','TAREA','MINUTOS','ORDEN'];
+    // Etapa 2: doc-id puede ser `tipo` (global) o `cliente|tipo` (override por cliente). Se agrega la
+    // columna CLIENTE para preservar esa dimensión (vacía = plantilla global). El cliente/tipo se derivan
+    // del doc-id si los campos no están.
+    const tareasHeaders = ['CLIENTE','TIPO','TAREA','MINUTOS','ORDEN'];
     const tareasRows = [];
     tareasSnap.docs.forEach(d => {
       const r = d.data();
-      const tipo = r.tipo || d.id;
+      let cliente = r.cliente || '', tipo = r.tipo || '';
+      if (String(d.id).includes('|')) { const p = String(d.id).split('|'); if(!cliente) cliente = p[0]; if(!tipo) tipo = p.slice(1).join('|'); }
+      else if (!tipo) { tipo = d.id; }
       (r.tareas||[]).forEach((t, i) => {
-        tareasRows.push([escapeCSV(tipo), escapeCSV(t), (r.minutos||[])[i]||5, i+1].join(','));
+        tareasRows.push([escapeCSV(cliente), escapeCSV(tipo), escapeCSV(t), (r.minutos||[])[i]||5, i+1].join(','));
       });
     });
     zip.file('tareas_config.csv', [tareasHeaders.join(','), ...tareasRows].join('\n'));
@@ -1274,6 +1284,14 @@ async function exportBackup() {
     });
     zip.file('maestros_criticidad.csv', [critHeaders.join(','), ...critRows].join('\n'));
 
+    // 23. Clientes — ficha de cada cliente como entidad (identidad + contrato/licitación → JSON)
+    const cliCliHeaders = ['ID','NOMBRE','RUC','DATA'];
+    const cliCliRows = cliCliSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.nombre||d.id, r.ruc||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('maestros_clientes.csv', [cliCliHeaders.join(','), ...cliCliRows].join('\n'));
+
     // Generate and download
     const blob = await zip.generateAsync({type:'blob'});
     const url = URL.createObjectURL(blob);
@@ -1339,7 +1357,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv','operatividad_eventos.csv','maestros_criticidad.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv','operatividad_eventos.csv','maestros_criticidad.csv','maestros_clientes.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1355,7 +1373,7 @@ async function processZip(file) {
     // "Reemplazar todo" fiel al backup: colecciones NUEVAS que un ZIP viejo no trae se
     // VACÍAN — antes quedaban datos fantasma (hallazgo del Council, cierra el backlog).
     if (mode === 'replace') {
-      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad'];
+      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad', 'maestros_clientes'];
       for (const colN of NUEVAS) {
         if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
         const _exN = await window.__db.collection(colN).get();
@@ -1595,14 +1613,36 @@ async function confirmImport() {
     if (pendingImport.files['tareas_config.csv']) {
       addLog('📋 Importando tareas...', 'info');
       const rows = parseCSV(pendingImport.files['tareas_config.csv']);
-      const tareasRows = rows.map(r => ({ tipo: r.TIPO, tarea: r.TAREA, minutos: +r.MINUTOS||5, orden: +r.ORDEN||1 }));
+      // Agrupar por (CLIENTE,TIPO) → un doc con arrays tareas[]/minutos[] ordenados por ORDEN.
+      // (Corrige el bug previo que hacía set por fila y colapsaba cada tipo a su última tarea.)
+      // doc-id = cliente ? `cliente|tipo` : `tipo` (global). CLIENTE ausente (backup viejo) → global.
+      const groups = {};
+      rows.forEach(r => {
+        const cliente = (r.CLIENTE||'').trim(), tipo = (r.TIPO||'').trim();
+        if(!tipo) return;
+        const key = cliente+'|'+tipo;
+        (groups[key] = groups[key] || {cliente, tipo, items:[]}).items.push({ tarea:r.TAREA, minutos:+r.MINUTOS||5, orden:+r.ORDEN||1 });
+      });
       const {writeBatch:_wb1,doc:_doc1,collection:_col1,getDocs:_dg1}=window.__fb;
-      const _b1=_wb1(window.__db);
-      const _ex1=await _dg1(_col1(window.__db,'tareas_config'));
-      _ex1.docs.forEach(d=>_b1.delete(d.ref));
-      tareasRows.forEach(r=>{_b1.set(_doc1(window.__db,'tareas_config',r.tipo),{tipo:r.tipo,tareas:[r.tarea],minutos:[r.minutos||5]});});
-      await _b1.commit();
-      addLog('✓ Tareas importadas (' + rows.length + ' tareas)', 'ok');
+      let _b1=_wb1(window.__db), _n1=0;
+      const _flush1=async()=>{ if(_n1>0){ await _b1.commit(); _b1=_wb1(window.__db); _n1=0; } };
+      // 'replace' = restaurar fielmente → borra todo y recrea desde el CSV (un backup NUEVO trae también los
+      // `cliente|tipo`; uno VIEJO sin columna CLIENTE recrea solo globales). 'merge' = upsert sin borrar
+      // (preserva overrides por cliente que el CSV no traiga).
+      if (mode === 'replace') {
+        const _ex1=await _dg1(_col1(window.__db,'tareas_config'));
+        for(const d of _ex1.docs){ _b1.delete(d.ref); if(++_n1>=400) await _flush1(); }
+        await _flush1();
+      }
+      for(const g of Object.values(groups)){
+        g.items.sort((a,b)=>a.orden-b.orden);
+        const docId = g.cliente ? (g.cliente+'|'+g.tipo) : g.tipo;
+        const payload = { tipo:g.tipo, tareas:g.items.map(x=>x.tarea), minutos:g.items.map(x=>x.minutos) };
+        if(g.cliente) payload.cliente = g.cliente;
+        _b1.set(_doc1(window.__db,'tareas_config',docId), payload); if(++_n1>=400) await _flush1();
+      }
+      await _flush1();
+      addLog('✓ Tareas importadas (' + Object.keys(groups).length + ' plantillas, ' + rows.length + ' filas)', 'ok');
     }
 
     // 3. Usuarios
@@ -1833,6 +1873,14 @@ async function confirmImport() {
       const rows = parseCSV(pendingImport.files['maestros_criticidad.csv']);
       await batchWrite('maestros_criticidad', rows, r => { const data=JSON.parse(r.DATA||'{}'); delete data.id; return {_docId:r.ID, ...data}; });
       addLog('✓ Criticidad importada (' + rows.length + ')', 'ok');
+    }
+
+    // Clientes — ficha de cliente como entidad (doc id = string cliente; DATA = doc completo)
+    if (pendingImport.files['maestros_clientes.csv']) {
+      addLog('🏢 Importando clientes...', 'info');
+      const rows = parseCSV(pendingImport.files['maestros_clientes.csv']);
+      await batchWrite('maestros_clientes', rows, r => { const data=JSON.parse(r.DATA||'{}'); delete data.id; return {_docId:r.ID, ...data}; });
+      addLog('✓ Clientes importados (' + rows.length + ')', 'ok');
     }
 
     addLog('✅ Importación completada', 'ok');

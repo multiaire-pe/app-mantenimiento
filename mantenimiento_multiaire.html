@@ -841,7 +841,9 @@ async function loadTareas() {
       getDocs(collection(window.__db, 'mtto_actividades_equipo'))
     ]);
     const tareas = {}, minutos = {};
-    snap.docs.forEach(d => { const data = d.data(); tareas[data.tipo] = data.tareas||[]; minutos[data.tipo] = data.minutos||[]; });
+    // Solo plantillas GLOBALES por tipo (se ignoran overrides por cliente `cliente|tipo` de la Etapa 2
+    // hasta encender el consumo por cliente, o sobrescribirían la global en memoria).
+    snap.docs.forEach(d => { if (d.id.includes('|')) return; const data = d.data(); tareas[data.tipo] = data.tareas||[]; minutos[data.tipo] = data.minutos||[]; });
     const actEq = {};
     ovSnap.docs.forEach(d => { const o = d.data(); actEq[d.id] = { agregadas: o.agregadas||[], quitadas: o.quitadas||[] }; });
     TAREAS = tareas; MINUTOS_TAREA = minutos; ACT_EQ = actEq;

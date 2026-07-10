@@ -92,7 +92,10 @@ export async function esActividadConocida(texto) {
       db.collection('mtto_actividades_equipo').get(),
     ]);
     const set = new Set();
-    plSnap.docs.forEach((d) => (d.data().tareas || []).forEach((x) => set.add(x)));
+    // Solo plantillas GLOBALES por tipo. Los overrides por cliente (doc-id `cliente|tipo`, Etapa 2)
+    // se ignoran acá hasta encender el consumo por cliente — si no, actividades de un cliente contarían
+    // como globales para la intención del bot.
+    plSnap.docs.forEach((d) => { if (d.id.includes('|')) return; (d.data().tareas || []).forEach((x) => set.add(x)); });
     ovSnap.docs.forEach((d) => ((d.data() || {}).agregadas || []).forEach((a) => set.add(a.nombre)));
     _cacheNombres.nombres = [...set].map(norm).filter((n) => n.length >= 10 && n.trim().split(/\s+/).length >= 2);
     _cacheNombres.ts = Date.now();
