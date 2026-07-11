@@ -2048,8 +2048,8 @@ function exportChecklist() {
   let bodyHtml = '';
   Object.keys(byTipo).sort((a,b)=>a.localeCompare(b,'es')).forEach(tipo => {
     const eqs = byTipo[tipo];
-    bodyHtml += `<div style="margin-bottom:14px;break-inside:avoid">
-      <div style="background:#1e3a5f;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.04em">${TIPO_ICON[tipo]||''} ${_actEsc(tipo)} · ${eqs.length} equipo(s)</div>`;
+    bodyHtml += `<div style="margin-bottom:14px">
+      <div style="background:#1e3a5f;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.04em;break-after:avoid">${TIPO_ICON[tipo]||''} ${_actEsc(tipo)} · ${eqs.length} equipo(s)</div>`;
     eqs.forEach(eq => {
       nEq++;
       const _a = actividadesDe(eq), tareas = _a.tareas || [], mins = _a.minutos || [];
