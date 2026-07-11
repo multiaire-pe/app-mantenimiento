@@ -422,7 +422,7 @@ let inventario = [];       // para contar equipos + tipos por cliente
 let tareasDocs = {};       // { docId: {tipo, cliente, tareas:[], minutos:[]} }  (docId = tipo ó cliente|tipo)
 let _cliCur = null;        // nombre del cliente abierto
 
-function canEditCli(){ return MA.can('editar','clientes'); }   // identidad/contrato: ADMIN/SUPER + supervisor c/app
+function canEditCli(){ return MA.isAdmin(); }   // identidad/contrato: ADMIN/SUPER (alineado con firestore.rules: create/update isAdmin)
 function canSuper(){ return MA.isSuperAdmin(); }               // sedes (maestros_tiendas) + actividades (tareas_config) = super
 
 // Un "cliente" vacío o "-" NO es un cliente real: es una sede INTERNA (p.ej. la OFICINA,
@@ -774,7 +774,8 @@ async function crearCliente(){
   if(!canEditCli()) return;
   const nombre=document.getElementById('n-nombre').value.trim();
   if(!nombre){ toast('El nombre es obligatorio','err'); return; }
-  if(nombre.includes('/')){ toast('El nombre no puede contener "/"','err'); return; }
+  // "/" rompe el doc-id de Firestore; "|" es el separador de tareas_config/{cliente|tipo}; "-" es el centinela de sede interna
+  if(/[/|]/.test(nombre) || nombre==='-'){ toast('El nombre no puede contener "/" ni "|" ni ser "-"','err'); return; }
   if(clientes.some(c=>c.nombre.toLowerCase()===nombre.toLowerCase())){ toast('Ya existe un cliente con ese nombre','err'); return; }
   const btn=document.getElementById('btn-crear'); btn.disabled=true; btn.textContent='⏳...';
   const now=new Date().toISOString();

@@ -1993,8 +1993,8 @@ function renderGrupos() {
   list.innerHTML = maestrosData.grupos.map((g, i) => {
     const c = grupoColor(g.grupo);
     return `<div class="maestro-item">
-      <input class="maestro-input" type="text" value="${g.grupo}" onchange="updateGrupo(${i},'grupo',this.value)" placeholder="Nombre del grupo">
-      <span class="cargo-badge" style="background:${c.bg};color:${c.color};border:1px solid ${c.border}">${g.grupo}</span>
+      <input class="maestro-input" type="text" value="${escAttr(g.grupo)}" onchange="updateGrupo(${i},'grupo',this.value)" placeholder="Nombre del grupo">
+      <span class="cargo-badge" style="background:${c.bg};color:${c.color};border:1px solid ${c.border}">${escAttr(g.grupo)}</span>
       <button class="maestro-del" onclick="deleteGrupo(${i})" title="Eliminar">✕</button>
     </div>`;
   }).join('');
@@ -2018,8 +2018,8 @@ function renderFeriados() {
   list.innerHTML = maestrosData.feriados.map((f, i) => {
     const fechaDisplay = f.fecha ? new Date(f.fecha + 'T00:00:00').toLocaleDateString('es-PE', { day:'2-digit', month:'long', year:'numeric' }) : '';
     return `<div class="maestro-item ${f.activo==='NO'?'inactive':''}">
-      <input class="maestro-input" type="text" value="${f.nombre}" onchange="updateFeriado(${i},'nombre',this.value)" placeholder="Descripción del feriado" style="flex:2">
-      <input type="date" value="${f.fecha}" onchange="updateFeriado(${i},'fecha',this.value)" style="width:150px;background:var(--surface);border:1.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--accent);outline:none;font-family:var(--mono)">
+      <input class="maestro-input" type="text" value="${escAttr(f.nombre)}" onchange="updateFeriado(${i},'nombre',this.value)" placeholder="Descripción del feriado" style="flex:2">
+      <input type="date" value="${escAttr(f.fecha)}" onchange="updateFeriado(${i},'fecha',this.value)" style="width:150px;background:var(--surface);border:1.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--accent);outline:none;font-family:var(--mono)">
       <span class="cargo-badge" style="background:var(--blue-pale);color:var(--blue);border:1px solid var(--border2);white-space:nowrap">${fechaDisplay}</span>
       <button class="maestro-toggle" onclick="toggleFeriado(${i})" title="${f.activo==='SI'?'Desactivar':'Activar'}">${f.activo==='SI'?'✅':'⭕'}</button>
       <button class="maestro-del" onclick="deleteFeriado(${i})" title="Eliminar">✕</button>
