@@ -284,6 +284,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
           <p>Descarga un ZIP con todos los datos del sistema en formato CSV.</p>
           <div class="backup-files">
             <div class="backup-file"><span></span>asistencia.csv</div>
+            <div class="backup-file"><span></span>maestros_clientes.csv</div>
             <div class="backup-file"><span></span>maestros_personal.csv</div>
             <div class="backup-file"><span></span>personal_confidencial.csv</div>
             <div class="backup-file"><span></span>personal_eventos.csv</div>
@@ -363,26 +364,20 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
     </div>
     <div class="section-body">
       <div class="maestros-tabs">
-        <button class="maestros-tab active" onclick="switchMaestroTab('tiendas')">Tiendas</button>
-        <button class="maestros-tab" onclick="switchMaestroTab('grupos')">Grupos / Tipo de trabajo</button>
+        <button class="maestros-tab active" onclick="switchMaestroTab('grupos')">Grupos / Tipo de trabajo</button>
         <button class="maestros-tab" onclick="switchMaestroTab('feriados')">Feriados</button>
       </div>
 
-      <!-- El editor de personal se movió al módulo dedicado Personal (personal.html). -->
-
-      <!-- TIENDAS -->
-      <div class="maestros-panel active" id="panel-tiendas">
-        <div class="maestros-list" id="tiendas-list">Cargando...</div>
-        <div class="add-maestro-row">
-          <input type="text" id="new-tie-tienda" placeholder="Nombre de tienda...">
-          <input type="text" id="new-tie-sede" placeholder="Sede" style="max-width:140px">
-          <input type="text" id="new-tie-cliente" placeholder="Cliente" style="max-width:120px">
-          <button class="btn btn-orange" onclick="addTienda()">+ Agregar</button>
-        </div>
-      </div>
+      <!-- El editor de personal se movió al módulo Personal (personal.html). El editor de
+           TIENDAS/SEDES se movió al módulo Clientes (clientes.html): las sedes se gestionan
+           dentro de su cliente, y las sedes internas —como la oficina— en su sección
+           "🏢 Sedes internas". El backup/restore de maestros_tiendas sigue abajo (Respaldo). -->
+      <p style="font-size:11px;color:var(--muted2);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;line-height:1.5">
+        🏪 Las <strong>tiendas/sedes</strong> ahora se gestionan en el módulo <strong>Clientes</strong> (dentro de cada cliente; las sedes internas como la oficina, en “🏢 Sedes internas”). Su respaldo sigue disponible en la sección <strong>Respaldo</strong>.
+      </p>
 
       <!-- GRUPOS -->
-      <div class="maestros-panel" id="panel-grupos">
+      <div class="maestros-panel active" id="panel-grupos">
         <div class="maestros-list" id="grupos-list">Cargando...</div>
         <div class="add-maestro-row">
           <input type="text" id="new-grp-nombre" placeholder="Nombre del grupo (ej: EMERGENCIA)...">
@@ -593,7 +588,8 @@ async function loadTareas(editable) {
     const { getDocs, collection } = window.__fb;
     const snap = await getDocs(collection(window.__db, 'tareas_config'));
     const _tareas = {}, _minutos = {};
-    snap.docs.forEach(dd => { const data = dd.data(); _tareas[data.tipo]=data.tareas||[]; _minutos[data.tipo]=data.minutos||[]; });
+    // Editor de plantilla GLOBAL: ignora overrides por cliente (`cliente|tipo`, Etapa 2).
+    snap.docs.forEach(dd => { if (dd.id.includes('|')) return; const data = dd.data(); _tareas[data.tipo]=data.tareas||[]; _minutos[data.tipo]=data.minutos||[]; });
     const d = { tareas: _tareas, minutos: _minutos };
     const tareas = d.tareas || {};
     const minutos = d.minutos || {};
@@ -761,7 +757,9 @@ async function saveTareas() {
     const {writeBatch:_wbT,doc:_docT,collection:_colT,getDocs:_dgT}=window.__fb;
     const _bT=_wbT(window.__db);
     const _exT=await _dgT(_colT(window.__db,'tareas_config'));
-    _exT.docs.forEach(dd=>_bT.delete(dd.ref));
+    // Solo reescribe las plantillas GLOBALES: borra y recrea docs por `tipo`, PRESERVANDO los overrides
+    // por cliente (`cliente|tipo`, Etapa 2) — si no, guardar la plantilla global borraría todos los overrides.
+    _exT.docs.forEach(dd=>{ if(dd.id.includes('|')) return; _bT.delete(dd.ref); });
     Object.keys(tareasData).forEach(tipo=>{
       const ts=tareasData[tipo]||[];
       _bT.set(_docT(window.__db,'tareas_config',tipo),{tipo,tareas:ts.map(t=>t.nombre),minutos:ts.map(t=>t.minutos||5)});
@@ -914,7 +912,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap, cliCliSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
@@ -953,6 +951,7 @@ async function exportBackup() {
       window.__db.collection('comprobantes_fotos').get(),
       window.__db.collection('operatividad_eventos').get(),
       window.__db.collection('maestros_criticidad').get(),
+      window.__db.collection('maestros_clientes').get(),
     ]);
 
     const zip = new JSZip();
@@ -1070,13 +1069,18 @@ async function exportBackup() {
     zip.file('usuarios.csv', [userHeaders.join(','), ...userRows].join('\n'));
 
     // 4. Tareas config CSV
-    const tareasHeaders = ['TIPO','TAREA','MINUTOS','ORDEN'];
+    // Etapa 2: doc-id puede ser `tipo` (global) o `cliente|tipo` (override por cliente). Se agrega la
+    // columna CLIENTE para preservar esa dimensión (vacía = plantilla global). El cliente/tipo se derivan
+    // del doc-id si los campos no están.
+    const tareasHeaders = ['CLIENTE','TIPO','TAREA','MINUTOS','ORDEN'];
     const tareasRows = [];
     tareasSnap.docs.forEach(d => {
       const r = d.data();
-      const tipo = r.tipo || d.id;
+      let cliente = r.cliente || '', tipo = r.tipo || '';
+      if (String(d.id).includes('|')) { const p = String(d.id).split('|'); if(!cliente) cliente = p[0]; if(!tipo) tipo = p.slice(1).join('|'); }
+      else if (!tipo) { tipo = d.id; }
       (r.tareas||[]).forEach((t, i) => {
-        tareasRows.push([escapeCSV(tipo), escapeCSV(t), (r.minutos||[])[i]||5, i+1].join(','));
+        tareasRows.push([escapeCSV(cliente), escapeCSV(tipo), escapeCSV(t), (r.minutos||[])[i]||5, i+1].join(','));
       });
     });
     zip.file('tareas_config.csv', [tareasHeaders.join(','), ...tareasRows].join('\n'));
@@ -1274,6 +1278,14 @@ async function exportBackup() {
     });
     zip.file('maestros_criticidad.csv', [critHeaders.join(','), ...critRows].join('\n'));
 
+    // 23. Clientes — ficha de cada cliente como entidad (identidad + contrato/licitación → JSON)
+    const cliCliHeaders = ['ID','NOMBRE','RUC','DATA'];
+    const cliCliRows = cliCliSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.nombre||d.id, r.ruc||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('maestros_clientes.csv', [cliCliHeaders.join(','), ...cliCliRows].join('\n'));
+
     // Generate and download
     const blob = await zip.generateAsync({type:'blob'});
     const url = URL.createObjectURL(blob);
@@ -1339,7 +1351,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv','operatividad_eventos.csv','maestros_criticidad.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv','operatividad_eventos.csv','maestros_criticidad.csv','maestros_clientes.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1355,7 +1367,7 @@ async function processZip(file) {
     // "Reemplazar todo" fiel al backup: colecciones NUEVAS que un ZIP viejo no trae se
     // VACÍAN — antes quedaban datos fantasma (hallazgo del Council, cierra el backlog).
     if (mode === 'replace') {
-      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad'];
+      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad', 'maestros_clientes'];
       for (const colN of NUEVAS) {
         if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
         const _exN = await window.__db.collection(colN).get();
@@ -1595,14 +1607,36 @@ async function confirmImport() {
     if (pendingImport.files['tareas_config.csv']) {
       addLog('📋 Importando tareas...', 'info');
       const rows = parseCSV(pendingImport.files['tareas_config.csv']);
-      const tareasRows = rows.map(r => ({ tipo: r.TIPO, tarea: r.TAREA, minutos: +r.MINUTOS||5, orden: +r.ORDEN||1 }));
+      // Agrupar por (CLIENTE,TIPO) → un doc con arrays tareas[]/minutos[] ordenados por ORDEN.
+      // (Corrige el bug previo que hacía set por fila y colapsaba cada tipo a su última tarea.)
+      // doc-id = cliente ? `cliente|tipo` : `tipo` (global). CLIENTE ausente (backup viejo) → global.
+      const groups = {};
+      rows.forEach(r => {
+        const cliente = (r.CLIENTE||'').trim(), tipo = (r.TIPO||'').trim();
+        if(!tipo) return;
+        const key = cliente+'|'+tipo;
+        (groups[key] = groups[key] || {cliente, tipo, items:[]}).items.push({ tarea:r.TAREA, minutos:+r.MINUTOS||5, orden:+r.ORDEN||1 });
+      });
       const {writeBatch:_wb1,doc:_doc1,collection:_col1,getDocs:_dg1}=window.__fb;
-      const _b1=_wb1(window.__db);
-      const _ex1=await _dg1(_col1(window.__db,'tareas_config'));
-      _ex1.docs.forEach(d=>_b1.delete(d.ref));
-      tareasRows.forEach(r=>{_b1.set(_doc1(window.__db,'tareas_config',r.tipo),{tipo:r.tipo,tareas:[r.tarea],minutos:[r.minutos||5]});});
-      await _b1.commit();
-      addLog('✓ Tareas importadas (' + rows.length + ' tareas)', 'ok');
+      let _b1=_wb1(window.__db), _n1=0;
+      const _flush1=async()=>{ if(_n1>0){ await _b1.commit(); _b1=_wb1(window.__db); _n1=0; } };
+      // 'replace' = restaurar fielmente → borra todo y recrea desde el CSV (un backup NUEVO trae también los
+      // `cliente|tipo`; uno VIEJO sin columna CLIENTE recrea solo globales). 'merge' = upsert sin borrar
+      // (preserva overrides por cliente que el CSV no traiga).
+      if (mode === 'replace') {
+        const _ex1=await _dg1(_col1(window.__db,'tareas_config'));
+        for(const d of _ex1.docs){ _b1.delete(d.ref); if(++_n1>=400) await _flush1(); }
+        await _flush1();
+      }
+      for(const g of Object.values(groups)){
+        g.items.sort((a,b)=>a.orden-b.orden);
+        const docId = g.cliente ? (g.cliente+'|'+g.tipo) : g.tipo;
+        const payload = { tipo:g.tipo, tareas:g.items.map(x=>x.tarea), minutos:g.items.map(x=>x.minutos) };
+        if(g.cliente) payload.cliente = g.cliente;
+        _b1.set(_doc1(window.__db,'tareas_config',docId), payload); if(++_n1>=400) await _flush1();
+      }
+      await _flush1();
+      addLog('✓ Tareas importadas (' + Object.keys(groups).length + ' plantillas, ' + rows.length + ' filas)', 'ok');
     }
 
     // 3. Usuarios
@@ -1835,6 +1869,14 @@ async function confirmImport() {
       addLog('✓ Criticidad importada (' + rows.length + ')', 'ok');
     }
 
+    // Clientes — ficha de cliente como entidad (doc id = string cliente; DATA = doc completo)
+    if (pendingImport.files['maestros_clientes.csv']) {
+      addLog('🏢 Importando clientes...', 'info');
+      const rows = parseCSV(pendingImport.files['maestros_clientes.csv']);
+      await batchWrite('maestros_clientes', rows, r => { const data=JSON.parse(r.DATA||'{}'); delete data.id; return {_docId:r.ID, ...data}; });
+      addLog('✓ Clientes importados (' + rows.length + ')', 'ok');
+    }
+
     addLog('✅ Importación completada', 'ok');
     toast('Importación completada ✓', 'ok');
     pendingImport = null;
@@ -1866,34 +1908,21 @@ const FERIADOS_CONFIG_DEFAULT = [
   {nombre:'Navidad',               fecha:'2026-12-25'},
 ];
 
-let maestrosData = { tiendas: [], grupos: [], feriados: [] };
+let maestrosData = { grupos: [], feriados: [] };   // Tiendas/Sedes se gestionan en el módulo Clientes
 let maestrosChanged = false;
 
 async function loadMaestros() {
   try {
     const { getDocs, collection } = window.__fb;
-    // El personal se administra en personal.html (módulo Personal); aquí solo tiendas/grupos/feriados.
-    const [tSnap, gSnap, fSnap] = await Promise.all([
-      getDocs(collection(window.__db, 'maestros_tiendas')),
+    // Personal → módulo Personal; Tiendas/Sedes → módulo Clientes. Aquí solo grupos/feriados.
+    const [gSnap, fSnap] = await Promise.all([
       getDocs(collection(window.__db, 'maestros_grupos')),
       getDocs(collection(window.__db, 'maestros_feriados')),
     ]);
     const d = {
-      tiendas: tSnap.docs.map(dd => dd.data()),
       grupos: gSnap.docs.map(dd => dd.data()),
       feriados: fSnap.docs.map(dd => dd.data()),
     };
-    maestrosData.tiendas = (d.tiendas || []).map((t, i) => ({
-      id: String(t.id || ('TIE' + String(i+1).padStart(3,'0'))).trim(),
-      cliente: String(t.cliente || '').trim(),
-      tienda: String(t.tienda || '').trim(),
-      sede: String(t.sede || '').trim(),
-      activo: String(t.activo || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI',
-      latitud: t.latitud != null && t.latitud !== '' ? Number(t.latitud) : null,
-      longitud: t.longitud != null && t.longitud !== '' ? Number(t.longitud) : null,
-      radio: t.radio != null && t.radio !== '' ? Number(t.radio) : null,
-      obs: String(t.obs || '')
-    })).filter(t => t.tienda);
     maestrosData.grupos = (d.grupos || []).map((g, i) => ({
       id: String(g.id || ('GRP' + String(i+1).padStart(3,'0'))).trim(),
       grupo: String(g.grupo || '').trim(),
@@ -1914,7 +1943,6 @@ async function loadMaestros() {
       maestrosData.feriados = [...maestrosData.feriados, ..._defs].sort((a, b) => a.fecha.localeCompare(b.fecha));
       maestrosChanged = true;
     }
-    renderTiendas();
     renderGrupos();
     renderFeriados();
   } catch(e) {
@@ -1954,61 +1982,10 @@ function grupoColor(grupo) {
 // Escapa un valor para insertarlo con seguridad dentro de un atributo HTML (evita romper value="..."/href).
 function escAttr(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
-function renderTiendas() {
-  const list = document.getElementById('tiendas-list');
-  if (!maestrosData.tiendas.length) { list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Sin tiendas registradas</div>'; return; }
-  list.innerHTML = maestrosData.tiendas.map((t, i) => {
-    const tieneGeo = t.latitud != null && t.longitud != null;
-    const coordVal = tieneGeo ? `${t.latitud}, ${t.longitud}` : '';
-    return `
-    <div class="maestro-item ${t.activo==='NO'?'inactive':''}" style="flex-direction:column;align-items:stretch;gap:6px">
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <input class="maestro-input" type="text" value="${escAttr(t.tienda)}" onchange="updateTienda(${i},'tienda',this.value)" placeholder="Nombre tienda" style="flex:2">
-        <input class="maestro-cargo" type="text" value="${escAttr(t.sede)}" onchange="updateTienda(${i},'sede',this.value)" placeholder="Sede">
-        <input class="maestro-cargo" type="text" value="${escAttr(t.cliente)}" onchange="updateTienda(${i},'cliente',this.value)" placeholder="Cliente">
-        <button class="maestro-toggle" onclick="toggleTienda(${i})" title="${t.activo==='SI'?'Desactivar':'Activar'}">${t.activo==='SI'?'✅':'⭕'}</button>
-        <button class="maestro-del" onclick="deleteTienda(${i})" title="Eliminar">✕</button>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;padding-left:2px">
-        <span style="color:var(--muted);min-width:48px" title="Para el bot de asistencia geolocalizada">📍 Geo</span>
-        <input class="maestro-cargo" type="text" value="${escAttr(coordVal)}" onchange="updateTiendaGeo(${i},this.value)" placeholder="lat, long (pega de Google Maps)" style="flex:2;min-width:190px">
-        <input class="maestro-cargo" type="number" value="${t.radio!=null?t.radio:250}" onchange="updateTienda(${i},'radio',this.value)" placeholder="radio" style="width:80px" title="Radio de marcaje en metros (por defecto 250)">
-        <span style="color:var(--muted)">m</span>
-        ${tieneGeo
-          ? `<a href="https://www.google.com/maps?q=${t.latitud},${t.longitud}" target="_blank" rel="noopener" style="text-decoration:none" title="Ver/verificar en el mapa">🗺️ ver</a>`
-          : '<span style="color:var(--orange)">⚠️ sin ubicación</span>'}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function updateTienda(i, field, value) {
-  if (field === 'radio') { const n = parseInt(value, 10); maestrosData.tiendas[i].radio = Number.isFinite(n) && n > 0 ? n : null; }
-  else maestrosData.tiendas[i][field] = value;
-  maestrosChanged = true;
-}
-// Pega "lat, long" (formato de Google Maps: clic derecho → copiar coordenadas) y lo separa.
-function updateTiendaGeo(i, value) {
-  const m = String(value).trim().match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
-  if (!m) { maestrosData.tiendas[i].latitud = null; maestrosData.tiendas[i].longitud = null; }
-  else { maestrosData.tiendas[i].latitud = parseFloat(m[1]); maestrosData.tiendas[i].longitud = parseFloat(m[2]); }
-  maestrosChanged = true; renderTiendas();
-}
-function toggleTienda(i) { maestrosData.tiendas[i].activo = maestrosData.tiendas[i].activo === 'SI' ? 'NO' : 'SI'; maestrosChanged = true; renderTiendas(); }
-function deleteTienda(i) { if (!confirm('¿Eliminar tienda?')) return; maestrosData.tiendas.splice(i, 1); maestrosChanged = true; renderTiendas(); }
-function addTienda() {
-  const tienda = document.getElementById('new-tie-tienda').value.trim().toUpperCase();
-  const sede = document.getElementById('new-tie-sede').value.trim().toUpperCase();
-  const cliente = document.getElementById('new-tie-cliente').value.trim().toUpperCase();
-  if (!tienda) { toast('Ingresa el nombre de la tienda', 'err'); return; }
-  const newId = 'TIE' + String(Date.now()).slice(-6);
-  maestrosData.tiendas.push({ id: newId, tienda, sede, cliente, activo: 'SI', latitud: null, longitud: null, radio: 250, obs: '' });
-  maestrosChanged = true;
-  document.getElementById('new-tie-tienda').value = '';
-  document.getElementById('new-tie-sede').value = '';
-  document.getElementById('new-tie-cliente').value = '';
-  renderTiendas();
-}
+// El editor de Tiendas/Sedes (renderTiendas/updateTienda/updateTiendaGeo/toggleTienda/
+// deleteTienda/addTienda) se movió al módulo Clientes (clientes.html): las sedes se
+// gestionan dentro de su cliente, y las internas —como la oficina— en "🏢 Sedes internas".
+// El backup/restore de maestros_tiendas se conserva aquí (sección Respaldo).
 
 function renderGrupos() {
   const list = document.getElementById('grupos-list');
@@ -2016,8 +1993,8 @@ function renderGrupos() {
   list.innerHTML = maestrosData.grupos.map((g, i) => {
     const c = grupoColor(g.grupo);
     return `<div class="maestro-item">
-      <input class="maestro-input" type="text" value="${g.grupo}" onchange="updateGrupo(${i},'grupo',this.value)" placeholder="Nombre del grupo">
-      <span class="cargo-badge" style="background:${c.bg};color:${c.color};border:1px solid ${c.border}">${g.grupo}</span>
+      <input class="maestro-input" type="text" value="${escAttr(g.grupo)}" onchange="updateGrupo(${i},'grupo',this.value)" placeholder="Nombre del grupo">
+      <span class="cargo-badge" style="background:${c.bg};color:${c.color};border:1px solid ${c.border}">${escAttr(g.grupo)}</span>
       <button class="maestro-del" onclick="deleteGrupo(${i})" title="Eliminar">✕</button>
     </div>`;
   }).join('');
@@ -2041,8 +2018,8 @@ function renderFeriados() {
   list.innerHTML = maestrosData.feriados.map((f, i) => {
     const fechaDisplay = f.fecha ? new Date(f.fecha + 'T00:00:00').toLocaleDateString('es-PE', { day:'2-digit', month:'long', year:'numeric' }) : '';
     return `<div class="maestro-item ${f.activo==='NO'?'inactive':''}">
-      <input class="maestro-input" type="text" value="${f.nombre}" onchange="updateFeriado(${i},'nombre',this.value)" placeholder="Descripción del feriado" style="flex:2">
-      <input type="date" value="${f.fecha}" onchange="updateFeriado(${i},'fecha',this.value)" style="width:150px;background:var(--surface);border:1.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--accent);outline:none;font-family:var(--mono)">
+      <input class="maestro-input" type="text" value="${escAttr(f.nombre)}" onchange="updateFeriado(${i},'nombre',this.value)" placeholder="Descripción del feriado" style="flex:2">
+      <input type="date" value="${escAttr(f.fecha)}" onchange="updateFeriado(${i},'fecha',this.value)" style="width:150px;background:var(--surface);border:1.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;color:var(--accent);outline:none;font-family:var(--mono)">
       <span class="cargo-badge" style="background:var(--blue-pale);color:var(--blue);border:1px solid var(--border2);white-space:nowrap">${fechaDisplay}</span>
       <button class="maestro-toggle" onclick="toggleFeriado(${i})" title="${f.activo==='SI'?'Desactivar':'Activar'}">${f.activo==='SI'?'✅':'⭕'}</button>
       <button class="maestro-del" onclick="deleteFeriado(${i})" title="Eliminar">✕</button>
@@ -2097,15 +2074,8 @@ async function saveMaestros() {
   if (!MA.can('config')) { toast('La configuración es solo del super admin', 'err'); return; }
   document.getElementById('loading').classList.add('show');
   try {
-    // El personal ya NO se guarda aquí: se administra en personal.html (módulo Personal).
-    // Esta pantalla guarda solo tiendas/grupos/feriados.
+    // Personal → personal.html; Tiendas/Sedes → clientes.html. Aquí solo grupos/feriados.
     const { writeBatch, doc, collection, getDocs } = window.__fb;
-    // Save tiendas
-    const b2 = writeBatch(window.__db);
-    const ex2 = await getDocs(collection(window.__db,'maestros_tiendas'));
-    ex2.docs.forEach(d=>b2.delete(d.ref));
-    maestrosData.tiendas.forEach(t=>{b2.set(doc(window.__db,'maestros_tiendas',t.id),{id:t.id,cliente:t.cliente,tienda:t.tienda,sede:t.sede,activo:t.activo,latitud:t.latitud??null,longitud:t.longitud??null,radio:t.radio??250,obs:t.obs||''});});
-    await b2.commit();
     // Save grupos
     const b3 = writeBatch(window.__db);
     const ex3 = await getDocs(collection(window.__db,'maestros_grupos'));

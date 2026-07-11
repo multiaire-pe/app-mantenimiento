@@ -92,6 +92,9 @@ export async function esActividadConocida(texto) {
       db.collection('mtto_actividades_equipo').get(),
     ]);
     const set = new Set();
+    // Etapa 2 (consumo por cliente ENCENDIDO): incluye plantillas globales Y overrides por cliente
+    // (`cliente|tipo`). Es un Set de NOMBRES para detectar INTENCIÓN de registro (no un map por tipo →
+    // sin colisión); reconocer las actividades propias de un cliente mejora la detección de intención.
     plSnap.docs.forEach((d) => (d.data().tareas || []).forEach((x) => set.add(x)));
     ovSnap.docs.forEach((d) => ((d.data() || {}).agregadas || []).forEach((a) => set.add(a.nombre)));
     _cacheNombres.nombres = [...set].map(norm).filter((n) => n.length >= 10 && n.trim().split(/\s+/).length >= 2);
@@ -119,15 +122,20 @@ export async function esRegistroActividad(texto) {
 // base − quitadas + agregadas; minutos por índice vigente, default 5) → los minutos alimentan
 // los KPIs de carga (Etapa 3) cuando la actividad no venía planificada.
 const _cacheActs = new Map();  // eqId → {ts, actividades, minutos}
-async function _resolverActs(eqId, tipo) {
+async function _resolverActs(eqId, tipo, cliente) {
   const hit = _cacheActs.get(eqId);
   if (hit && Date.now() - hit.ts < 5 * 60 * 1000) return hit;
   const db = getDb();
-  const [plSnap, ovSnap] = await Promise.all([
+  // Plantilla del CLIENTE del equipo (`tareas_config/{cliente|tipo}`) si existe, con FALLBACK a la
+  // plantilla global por tipo (`tareas_config/{tipo}`). Etapa 2: consumo por cliente encendido — un
+  // equipo de un cliente con licitación propia registra SUS actividades; los demás usan la global.
+  const clave = cliente ? `${cliente}|${tipo}` : '';
+  const [ownSnap, globSnap, ovSnap] = await Promise.all([
+    clave ? db.collection('tareas_config').doc(clave).get() : Promise.resolve(null),
     db.collection('tareas_config').doc(String(tipo || '')).get(),
     db.collection('mtto_actividades_equipo').doc(String(eqId)).get(),
   ]);
-  const pd = plSnap.exists ? plSnap.data() : {};
+  const pd = (ownSnap && ownSnap.exists) ? ownSnap.data() : (globSnap.exists ? globSnap.data() : {});
   const plantilla = pd.tareas || [], plMin = pd.minutos || [];
   const ov = ovSnap.exists ? ovSnap.data() : null;
   const quitadas = new Set(ov?.quitadas || []);
@@ -138,11 +146,11 @@ async function _resolverActs(eqId, tipo) {
   _cacheActs.set(eqId, val);
   return val;
 }
-export async function actividadesDeEquipo(eqId, tipo) {
-  return (await _resolverActs(eqId, tipo)).actividades;
+export async function actividadesDeEquipo(eqId, tipo, cliente) {
+  return (await _resolverActs(eqId, tipo, cliente)).actividades;
 }
-export async function minutosDeEquipo(eqId, tipo) {
-  return (await _resolverActs(eqId, tipo)).minutos;
+export async function minutosDeEquipo(eqId, tipo, cliente) {
+  return (await _resolverActs(eqId, tipo, cliente)).minutos;
 }
 
 // ── Textos ────────────────────────────────────────────────────────────────────
@@ -217,7 +225,7 @@ async function guardarRegistro(ses, tecnico) {
   // Si la escritura falla, se conserva el plan (atribución recuperable; el barrido del itinerario
   // es la red de seguridad). Ids determinísticos, idempotente. Nunca frustra el registro.
   try {
-    const minutos = await minutosDeEquipo(ses.eqId, ses.tipo);
+    const minutos = await minutosDeEquipo(ses.eqId, ses.tipo, ses.cliente);
     const fechaEjec = hoyLima();
     await Promise.all(ses.marcadas.map(async (i) => {
       const ejecRef = db.collection('mtto_ejecuciones').doc(`${ses.eqId}|${periodo}|${anio}|${i}`);
@@ -423,7 +431,7 @@ async function intentarResolver(ses, texto) {
     if (r.motivo === 'cliente') return `Esa sede existe para varios clientes (${(r.candidatosCliente || []).join(', ')}). ¿De cuál es?`;
     return `¿Qué *equipo* es? ${r.candidatosEquipo?.length ? 'Opciones: ' + r.candidatosEquipo.slice(0, 6).map((e) => e.nombre).join(' · ') : 'Dime el nombre como figura en el inventario.'}`;
   }
-  const acts = await actividadesDeEquipo(r.equipo.eqId, r.equipo.tipo);
+  const acts = await actividadesDeEquipo(r.equipo.eqId, r.equipo.tipo, r.equipo.cliente);
   if (!acts.length) {
     await limpiarSesion(ses.from);
     return `⚠️ El equipo *${r.equipo.nombre}* (${r.equipo.eqId}) no tiene actividades configuradas. Pídele al administrador que las configure en la app de Mantenimiento.`;
@@ -431,6 +439,7 @@ async function intentarResolver(ses, texto) {
   ses.sede = r.sede;
   ses.eqId = r.equipo.eqId;
   ses.tipo = r.equipo.tipo;
+  ses.cliente = r.equipo.cliente || '';   // para resolver los MINUTOS por cliente al guardar (Etapa 2)
   ses.area = r.equipo.area || '';
   ses.nombreEq = r.equipo.nombre;
   ses.actividades = acts;

@@ -662,9 +662,11 @@ async function loadAll(){
 }
 
 function obsSort(a,b){
-  return (a.tienda||'').localeCompare(b.tienda||'','es')
-      || (a.equipo||'').localeCompare(b.equipo||'','es',{numeric:true})
-      || (b.fecha||'').localeCompare(a.fecha||'');
+  // Predefinido: más recientes primero (fecha y, dentro del mismo día, hora de registro).
+  return (b.fecha||'').localeCompare(a.fecha||'')
+      || (b.createdAt||'').localeCompare(a.createdAt||'')
+      || (a.tienda||'').localeCompare(b.tienda||'','es')
+      || (a.equipo||'').localeCompare(b.equipo||'','es',{numeric:true});
 }
 
 function populateTiendaFilter(cliente){

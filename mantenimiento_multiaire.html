@@ -326,6 +326,7 @@ option{background:#fff}
   <div style="flex:1"></div>
   <button class="btn btn-sm" onclick="exportWhatsApp()" id="btnExport" style="display:none;color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.25);background:none">📤 <span class="hdr-lbl">WhatsApp</span></button>
   <button class="btn btn-sm" onclick="exportPDF()" id="btnPNG" style="display:none;background:none;border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.9)">📄 <span class="hdr-lbl">PDF</span></button>
+  <button class="btn btn-sm" onclick="exportChecklist()" id="btnChecklist" style="display:none;background:none;border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.9)" title="Checklist en blanco para imprimir y tildar a mano">🖨️ <span class="hdr-lbl">Checklist</span></button>
   <div id="user-pill" class="user-pill" style="display:none" onclick="maOpenAdmin()"></div>
   <a href="index.html" class="back-link">← Inicio</a>
 </header>
@@ -472,12 +473,17 @@ option{background:#fff}
 // Tareas cargadas dinámicamente desde TAREAS_CONFIG (Sheet)
 let TAREAS = {};
 let MINUTOS_TAREA = {};  // minutos reales por tipo/tarea
+let TAREAS_CLI = {};     // Etapa 2: plantillas por cliente → `${cliente}|${tipo}` -> [tareas]
+let MIN_CLI = {};        //          minutos por cliente     → `${cliente}|${tipo}` -> [minutos]
 let ACT_EQ = {};         // overrides por equipo: eq_id -> {agregadas:[{nombre,minutos}], quitadas:[nombre]}
 
 // Lista EFECTIVA de actividades de un equipo: (plantilla del tipo − quitadas) + agregadas.
 // Devuelve los mismos arrays paralelos tareas/minutos que usa todo el módulo (estado por índice).
 function actividadesDe(eq){
-  const bt = TAREAS[eq.tipo], bm = MINUTOS_TAREA[eq.tipo] || [];
+  // Etapa 2 (consumo por cliente): plantilla del CLIENTE del equipo (`cliente|tipo`) si existe,
+  // con fallback a la plantilla global por tipo. El override por equipo (ACT_EQ) se aplica igual encima.
+  const _ck = eq.cliente ? (eq.cliente + '|' + eq.tipo) : '';
+  const bt = (_ck && TAREAS_CLI[_ck]) || TAREAS[eq.tipo], bm = (_ck && MIN_CLI[_ck]) || MINUTOS_TAREA[eq.tipo] || [];
   const ov = ACT_EQ[eq.eq_id];
   if(!ov) return { tareas: bt, minutos: bm };
   const quit = new Set(ov.quitadas || []);
@@ -519,7 +525,12 @@ function onActsTipo(){
 function renderActsList(){
   const tipo = document.getElementById('act-tipo').value;
   const eqId = document.getElementById('act-eq').value;
-  const bt = TAREAS[tipo]||[], bm = MINUTOS_TAREA[tipo]||[];
+  // Base heredada: al personalizar un EQUIPO parte de la plantilla de SU cliente (`cliente|tipo`) ?? global
+  // —igual que actividadesDe, para que "desmarcar heredadas" opere sobre las correctas—; al editar la
+  // PLANTILLA del tipo (sin equipo) parte de la global.
+  const eqSel = eqId ? (sedeEquipos||[]).find(e=>e.eq_id===eqId) : null;
+  const _ck = (eqSel && eqSel.cliente) ? (eqSel.cliente+'|'+tipo) : '';
+  const bt = (_ck && TAREAS_CLI[_ck]) || TAREAS[tipo] || [], bm = (_ck && MIN_CLI[_ck]) || MINUTOS_TAREA[tipo] || [];
   _acts = { tipo, eqId,
     plantilla: bt.map((t,i)=>({nombre:t, minutos:Number(bm[i])||5})),
     agregadas: eqId ? JSON.parse(JSON.stringify((ACT_EQ[eqId]||{}).agregadas||[])) : [],
@@ -831,6 +842,8 @@ async function loadTareas() {
     const d = JSON.parse(cached);
     TAREAS = d.tareas || {};
     MINUTOS_TAREA = d.minutos || {};
+    TAREAS_CLI = d.tareasCli || {};
+    MIN_CLI = d.minCli || {};
     ACT_EQ = d.actEq || {};
     return;
   }
@@ -840,12 +853,18 @@ async function loadTareas() {
       getDocs(collection(window.__db, 'tareas_config')),
       getDocs(collection(window.__db, 'mtto_actividades_equipo'))
     ]);
-    const tareas = {}, minutos = {};
-    snap.docs.forEach(d => { const data = d.data(); tareas[data.tipo] = data.tareas||[]; minutos[data.tipo] = data.minutos||[]; });
+    const tareas = {}, minutos = {}, tareasCli = {}, minCli = {};
+    // Etapa 2 (consumo por cliente): separa plantillas GLOBALES (doc-id `tipo`) de overrides por cliente
+    // (doc-id `cliente|tipo`). actividadesDe resuelve el override del cliente ?? la global por tipo.
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (d.id.includes('|')) { tareasCli[d.id] = data.tareas||[]; minCli[d.id] = data.minutos||[]; }
+      else { tareas[data.tipo] = data.tareas||[]; minutos[data.tipo] = data.minutos||[]; }
+    });
     const actEq = {};
     ovSnap.docs.forEach(d => { const o = d.data(); actEq[d.id] = { agregadas: o.agregadas||[], quitadas: o.quitadas||[] }; });
-    TAREAS = tareas; MINUTOS_TAREA = minutos; ACT_EQ = actEq;
-    const _d = { tareas, minutos, actEq };
+    TAREAS = tareas; MINUTOS_TAREA = minutos; TAREAS_CLI = tareasCli; MIN_CLI = minCli; ACT_EQ = actEq;
+    const _d = { tareas, minutos, tareasCli, minCli, actEq };
     sessionStorage.setItem('ma_tareas2', JSON.stringify(_d));
     sessionStorage.setItem('ma_tareas2_time', String(Date.now()));
   } catch(e) {
@@ -1023,6 +1042,7 @@ function renderMain() {
   var _canExp = MA.can('exportar','mantenimiento');
   document.getElementById('btnExport').style.display = (sel.length && _canExp) ? 'flex' : 'none';
   document.getElementById('btnPNG').style.display = (sel.length && _canExp) ? 'flex' : 'none';
+  document.getElementById('btnChecklist').style.display = (sel.length && _canExp) ? 'flex' : 'none';
 
   if(!sel.length) {
     document.getElementById('content').innerHTML = `
@@ -2002,6 +2022,122 @@ function exportPDF() {
   // Call print after the content is fully loaded
   w.onload = () => { w.focus(); w.print(); };
   // Fallback in case onload already fired
+  setTimeout(() => { try { w.focus(); w.print(); } catch(e) {} }, 800);
+}
+
+// ── CHECKLIST IMPRIMIBLE (en blanco, para tildar a mano en campo) ──────────────
+// Genera un PDF/impresión con TODAS las actividades de los equipos seleccionados de
+// la sede+período, como casillas vacías para que el técnico las tilde en papel.
+function exportChecklist() {
+  if(!MA.can('exportar','mantenimiento')){ toast('Sin permisos para exportar','err'); return; }
+  const sel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
+  if(!sel.length){ toast('Sin equipos seleccionados','warn'); return; }
+  toast('Generando checklist...','warn');
+
+  const cliente = (sel.find(e=>e.cliente)||{}).cliente || '';
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'});
+
+  // Agrupar por tipo → equipos (equipos ordenados por nombre)
+  const byTipo = {};
+  sel.forEach(e => { (byTipo[e.tipo] = byTipo[e.tipo] || []).push(e); });
+  Object.values(byTipo).forEach(arr => arr.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{numeric:true})));
+
+  const box = '<span style="display:inline-block;width:13px;height:13px;border:1.6px solid #333;border-radius:2px;vertical-align:middle"></span>';
+  let nEq = 0, nActs = 0;
+  let bodyHtml = '';
+  Object.keys(byTipo).sort((a,b)=>a.localeCompare(b,'es')).forEach(tipo => {
+    const eqs = byTipo[tipo];
+    bodyHtml += `<div style="margin-bottom:14px;break-inside:avoid">
+      <div style="background:#1e3a5f;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.04em">${TIPO_ICON[tipo]||''} ${_actEsc(tipo)} · ${eqs.length} equipo(s)</div>`;
+    eqs.forEach(eq => {
+      nEq++;
+      const _a = actividadesDe(eq), tareas = _a.tareas || [], mins = _a.minutos || [];
+      nActs += tareas.length;
+      let rows = tareas.map((t,i) => {
+        const m = mins[i]!=null && mins[i]!=='' ? _actEsc(String(mins[i])) : '';
+        return `<tr>
+          <td style="padding:5px 6px;text-align:center;width:26px;border-bottom:1px solid #eee">${box}</td>
+          <td style="padding:5px 8px;font-size:11px;border-bottom:1px solid #eee">${_actEsc(t)}</td>
+          <td style="padding:5px 4px;font-size:9px;color:#999;text-align:center;width:34px;border-bottom:1px solid #eee">${m}</td>
+          <td style="border-bottom:1px solid #ccc"></td>
+        </tr>`;
+      }).join('');
+      if(!tareas.length) rows = `<tr><td colspan="4" style="padding:6px 8px;font-size:10px;color:#999;font-style:italic">— Sin actividades configuradas para este equipo —</td></tr>`;
+      bodyHtml += `<div style="border:1px solid #dde;border-top:none;padding:8px 10px;break-inside:avoid">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+          <span style="background:#e8f4e8;color:#1a7a3a;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;font-family:monospace">${_actEsc(eq.eq_id)}</span>
+          <span style="font-size:12px;font-weight:700">${_actEsc(eq.nombre)}</span>
+          ${eq.area?`<span style="font-size:10px;color:#888">· 📍 ${_actEsc(eq.area)}</span>`:''}
+        </div>
+        <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+          <tr style="background:#f4f6fa">
+            <th style="width:26px"></th>
+            <th style="text-align:left;font-size:8px;color:#667;text-transform:uppercase;letter-spacing:.05em;padding:3px 8px;width:48%">Actividad</th>
+            <th style="font-size:8px;color:#667;padding:3px 4px;width:34px">min</th>
+            <th style="text-align:left;font-size:8px;color:#667;text-transform:uppercase;letter-spacing:.05em;padding:3px 8px">Observación</th>
+          </tr>
+          ${rows}
+        </table>
+      </div>`;
+    });
+    bodyHtml += `</div>`;
+  });
+
+  const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Checklist ${_actEsc(currentSede)} ${_actEsc(currentPeriodo)} ${_actEsc(currentAnio)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #fff; color: #111; font-size: 13px; }
+  table { page-break-inside: auto; }
+  @media print { .no-print { display:none !important; } body { margin:0; } @page { margin:12mm; size:A4; } }
+</style>
+</head><body>
+
+<div class="no-print" style="background:#1e3a5f;color:#fff;padding:12px 20px;display:flex;align-items:center;gap:12px">
+  <span style="font-weight:700">🖨️ Checklist en blanco — imprimí y tildá a mano en campo</span>
+  <button onclick="window.print()" style="background:#fff;color:#1e3a5f;border:none;padding:8px 18px;border-radius:5px;font-weight:700;cursor:pointer;font-size:13px">🖨️ Imprimir / Guardar PDF</button>
+  <button onclick="window.close()" style="background:transparent;color:#aaa;border:1px solid #aaa;padding:8px 14px;border-radius:5px;cursor:pointer;margin-left:auto">✕ Cerrar</button>
+</div>
+
+<div style="padding:18px 22px;max-width:900px;margin:0 auto">
+
+  <!-- HEADER -->
+  <div style="border-bottom:3px solid #1e3a5f;padding-bottom:12px;margin-bottom:12px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between">
+      <div>
+        <div style="font-size:19px;font-weight:900;color:#1e3a5f;letter-spacing:.03em">MultiAire</div>
+        <div style="font-size:13px;color:#555;margin-top:2px">Checklist de Mantenimiento Preventivo</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:15px;font-weight:700">${_actEsc(currentSede)}${cliente?` <span style="font-size:11px;color:#777;font-weight:400">(${_actEsc(cliente)})</span>`:''}</div>
+        <div style="font-size:12px;color:#666">${_actEsc(currentPeriodo)} ${_actEsc(currentAnio)} · emitido ${dateStr}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">${nEq} equipo(s) · ${nActs} actividad(es)</div>
+      </div>
+    </div>
+    <!-- FILA PARA LLENAR A MANO -->
+    <div style="display:flex;gap:24px;margin-top:12px;flex-wrap:wrap;font-size:11px;color:#333">
+      <div style="flex:2;min-width:180px">Técnico(s): <span style="display:inline-block;border-bottom:1px solid #333;min-width:150px;height:14px"></span></div>
+      <div style="flex:1;min-width:120px">Fecha ejecución: <span style="display:inline-block;border-bottom:1px solid #333;min-width:90px;height:14px"></span></div>
+      <div style="flex:1;min-width:120px">Firma: <span style="display:inline-block;border-bottom:1px solid #333;min-width:100px;height:14px"></span></div>
+    </div>
+  </div>
+
+  ${bodyHtml}
+
+  <div style="margin-top:14px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999;text-align:center">
+    Marcá cada actividad completada. Anotá hallazgos en "Observación". MultiAire · ${_actEsc(currentSede)} · ${_actEsc(currentPeriodo)} ${_actEsc(currentAnio)}
+  </div>
+
+</div>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w){ toast('Habilitá los pop-ups para generar el checklist','err'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  w.onload = () => { w.focus(); w.print(); };
   setTimeout(() => { try { w.focus(); w.print(); } catch(e) {} }, 800);
 }
 
