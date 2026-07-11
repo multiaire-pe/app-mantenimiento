@@ -5,6 +5,8 @@
 // (plantilla tareas_config del tipo − quitadas) + agregadas de mtto_actividades_equipo.
 import { getDb } from './firestore.js';
 import { resolverEquipo } from './equipos.js';
+import { corregirSedeEquipo } from './gemini.js';
+import { contextoInventario } from './inventario.js';
 import { hoyLima } from './fecha.js';
 import { nuevaSesion, getSesion, guardarSesion, limpiarSesion } from './mtto_sesiones.js';
 
@@ -302,7 +304,9 @@ async function guardarFoto(ses, tecnico, imagenB64, mime) {
 
 // ── Motor del flujo ───────────────────────────────────────────────────────────
 // Devuelve el texto de respuesta (o null). El webhook lo envía.
-export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWriteStart }) {
+// `corregir` (Gemini) se inyecta para poder testear sin llamar a la API real — mismo patrón
+// que `analizar` en conversacion.js.
+export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWriteStart, corregir = corregirSedeEquipo }) {
   const t = norm(texto).trim();
   let ses = await getSesion(from);
 
@@ -321,7 +325,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     ses.textoOriginal = (t === '1' || esSaludo(texto)) ? '' : (texto || '');
     ses.fase = 'EQUIPO';
     if (texto && t !== '1' && !esSaludo(texto)) {
-      const r = await intentarResolver(ses, texto);
+      const r = await intentarResolver(ses, texto, corregir);
       if (r) return r;
     }
     await guardarSesion(from, ses);
@@ -341,7 +345,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     // la repregunta el equipo (o al revés). Sin acumular, responder de a poco perdía lo ya
     // dicho (la sede desaparecía al contestar el equipo) → el bot repreguntaba en bucle.
     ses.textoOriginal = `${ses.textoOriginal || ''} ${texto}`.trim();
-    const r = await intentarResolver(ses, ses.textoOriginal);
+    const r = await intentarResolver(ses, ses.textoOriginal, corregir);
     if (r) return r;
     return null;
   }
@@ -421,10 +425,32 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
   return MENU_TEXTO;
 }
 
+// Aplica la corrección de Gemini sobre el texto crudo: si identificó sede/equipo, se usan
+// (ya corregidos); si no (no los detectó, o Gemini falló y `g` llega null), cae al texto tal
+// cual — mismo comportamiento que antes de este fix, cero regresión. Pura/testeable.
+export function aplicarCorreccion(texto, g) {
+  return {
+    sedeTxt: (g && g.sede) ? g.sede : texto,
+    equipoTxt: (g && g.equipo) ? g.equipo : texto,
+  };
+}
+
 // Intenta resolver el equipo con el texto; si queda resuelto, avanza a ACTIVIDADES.
 // Devuelve el texto de respuesta al técnico.
-async function intentarResolver(ses, texto) {
-  const r = await resolverEquipo(texto, texto, texto);
+async function intentarResolver(ses, texto, corregir) {
+  // Typos de sede ("atokongo", "plasa norte"...) antes rompían el matcher determinístico de
+  // abajo (sin tolerancia a errores). Gemini corrige la ortografía primero, mismo criterio que
+  // Observaciones — si Gemini falla (rate limit, sin key, red) seguimos con el texto crudo: el
+  // matcher ya resuelve bien la sede/equipo bien escritos, así que no se pierde nada.
+  let g = null;
+  try {
+    const contexto = await contextoInventario();
+    g = await corregir(texto, contexto);
+  } catch (e) {
+    console.error('[mtto] corrección Gemini falló, sigo con el texto tal cual:', e?.message);
+  }
+  const { sedeTxt, equipoTxt } = aplicarCorreccion(texto, g);
+  const r = await resolverEquipo(sedeTxt, equipoTxt, texto);
   if (!r.ok) {
     await guardarSesion(ses.from, ses);
     if (r.motivo === 'sede') return `¿De qué *sede* es el equipo? ${r.candidatosSede?.length ? 'Ej: ' + r.candidatosSede.slice(0, 5).join(', ') : ''}`;

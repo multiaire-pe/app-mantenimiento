@@ -46,23 +46,20 @@ GUÍA (la edita el admin):
 
 Responde SOLO el JSON, sin texto adicional.`;
 
-export async function estructurarObservacion(texto, imagenB64, mime, guiaTexto, contextoEquipos) {
+// Llamada REST compartida: arma el body con el schema/tope de tokens dado, reintenta ante
+// 429/5xx transitorios (backoff 1.5s/3s) y parsea el JSON de la respuesta (defensivo: extrae
+// el primer {...} si viene con texto alrededor). La usan estructurarObservacion (Fase 3) y
+// corregirSedeEquipo (registro de mtto) — mismo patrón REST, distinto prompt/schema.
+async function _llamarGeminiJSON(contents, schema, maxOutputTokens) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('Falta GEMINI_API_KEY');
-  const parts = [];
-  if (imagenB64) parts.push({ inline_data: { mime_type: mime || 'image/jpeg', data: imagenB64 } });
-  const prompt = PROMPT
-    .replace('{CONTEXTO}', contextoEquipos || '(sin contexto)')
-    .replace('{GUIA}', guiaTexto || '(sin guía configurada)');
-  parts.push({ text: prompt + '\n\nMensaje del técnico:\n' + (texto || '(sin texto; analiza la imagen)') });
-
   const body = {
-    contents: [{ parts }],
+    contents,
     generationConfig: {
       temperature: 0,
-      maxOutputTokens: 2048,
+      maxOutputTokens,
       responseMimeType: 'application/json',
-      responseSchema: SCHEMA,
+      responseSchema: schema,
       thinkingConfig: { thinkingBudget: 0 },   // sin "thinking": JSON estructurado fiable y más rápido
     },
   };
@@ -94,4 +91,44 @@ export async function estructurarObservacion(texto, imagenB64, mime, guiaTexto, 
     if (m) return JSON.parse(m[0]);
     throw new Error('Gemini: respuesta no es JSON válido: ' + clean.slice(0, 120));
   }
+}
+
+export async function estructurarObservacion(texto, imagenB64, mime, guiaTexto, contextoEquipos) {
+  const parts = [];
+  if (imagenB64) parts.push({ inline_data: { mime_type: mime || 'image/jpeg', data: imagenB64 } });
+  const prompt = PROMPT
+    .replace('{CONTEXTO}', contextoEquipos || '(sin contexto)')
+    .replace('{GUIA}', guiaTexto || '(sin guía configurada)');
+  parts.push({ text: prompt + '\n\nMensaje del técnico:\n' + (texto || '(sin texto; analiza la imagen)') });
+  return _llamarGeminiJSON([{ parts }], SCHEMA, 2048);
+}
+
+// ── Corrección de sede/equipo para el REGISTRO de mantenimiento ─────────────────────────
+// El registro de mtto (mtto.js → resolverEquipo) usa un matcher determinístico que NO tolera
+// typos de sede ("atokongo", "plasa norte"...) — a diferencia de Observaciones, que ya pasa
+// por Gemini antes de resolver. Este paso corrige la ortografía de sede/equipo ANTES del
+// matcher, mismo criterio que Observaciones (pedido de Adrián/José, 2026-07-11).
+const SCHEMA_SEDE_EQUIPO = {
+  type: 'object',
+  properties: {
+    sede: { type: 'string' },
+    equipo: { type: 'string' },
+  },
+  required: ['sede', 'equipo'],
+};
+
+const PROMPT_SEDE_EQUIPO = `Eres el asistente de mantenimiento preventivo de MultiAire (equipos de climatización y ventilación: cortinas de aire, extractores, splits, UMA, chillers, fan coils, inyectores, paquetes/roof tops, etc.) instalados en varias sedes/tiendas.
+Un técnico te dice, por WhatsApp, en qué equipo va a registrar actividades de mantenimiento. Puede tener errores de ortografía o de tipeo. Extrae en JSON:
+- "sede": la sede/tienda del equipo, CORRIGIENDO errores de tipeo para que coincida con una sede REAL de la lista de abajo (ej: "atokongo"→"Atocongo", "plasa norte"→"Plaza Norte", "megaplasa"→"Megaplaza"). Si no puedes identificarla con confianza contra la lista, o no la menciona, deja "".
+- "equipo": cómo el técnico identifica el equipo — su código (ej: "MA-ATO-CAI-001"), su tipo y número (ej: "cortina de aire 1", "rooftop 3"), o su ubicación. Corrige errores de tipeo evidentes (ej: "rutop"→"rooftop"). Copia el resto tal cual lo dijo el técnico — NO inventes datos que no dijo. Si no lo menciona, deja "".
+
+SEDES Y TIPOS de equipo disponibles (úsalos para reconocer y corregir):
+{CONTEXTO}
+
+Responde SOLO el JSON, sin texto adicional.`;
+
+export async function corregirSedeEquipo(texto, contextoEquipos) {
+  const prompt = PROMPT_SEDE_EQUIPO.replace('{CONTEXTO}', contextoEquipos || '(sin contexto)');
+  const parts = [{ text: prompt + '\n\nMensaje del técnico:\n' + (texto || '') }];
+  return _llamarGeminiJSON([{ parts }], SCHEMA_SEDE_EQUIPO, 512);
 }
