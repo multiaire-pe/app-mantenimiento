@@ -686,7 +686,7 @@ function maRenderPill() {
   pill.style.display='flex';
 }
 function maOpenMenu(){const m=document.getElementById('user-menu');if(m)m.classList.toggle('open');}
-function maSignOut(){sessionStorage.removeItem('ma_user');maUser=null;window.__fb.signOut();location.reload();}
+function maSignOut(){sessionStorage.removeItem('ma_user');sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');maUser=null;window.__fb.signOut();location.reload();}
 document.addEventListener('click',e=>{const p=document.getElementById('user-pill'),m=document.getElementById('user-menu');if(m&&p&&!p.contains(e.target))m.classList.remove('open');});
 
 // ── INIT ─────────────────────────────────────────────────────────────────────

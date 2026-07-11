@@ -402,7 +402,7 @@ function renderUserPill(){
   pill.style.display = 'flex';
 }
 function toggleUserMenu(){ const m=document.getElementById('user-menu'); if(m) m.classList.toggle('open'); }
-function maSignOut(){ firebase.auth().signOut().then(()=>{ sessionStorage.removeItem('ma_user'); location.href='index.html'; }); }
+function maSignOut(){ firebase.auth().signOut().then(()=>{ sessionStorage.removeItem('ma_user'); sessionStorage.removeItem('ma_emails'); sessionStorage.removeItem('ma_emails_time'); location.href='index.html'; }); }
 document.addEventListener('click', e => { const pill=document.getElementById('user-pill'), menu=document.getElementById('user-menu'); if(menu && pill && !pill.contains(e.target)) menu.classList.remove('open'); });
 
 let _toastT = null;
