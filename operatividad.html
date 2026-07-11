@@ -201,8 +201,14 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
   <div class="tabs">
     <button class="tab-btn active" id="tabbtn-sede" onclick="switchTab('sede')">🏪 Por sede</button>
     <button class="tab-btn" id="tabbtn-equipo" onclick="switchTab('equipo')">❄️ Por equipo</button>
-    <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-      <select id="f-cliente" class="form-select" style="width:auto;min-width:140px;display:none" onchange="renderAll()"><option value="">Todos los clientes</option></select>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="f-orden" class="form-select" style="width:auto;min-width:160px" onchange="renderSedes()" title="Ordenar las sedes">
+        <option value="peor">🔴 Peor estado primero</option>
+        <option value="mejor">🟢 Mejor estado primero</option>
+        <option value="alfa">🔤 Sede (A–Z)</option>
+        <option value="equipos">📊 Más equipos primero</option>
+      </select>
+      <select id="f-cliente" class="form-select" style="width:auto;min-width:140px" onchange="renderAll()"><option value="">Todos los clientes</option></select>
       <button class="btn btn-sm" id="btn-crit" onclick="openCriticidad()" style="display:none">⚙️ Criticidad</button>
     </div>
   </div>
@@ -472,10 +478,9 @@ async function loadAll(){
     toast('Error al cargar: '+e.message,'err');
     return;
   }
-  // filtro de cliente (solo si hay >1)
+  // filtro de cliente (siempre visible; útil al crecer a más clientes)
   const fc = document.getElementById('f-cliente');
   fc.innerHTML = '<option value="">Todos los clientes</option>' + clientes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
-  fc.style.display = clientes.length>1 ? '' : 'none';
   // selector "por equipo": cliente
   const ec = document.getElementById('eq-cliente'), ecg = document.getElementById('eq-cliente-group');
   ec.innerHTML = '<option value="">Seleccionar…</option>' + clientes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
@@ -512,7 +517,12 @@ function renderSedes(){
   const groups = {};
   for(const e of eqs){ const k=e.cliente+'|'+e.sede; (groups[k]=groups[k]||{cliente:e.cliente,sede:e.sede,eqs:[]}).eqs.push(e); }
   const arr = Object.values(groups).map(g => ({ ...g, pct:rollup(g.eqs), stale:g.eqs.filter(esStale).length, inop:g.eqs.filter(e=>Number(e.operatividad)===0).length }));
-  arr.sort((a,b)=> a.pct-b.pct || a.sede.localeCompare(b.sede,'es'));   // peores primero
+  const orden = (document.getElementById('f-orden')||{}).value || 'peor';
+  const azSede = (a,b)=> a.sede.localeCompare(b.sede,'es');
+  if(orden==='mejor')        arr.sort((a,b)=> b.pct-a.pct || azSede(a,b));
+  else if(orden==='alfa')    arr.sort(azSede);
+  else if(orden==='equipos') arr.sort((a,b)=> b.eqs.length-a.eqs.length || azSede(a,b));
+  else                       arr.sort((a,b)=> a.pct-b.pct || azSede(a,b));   // 'peor' = peores primero (predefinido)
   if(!arr.length){ grid.innerHTML='<div class="empty-msg">No hay equipos para este filtro.</div>'; return; }
   // data-* + listener (NO interpolar cliente/sede en un onclick inline: esc() escapa
   // para HTML pero el parser decodifica &#39; antes de ejecutar el handler → un ' en
@@ -720,6 +730,11 @@ function switchTab(which){
   document.getElementById('tabbtn-equipo').classList.toggle('active', which==='equipo');
   document.getElementById('view-sede').classList.toggle('active', which==='sede');
   document.getElementById('view-equipo').classList.toggle('active', which==='equipo');
+  // el orden y el filtro de cliente solo aplican a la vista Por sede
+  const soloSede = which==='sede';
+  const fo = document.getElementById('f-orden'), fcl = document.getElementById('f-cliente');
+  if(fo)  fo.style.display  = soloSede ? '' : 'none';
+  if(fcl) fcl.style.display = soloSede ? '' : 'none';
 }
 </script>
 </body>
