@@ -1044,7 +1044,9 @@ async function pendientesDeSede(sede, fecha){
     getDocs(collection(window.__db, 'mtto_actividades_equipo')),
   ]);
   const plantillas = {}, plantillasMin = {};
-  tcS.docs.forEach(d => { const dd = d.data(); plantillas[dd.tipo] = dd.tareas || []; plantillasMin[dd.tipo] = dd.minutos || []; });
+  // Solo plantillas GLOBALES por tipo (se ignoran overrides por cliente `cliente|tipo` de la Etapa 2
+  // hasta encender el consumo por cliente, o sobrescribirían la global en memoria).
+  tcS.docs.forEach(d => { if (d.id.includes('|')) return; const dd = d.data(); plantillas[dd.tipo] = dd.tareas || []; plantillasMin[dd.tipo] = dd.minutos || []; });
   const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
   // Sede real del bloque (ver _resolverSede: exacto o sufijo más largo que sea sede del inventario)
   const sedesInv = new Set(invS.docs.map(d => (d.data().sede||'').toUpperCase()).filter(Boolean));

@@ -537,7 +537,8 @@ async function openNew(){
       cargarSedesMaestros(),
       getDocs(collection(window.__db, 'tareas_config'))
     ]);
-    const tRes = { tareas: Object.fromEntries(tSnap.docs.map(d => [d.data().tipo, d.data().tareas])) };
+    // Solo plantillas GLOBALES por tipo (se ignoran overrides por cliente `cliente|tipo` de la Etapa 2).
+    const tRes = { tareas: Object.fromEntries(tSnap.docs.filter(d => !d.id.includes('|')).map(d => [d.data().tipo, d.data().tareas])) };
 
     // Populate tipo selector from TAREAS_CONFIG + existing data
     const formTipo = document.getElementById('f_equipo');

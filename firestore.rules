@@ -52,6 +52,11 @@ service cloud.firestore {
     // personal_documentos: legajo (contratos/DNI/certificaciones con vencimiento; archivo en Drive
     // por enlace). Sensible → read solo ADMIN; crear/editar ADMIN; borrar solo super.
     match /personal_documentos/{doc} { allow read: if isAdmin(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
+    // maestros_clientes: cliente como ENTIDAD (doc-id = string cliente = llave de join con
+    // maestros_tiendas/inventario). Entidad de negocio → ADMIN/SUPER crean/editan; borrar = solo super
+    // (mismo criterio que maestros_personal). Las sedes siguen en maestros_tiendas; las actividades por
+    // cliente en tareas_config/{cliente|tipo} (cuya regla no cambia).
+    match /maestros_clientes/{doc} { allow read: if authorized(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
     match /maestros_tiendas/{doc}  { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_grupos/{doc}   { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_feriados/{doc} { allow read: if authorized(); allow write: if isSuper(); }
