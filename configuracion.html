@@ -364,26 +364,20 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
     </div>
     <div class="section-body">
       <div class="maestros-tabs">
-        <button class="maestros-tab active" onclick="switchMaestroTab('tiendas')">Tiendas</button>
-        <button class="maestros-tab" onclick="switchMaestroTab('grupos')">Grupos / Tipo de trabajo</button>
+        <button class="maestros-tab active" onclick="switchMaestroTab('grupos')">Grupos / Tipo de trabajo</button>
         <button class="maestros-tab" onclick="switchMaestroTab('feriados')">Feriados</button>
       </div>
 
-      <!-- El editor de personal se movió al módulo dedicado Personal (personal.html). -->
-
-      <!-- TIENDAS -->
-      <div class="maestros-panel active" id="panel-tiendas">
-        <div class="maestros-list" id="tiendas-list">Cargando...</div>
-        <div class="add-maestro-row">
-          <input type="text" id="new-tie-tienda" placeholder="Nombre de tienda...">
-          <input type="text" id="new-tie-sede" placeholder="Sede" style="max-width:140px">
-          <input type="text" id="new-tie-cliente" placeholder="Cliente" style="max-width:120px">
-          <button class="btn btn-orange" onclick="addTienda()">+ Agregar</button>
-        </div>
-      </div>
+      <!-- El editor de personal se movió al módulo Personal (personal.html). El editor de
+           TIENDAS/SEDES se movió al módulo Clientes (clientes.html): las sedes se gestionan
+           dentro de su cliente, y las sedes internas —como la oficina— en su sección
+           "🏢 Sedes internas". El backup/restore de maestros_tiendas sigue abajo (Respaldo). -->
+      <p style="font-size:11px;color:var(--muted2);background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;line-height:1.5">
+        🏪 Las <strong>tiendas/sedes</strong> ahora se gestionan en el módulo <strong>Clientes</strong> (dentro de cada cliente; las sedes internas como la oficina, en “🏢 Sedes internas”). Su respaldo sigue disponible en la sección <strong>Respaldo</strong>.
+      </p>
 
       <!-- GRUPOS -->
-      <div class="maestros-panel" id="panel-grupos">
+      <div class="maestros-panel active" id="panel-grupos">
         <div class="maestros-list" id="grupos-list">Cargando...</div>
         <div class="add-maestro-row">
           <input type="text" id="new-grp-nombre" placeholder="Nombre del grupo (ej: EMERGENCIA)...">
@@ -1914,34 +1908,21 @@ const FERIADOS_CONFIG_DEFAULT = [
   {nombre:'Navidad',               fecha:'2026-12-25'},
 ];
 
-let maestrosData = { tiendas: [], grupos: [], feriados: [] };
+let maestrosData = { grupos: [], feriados: [] };   // Tiendas/Sedes se gestionan en el módulo Clientes
 let maestrosChanged = false;
 
 async function loadMaestros() {
   try {
     const { getDocs, collection } = window.__fb;
-    // El personal se administra en personal.html (módulo Personal); aquí solo tiendas/grupos/feriados.
-    const [tSnap, gSnap, fSnap] = await Promise.all([
-      getDocs(collection(window.__db, 'maestros_tiendas')),
+    // Personal → módulo Personal; Tiendas/Sedes → módulo Clientes. Aquí solo grupos/feriados.
+    const [gSnap, fSnap] = await Promise.all([
       getDocs(collection(window.__db, 'maestros_grupos')),
       getDocs(collection(window.__db, 'maestros_feriados')),
     ]);
     const d = {
-      tiendas: tSnap.docs.map(dd => dd.data()),
       grupos: gSnap.docs.map(dd => dd.data()),
       feriados: fSnap.docs.map(dd => dd.data()),
     };
-    maestrosData.tiendas = (d.tiendas || []).map((t, i) => ({
-      id: String(t.id || ('TIE' + String(i+1).padStart(3,'0'))).trim(),
-      cliente: String(t.cliente || '').trim(),
-      tienda: String(t.tienda || '').trim(),
-      sede: String(t.sede || '').trim(),
-      activo: String(t.activo || 'SI').trim().toUpperCase() === 'NO' ? 'NO' : 'SI',
-      latitud: t.latitud != null && t.latitud !== '' ? Number(t.latitud) : null,
-      longitud: t.longitud != null && t.longitud !== '' ? Number(t.longitud) : null,
-      radio: t.radio != null && t.radio !== '' ? Number(t.radio) : null,
-      obs: String(t.obs || '')
-    })).filter(t => t.tienda);
     maestrosData.grupos = (d.grupos || []).map((g, i) => ({
       id: String(g.id || ('GRP' + String(i+1).padStart(3,'0'))).trim(),
       grupo: String(g.grupo || '').trim(),
@@ -1962,7 +1943,6 @@ async function loadMaestros() {
       maestrosData.feriados = [...maestrosData.feriados, ..._defs].sort((a, b) => a.fecha.localeCompare(b.fecha));
       maestrosChanged = true;
     }
-    renderTiendas();
     renderGrupos();
     renderFeriados();
   } catch(e) {
@@ -2002,61 +1982,10 @@ function grupoColor(grupo) {
 // Escapa un valor para insertarlo con seguridad dentro de un atributo HTML (evita romper value="..."/href).
 function escAttr(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
-function renderTiendas() {
-  const list = document.getElementById('tiendas-list');
-  if (!maestrosData.tiendas.length) { list.innerHTML = '<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px">Sin tiendas registradas</div>'; return; }
-  list.innerHTML = maestrosData.tiendas.map((t, i) => {
-    const tieneGeo = t.latitud != null && t.longitud != null;
-    const coordVal = tieneGeo ? `${t.latitud}, ${t.longitud}` : '';
-    return `
-    <div class="maestro-item ${t.activo==='NO'?'inactive':''}" style="flex-direction:column;align-items:stretch;gap:6px">
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <input class="maestro-input" type="text" value="${escAttr(t.tienda)}" onchange="updateTienda(${i},'tienda',this.value)" placeholder="Nombre tienda" style="flex:2">
-        <input class="maestro-cargo" type="text" value="${escAttr(t.sede)}" onchange="updateTienda(${i},'sede',this.value)" placeholder="Sede">
-        <input class="maestro-cargo" type="text" value="${escAttr(t.cliente)}" onchange="updateTienda(${i},'cliente',this.value)" placeholder="Cliente">
-        <button class="maestro-toggle" onclick="toggleTienda(${i})" title="${t.activo==='SI'?'Desactivar':'Activar'}">${t.activo==='SI'?'✅':'⭕'}</button>
-        <button class="maestro-del" onclick="deleteTienda(${i})" title="Eliminar">✕</button>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;padding-left:2px">
-        <span style="color:var(--muted);min-width:48px" title="Para el bot de asistencia geolocalizada">📍 Geo</span>
-        <input class="maestro-cargo" type="text" value="${escAttr(coordVal)}" onchange="updateTiendaGeo(${i},this.value)" placeholder="lat, long (pega de Google Maps)" style="flex:2;min-width:190px">
-        <input class="maestro-cargo" type="number" value="${t.radio!=null?t.radio:250}" onchange="updateTienda(${i},'radio',this.value)" placeholder="radio" style="width:80px" title="Radio de marcaje en metros (por defecto 250)">
-        <span style="color:var(--muted)">m</span>
-        ${tieneGeo
-          ? `<a href="https://www.google.com/maps?q=${t.latitud},${t.longitud}" target="_blank" rel="noopener" style="text-decoration:none" title="Ver/verificar en el mapa">🗺️ ver</a>`
-          : '<span style="color:var(--orange)">⚠️ sin ubicación</span>'}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function updateTienda(i, field, value) {
-  if (field === 'radio') { const n = parseInt(value, 10); maestrosData.tiendas[i].radio = Number.isFinite(n) && n > 0 ? n : null; }
-  else maestrosData.tiendas[i][field] = value;
-  maestrosChanged = true;
-}
-// Pega "lat, long" (formato de Google Maps: clic derecho → copiar coordenadas) y lo separa.
-function updateTiendaGeo(i, value) {
-  const m = String(value).trim().match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
-  if (!m) { maestrosData.tiendas[i].latitud = null; maestrosData.tiendas[i].longitud = null; }
-  else { maestrosData.tiendas[i].latitud = parseFloat(m[1]); maestrosData.tiendas[i].longitud = parseFloat(m[2]); }
-  maestrosChanged = true; renderTiendas();
-}
-function toggleTienda(i) { maestrosData.tiendas[i].activo = maestrosData.tiendas[i].activo === 'SI' ? 'NO' : 'SI'; maestrosChanged = true; renderTiendas(); }
-function deleteTienda(i) { if (!confirm('¿Eliminar tienda?')) return; maestrosData.tiendas.splice(i, 1); maestrosChanged = true; renderTiendas(); }
-function addTienda() {
-  const tienda = document.getElementById('new-tie-tienda').value.trim().toUpperCase();
-  const sede = document.getElementById('new-tie-sede').value.trim().toUpperCase();
-  const cliente = document.getElementById('new-tie-cliente').value.trim().toUpperCase();
-  if (!tienda) { toast('Ingresa el nombre de la tienda', 'err'); return; }
-  const newId = 'TIE' + String(Date.now()).slice(-6);
-  maestrosData.tiendas.push({ id: newId, tienda, sede, cliente, activo: 'SI', latitud: null, longitud: null, radio: 250, obs: '' });
-  maestrosChanged = true;
-  document.getElementById('new-tie-tienda').value = '';
-  document.getElementById('new-tie-sede').value = '';
-  document.getElementById('new-tie-cliente').value = '';
-  renderTiendas();
-}
+// El editor de Tiendas/Sedes (renderTiendas/updateTienda/updateTiendaGeo/toggleTienda/
+// deleteTienda/addTienda) se movió al módulo Clientes (clientes.html): las sedes se
+// gestionan dentro de su cliente, y las internas —como la oficina— en "🏢 Sedes internas".
+// El backup/restore de maestros_tiendas se conserva aquí (sección Respaldo).
 
 function renderGrupos() {
   const list = document.getElementById('grupos-list');
@@ -2145,15 +2074,8 @@ async function saveMaestros() {
   if (!MA.can('config')) { toast('La configuración es solo del super admin', 'err'); return; }
   document.getElementById('loading').classList.add('show');
   try {
-    // El personal ya NO se guarda aquí: se administra en personal.html (módulo Personal).
-    // Esta pantalla guarda solo tiendas/grupos/feriados.
+    // Personal → personal.html; Tiendas/Sedes → clientes.html. Aquí solo grupos/feriados.
     const { writeBatch, doc, collection, getDocs } = window.__fb;
-    // Save tiendas
-    const b2 = writeBatch(window.__db);
-    const ex2 = await getDocs(collection(window.__db,'maestros_tiendas'));
-    ex2.docs.forEach(d=>b2.delete(d.ref));
-    maestrosData.tiendas.forEach(t=>{b2.set(doc(window.__db,'maestros_tiendas',t.id),{id:t.id,cliente:t.cliente,tienda:t.tienda,sede:t.sede,activo:t.activo,latitud:t.latitud??null,longitud:t.longitud??null,radio:t.radio??250,obs:t.obs||''});});
-    await b2.commit();
     // Save grupos
     const b3 = writeBatch(window.__db);
     const ex3 = await getDocs(collection(window.__db,'maestros_grupos'));
