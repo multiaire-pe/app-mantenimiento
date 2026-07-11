@@ -176,6 +176,16 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
       <button class="btn" id="btn-backfill" onclick="openBackfill()" style="display:none">⚙️ Generar desde datos actuales</button>
     </div>
     <div class="cli-grid" id="cli-grid"><div class="empty-msg">Cargando clientes…</div></div>
+
+    <!-- ── SEDES INTERNAS (sin cliente) ── -->
+    <div id="internas-card" style="display:none;margin-top:18px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)">
+      <div style="font-size:13px;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:8px;margin-bottom:6px">🏢 Sedes internas (sin cliente)</div>
+      <p style="font-size:11px;color:var(--muted2);margin:0 0 12px;line-height:1.55">
+        Sedes de MultiAire que <strong>no pertenecen a un cliente</strong> (p.ej. la oficina). Viven en <code>maestros_tiendas</code> y el bot de asistencia las usa para el geolocalizado; <strong>no</strong> se cuentan como clientes. Editá sus coordenadas/radio aquí (super admin).
+      </p>
+      <div id="internas-body"></div>
+    </div>
+
     <p style="font-size:10px;color:var(--muted2);margin-top:14px;line-height:1.6">
       Cada cliente es una <strong>ficha</strong> con identidad, contrato/licitación, sus <strong>sedes</strong> y sus <strong>actividades de mantenimiento</strong>.
       El nombre del cliente es la <strong>llave</strong> que lo une con sus sedes (<code>maestros_tiendas</code>) y equipos (<code>inventario</code>).
@@ -412,8 +422,14 @@ let inventario = [];       // para contar equipos + tipos por cliente
 let tareasDocs = {};       // { docId: {tipo, cliente, tareas:[], minutos:[]} }  (docId = tipo ó cliente|tipo)
 let _cliCur = null;        // nombre del cliente abierto
 
-function canEditCli(){ return MA.can('editar','clientes'); }   // identidad/contrato: ADMIN/SUPER + supervisor c/app
+function canEditCli(){ return MA.isAdmin(); }   // identidad/contrato: ADMIN/SUPER (alineado con firestore.rules: create/update isAdmin)
 function canSuper(){ return MA.isSuperAdmin(); }               // sedes (maestros_tiendas) + actividades (tareas_config) = super
+
+// Un "cliente" vacío o "-" NO es un cliente real: es una sede INTERNA (p.ej. la OFICINA,
+// que existe en maestros_tiendas solo por sus coordenadas para el geofencing de asistencia).
+// El backfill y la lista los ignoran; se gestionan en la sección "Sedes internas".
+function esClienteValido(c){ const s=String(c==null?'':c).trim(); return s!=='' && s!=='-'; }
+function esInterna(s){ return !esClienteValido(s && s.cliente); }
 
 function initApp(){
   if(!MA.canEnter('clientes')){
@@ -465,11 +481,13 @@ function plantillaDe(nom, tipo){
 
 // ── LISTA ──
 function renderList(){
+  renderInternas();   // sedes internas (sin cliente) — independiente de la grilla de clientes
   const q = (document.getElementById('search').value||'').trim().toLowerCase();
   const grid = document.getElementById('cli-grid');
-  let arr = clientes.slice();
+  const reales = clientes.filter(c => esClienteValido(c.nombre));   // ignora la "oficina"/fantasma "-"
+  let arr = reales.slice();
   if(q) arr = arr.filter(c => (c.nombre||'').toLowerCase().includes(q) || (c.ruc||'').toLowerCase().includes(q));
-  if(!clientes.length){
+  if(!reales.length){
     grid.innerHTML = `<div class="empty-msg">Todavía no hay clientes.${canSuper()?' Usá <strong>⚙️ Generar desde datos actuales</strong> para crear RIPLEY y sus sedes automáticamente.':''}</div>`;
     return;
   }
@@ -597,12 +615,30 @@ function renderSedes(){
   }).join('');
   body.querySelectorAll('.sede-edit').forEach(el=>{ el.onclick = () => openSede(el.dataset.id); });
 }
-let _sedeId=null;
-function openSede(id){
-  if(!canSuper()){ toast('Solo el super admin edita sedes','err'); return; }
-  _sedeId = id || null;
-  const s = id ? sedes.find(x=>x.id===id) : null;
-  document.getElementById('modal-sede-title').textContent = s ? 'Editar sede' : 'Nueva sede · '+_cliCur;
+// ── SEDES INTERNAS (sin cliente) ──
+function renderInternas(){
+  const card = document.getElementById('internas-card'), body = document.getElementById('internas-body');
+  if(!card || !body) return;
+  const arr = sedes.filter(esInterna).sort((a,b)=>(a.sede||a.tienda||'').localeCompare(b.sede||b.tienda||'','es'));
+  if(!arr.length){ card.style.display='none'; return; }
+  card.style.display='';
+  const sup = canSuper();
+  body.innerHTML = arr.map(s=>{
+    const act = s.activo!==false && s.activo!=='no' && (s.activo||'SI').toString().toUpperCase()!=='NO';
+    const coords = (s.latitud!=null && s.longitud!=null) ? `📍 ${s.latitud}, ${s.longitud} · r=${s.radio??250}m` : '⚠️ sin coordenadas';
+    return `<div class="row-item">
+      <div class="row-info">
+        <div class="row-name">${esc(s.sede||s.tienda||s.id)} ${act?'':'<span class="badge badge-off">inactiva</span>'}</div>
+        <div class="row-sub">${esc(coords)}${s.obs?' · '+esc(s.obs):''}</div>
+      </div>
+      ${sup?`<button class="btn btn-sm sede-edit-int" data-id="${esc(s.id)}">✎</button>`:''}
+    </div>`;
+  }).join('');
+  body.querySelectorAll('.sede-edit-int').forEach(el=>{ el.onclick = () => openSedeInterna(el.dataset.id); });
+}
+
+let _sedeId=null, _sedeCliente=null;
+function _fillSedeModal(s){
   document.getElementById('s-sede').value = s ? (s.sede||'') : '';
   document.getElementById('s-tienda').value = s ? (s.tienda||'') : '';
   document.getElementById('s-lat').value = s && s.latitud!=null ? s.latitud : '';
@@ -612,6 +648,22 @@ function openSede(id){
   document.getElementById('s-activo').value = (s && (s.activo===false||s.activo==='no'||(s.activo||'SI').toString().toUpperCase()==='NO')) ? 'no':'si';
   document.getElementById('modal-sede').classList.add('open');
 }
+function openSede(id){
+  if(!canSuper()){ toast('Solo el super admin edita sedes','err'); return; }
+  _sedeId = id || null;
+  _sedeCliente = _cliCur;   // sede de un cliente
+  const s = id ? sedes.find(x=>x.id===id) : null;
+  document.getElementById('modal-sede-title').textContent = s ? 'Editar sede' : 'Nueva sede · '+_cliCur;
+  _fillSedeModal(s);
+}
+function openSedeInterna(id){
+  if(!canSuper()){ toast('Solo el super admin edita sedes','err'); return; }
+  const s = sedes.find(x=>x.id===id); if(!s) return;
+  _sedeId = id;
+  _sedeCliente = s.cliente||'';   // preserva "-"/"" → NO la convierte en cliente
+  document.getElementById('modal-sede-title').textContent = 'Editar sede interna';
+  _fillSedeModal(s);
+}
 async function saveSede(){
   if(!canSuper()) return;
   const sede = document.getElementById('s-sede').value.trim();
@@ -619,7 +671,7 @@ async function saveSede(){
   const btn=document.getElementById('btn-save-sede'); btn.disabled=true; btn.textContent='⏳...';
   const lat=document.getElementById('s-lat').value.trim(), lon=document.getElementById('s-lon').value.trim(), rad=document.getElementById('s-radio').value.trim();
   const data = {
-    cliente:_cliCur, sede, tienda:document.getElementById('s-tienda').value.trim()||sede,
+    cliente:_sedeCliente, sede, tienda:document.getElementById('s-tienda').value.trim()||sede,
     latitud: lat!=='' ? Number(lat) : null, longitud: lon!=='' ? Number(lon) : null,
     radio: rad!=='' ? Number(rad) : 250,
     activo: document.getElementById('s-activo').value==='si' ? 'SI' : 'NO',
@@ -632,7 +684,9 @@ async function saveSede(){
     const existing = sedes.find(x=>x.id===id);
     if(existing) Object.assign(existing, data); else sedes.push(data);
     toast('Sede guardada ✓','ok');
-    closeModal('modal-sede'); renderSedes(); renderList();
+    closeModal('modal-sede');
+    if(_cliCur) renderSedes();   // ficha de cliente abierta
+    renderList();                // refresca grilla + sedes internas
   }catch(e){ toast('Error: '+e.message,'err'); }
   finally{ btn.disabled=false; btn.textContent='💾 Guardar'; }
 }
@@ -720,7 +774,8 @@ async function crearCliente(){
   if(!canEditCli()) return;
   const nombre=document.getElementById('n-nombre').value.trim();
   if(!nombre){ toast('El nombre es obligatorio','err'); return; }
-  if(nombre.includes('/')){ toast('El nombre no puede contener "/"','err'); return; }
+  // "/" rompe el doc-id de Firestore; "|" es el separador de tareas_config/{cliente|tipo}; "-" es el centinela de sede interna
+  if(/[/|]/.test(nombre) || nombre==='-'){ toast('El nombre no puede contener "/" ni "|" ni ser "-"','err'); return; }
   if(clientes.some(c=>c.nombre.toLowerCase()===nombre.toLowerCase())){ toast('Ya existe un cliente con ese nombre','err'); return; }
   const btn=document.getElementById('btn-crear'); btn.disabled=true; btn.textContent='⏳...';
   const now=new Date().toISOString();
@@ -739,7 +794,8 @@ function openBackfill(){
   if(!canSuper()){ toast('Solo el super admin','err'); return; }
   // strings cliente distintos en tiendas + inventario que aún no tienen ficha
   const existentes = new Set(clientes.map(c=>c.nombre));
-  const detectados = new Set([...sedes.map(s=>s.cliente), ...inventario.map(e=>e.cliente)].filter(Boolean));
+  // ignora "-"/vacío: la oficina y las sedes internas NO son clientes (no recrear el fantasma)
+  const detectados = new Set([...sedes.map(s=>s.cliente), ...inventario.map(e=>e.cliente)].filter(esClienteValido));
   const faltantes = [...detectados].filter(n=>!existentes.has(n));
   const tiposGlob = Object.values(tareasDocs).filter(d=>!String(d.id).includes('|') && d.tipo);
   const msg = faltantes.length
@@ -760,7 +816,7 @@ async function runBackfill(faltantes, tiposGlob){
       await commitIf();
     }
     // 2) copiar plantillas globales → {cliente|tipo} para cada cliente (todos), sin pisar overrides ya existentes
-    const todos = new Set([...clientes.map(c=>c.nombre), ...faltantes]);
+    const todos = new Set([...clientes.map(c=>c.nombre), ...faltantes].filter(esClienteValido));
     for(const nombre of todos){
       for(const g of tiposGlob){
         const docId = nombre+'|'+g.tipo;
