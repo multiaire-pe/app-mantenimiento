@@ -1043,10 +1043,11 @@ async function pendientesDeSede(sede, fecha){
     getDocs(collection(window.__db, 'tareas_config')),
     getDocs(collection(window.__db, 'mtto_actividades_equipo')),
   ]);
-  const plantillas = {}, plantillasMin = {}, plantillasCli = {}, plantillasMinCli = {};
-  // Etapa 2 (consumo por cliente): globales por tipo (doc-id `tipo`) + overrides por cliente
-  // (doc-id `cliente|tipo`). Cada equipo resuelve el override de SU cliente ?? la global por tipo.
-  tcS.docs.forEach(d => { const dd = d.data(); if (d.id.includes('|')) { plantillasCli[d.id] = dd.tareas || []; plantillasMinCli[d.id] = dd.minutos || []; } else { plantillas[dd.tipo] = dd.tareas || []; plantillasMin[dd.tipo] = dd.minutos || []; } });
+  const plantillasCli = {}, plantillasMinCli = {};
+  // La plantilla vive SOLO en el cliente (doc-id `cliente|tipo`). Se ignora cualquier doc suelto por
+  // `tipo` (plantillas globales del modelo viejo, ya retiradas): un tipo que el cliente no configuró
+  // no tiene actividades que planificar.
+  tcS.docs.forEach(d => { if (!d.id.includes('|')) return; const dd = d.data(); plantillasCli[d.id] = dd.tareas || []; plantillasMinCli[d.id] = dd.minutos || []; });
   const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
   // Sede real del bloque (ver _resolverSede: exacto o sufijo más largo que sea sede del inventario)
   const sedesInv = new Set(invS.docs.map(d => (d.data().sede||'').toUpperCase()).filter(Boolean));
@@ -1106,10 +1107,10 @@ async function pendientesDeSede(sede, fecha){
     if((eq.sede||'').toUpperCase() !== target || !eq.eq_id) return;
     if(!sel[eq.eq_id]) return;   // no seleccionado para el período → no se planifica
     const ov = ovs[eq.eq_id], quit = new Set(ov?.quitadas || []);
-    // acts + minutos en paralelo (mismo criterio que actividadesDe de mantenimiento: minutos por índice vigente, default 5)
-    // Etapa 2 (consumo por cliente): plantilla del CLIENTE del equipo (`cliente|tipo`) ?? global por tipo.
-    const _ck = eq.cliente ? (eq.cliente + '|' + eq.tipo) : '';
-    const _bt = (_ck && plantillasCli[_ck]) || plantillas[eq.tipo] || [], _bm = (_ck && plantillasMinCli[_ck]) || plantillasMin[eq.tipo] || [];
+    // acts + minutos (mismo criterio que actividadesDe de mantenimiento: minutos por índice vigente,
+    // default 5). Plantilla del CLIENTE del equipo (`cliente|tipo`), sin fallback global.
+    const _ck = (eq.cliente && eq.tipo) ? (eq.cliente + '|' + eq.tipo) : '';
+    const _bt = (_ck && plantillasCli[_ck]) || [], _bm = (_ck && plantillasMinCli[_ck]) || [];
     const acts = [], actsMin = [];
     _bt.forEach((t, i) => { if(!quit.has(t)){ acts.push(t); actsMin.push(Number(_bm[i]) || 5); } });
     (ov?.agregadas || []).forEach(a => { acts.push(a.nombre); actsMin.push(Number(a.minutos) || 5); });

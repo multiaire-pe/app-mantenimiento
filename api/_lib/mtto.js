@@ -94,9 +94,8 @@ export async function esActividadConocida(texto) {
       db.collection('mtto_actividades_equipo').get(),
     ]);
     const set = new Set();
-    // Etapa 2 (consumo por cliente ENCENDIDO): incluye plantillas globales Y overrides por cliente
-    // (`cliente|tipo`). Es un Set de NOMBRES para detectar INTENCIÓN de registro (no un map por tipo →
-    // sin colisión); reconocer las actividades propias de un cliente mejora la detección de intención.
+    // Todas las plantillas, de todos los clientes. Es un Set de NOMBRES para detectar INTENCIÓN de
+    // registro (no un map por tipo → no importa de qué cliente venga cada nombre, no hay colisión).
     plSnap.docs.forEach((d) => (d.data().tareas || []).forEach((x) => set.add(x)));
     ovSnap.docs.forEach((d) => ((d.data() || {}).agregadas || []).forEach((a) => set.add(a.nombre)));
     _cacheNombres.nombres = [...set].map(norm).filter((n) => n.length >= 10 && n.trim().split(/\s+/).length >= 2);
@@ -128,16 +127,17 @@ async function _resolverActs(eqId, tipo, cliente) {
   const hit = _cacheActs.get(eqId);
   if (hit && Date.now() - hit.ts < 5 * 60 * 1000) return hit;
   const db = getDb();
-  // Plantilla del CLIENTE del equipo (`tareas_config/{cliente|tipo}`) si existe, con FALLBACK a la
-  // plantilla global por tipo (`tareas_config/{tipo}`). Etapa 2: consumo por cliente encendido — un
-  // equipo de un cliente con licitación propia registra SUS actividades; los demás usan la global.
+  // La plantilla vive SOLO en el cliente: `tareas_config/{cliente|tipo}`. Sin fallback a una
+  // plantilla global — las actividades salen de la licitación de cada cliente, así que una global
+  // "para todos" no significa nada. Un equipo sin cliente, o de un cliente al que aún no le
+  // configuraron el tipo, se queda SIN actividades y el caller lo dice explícito (mejor que
+  // registrar contra una lista que no es la que el cliente contrató).
   const clave = cliente ? `${cliente}|${tipo}` : '';
-  const [ownSnap, globSnap, ovSnap] = await Promise.all([
+  const [ownSnap, ovSnap] = await Promise.all([
     clave ? db.collection('tareas_config').doc(clave).get() : Promise.resolve(null),
-    db.collection('tareas_config').doc(String(tipo || '')).get(),
     db.collection('mtto_actividades_equipo').doc(String(eqId)).get(),
   ]);
-  const pd = (ownSnap && ownSnap.exists) ? ownSnap.data() : (globSnap.exists ? globSnap.data() : {});
+  const pd = (ownSnap && ownSnap.exists) ? ownSnap.data() : {};
   const plantilla = pd.tareas || [], plMin = pd.minutos || [];
   const ov = ovSnap.exists ? ovSnap.data() : null;
   const quitadas = new Set(ov?.quitadas || []);
@@ -529,7 +529,7 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
   const acts = await actividadesDeEquipo(r.equipo.eqId, r.equipo.tipo, r.equipo.cliente);
   if (!acts.length) {
     await limpiarSesion(ses.from);
-    return `⚠️ El equipo *${r.equipo.nombre}* (${r.equipo.eqId}) no tiene actividades configuradas. Pídele al administrador que las configure en la app de Mantenimiento.`;
+    return `⚠️ El equipo *${r.equipo.nombre}* (${r.equipo.eqId}) no tiene actividades configuradas. Pídele al administrador que configure las actividades de *${r.equipo.tipo}* para el cliente *${r.equipo.cliente || '—'}* en la app de Clientes.`;
   }
   ses.sede = r.sede;
   ses.eqId = r.equipo.eqId;
