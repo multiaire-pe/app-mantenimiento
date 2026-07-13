@@ -34,37 +34,46 @@ Hoy "cliente" **no es una entidad**: es un **string denormalizado** (`'RIPLEY'`)
 
 No se migran (el bot de asistencia usa `maestros_tiendas` para geofencing: `latitud/longitud/radio`). El gestor de clientes las **lee y agrupa** por `cliente`, y permite crear/editar sedes (escribe a `maestros_tiendas`, gate super — la regla actual es `write: isSuper`). Estructura vigente de `maestros_tiendas`: `{ id, cliente, tienda, sede, activo, latitud, longitud, radio, obs }`. Los **equipos** de cada sede se cuentan desde `inventario` (por `cliente`+`sede`).
 
-## 3) Actividades de mtto **por cliente** — `tareas_config` con doc-id `cliente|tipo` + fallback
+## 3) Actividades de mtto — viven SOLO en el cliente (`tareas_config/{cliente|tipo}`)
 
-Hoy `tareas_config/{tipo}` = `{ tipo, tareas:[nombres], minutos:[mins] }` es **global por tipo** (misma plantilla para todos). Como las actividades **varían por licitación** (confirmado por José), el modelo pasa a:
+Las actividades **salen de la licitación de cada cliente**, así que una plantilla "global para todos" no significa nada: se retiró. El modelo definitivo (2026-07-13):
 
-- **Override por cliente:** `tareas_config/{cliente|tipo}` = `{ cliente, tipo, tareas:[...], minutos:[...] }` (ej. `tareas_config/RIPLEY|SPLIT`).
-- **Fallback:** si no existe `{cliente|tipo}`, se usa la global `{tipo}` (los docs actuales, sin `|`, quedan como **plantilla base**).
-- **Retrocompatible:** los lectores actuales (bot, mantenimiento, itinerario) leen `tareas_config/{tipo}` y **siguen funcionando sin cambios** (usan la global). El "leer por cliente" es un **interruptor futuro** (ver §6).
+- **Única fuente:** `tareas_config/{cliente|tipo}` = `{ cliente, tipo, tareas:[nombres], minutos:[mins] }` (ej. `tareas_config/RIPLEY|CHILLER`). **Sin fallback.**
+- **Un (cliente, tipo) sin plantilla no tiene actividades.** No se hereda nada: el bot responde *"no tiene actividades configuradas — pedile al administrador que las configure en la app de Clientes"* y la ficha del cliente marca el tipo con **⚠️ sin configurar**. Es a propósito: registrar contra una lista que el cliente no contrató es peor que no registrar.
+- **Ajuste por equipo** (`mtto_actividades_equipo`, doc-id = `eq_id`): sigue existiendo y se aplica **encima** de la plantilla del cliente — `(plantilla − quitadas) + agregadas`. Se edita en **Mantenimiento** (⚙️ Ajustar actividades por equipo), no en Clientes.
 
-**Backfill (RIPLEY ya poblado):** por cada `tareas_config/{tipo}` global se genera `tareas_config/RIPLEY|{tipo}` con las mismas `tareas`/`minutos` + `cliente:'RIPLEY'`. Así RIPLEY arranca con sus actividades "ya establecidas" (idénticas a las de hoy) y editables por cliente.
+**Dónde se edita cada cosa:**
 
-## 4) Firestore rules (las agrega el gestor)
+| Qué | Dónde | Quién |
+|---|---|---|
+| Plantilla del cliente por tipo | `clientes.html` → ficha → Actividades | SUPER_ADMIN |
+| Ajuste de un equipo puntual | `mantenimiento_multiaire.html` → ⚙️ Ajustar actividades por equipo | `canWrite('mantenimiento')` |
+
+En la ficha del cliente, un tipo sin plantilla se puede **⧉ Copiar de otro cliente** (atajo para no re-tipear una lista idéntica) y una plantilla existente se puede **🗑 Borrar** (con confirm explícito: sus equipos quedan sin actividades).
+
+**Migración ejecutada (2026-07-13):** se creó `RIPLEY|CHILLER` (el único de los 14 tipos que aún dependía del fallback: sus 8 chillers), se borraron los 14 docs `-|{tipo}` del cliente fantasma (la oficina, 0 equipos) y **se retiraron las 14 plantillas globales**. Los 557 equipos tienen la plantilla de su cliente.
+
+## 4) Firestore rules
 
 - `maestros_clientes`: `read` autenticado; `create/update` **ADMIN/SUPER** (`isAdmin()`); `delete` solo SUPER (entidad de negocio, mismo criterio que `maestros_personal`).
-- `tareas_config`: **la regla NO cambia** — `match /tareas_config/{doc}` cubre cualquier doc-id (`tipo` o `cliente|tipo`); sigue `read: authorized / write: isSuper`. Editar actividades por cliente = super, igual que hoy.
+- `tareas_config`: **la regla NO cambia** — `match /tareas_config/{doc}` cubre cualquier doc-id; sigue `read: authorized / write: isSuper`. Editar las actividades de un cliente = super.
 - `maestros_tiendas`: sin cambios (`write: isSuper`).
 - Catch-all fail-closed intacto.
 
 ## 5) Backup (`configuracion.html`)
 
 - `maestros_clientes.csv`: patrón JSON-doc (`ID`, `DATA`=`JSON.stringify(doc)`).
-- `tareas_config.csv`: se le agrega columna **`CLIENTE`** y se **agrupa por (cliente,tipo)** en import (de paso corrige un bug previo que colapsaba las tareas a la última fila). Backward-compatible: un backup viejo sin `CLIENTE` → cliente vacío → docs globales por `tipo`.
+- `tareas_config.csv`: columna **`CLIENTE`** + agrupación por (cliente,tipo) en import. Un backup viejo sin `CLIENTE` importa como docs por `tipo` — que ya nadie lee (quedarían inertes, no rompen nada).
 
-## 6) Retrocompat de lectores + consumo por cliente
+## 6) Lectores de `tareas_config`
 
-**Blindaje de lectores (SÍ hecho en este arranque — hallazgo CRÍTICO del Council):** los lectores actuales de `tareas_config` agrupan por el **campo `tipo`**, así que si conviven `tareas_config/RIPLEY|SPLIT` y `tareas_config/SPLIT` (ambos con `tipo:'SPLIT'`), un override podría **sobrescribir la plantilla global en memoria**. Por eso todos los lectores **globales** ahora **ignoran los doc-id con `|`**: `api/_lib/mtto.js` (`esActividadConocida`), `itinerario.html`, `mantenimiento_multiaire.html`, `inventario_multiaire.html` y el editor global de `configuracion.html`. El editor global preserva overrides al guardar (`if(id.includes('|'))return` en su delete-all), y el import de `tareas_config` solo hace delete-all en modo `replace`. `api/_lib/mtto.js` `_resolverActs` lee `tareas_config/{tipo}` por doc-id directo → no colisiona. **Esto NO cambia el comportamiento actual** (hoy no hay docs `cliente|tipo`); solo protege ante el backfill.
+Todos resuelven **`{cliente|tipo}` y nada más**; los doc-id sin `|` se ignoran (plantillas globales del modelo viejo):
 
-**Consumo por cliente (ENCENDIDO 2026-07-11):** el bot, Mantenimiento e Itinerario ahora **resuelven la plantilla del cliente del equipo** (`tareas_config/{cliente|tipo}`) **con fallback a la global** (`tareas_config/{tipo}`) cuando el cliente no tiene override. Puntos:
-- **Bot** (`api/_lib/mtto.js` `_resolverActs(eqId, tipo, cliente)`): lee `{cliente|tipo}` ?? `{tipo}`; el caller pasa `r.equipo.cliente` y la sesión guarda `ses.cliente` (para los minutos al guardar). `esActividadConocida` (detección de intención) incluye también los nombres de actividades por cliente (Set, sin colisión).
-- **Mantenimiento** (`actividadesDe(eq)`): `TAREAS_CLI['{cliente|tipo}']` ?? `TAREAS[tipo]`; carga ambas plantillas (globales y por cliente) y las cachea.
-- **Itinerario** (armado del plan): `plantillasCli['{cliente|tipo}']` ?? `plantillas[tipo]` por equipo.
-El override **por equipo** (`mtto_actividades_equipo`) se aplica igual **encima** de la plantilla resuelta. Como RIPLEY (backfill) tiene `RIPLEY|tipo == global`, **no cambia nada observable hoy**; el efecto aparece cuando un cliente edita su plantilla o entra un 2.º cliente. Validado con harness sobre el código real del bot (8/8). Los lectores que solo necesitan la lista de tipos (selector de `inventario_multiaire.html`) o editan la plantilla global (`configuracion.html`) siguen usando solo las globales.
+- **Bot** (`api/_lib/mtto.js` `_resolverActs(eqId, tipo, cliente)`): lee `{cliente|tipo}`; sin plantilla → lista vacía → el mensaje explícito de arriba. `esActividadConocida` (detección de intención) usa los nombres de **todas** las plantillas, de todos los clientes (es un Set de nombres, no un map por tipo → no hay colisión).
+- **Mantenimiento** (`actividadesDe(eq)` → `plantillaDeEq(eq)`): `TAREAS_CLI['{cliente|tipo}']`. Ya no hay fallback hardcodeado si falla la carga (antes había uno que se desactualizaba en silencio): avisa y deja la lista vacía.
+- **Itinerario** (armado del plan): `plantillasCli['{cliente|tipo}']` por equipo.
+- **Inventario** (`inventario_multiaire.html`): ya no lee `tareas_config` — el selector de tipos se alimenta del **inventario mismo** (es la fuente de verdad de qué tipos hay), con una opción **"✏️ Otro tipo (escribir)…"** para dar de alta el primer equipo de un tipo nuevo.
+- **Configuración** (`configuracion.html`): el editor de plantillas globales **se retiró**. Conserva el backup/restore de `tareas_config`.
 
 ## Módulo `clientes.html`
 

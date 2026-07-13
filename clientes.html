@@ -253,8 +253,9 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
         <div class="card-title">🔧 Actividades de mantenimiento por tipo</div>
         <div id="acts-body"><div class="empty-msg">—</div></div>
         <p style="font-size:10px;color:var(--muted2);margin-top:10px">
-          <span class="badge badge-own">propia</span> = plantilla específica de este cliente · <span class="badge badge-inh">heredada</span> = usa la plantilla global del tipo.
-          Hoy el bot y Mantenimiento siguen usando la plantilla global; el consumo por cliente se activará más adelante. Editar = super admin.
+          Estas son las actividades que se registran en los equipos de este cliente — salen de su licitación. Un tipo
+          <span class="badge badge-inh">⚠️ sin configurar</span> no tiene ninguna: sus equipos no se pueden registrar ni por la app ni por el bot.
+          Para quitarle o agregarle una actividad a UN equipo puntual, andá a Mantenimiento → ⚙️ Ajustar actividades por equipo. Editar = super admin.
         </p>
       </div>
     </div>
@@ -300,9 +301,12 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
     <h2 id="modal-acts-title">Actividades</h2>
     <div class="modal-sub" id="modal-acts-sub"></div>
     <div id="acts-editor"></div>
-    <button class="btn btn-sm" onclick="addActRow()" style="margin-top:8px">+ Actividad</button>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-sm" onclick="addActRow()">+ Actividad</button>
+      <button class="btn btn-sm" id="btn-copiar" onclick="copiarDeOtro()" style="display:none">⧉ Copiar de otro cliente</button>
+    </div>
     <div class="modal-foot">
-      <button class="btn btn-red" id="btn-heredar" onclick="heredarGlobal()" style="margin-right:auto;display:none">↩︎ Usar plantilla global</button>
+      <button class="btn btn-red" id="btn-borrar-acts" onclick="borrarActs()" style="margin-right:auto;display:none">🗑 Borrar plantilla</button>
       <button class="btn" onclick="closeModal('modal-acts')">Cancelar</button>
       <button class="btn btn-primary" id="btn-save-acts" onclick="saveActs()">💾 Guardar para este cliente</button>
     </div>
@@ -411,10 +415,11 @@ function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,
 function closeModal(id){ document.getElementById(id)?.classList.remove('open'); }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  GESTOR DE CLIENTES (Etapa 2) — contrato: docs/clientes-spec.md
+//  GESTOR DE CLIENTES — contrato: docs/clientes-spec.md
 //  Cliente = entidad `maestros_clientes` (doc-id = string cliente = llave de join).
-//  Sedes viven en `maestros_tiendas` (join por string cliente). Actividades por
-//  cliente en `tareas_config/{cliente|tipo}` con fallback a la global `{tipo}`.
+//  Sedes viven en `maestros_tiendas` (join por string cliente).
+//  Las actividades de mtto viven SOLO acá: `tareas_config/{cliente|tipo}`, sin plantilla global
+//  (salen de la licitación de cada cliente). El AJUSTE por equipo se hace en Mantenimiento.
 // ═══════════════════════════════════════════════════════════════════════════════
 let clientes = [];         // [{id/nombre, ruc, ...}]
 let sedes    = [];         // maestros_tiendas
@@ -465,18 +470,25 @@ async function loadAll(){
 // nº de sedes / equipos por cliente (join por string)
 function nSedes(nom){ return sedes.filter(s=>s.cliente===nom).length; }
 function nEquipos(nom){ return inventario.filter(e=>e.cliente===nom).length; }
-// tipos de equipo presentes en un cliente (para sus actividades) ∪ tipos con plantilla global
+// Tipos de equipo de un cliente = los que TIENE en el inventario (∪ los que ya tienen plantilla
+// suya, por si le configuraron un tipo antes de cargar sus equipos).
 function tiposDe(nom){
   const t = new Set(inventario.filter(e=>e.cliente===nom).map(e=>e.tipo).filter(Boolean));
-  Object.values(tareasDocs).forEach(d=>{ if(!String(d.id).includes('|') && d.tipo) t.add(d.tipo); });
+  Object.values(tareasDocs).forEach(d=>{ if(d.cliente===nom && d.tipo) t.add(d.tipo); });
   return [...t].sort((a,b)=>a.localeCompare(b,'es'));
 }
-// plantilla efectiva {tareas,minutos,propia} de un cliente+tipo (override o global)
+// Plantilla de un cliente+tipo. No hay fallback a una plantilla "global": las actividades salen
+// de la licitación de cada cliente, así que un tipo sin configurar simplemente no tiene ninguna.
 function plantillaDe(nom, tipo){
   const own = tareasDocs[nom+'|'+tipo];
-  if(own) return { tareas:own.tareas||[], minutos:own.minutos||[], propia:true };
-  const glob = tareasDocs[tipo];
-  return { tareas:(glob&&glob.tareas)||[], minutos:(glob&&glob.minutos)||[], propia:false };
+  return own ? { tareas:own.tareas||[], minutos:own.minutos||[], propia:true } : { tareas:[], minutos:[], propia:false };
+}
+// Clientes (≠ este) que sí tienen plantilla para ese tipo → se puede copiar de ellos
+function clientesConPlantilla(tipo, exceptoNom){
+  return Object.values(tareasDocs)
+    .filter(d => d.tipo===tipo && d.cliente && d.cliente!==exceptoNom && (d.tareas||[]).length)
+    .map(d => d.cliente)
+    .sort((a,b)=>a.localeCompare(b,'es'));
 }
 
 // ── LISTA ──
@@ -699,10 +711,13 @@ function renderActs(){
   if(!tipos.length){ body.innerHTML='<div class="empty-msg">No hay tipos de equipo para este cliente.</div>'; return; }
   body.innerHTML = tipos.map(t=>{
     const p = plantillaDe(_cliCur, t);
+    const n = inventario.filter(e=>e.cliente===_cliCur && e.tipo===t).length;
     return `<div class="row-item">
       <div class="row-info">
-        <div class="row-name">${esc(t)} <span class="badge ${p.propia?'badge-own':'badge-inh'}">${p.propia?'propia':'heredada'}</span></div>
-        <div class="row-sub">${p.tareas.length} actividad(es)${p.tareas.length?': '+esc(p.tareas.slice(0,3).join(', '))+(p.tareas.length>3?'…':''):''}</div>
+        <div class="row-name">${esc(t)} ${p.propia
+          ? `<span class="badge badge-own">${p.tareas.length} actividad(es)</span>`
+          : '<span class="badge badge-inh">⚠️ sin configurar</span>'}</div>
+        <div class="row-sub">${n} equipo(s)${p.propia && p.tareas.length ? ' · '+esc(p.tareas.slice(0,3).join(', '))+(p.tareas.length>3?'…':'') : ' · sus equipos no tienen actividades que registrar'}</div>
       </div>
       ${sup?`<button class="btn btn-sm act-edit" data-tipo="${esc(t)}">✎</button>`:''}
     </div>`;
@@ -715,11 +730,33 @@ function openActs(tipo){
   _actTipo = tipo;
   const p = plantillaDe(_cliCur, tipo);
   document.getElementById('modal-acts-title').textContent = `Actividades · ${tipo}`;
-  document.getElementById('modal-acts-sub').innerHTML = `Cliente <strong>${esc(_cliCur)}</strong>. ${p.propia?'Plantilla <strong>propia</strong> de este cliente.':'Actualmente <strong>hereda</strong> la plantilla global; al guardar creás una plantilla propia.'}`;
+  document.getElementById('modal-acts-sub').innerHTML = `Cliente <strong>${esc(_cliCur)}</strong>. `
+    + (p.propia
+        ? 'Estas son las actividades que se registran en sus equipos de este tipo.'
+        : '<strong>Sin configurar:</strong> sus equipos de este tipo no tienen ninguna actividad que registrar. Definilas acá (salen de su licitación) o copialas de otro cliente.');
   const ed = document.getElementById('acts-editor');
   ed.innerHTML = p.tareas.map((t,i)=>actRowHtml(t, p.minutos[i])).join('') || actRowHtml('', 5);
-  document.getElementById('btn-heredar').style.display = p.propia ? 'inline-flex' : 'none';
+  // "Copiar de otro cliente": atajo para no re-tipear una lista que otro cliente ya tiene igual
+  const otros = clientesConPlantilla(tipo, _cliCur);
+  const btnCopiar = document.getElementById('btn-copiar');
+  btnCopiar.style.display = otros.length ? 'inline-flex' : 'none';
+  btnCopiar.textContent = `⧉ Copiar de otro cliente (${otros.length})`;
+  document.getElementById('btn-borrar-acts').style.display = p.propia ? 'inline-flex' : 'none';
   document.getElementById('modal-acts').classList.add('open');
+}
+// Copia la plantilla de otro cliente al editor (no guarda: queda para revisar y ajustar antes)
+function copiarDeOtro(){
+  if(!canSuper() || !_actTipo) return;
+  const otros = clientesConPlantilla(_actTipo, _cliCur);
+  if(!otros.length) return;
+  const de = otros.length === 1 ? otros[0]
+    : prompt(`¿De qué cliente copiar las actividades de ${_actTipo}?\n\n${otros.join('\n')}`, otros[0]);
+  if(!de) return;
+  const src = tareasDocs[de+'|'+_actTipo];
+  if(!src){ toast('Ese cliente no tiene plantilla para este tipo','err'); return; }
+  document.getElementById('acts-editor').innerHTML =
+    (src.tareas||[]).map((t,i)=>actRowHtml(t, (src.minutos||[])[i])).join('') || actRowHtml('', 5);
+  toast(`Copiadas de ${de} — revisá y guardá`,'ok');
 }
 function actRowHtml(nombre, min){
   return `<div class="act-row">
@@ -738,7 +775,7 @@ async function saveActs(){
     if(!n) return;
     tareas.push(n); minutos.push(Math.max(1, parseInt(r.querySelector('.act-min').value)||5));
   });
-  if(!tareas.length){ toast('Agregá al menos una actividad (o usá "plantilla global")','err'); return; }
+  if(!tareas.length){ toast('Agregá al menos una actividad, copiala de otro cliente, o cancelá','err'); return; }
   const btn=document.getElementById('btn-save-acts'); btn.disabled=true; btn.textContent='⏳...';
   const docId = _cliCur+'|'+_actTipo;
   const data = { cliente:_cliCur, tipo:_actTipo, tareas, minutos };
@@ -750,15 +787,19 @@ async function saveActs(){
   }catch(e){ toast('Error: '+e.message,'err'); }
   finally{ btn.disabled=false; btn.textContent='💾 Guardar para este cliente'; }
 }
-async function heredarGlobal(){
+// Borra la plantilla del cliente para ese tipo. No hay "volver a heredar": sin plantilla, sus
+// equipos de ese tipo se quedan SIN actividades que registrar — por eso el confirm es explícito.
+async function borrarActs(){
   if(!canSuper() || !_actTipo) return;
   const docId = _cliCur+'|'+_actTipo;
   if(!tareasDocs[docId]){ closeModal('modal-acts'); return; }
-  const btn=document.getElementById('btn-heredar'); btn.disabled=true;
+  const n = inventario.filter(e=>e.cliente===_cliCur && e.tipo===_actTipo).length;
+  if(!confirm(`¿Borrar las actividades de ${_actTipo} para ${_cliCur}?\n\nSus ${n} equipo(s) de este tipo quedarán SIN actividades: no se podrán registrar ni por la app ni por el bot.`)) return;
+  const btn=document.getElementById('btn-borrar-acts'); btn.disabled=true;
   try{
     await db.collection('tareas_config').doc(docId).delete();
     delete tareasDocs[docId];
-    toast('Ahora hereda la plantilla global ✓','ok');
+    toast('Plantilla borrada','ok');
     closeModal('modal-acts'); renderActs();
   }catch(e){ toast('Error: '+e.message,'err'); }
   finally{ btn.disabled=false; }
@@ -789,44 +830,32 @@ async function crearCliente(){
   finally{ btn.disabled=false; btn.textContent='Crear'; }
 }
 
-// ── BACKFILL: generar clientes desde los strings existentes + copiar actividades globales ──
+// ── BACKFILL: crear la ficha de los clientes que ya existen como string en los datos ──
+// (`maestros_tiendas.cliente` / `inventario.cliente` son strings denormalizados; esto les da ficha).
+// Ya NO copia plantillas de actividades: no hay plantilla "global" de dónde copiar — las actividades
+// salen de la licitación de cada cliente y se definen (o se copian de otro cliente) en su ficha.
 function openBackfill(){
   if(!canSuper()){ toast('Solo el super admin','err'); return; }
-  // strings cliente distintos en tiendas + inventario que aún no tienen ficha
   const existentes = new Set(clientes.map(c=>c.nombre));
   // ignora "-"/vacío: la oficina y las sedes internas NO son clientes (no recrear el fantasma)
   const detectados = new Set([...sedes.map(s=>s.cliente), ...inventario.map(e=>e.cliente)].filter(esClienteValido));
   const faltantes = [...detectados].filter(n=>!existentes.has(n));
-  const tiposGlob = Object.values(tareasDocs).filter(d=>!String(d.id).includes('|') && d.tipo);
-  const msg = faltantes.length
-    ? `Se van a crear ${faltantes.length} ficha(s) de cliente: ${faltantes.join(', ')}.\n\nAdemás, por cada cliente detectado se copiarán las ${tiposGlob.length} plantilla(s) de actividades globales como suyas (solo si aún no las tiene).\n\n¿Continuar?`
-    : `No hay clientes nuevos que crear (todos los strings ya tienen ficha).\n\n¿Copiar de todos modos las ${tiposGlob.length} plantillas globales de actividades a los clientes que aún no las tengan?`;
-  if(!confirm(msg)) return;
-  runBackfill(faltantes, tiposGlob);
+  if(!faltantes.length){ toast('Todos los clientes de los datos ya tienen ficha','ok'); return; }
+  if(!confirm(`Se van a crear ${faltantes.length} ficha(s) de cliente: ${faltantes.join(', ')}.\n\nSus actividades se configuran después, tipo por tipo, desde la ficha.\n\n¿Continuar?`)) return;
+  runBackfill(faltantes);
 }
-async function runBackfill(faltantes, tiposGlob){
+async function runBackfill(faltantes){
   const btn=document.getElementById('btn-backfill'); btn.disabled=true; btn.textContent='⏳ Generando...';
   const now=new Date().toISOString();
   try{
     let batch=db.batch(), n=0;
     const commitIf = async ()=>{ if(++n>=400){ await batch.commit(); batch=db.batch(); n=0; } };
-    // 1) fichas de cliente faltantes
     for(const nombre of faltantes){
       batch.set(db.collection('maestros_clientes').doc(nombre), { nombre, activo:true, createdAt:now, createdBy:maUser.email, updatedAt:now, updatedBy:maUser.email, notas:'Generado desde datos existentes' }, {merge:true});
       await commitIf();
     }
-    // 2) copiar plantillas globales → {cliente|tipo} para cada cliente (todos), sin pisar overrides ya existentes
-    const todos = new Set([...clientes.map(c=>c.nombre), ...faltantes].filter(esClienteValido));
-    for(const nombre of todos){
-      for(const g of tiposGlob){
-        const docId = nombre+'|'+g.tipo;
-        if(tareasDocs[docId]) continue;   // ya tiene plantilla propia → no pisar
-        batch.set(db.collection('tareas_config').doc(docId), { cliente:nombre, tipo:g.tipo, tareas:g.tareas||[], minutos:g.minutos||[] });
-        await commitIf();
-      }
-    }
     if(n>0) await batch.commit();
-    toast('Backfill completo ✓','ok');
+    toast(`${faltantes.length} ficha(s) creada(s) ✓`,'ok');
     await loadAll();
   }catch(e){ toast('Error en backfill: '+e.message,'err'); }
   finally{ btn.disabled=false; btn.textContent='⚙️ Generar desde datos actuales'; }

@@ -266,7 +266,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
     <h2 id="mtitle">Nuevo equipo</h2>
     <div class="fg2">
       <div class="fgg"><label>Sede *</label><div class="sdd-wrap"><input type="text" id="f_sede" placeholder="Escribe para buscar la sede..." autocomplete="off"><div class="sdd" id="dd_f_sede"></div></div></div>
-      <div class="fgg"><label>Tipo *</label><select id="f_equipo"><option value="">Seleccionar tipo...</option></select></div>
+      <div class="fgg"><label>Tipo *</label><select id="f_equipo" onchange="onTipoChange()"><option value="">Seleccionar tipo...</option></select><input type="text" id="f_equipo_otro" placeholder="Nombre del tipo nuevo" style="display:none;margin-top:6px"></div>
       <div class="fgg full"><label>Descripción *</label><input type="text" id="f_desc" placeholder="Ej: AA Fan Coil 16"></div>
       <div class="fgg full"><label>Área / Ubicación</label><input type="text" id="f_area" placeholder="Ej: Almacén, Azotea..."></div>
       <div class="fgg"><label>Marca</label><input type="text" id="f_marca" list="dl_marca" placeholder="Ej: Midea"><datalist id="dl_marca"></datalist></div>
@@ -427,20 +427,15 @@ function pf() {
 
   sddGroups.fSede = sddGrupos(data.map(r=>({cliente:r.cliente, sede:r.sede})));
   if (!sedesForm.length) sddGroups.f_sede = sddGroups.fSede;  // fallback hasta que se carguen maestros
-  data.forEach(r=>{ if(r.sede && !(r.sede in sedeCliente)) sedeCliente[r.sede]=r.cliente||'RIPLEY'; });
+  // el cliente se toma tal cual (antes se inventaba 'RIPLEY'): es la llave que resuelve la
+  // plantilla de actividades del equipo — asignarle otro cliente le cambiaría las actividades
+  data.forEach(r=>{ if(r.sede && !(r.sede in sedeCliente)) sedeCliente[r.sede]=r.cliente||''; });
 
-  // Tipo — filter select + form select (from existing data + TAREAS config)
+  // Tipo — filtro + selector del formulario. Los tipos salen del INVENTARIO (es la fuente de
+  // verdad de qué equipos hay); antes venían de las plantillas globales de `tareas_config`, que
+  // ya no existen — la plantilla vive por cliente y se edita en la app de Clientes.
   fs('fEquipo', u('equipo'), 'Todos los tipos');
-  const formTipo = document.getElementById('f_equipo');
-  if (formTipo) {
-    const todosTipos = u('equipo');
-    formTipo.innerHTML = '<option value="">Seleccionar tipo...</option>';
-    todosTipos.forEach(t => {
-      const o = document.createElement('option');
-      o.value = t; o.textContent = t;
-      formTipo.appendChild(o);
-    });
-  }
+  fillTipoForm();
 
   fs('fArea',u('area'),'Todas las áreas'); fs('fMarca',u('marca'),'Todas las marcas');
   fs('ebSede',u('sede'),'Por sede...'); fs('ebTipo',u('equipo'),'Por tipo...');
@@ -516,8 +511,38 @@ async function cargarSedesMaestros(){
     const tiendas = mSnap.docs.map(d => d.data()).filter(t => String(t.activo).trim().toUpperCase() !== 'NO');
     sedesForm = [...new Set(tiendas.map(t => t.sede).filter(Boolean))].sort();
     if (sedesForm.length) sddGroups.f_sede = sddGrupos(tiendas.map(t=>({cliente:t.cliente, sede:t.sede})));
-    tiendas.forEach(t=>{ if(t.sede) sedeCliente[t.sede]=t.cliente||'RIPLEY'; });  // maestros pisa a datos
+    tiendas.forEach(t=>{ if(t.sede) sedeCliente[t.sede]=t.cliente||''; });  // maestros pisa a datos
   }catch(e){ /* fallback: el dropdown del form ya trae las sedes de los datos (pf) */ }
+}
+
+// Selector de tipo del formulario: los tipos del inventario + la escapatoria para dar de alta el
+// PRIMER equipo de un tipo nuevo (sin ella, un tipo que aún no existe sería inalcanzable).
+const TIPO_OTRO = '__OTRO__';
+function fillTipoForm(seleccionado){
+  const sel = document.getElementById('f_equipo');
+  if(!sel) return;
+  const tipos = [...new Set(data.map(x=>x.equipo).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">Seleccionar tipo...</option>'
+    + tipos.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')
+    + `<option value="${TIPO_OTRO}">✏️ Otro tipo (escribir)…</option>`;
+  const otro = document.getElementById('f_equipo_otro');
+  if(seleccionado && !tipos.includes(seleccionado)){
+    // p.ej. al editar un equipo cuyo tipo ya no está en la lista
+    sel.value = TIPO_OTRO; otro.value = seleccionado; otro.style.display = '';
+  } else {
+    sel.value = seleccionado || ''; otro.value = ''; otro.style.display = 'none';
+  }
+}
+function onTipoChange(){
+  const otro = document.getElementById('f_equipo_otro');
+  const esOtro = document.getElementById('f_equipo').value === TIPO_OTRO;
+  otro.style.display = esOtro ? '' : 'none';
+  if(esOtro) otro.focus(); else otro.value = '';
+}
+// El tipo elegido: el del select, o el texto libre si se eligió "Otro"
+function tipoDelForm(){
+  const v = document.getElementById('f_equipo').value;
+  return (v === TIPO_OTRO ? document.getElementById('f_equipo_otro').value : v).trim();
 }
 
 async function openNew(){
@@ -529,44 +554,20 @@ async function openNew(){
     const el = document.getElementById('f_'+f);
     if(el) el.value='';
   });
-
-  try {
-    // Load sedes (maestros) + tareas (tipos) in parallel from config
-    const { getDocs, collection } = window.__fb;
-    const [, tSnap] = await Promise.all([
-      cargarSedesMaestros(),
-      getDocs(collection(window.__db, 'tareas_config'))
-    ]);
-    // Solo plantillas GLOBALES por tipo (se ignoran overrides por cliente `cliente|tipo` de la Etapa 2).
-    const tRes = { tareas: Object.fromEntries(tSnap.docs.filter(d => !d.id.includes('|')).map(d => [d.data().tipo, d.data().tareas])) };
-
-    // Populate tipo selector from TAREAS_CONFIG + existing data
-    const formTipo = document.getElementById('f_equipo');
-    if (formTipo) {
-      const tiposConf = Object.keys(tRes.tareas || {}).sort();
-      const tiposData = [...new Set(data.map(x=>x.equipo).filter(Boolean))].sort();
-      const todosTipos = [...new Set([...tiposData, ...tiposConf])].sort();
-      formTipo.innerHTML = '<option value="">Seleccionar tipo...</option>';
-      todosTipos.forEach(t => {
-        const o = document.createElement('option');
-        o.value = t; o.textContent = t;
-        formTipo.appendChild(o);
-      });
-    }
-  } catch(e) {
-    // fallback: already populated from pf() on load
-  }
-
+  fillTipoForm();
+  try { await cargarSedesMaestros(); } catch(e) { /* sedes ya pobladas en la carga inicial */ }
   document.getElementById('mov').classList.add('open');
 }
-function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;document.getElementById('f_equipo').value=r.equipo;document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('mov').classList.add('open');}
+function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('mov').classList.add('open');}
 function cm(){document.getElementById('mov').classList.remove('open');}
 
 async function saveItem(){
   if(!MA.can('editar','inventario')){toast('Sin permisos','err');return;}
   let sede=document.getElementById('f_sede').value.trim();
   const desc=document.getElementById('f_desc').value.trim();
+  const tipo=tipoDelForm().toUpperCase();   // del select, o el texto libre si eligió "Otro tipo"
   if(!sede||!desc){toast('Sede y descripción son obligatorios','err');return;}
+  if(!tipo){toast('El tipo es obligatorio','err');return;}
   // La sede es texto libre con datalist: debe corresponder a una sede real
   // (maestros_tiendas activas o alguna ya usada en el inventario)
   await cargarSedesMaestros();
@@ -574,19 +575,26 @@ async function saveItem(){
   const canon=sedesOk.find(s=>s.toLowerCase()===sede.toLowerCase());
   if(!canon){toast('Sede no válida: elígela de la lista de sugerencias','err');return;}
   sede=canon;
+  // Sin cliente no hay plantilla de actividades: el equipo nacería imposible de mantener. Se corta
+  // acá (antes de tocar el botón) con un mensaje claro, en vez de crearlo huérfano y que el técnico
+  // lo descubra en el techo. Antes se le inventaba 'RIPLEY', que le daría las actividades de OTRO cliente.
+  const cliente_val=sedeCliente[sede]||'';
+  if(!cliente_val || cliente_val==='-'){
+    toast('La sede "'+sede+'" no tiene cliente asignado. Asignáselo en la app de Clientes antes de cargarle equipos.','err');
+    return;
+  }
   const btn=document.getElementById('sbtn');
   btn.disabled=true;btn.innerHTML='<span class="spin"></span> Guardando...';
   // Auto-generate EQ_ID for new items
   const SEDE_MAP={'ATOCONGO':'ATO','CHORRILLOS':'CHO','COMAS':'COM','JOCKEY PLAZA':'JOC','LOS OLIVOS':'LOL','MAC PLAZA NORTE':'MAC','MIRAFLORES':'MIR','PLAZA NORTE':'PLN','PRIMAVERA':'PRI','SAN JUAN DE LURIGANCHO':'SJL','SAN MIGUEL':'SMI','SANTA ANITA':'SAN'};
   const TIPO_MAP={'CHILLER':'CHI','CORTINA DE AIRE':'CAI','ESCALERA':'ESC','EXTRACTOR':'EXT','FAN COIL':'FAN','INYECTOR':'INY','PAQUETE':'RFT','SPLIT CONSOLA':'SPL','SPLIT DUCTO':'SDU','SPLIT DECORATIVO':'SDC','TVR MINI PLUS':'TVR','UMA':'UMA','UNIDAD CONDENSADOR':'UCO','UNIDAD EVAPORADORA':'UEV'};
-  const cliente_val=sedeCliente[sede]||'RIPLEY';
-  const row=['',sede,cliente_val,document.getElementById('f_equipo').value.trim(),desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim()];
+  const row=['',sede,cliente_val,tipo,desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim()];
   try{
     if(editRow!==null){
       row[0]=data.find(x=>x.row===editRow)?.eq_id||'';
       await gasPost({action:'update',rowNum:editRow,row:row});toast('Equipo actualizado ✓','ok');
     } else {
-      const equipo_val=document.getElementById('f_equipo').value.trim().toUpperCase();
+      const equipo_val=tipo;
       const s=SEDE_MAP[sede.toUpperCase()]||sede.toUpperCase().substring(0,3);
       const t=TIPO_MAP[equipo_val]||equipo_val.substring(0,3);
       // Correlativo por MÁXIMO del prefijo, no por conteo: con huecos por
