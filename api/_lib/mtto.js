@@ -438,10 +438,23 @@ export function aplicarCorreccion(texto, g) {
 // Intenta resolver el equipo con el texto; si queda resuelto, avanza a ACTIVIDADES.
 // Devuelve el texto de respuesta al técnico.
 async function intentarResolver(ses, texto, corregir) {
-  // Typos de sede ("atokongo", "plasa norte"...) antes rompían el matcher determinístico de
-  // abajo (sin tolerancia a errores). Gemini corrige la ortografía primero, mismo criterio que
-  // Observaciones — si Gemini falla (rate limit, sin key, red) seguimos con el texto crudo: el
-  // matcher ya resuelve bien la sede/equipo bien escritos, así que no se pierde nada.
+  // GEMINI CORRIGE, PERO NO DESEMPATA.
+  // Gemini corrige la ortografía antes del matcher (typos de sede: "atokongo", "plasa norte"),
+  // y devuelve una sede canónica que el matcher acepta por coincidencia exacta. Eso es justo lo
+  // que queremos... salvo cuando el texto del técnico es GENUINAMENTE ambiguo entre dos sedes
+  // reales: ante "m plaza norte", Gemini contesta "Plaza Norte" con total aplomo, y esa
+  // respuesta —una corazonada, no un dato— entraría al matcher como certeza y saltearía su
+  // regla de contención, escribiendo el registro contra la sede equivocada (podía ser MAC PLAZA
+  // NORTE). Así que primero le preguntamos al matcher si el texto crudo es ambiguo; si lo es,
+  // se le repregunta al técnico y no se deja que Gemini elija por él.
+  const crudo = await resolverEquipo(texto, texto, texto);
+  if (!crudo.ok && crudo.motivo === 'sede' && crudo.sedeAmbigua) {
+    await guardarSesion(ses.from, ses);
+    return `¿De qué *sede* es el equipo? ${crudo.candidatosSede?.length ? 'Ej: ' + crudo.candidatosSede.slice(0, 5).join(', ') : ''}`;
+  }
+
+  // Si Gemini falla (rate limit, sin key, red) seguimos con el texto crudo: el matcher tolera
+  // typos por su cuenta (fonética + siglas + distancia de edición), así que no se pierde nada.
   let g = null;
   try {
     const contexto = await contextoInventario();
