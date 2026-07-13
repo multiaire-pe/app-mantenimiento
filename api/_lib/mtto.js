@@ -450,7 +450,10 @@ export function aplicarCorreccion(texto, g) {
 // respuesta ES la sede y va aparte: mezclarla con el texto anterior (que traía la sede ambigua)
 // volvería a disparar la misma repregunta, dejándolo en bucle.
 async function intentarResolver(ses, texto, corregir, sedeRespuesta = null) {
-  const sedeCruda = sedeRespuesta || texto;
+  // Una vez que la sede quedó resuelta, se FIJA en la sesión y manda sobre el texto. Si no, el
+  // texto que se va acumulando turno a turno sigue arrastrando la frase ambigua original ("m
+  // plaza norte") y el bot volvería a preguntar la sede en cada mensaje: un bucle con dos pasos.
+  const sedeCruda = sedeRespuesta || ses.sedeFijada || texto;
   const pideSede = async (r) => {
     ses.pidiendoSede = true;                 // ← el próximo mensaje es LA SEDE, no más contexto
     await guardarSesion(ses.from, ses);
@@ -475,6 +478,12 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null) {
     // Rescate: el texto trae algo que el matcher no reconoce (typo fuerte, jerga). Si Gemini
     // falla (rate limit, key rotada, red), nos quedamos con lo que ya teníamos — no se pierde
     // nada respecto de no haberlo llamado.
+    //
+    // La sede que el matcher YA resolvió queda CONGELADA: si lo que falta es el equipo, Gemini
+    // ayuda con el equipo, pero no puede mudar el registro a otra sede. Sin esto, ante "cortina
+    // 99 de mac plaza norte" (sede correcta, equipo inexistente) Gemini podía contestar "Plaza
+    // Norte", encontrar ahí una cortina 99, y registrarla en la sede equivocada.
+    const sedeFijada = r.sede || null;
     let g = null;
     try {
       const contexto = await contextoInventario();
@@ -484,16 +493,22 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null) {
     }
     if (g && (g.sede || g.equipo)) {
       const { sedeTxt, equipoTxt } = aplicarCorreccion(texto, g);
-      const rg = await resolverEquipo(sedeRespuesta || sedeTxt, equipoTxt, texto);
-      // Nos quedamos con la corrección solo si AVANZA: resolvió del todo, o al menos fijó la
-      // sede y lo que falta es el equipo. Si no, seguimos con lo que ya teníamos.
-      if (rg.ok || rg.motivo !== 'sede') r = rg;
+      const rg = await resolverEquipo(sedeFijada || sedeRespuesta || sedeTxt, equipoTxt, texto);
+      const mudoDeSede = sedeFijada && rg.sede && rg.sede !== sedeFijada;
+      // La corrección se acepta solo si AVANZA (resolvió, o al menos fijó la sede y falta el
+      // equipo) y si NO se lleva el registro a otra sede.
+      if (!mudoDeSede && (rg.ok || rg.motivo !== 'sede')) r = rg;
       if (!r.ok && r.motivo === 'sede' && r.sedeAmbigua) return pideSede(r);
     }
   }
 
   if (!r.ok) {
     if (r.motivo === 'sede') return pideSede(r);
+    // La sede ya está resuelta; lo que falta es el equipo o el cliente. Hay que salir del modo
+    // "el próximo mensaje es la sede", o el nombre del equipo que conteste el técnico se leería
+    // como si fuera una sede y quedaría trabado.
+    ses.pidiendoSede = false;
+    if (r.sede) ses.sedeFijada = r.sede;
     await guardarSesion(ses.from, ses);
     if (r.motivo === 'cliente') return `Esa sede existe para varios clientes (${(r.candidatosCliente || []).join(', ')}). ¿De cuál es?`;
     return `¿Qué *equipo* es? ${r.candidatosEquipo?.length ? 'Opciones: ' + r.candidatosEquipo.slice(0, 6).map((e) => e.nombre).join(' · ') : 'Dime el nombre como figura en el inventario.'}`;
