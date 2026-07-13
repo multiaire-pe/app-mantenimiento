@@ -54,41 +54,6 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 .section-head h2{font-size:13px;font-weight:700;color:var(--blue);flex:1}
 .section-body{padding:20px}
 
-/* TIPO SELECTOR */
-.tipo-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
-.tipo-tab{padding:6px 14px;border-radius:20px;border:1.5px solid var(--border);background:var(--surface);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;color:var(--muted2)}
-.tipo-tab:hover{border-color:var(--blue);color:var(--blue)}
-.tipo-tab.active{background:var(--blue);border-color:var(--blue);color:#fff}
-.tipo-tab.new-tipo{border-style:dashed;color:var(--orange);border-color:var(--orange)}
-.tipo-tab.new-tipo:hover{background:var(--orange-pale)}
-
-/* TAREAS LIST */
-.tareas-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;min-height:60px}
-.tarea-item{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2);border:1.5px solid var(--border);border-radius:8px;transition:border-color .15s}
-.tarea-item:hover{border-color:var(--blue-pale)}
-.tarea-drag{cursor:grab;color:var(--muted);font-size:16px;flex-shrink:0;user-select:none}
-.tarea-drag:active{cursor:grabbing}
-.tarea-name{flex:1;font-size:13px;color:var(--accent);background:none;border:none;outline:none;font-family:var(--font)}
-.tarea-name:focus{background:var(--blue-pale);border-radius:4px;padding:2px 6px}
-.tarea-mins{width:64px;background:var(--surface);border:1.5px solid var(--border);border-radius:6px;padding:4px 8px;font-family:var(--mono);font-size:12px;color:var(--accent);text-align:right;outline:none}
-.tarea-mins:focus{border-color:var(--blue)}
-.tarea-mins-label{font-size:10px;color:var(--muted);white-space:nowrap}
-.tarea-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px;flex-shrink:0;transition:all .15s}
-.tarea-del:hover{color:var(--red);background:var(--red-bg)}
-
-/* ADD ROW */
-.add-tarea-row{display:flex;gap:8px;align-items:center}
-.add-tarea-row input[type=text]{flex:1;background:var(--surface2);border:1.5px solid var(--border);color:var(--accent);font-family:var(--font);font-size:13px;padding:8px 12px;border-radius:8px;outline:none}
-.add-tarea-row input[type=text]:focus{border-color:var(--blue)}
-.add-tarea-row input[type=number]{width:72px;background:var(--surface2);border:1.5px solid var(--border);color:var(--accent);font-family:var(--mono);font-size:12px;padding:8px 8px;border-radius:8px;outline:none;text-align:right}
-.add-tarea-row input[type=number]:focus{border-color:var(--blue)}
-
-/* STATS */
-.tipo-stats{display:flex;gap:16px;padding:12px 0;border-top:1px solid var(--border);margin-top:4px;flex-wrap:wrap}
-.stat-item{display:flex;flex-direction:column;gap:2px}
-.stat-key{font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-.stat-val{font-size:13px;font-weight:700;color:var(--blue)}
-
 /* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface);color:var(--accent);font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
 .btn:hover{background:var(--blue-pale);border-color:var(--blue)}
@@ -126,13 +91,6 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 .auth-admin-only{margin-top:16px;padding:10px 14px;background:var(--orange-pale);border:1px solid #f0c09a;border-radius:8px;font-size:12px;color:var(--orange-dark);display:none;line-height:1.5}
 .auth-admin-only.show{display:block}
 
-/* EMPTY */
-.empty-tipo{text-align:center;padding:32px;color:var(--muted2);font-size:13px}
-
-/* DRAGGING */
-.tarea-item.dragging{opacity:.4;border-style:dashed}
-.tarea-item.drag-over{border-color:var(--blue);background:var(--blue-pale)}
-
 /* RESPONSIVE */
 @media(max-width:768px){
   main{padding:20px 16px}
@@ -143,8 +101,6 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
   .back-link{border-radius:8px}
   .section-head{flex-wrap:wrap;padding:12px 14px}
   .section-body{padding:14px}
-  .add-tarea-row{flex-wrap:wrap}
-  .add-tarea-row input[type=text]{width:100%}
   .section-head .btn,.section-head button{flex:1 1 auto;justify-content:center}
   .backup-card{padding:14px}
   .import-mode{flex-direction:column}
@@ -253,23 +209,8 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 </header>
 
 <main>
-  <div class="page-title">⚙️ Configuración de tareas</div>
-  <div class="page-sub">Gestiona las tareas de mantenimiento por tipo de equipo. Solo administradores pueden modificar.</div>
-
-  <div class="section">
-    <div class="section-head">
-      <h2>📋 Tareas por tipo de equipo</h2>
-      <button class="btn btn-primary" onclick="saveTareas()" id="save-btn">💾 Guardar cambios</button>
-    </div>
-    <div class="section-body">
-      <div class="tipo-tabs" id="tipo-tabs">
-        <div style="font-size:12px;color:var(--muted)">Cargando tipos...</div>
-      </div>
-      <div id="tareas-panel">
-        <div class="empty-tipo">Selecciona un tipo de equipo</div>
-      </div>
-    </div>
-  </div>
+  <div class="page-title">⚙️ Configuración</div>
+  <div class="page-sub">Maestros del sistema y respaldo de la base de datos. Solo el super admin.</div>
 
   <div class="section" style="margin-top:0">
     <div class="section-head">
@@ -422,9 +363,6 @@ const MA_ADM = 'marchenaangulojoseluis@gmail.com';
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 let maUser = null, maEmails = null;
-let tareasData = {}; // tipo -> [{nombre, minutos}]
-let tipoActivo = null;
-let changed = false;
 
 // ── AUTH ─────────────────────────────────────────────────────────────────────
 // Firebase auth - initialize directly without GSI
@@ -521,7 +459,6 @@ function maVerify(payload, save) {
     document.body.style.overflow = '';
     maRenderPill();
     maLogAccess(email);
-    loadTareas(true);
     loadMaestros();
   }).catch(function() {
     if (ldEl) ldEl.classList.remove('show');
@@ -581,196 +518,6 @@ document.addEventListener('click', function(e) {
   var menu = document.getElementById('user-menu');
   if (menu && pill && !pill.contains(e.target)) menu.classList.remove('open');
 });
-
-// ── TAREAS LOGIC ──────────────────────────────────────────────────────────────
-async function loadTareas(editable) {
-  try {
-    const { getDocs, collection } = window.__fb;
-    const snap = await getDocs(collection(window.__db, 'tareas_config'));
-    const _tareas = {}, _minutos = {};
-    // Editor de plantilla GLOBAL: ignora overrides por cliente (`cliente|tipo`, Etapa 2).
-    snap.docs.forEach(dd => { if (dd.id.includes('|')) return; const data = dd.data(); _tareas[data.tipo]=data.tareas||[]; _minutos[data.tipo]=data.minutos||[]; });
-    const d = { tareas: _tareas, minutos: _minutos };
-    const tareas = d.tareas || {};
-    const minutos = d.minutos || {};
-
-    // Build internal state
-    tareasData = {};
-    Object.keys(tareas).forEach(tipo => {
-      tareasData[tipo] = (tareas[tipo] || []).map((t, i) => ({
-        nombre: t,
-        minutos: (minutos[tipo] || [])[i] || 5
-      }));
-    });
-
-    renderTipoTabs(editable);
-    if (Object.keys(tareasData).length > 0) {
-      selectTipo(Object.keys(tareasData)[0], editable);
-    }
-  } catch(e) {
-    toast('Error cargando tareas', 'err');
-  }
-}
-
-function renderTipoTabs(editable) {
-  const tabs = document.getElementById('tipo-tabs');
-  tabs.innerHTML = Object.keys(tareasData).map(tipo =>
-    '<button class="tipo-tab" onclick="selectTipo(\'' + tipo + '\',' + editable + ')" id="tab-' + tipo.replace(/ /g,'_') + '">' + tipo + '</button>'
-  ).join('');
-  if (editable) {
-    tabs.innerHTML += '<button class="tipo-tab new-tipo" onclick="addTipo()">+ Nuevo tipo</button>';
-  }
-}
-
-function selectTipo(tipo, editable) {
-  tipoActivo = tipo;
-  // Update tab styles
-  document.querySelectorAll('.tipo-tab').forEach(t => t.classList.remove('active'));
-  var tab = document.getElementById('tab-' + tipo.replace(/ /g,'_'));
-  if (tab) tab.classList.add('active');
-  renderTareasPanel(tipo, editable);
-}
-
-function renderTareasPanel(tipo, editable) {
-  const tareas = tareasData[tipo] || [];
-  const totalMins = tareas.reduce((a, t) => a + t.minutos, 0);
-
-  let listHtml = tareas.map((t, i) =>
-    '<div class="tarea-item" draggable="' + editable + '" data-idx="' + i + '" ' +
-    'ondragstart="onDragStart(event,' + i + ')" ondragover="onDragOver(event)" ondrop="onDrop(event,' + i + ')" ondragleave="onDragLeave(event)">' +
-    (editable ? '<span class="tarea-drag" title="Arrastrar">⋮⋮</span>' : '') +
-    '<input class="tarea-name" type="text" value="' + t.nombre.replace(/"/g,'&quot;') + '" ' +
-    (editable ? 'onchange="updateTarea(' + i + ',\'nombre\',this.value)"' : 'readonly') + '>' +
-    '<input class="tarea-mins" type="number" min="1" max="999" value="' + t.minutos + '" ' +
-    (editable ? 'onchange="updateTarea(' + i + ',\'minutos\',+this.value)"' : 'readonly') + '>' +
-    '<span class="tarea-mins-label">min</span>' +
-    (editable ? '<button class="tarea-del" onclick="deleteTarea(' + i + ')" title="Eliminar">✕</button>' : '') +
-    '</div>'
-  ).join('');
-
-  const addRow = editable ? `
-    <div class="add-tarea-row" style="margin-top:8px">
-      <input type="text" id="new-tarea-name" placeholder="Nombre de la tarea..." onkeydown="if(event.key==='Enter')addTarea()">
-      <input type="number" id="new-tarea-mins" min="1" max="999" value="10" placeholder="min">
-      <span class="tarea-mins-label">min</span>
-      <button class="btn btn-orange" onclick="addTarea()">+ Agregar</button>
-    </div>` : '';
-
-  const deleteBtn = editable ? '<button class="btn btn-danger" onclick="deleteTipo(\'' + tipo + '\')" style="margin-left:auto">🗑 Eliminar tipo</button>' : '';
-
-  document.getElementById('tareas-panel').innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-      <span style="font-size:13px;font-weight:700;color:var(--blue)">${tipo}</span>
-      ${deleteBtn}
-    </div>
-    ${tareas.length === 0 ? '<div class="empty-tipo">Sin tareas configuradas</div>' : ''}
-    <div class="tareas-list" id="tareas-list">${listHtml}</div>
-    ${addRow}
-    <div class="tipo-stats">
-      <div class="stat-item"><span class="stat-key">Total tareas</span><span class="stat-val">${tareas.length}</span></div>
-      <div class="stat-item"><span class="stat-key">Tiempo total</span><span class="stat-val">${totalMins} min</span></div>
-      <div class="stat-item"><span class="stat-key">Promedio/tarea</span><span class="stat-val">${tareas.length ? Math.round(totalMins/tareas.length) : 0} min</span></div>
-    </div>`;
-}
-
-function updateTarea(idx, field, value) {
-  if (!tareasData[tipoActivo]) return;
-  tareasData[tipoActivo][idx][field] = value;
-  changed = true;
-  // Update stats
-  const tareas = tareasData[tipoActivo];
-  const totalMins = tareas.reduce((a, t) => a + t.minutos, 0);
-  document.querySelectorAll('.stat-val')[0].textContent = tareas.length;
-  document.querySelectorAll('.stat-val')[1].textContent = totalMins + ' min';
-  document.querySelectorAll('.stat-val')[2].textContent = (tareas.length ? Math.round(totalMins/tareas.length) : 0) + ' min';
-}
-
-function addTarea() {
-  const nameInput = document.getElementById('new-tarea-name');
-  const minsInput = document.getElementById('new-tarea-mins');
-  const nombre = (nameInput.value || '').trim();
-  const mins = parseInt(minsInput.value) || 10;
-  if (!nombre) return;
-  if (!tareasData[tipoActivo]) tareasData[tipoActivo] = [];
-  tareasData[tipoActivo].push({ nombre, minutos: mins });
-  nameInput.value = '';
-  minsInput.value = 10;
-  changed = true;
-  selectTipo(tipoActivo, true);
-}
-
-function deleteTarea(idx) {
-  tareasData[tipoActivo].splice(idx, 1);
-  changed = true;
-  selectTipo(tipoActivo, true);
-}
-
-function addTipo() {
-  const nombre = prompt('Nombre del nuevo tipo de equipo:');
-  if (!nombre || !nombre.trim()) return;
-  const tipo = nombre.trim().toUpperCase();
-  if (tareasData[tipo]) { toast('Ese tipo ya existe', 'err'); return; }
-  tareasData[tipo] = [];
-  changed = true;
-  renderTipoTabs(true);
-  selectTipo(tipo, true);
-}
-
-function deleteTipo(tipo) {
-  if (!confirm('¿Eliminar el tipo "' + tipo + '" y todas sus tareas?')) return;
-  delete tareasData[tipo];
-  changed = true;
-  renderTipoTabs(true);
-  const tipos = Object.keys(tareasData);
-  if (tipos.length > 0) selectTipo(tipos[0], true);
-  else document.getElementById('tareas-panel').innerHTML = '<div class="empty-tipo">Sin tipos configurados</div>';
-}
-
-// ── DRAG & DROP ───────────────────────────────────────────────────────────────
-let dragIdx = null;
-function onDragStart(e, idx) { dragIdx = idx; e.currentTarget.classList.add('dragging'); }
-function onDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
-function onDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
-function onDrop(e, targetIdx) {
-  e.preventDefault();
-  e.currentTarget.classList.remove('drag-over');
-  if (dragIdx === null || dragIdx === targetIdx) return;
-  const arr = tareasData[tipoActivo];
-  const [moved] = arr.splice(dragIdx, 1);
-  arr.splice(targetIdx, 0, moved);
-  dragIdx = null;
-  changed = true;
-  selectTipo(tipoActivo, true);
-}
-
-// ── SAVE ──────────────────────────────────────────────────────────────────────
-async function saveTareas() {
-  if (!MA.can('config')) { toast('La configuración es solo del super admin', 'err'); return; }
-  document.getElementById('loading').classList.add('show');
-  const rows = [];
-  Object.keys(tareasData).forEach(tipo => {
-    (tareasData[tipo] || []).forEach((t, i) => {
-      rows.push({ tipo, tarea: t.nombre, minutos: t.minutos, orden: i + 1 });
-    });
-  });
-  try {
-    const {writeBatch:_wbT,doc:_docT,collection:_colT,getDocs:_dgT}=window.__fb;
-    const _bT=_wbT(window.__db);
-    const _exT=await _dgT(_colT(window.__db,'tareas_config'));
-    // Solo reescribe las plantillas GLOBALES: borra y recrea docs por `tipo`, PRESERVANDO los overrides
-    // por cliente (`cliente|tipo`, Etapa 2) — si no, guardar la plantilla global borraría todos los overrides.
-    _exT.docs.forEach(dd=>{ if(dd.id.includes('|')) return; _bT.delete(dd.ref); });
-    Object.keys(tareasData).forEach(tipo=>{
-      const ts=tareasData[tipo]||[];
-      _bT.set(_docT(window.__db,'tareas_config',tipo),{tipo,tareas:ts.map(t=>t.nombre),minutos:ts.map(t=>t.minutos||5)});
-    });
-    await _bT.commit();
-    const d = { ok: true };
-    if (d.ok) { changed = false; toast('Cambios guardados ✓', 'ok'); }
-    else toast('Error guardando', 'err');
-  } catch(e) { toast('Error de conexión', 'err'); }
-  document.getElementById('loading').classList.remove('show');
-}
 
 // ── TOAST ─────────────────────────────────────────────────────────────────────
 
@@ -897,11 +644,6 @@ function toast(msg, type) {
   el.className = 'toast show ' + (type || '');
   setTimeout(() => el.classList.remove('show'), 3000);
 }
-
-// Warn on unsaved changes
-window.addEventListener('beforeunload', function(e) {
-  if (changed) { e.preventDefault(); e.returnValue = ''; }
-});
 
 // ── EXPORT BACKUP ─────────────────────────────────────────────────────────────
 async function exportBackup() {
@@ -1588,7 +1330,9 @@ async function confirmImport() {
       if(mode==='replace' && !_hasOp){ addLog('ℹ️ Backup previo a operatividad: se preservó el estado vivo (sin borrado total del inventario).', 'info'); }
       rows.forEach(r=>{
         if(!r.EQ_ID) return;
-        const p={eq_id:r.EQ_ID,sede:r.SEDE||'',cliente:r.CLIENTE||'RIPLEY',tipo:r.TIPO||'',nombre:r.NOMBRE||'',area:r.AREA||'',marca:r.MARCA||'',modelo:r.MODELO||'',serie:r.SERIE||''};
+        // el cliente se importa tal cual (antes se inventaba 'RIPLEY'): es la llave que resuelve la
+        // plantilla de actividades del equipo — asignarle otro cliente le cambiaría las actividades
+        const p={eq_id:r.EQ_ID,sede:r.SEDE||'',cliente:r.CLIENTE||'',tipo:r.TIPO||'',nombre:r.NOMBRE||'',area:r.AREA||'',marca:r.MARCA||'',modelo:r.MODELO||'',serie:r.SERIE||''};
         if(_hasOp){
           // backup NUEVO (trae el estado vivo): restaurar tal cual. '' → null (nunca reportado); '0' se conserva.
           p.operatividad=(r.OPERATIVIDAD!==''&&r.OPERATIVIDAD!=null)?+r.OPERATIVIDAD:null;
