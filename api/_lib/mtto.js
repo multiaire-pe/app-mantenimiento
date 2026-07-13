@@ -341,6 +341,15 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       await limpiarSesion(from);
       return MENU_TEXTO;
     }
+    // Si le acabamos de preguntar la SEDE (porque lo que dijo era ambiguo entre dos sedes
+    // reales), su respuesta ES la sede y va aparte — NO se acumula. Acumularla volvería a meter
+    // el texto ambiguo original ("m plaza norte") en el matcher, que volvería a preguntar lo
+    // mismo: bucle, y de los que solo se salen con "cancelar".
+    if (ses.pidiendoSede) {
+      const r = await intentarResolver(ses, ses.textoOriginal || texto, corregir, texto);
+      if (r) return r;
+      return null;
+    }
     // Acumula lo que el técnico va diciendo: la 1ª frase suele traer la sede y la respuesta a
     // la repregunta el equipo (o al revés). Sin acumular, responder de a poco perdía lo ya
     // dicho (la sede desaparecía al contestar el equipo) → el bot repreguntaba en bucle.
@@ -437,39 +446,59 @@ export function aplicarCorreccion(texto, g) {
 
 // Intenta resolver el equipo con el texto; si queda resuelto, avanza a ACTIVIDADES.
 // Devuelve el texto de respuesta al técnico.
-async function intentarResolver(ses, texto, corregir) {
-  // GEMINI CORRIGE, PERO NO DESEMPATA.
-  // Gemini corrige la ortografía antes del matcher (typos de sede: "atokongo", "plasa norte"),
-  // y devuelve una sede canónica que el matcher acepta por coincidencia exacta. Eso es justo lo
-  // que queremos... salvo cuando el texto del técnico es GENUINAMENTE ambiguo entre dos sedes
-  // reales: ante "m plaza norte", Gemini contesta "Plaza Norte" con total aplomo, y esa
-  // respuesta —una corazonada, no un dato— entraría al matcher como certeza y saltearía su
-  // regla de contención, escribiendo el registro contra la sede equivocada (podía ser MAC PLAZA
-  // NORTE). Así que primero le preguntamos al matcher si el texto crudo es ambiguo; si lo es,
-  // se le repregunta al técnico y no se deja que Gemini elija por él.
-  const crudo = await resolverEquipo(texto, texto, texto);
-  if (!crudo.ok && crudo.motivo === 'sede' && crudo.sedeAmbigua) {
+// `sedeRespuesta` = el técnico está contestando "¿de qué sede?" tras una ambigüedad. Su
+// respuesta ES la sede y va aparte: mezclarla con el texto anterior (que traía la sede ambigua)
+// volvería a disparar la misma repregunta, dejándolo en bucle.
+async function intentarResolver(ses, texto, corregir, sedeRespuesta = null) {
+  const sedeCruda = sedeRespuesta || texto;
+  const pideSede = async (r) => {
+    ses.pidiendoSede = true;                 // ← el próximo mensaje es LA SEDE, no más contexto
     await guardarSesion(ses.from, ses);
-    return `¿De qué *sede* es el equipo? ${crudo.candidatosSede?.length ? 'Ej: ' + crudo.candidatosSede.slice(0, 5).join(', ') : ''}`;
+    return `¿De qué *sede* es el equipo? ${r.candidatosSede?.length ? 'Ej: ' + r.candidatosSede.slice(0, 5).join(', ') : ''}`;
+  };
+
+  // EL MATCHER PRIMERO; GEMINI ES EL RESCATE.
+  // El matcher es determinístico y ya tolera typos por su cuenta (fonética + siglas + distancia
+  // de edición). Gemini solo entra si el matcher NO pudo resolver. El orden importa y es a
+  // sangre: si Gemini corrigiera SIEMPRE, su respuesta —que es una corazonada, no un dato—
+  // entraría al matcher como sede canónica y le ganaría por coincidencia exacta a lo que el
+  // matcher ya había resuelto bien. Ante "chiller 1 de mac plaza norte", que Gemini conteste
+  // "Plaza Norte" mandaría el registro a la sede equivocada (son dos sedes distintas y reales).
+  let r = await resolverEquipo(sedeCruda, texto, `${sedeCruda} ${texto}`);
+
+  // Y ante una ambigüedad GENUINA entre dos sedes reales ("m plaza norte" = ¿PLAZA NORTE o MAC
+  // PLAZA NORTE?), Gemini tampoco desempata: elegiría una con total aplomo. Se le pregunta al
+  // técnico, que es el único que sabe.
+  if (!r.ok && r.motivo === 'sede' && r.sedeAmbigua) return pideSede(r);
+
+  if (!r.ok) {
+    // Rescate: el texto trae algo que el matcher no reconoce (typo fuerte, jerga). Si Gemini
+    // falla (rate limit, key rotada, red), nos quedamos con lo que ya teníamos — no se pierde
+    // nada respecto de no haberlo llamado.
+    let g = null;
+    try {
+      const contexto = await contextoInventario();
+      g = await corregir(texto, contexto);
+    } catch (e) {
+      console.error('[mtto] corrección Gemini falló, sigo con el texto tal cual:', e?.message);
+    }
+    if (g && (g.sede || g.equipo)) {
+      const { sedeTxt, equipoTxt } = aplicarCorreccion(texto, g);
+      const rg = await resolverEquipo(sedeRespuesta || sedeTxt, equipoTxt, texto);
+      // Nos quedamos con la corrección solo si AVANZA: resolvió del todo, o al menos fijó la
+      // sede y lo que falta es el equipo. Si no, seguimos con lo que ya teníamos.
+      if (rg.ok || rg.motivo !== 'sede') r = rg;
+      if (!r.ok && r.motivo === 'sede' && r.sedeAmbigua) return pideSede(r);
+    }
   }
 
-  // Si Gemini falla (rate limit, sin key, red) seguimos con el texto crudo: el matcher tolera
-  // typos por su cuenta (fonética + siglas + distancia de edición), así que no se pierde nada.
-  let g = null;
-  try {
-    const contexto = await contextoInventario();
-    g = await corregir(texto, contexto);
-  } catch (e) {
-    console.error('[mtto] corrección Gemini falló, sigo con el texto tal cual:', e?.message);
-  }
-  const { sedeTxt, equipoTxt } = aplicarCorreccion(texto, g);
-  const r = await resolverEquipo(sedeTxt, equipoTxt, texto);
   if (!r.ok) {
+    if (r.motivo === 'sede') return pideSede(r);
     await guardarSesion(ses.from, ses);
-    if (r.motivo === 'sede') return `¿De qué *sede* es el equipo? ${r.candidatosSede?.length ? 'Ej: ' + r.candidatosSede.slice(0, 5).join(', ') : ''}`;
     if (r.motivo === 'cliente') return `Esa sede existe para varios clientes (${(r.candidatosCliente || []).join(', ')}). ¿De cuál es?`;
     return `¿Qué *equipo* es? ${r.candidatosEquipo?.length ? 'Opciones: ' + r.candidatosEquipo.slice(0, 6).map((e) => e.nombre).join(' · ') : 'Dime el nombre como figura en el inventario.'}`;
   }
+  ses.pidiendoSede = false;
   const acts = await actividadesDeEquipo(r.equipo.eqId, r.equipo.tipo, r.equipo.cliente);
   if (!acts.length) {
     await limpiarSesion(ses.from);
