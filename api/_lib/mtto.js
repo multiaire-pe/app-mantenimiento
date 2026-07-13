@@ -341,11 +341,20 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       await limpiarSesion(from);
       return MENU_TEXTO;
     }
+    // Si le acabamos de preguntar la SEDE (porque lo que dijo era ambiguo entre dos sedes
+    // reales), su respuesta ES la sede y va aparte — NO se acumula. Acumularla volvería a meter
+    // el texto ambiguo original ("m plaza norte") en el matcher, que volvería a preguntar lo
+    // mismo: bucle, y de los que solo se salen con "cancelar".
+    if (ses.pidiendoSede) {
+      const r = await intentarResolver(ses, ses.textoOriginal || texto, corregir, texto);
+      if (r) return r;
+      return null;
+    }
     // Acumula lo que el técnico va diciendo: la 1ª frase suele traer la sede y la respuesta a
     // la repregunta el equipo (o al revés). Sin acumular, responder de a poco perdía lo ya
     // dicho (la sede desaparecía al contestar el equipo) → el bot repreguntaba en bucle.
     ses.textoOriginal = `${ses.textoOriginal || ''} ${texto}`.trim();
-    const r = await intentarResolver(ses, ses.textoOriginal, corregir);
+    const r = await intentarResolver(ses, ses.textoOriginal, corregir, null, texto);
     if (r) return r;
     return null;
   }
@@ -437,26 +446,86 @@ export function aplicarCorreccion(texto, g) {
 
 // Intenta resolver el equipo con el texto; si queda resuelto, avanza a ACTIVIDADES.
 // Devuelve el texto de respuesta al técnico.
-async function intentarResolver(ses, texto, corregir) {
-  // Typos de sede ("atokongo", "plasa norte"...) antes rompían el matcher determinístico de
-  // abajo (sin tolerancia a errores). Gemini corrige la ortografía primero, mismo criterio que
-  // Observaciones — si Gemini falla (rate limit, sin key, red) seguimos con el texto crudo: el
-  // matcher ya resuelve bien la sede/equipo bien escritos, así que no se pierde nada.
-  let g = null;
-  try {
-    const contexto = await contextoInventario();
-    g = await corregir(texto, contexto);
-  } catch (e) {
-    console.error('[mtto] corrección Gemini falló, sigo con el texto tal cual:', e?.message);
-  }
-  const { sedeTxt, equipoTxt } = aplicarCorreccion(texto, g);
-  const r = await resolverEquipo(sedeTxt, equipoTxt, texto);
-  if (!r.ok) {
+// `sedeRespuesta` = el técnico está contestando "¿de qué sede?" tras una ambigüedad. Su
+// respuesta ES la sede y va aparte: mezclarla con el texto anterior (que traía la sede ambigua)
+// volvería a disparar la misma repregunta, dejándolo en bucle.
+// `mensajeNuevo` = solo lo último que dijo el técnico (`texto` es todo lo acumulado del turno).
+async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mensajeNuevo = null) {
+  const pideSede = async (r) => {
+    ses.pidiendoSede = true;                 // ← el próximo mensaje es LA SEDE, no más contexto
     await guardarSesion(ses.from, ses);
-    if (r.motivo === 'sede') return `¿De qué *sede* es el equipo? ${r.candidatosSede?.length ? 'Ej: ' + r.candidatosSede.slice(0, 5).join(', ') : ''}`;
+    return `¿De qué *sede* es el equipo? ${r.candidatosSede?.length ? 'Ej: ' + r.candidatosSede.slice(0, 5).join(', ') : ''}`;
+  };
+
+  // Con qué texto se busca la SEDE:
+  let sedeCruda = sedeRespuesta || texto;
+  if (!sedeRespuesta && ses.sedeFijada) {
+    // La sede ya está resuelta y fijada. Manda ella y no el texto, porque el texto que se
+    // acumula turno a turno sigue arrastrando la frase ambigua original ("m plaza norte") y el
+    // bot volvería a preguntar la sede en cada mensaje.
+    sedeCruda = ses.sedeFijada;
+    // Salvo que el técnico haya CAMBIADO DE IDEA en este último mensaje y nombre otra sede sin
+    // ambigüedad ("mejor el chiller 1 de atocongo"): ahí manda la nueva, no la vieja.
+    if (mensajeNuevo) {
+      const nuevo = await resolverEquipo(mensajeNuevo, mensajeNuevo, mensajeNuevo);
+      if (nuevo.sede && !nuevo.sedeAmbigua && nuevo.sede !== ses.sedeFijada) sedeCruda = nuevo.sede;
+    }
+  }
+
+  // EL MATCHER PRIMERO; GEMINI ES EL RESCATE.
+  // El matcher es determinístico y ya tolera typos por su cuenta (fonética + siglas + distancia
+  // de edición). Gemini solo entra si el matcher NO pudo resolver. El orden importa y es a
+  // sangre: si Gemini corrigiera SIEMPRE, su respuesta —que es una corazonada, no un dato—
+  // entraría al matcher como sede canónica y le ganaría por coincidencia exacta a lo que el
+  // matcher ya había resuelto bien. Ante "chiller 1 de mac plaza norte", que Gemini conteste
+  // "Plaza Norte" mandaría el registro a la sede equivocada (son dos sedes distintas y reales).
+  let r = await resolverEquipo(sedeCruda, texto, `${sedeCruda} ${texto}`);
+
+  // Y ante una ambigüedad GENUINA entre dos sedes reales ("m plaza norte" = ¿PLAZA NORTE o MAC
+  // PLAZA NORTE?), Gemini tampoco desempata: elegiría una con total aplomo. Se le pregunta al
+  // técnico, que es el único que sabe.
+  if (!r.ok && r.motivo === 'sede' && r.sedeAmbigua) return pideSede(r);
+
+  if (!r.ok) {
+    // Rescate: el texto trae algo que el matcher no reconoce (typo fuerte, jerga). Si Gemini
+    // falla (rate limit, key rotada, red), nos quedamos con lo que ya teníamos — no se pierde
+    // nada respecto de no haberlo llamado.
+    //
+    // La sede que el matcher YA resolvió queda CONGELADA: si lo que falta es el equipo, Gemini
+    // ayuda con el equipo, pero no puede mudar el registro a otra sede. Sin esto, ante "cortina
+    // 99 de mac plaza norte" (sede correcta, equipo inexistente) Gemini podía contestar "Plaza
+    // Norte", encontrar ahí una cortina 99, y registrarla en la sede equivocada.
+    const sedeFijada = r.sede || null;
+    let g = null;
+    try {
+      const contexto = await contextoInventario();
+      g = await corregir(texto, contexto);
+    } catch (e) {
+      console.error('[mtto] corrección Gemini falló, sigo con el texto tal cual:', e?.message);
+    }
+    if (g && (g.sede || g.equipo)) {
+      const { sedeTxt, equipoTxt } = aplicarCorreccion(texto, g);
+      const rg = await resolverEquipo(sedeFijada || sedeRespuesta || sedeTxt, equipoTxt, texto);
+      const mudoDeSede = sedeFijada && rg.sede && rg.sede !== sedeFijada;
+      // La corrección se acepta solo si AVANZA (resolvió, o al menos fijó la sede y falta el
+      // equipo) y si NO se lleva el registro a otra sede.
+      if (!mudoDeSede && (rg.ok || rg.motivo !== 'sede')) r = rg;
+      if (!r.ok && r.motivo === 'sede' && r.sedeAmbigua) return pideSede(r);
+    }
+  }
+
+  if (!r.ok) {
+    if (r.motivo === 'sede') return pideSede(r);
+    // La sede ya está resuelta; lo que falta es el equipo o el cliente. Hay que salir del modo
+    // "el próximo mensaje es la sede", o el nombre del equipo que conteste el técnico se leería
+    // como si fuera una sede y quedaría trabado.
+    ses.pidiendoSede = false;
+    if (r.sede) ses.sedeFijada = r.sede;
+    await guardarSesion(ses.from, ses);
     if (r.motivo === 'cliente') return `Esa sede existe para varios clientes (${(r.candidatosCliente || []).join(', ')}). ¿De cuál es?`;
     return `¿Qué *equipo* es? ${r.candidatosEquipo?.length ? 'Opciones: ' + r.candidatosEquipo.slice(0, 6).map((e) => e.nombre).join(' · ') : 'Dime el nombre como figura en el inventario.'}`;
   }
+  ses.pidiendoSede = false;
   const acts = await actividadesDeEquipo(r.equipo.eqId, r.equipo.tipo, r.equipo.cliente);
   if (!acts.length) {
     await limpiarSesion(ses.from);

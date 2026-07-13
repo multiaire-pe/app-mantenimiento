@@ -107,13 +107,13 @@ function matchSede(sedeRaw, sedes, clientes) {
   //    NORTE, y "chiller de mac plaza norte" repreguntaría por empatar consigo misma.)
   const parcial = sedes.filter((s) => norm(s).includes(q));
   if (parcial.length === 1) return { ok: true, sede: parcial[0] };
-  if (parcial.length > 1) return { ok: false, candidatos: parcial };
+  if (parcial.length > 1) return { ok: false, candidatos: parcial, ambiguo: true };
 
   // 3) por tokens sueltos (ej. "juan lurigancho" → SAN JUAN DE LURIGANCHO)
   const qToks = q.split(' ').filter((t) => t.length > 2);
   const porTok = sedes.filter((s) => { const n = norm(s); return qToks.length && qToks.every((t) => n.includes(t)); });
   if (porTok.length === 1) return { ok: true, sede: porTok[0] };
-  if (porTok.length > 1) return { ok: false, candidatos: porTok };
+  if (porTok.length > 1) return { ok: false, candidatos: porTok, ambiguo: true };
 
   // ── Desde acá, lo que escribió el técnico NO calza literal con ninguna sede ──
   // (hasta ayer, esto era siempre "no entendí, ¿de qué sede?").
@@ -124,7 +124,7 @@ function matchSede(sedeRaw, sedes, clientes) {
   if (siglas.length) {
     const porSigla = sedes.filter((s) => siglas.includes(sigla(s)));
     if (porSigla.length === 1) return { ok: true, sede: porSigla[0] };
-    if (porSigla.length > 1) return { ok: false, candidatos: porSigla };
+    if (porSigla.length > 1) return { ok: false, candidatos: porSigla, ambiguo: true };
   }
 
   // 5) Sede escrita al oído o con typo ("plasa norte", "atokongo", "plaza nortr"), sola o
@@ -160,7 +160,11 @@ function matchSede(sedeRaw, sedes, clientes) {
     // escribir el registro contra la sede equivocada es peor que volver a preguntar.
     const contenida = resto.filter((x) => x.f.includes(g.f));
     if (empate || contenida.length) {
-      return { ok: false, candidatos: [g.s, ...contenida.map((x) => x.s), ...resto.filter((x) => x.d === g.d).map((x) => x.s)].filter((s, i, a) => a.indexOf(s) === i) };
+      return {
+        ok: false,
+        ambiguo: true,   // ← ambigüedad REAL entre sedes concretas, no un "no entendí"
+        candidatos: [g.s, ...contenida.map((x) => x.s), ...resto.filter((x) => x.d === g.d).map((x) => x.s)].filter((s, i, a) => a.indexOf(s) === i),
+      };
     }
     return { ok: true, sede: g.s };
   }
@@ -286,7 +290,10 @@ export async function resolverEquipo(sedeRaw, equipoRaw, textoCompleto) {
   const { equipos, sedes, clientes } = await cargarInventario();
   const cliente = clienteMencionado(textoCompleto || `${sedeRaw || ''} ${equipoRaw || ''}`, clientes);
   const t = matchSede(sedeRaw, sedes, clientes);
-  if (!t.ok) return { ok: false, motivo: 'sede', candidatosSede: t.candidatos };
+  // `sedeAmbigua` = el texto apunta a DOS SEDES REALES concretas (PLAZA NORTE vs MAC PLAZA
+  // NORTE), distinto de "no reconocí ninguna sede". Lo consume mtto.js: ante una ambigüedad
+  // así, la corrección de Gemini NO puede desempatar — hay que repreguntarle al técnico.
+  if (!t.ok) return { ok: false, motivo: 'sede', candidatosSede: t.candidatos, sedeAmbigua: !!t.ambiguo };
   // Multi-cliente: si esa sede existe para >1 cliente y el técnico no dijo cuál, preguntamos
   // (evita emparejar silenciosamente con el equipo del cliente equivocado). Con un solo cliente
   // —caso de hoy: solo RIPLEY— esta rama nunca dispara.
