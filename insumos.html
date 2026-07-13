@@ -1429,7 +1429,7 @@ window.__fb={
   signInWithPopup:(auth,prov)=>firebase.auth().signInWithPopup(prov),
   signOut:()=>firebase.auth().signOut(),
 };
-function maSignOut(){firebase.auth().signOut().then(()=>{sessionStorage.removeItem('ma_user');location.href='index.html';});}
+function maSignOut(){firebase.auth().signOut().then(()=>{sessionStorage.removeItem('ma_user');sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');location.href='index.html';});}
 
 // ── ROLES ─────────────────────────────────────────────────────────────────────
 // SUPER_ADMIN: todo
@@ -1567,7 +1567,7 @@ function renderUserPill(){
 function toggleUserMenu(){
   const m=document.getElementById('user-menu');if(m)m.classList.toggle('open');
 }
-function maSignOut(){firebase.auth().signOut().then(()=>{sessionStorage.removeItem('ma_user');location.href='index.html';});}
+function maSignOut(){firebase.auth().signOut().then(()=>{sessionStorage.removeItem('ma_user');sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');location.href='index.html';});}
 
 document.addEventListener('click',e=>{
   const pill=document.getElementById('user-pill');

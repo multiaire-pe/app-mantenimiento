@@ -573,7 +573,7 @@ function maOpenAdmin() {
 
 function maOpenAdminPanel() { openAccessPanel(); }
 
-function maSignOut() { sessionStorage.removeItem('ma_user'); maUser = null; window.__fb.signOut(); location.reload(); }
+function maSignOut() { sessionStorage.removeItem('ma_user'); sessionStorage.removeItem('ma_emails'); sessionStorage.removeItem('ma_emails_time'); maUser = null; window.__fb.signOut(); location.reload(); }
 function maParseJwt(t) { var b = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); return JSON.parse(atob(b)); }
 
 document.addEventListener('click', function(e) {

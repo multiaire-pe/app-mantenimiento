@@ -970,7 +970,7 @@ function maRenderPill(){
     +'</div>';
   pill.style.display='flex';
 }
-function maSignOut(){sessionStorage.removeItem('ma_user');maUser=null;if(window.__fb&&window.__auth)window.__fb.signOut(window.__auth);location.reload();}
+function maSignOut(){sessionStorage.removeItem('ma_user');sessionStorage.removeItem('ma_emails');sessionStorage.removeItem('ma_emails_time');maUser=null;if(window.__fb&&window.__auth)window.__fb.signOut(window.__auth);location.reload();}
 function maParseJwt(t){var b=t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');return JSON.parse(atob(b));}
 function maOpenAdmin(){
   var menu=document.getElementById('user-menu');

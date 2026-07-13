@@ -494,7 +494,7 @@ function maOpenMenu() {
   if (menu) menu.classList.toggle('open');
 }
 
-function maSignOut() { sessionStorage.removeItem('ma_user'); maUser = null; window.__fb.signOut(); location.reload(); }
+function maSignOut() { sessionStorage.removeItem('ma_user'); sessionStorage.removeItem('ma_emails'); sessionStorage.removeItem('ma_emails_time'); maUser = null; window.__fb.signOut(); location.reload(); }
 function maParseJwt(t) { return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); }
 
 document.addEventListener('click', e => {
