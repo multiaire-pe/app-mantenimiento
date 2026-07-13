@@ -354,7 +354,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     // la repregunta el equipo (o al revés). Sin acumular, responder de a poco perdía lo ya
     // dicho (la sede desaparecía al contestar el equipo) → el bot repreguntaba en bucle.
     ses.textoOriginal = `${ses.textoOriginal || ''} ${texto}`.trim();
-    const r = await intentarResolver(ses, ses.textoOriginal, corregir);
+    const r = await intentarResolver(ses, ses.textoOriginal, corregir, null, texto);
     if (r) return r;
     return null;
   }
@@ -449,16 +449,28 @@ export function aplicarCorreccion(texto, g) {
 // `sedeRespuesta` = el técnico está contestando "¿de qué sede?" tras una ambigüedad. Su
 // respuesta ES la sede y va aparte: mezclarla con el texto anterior (que traía la sede ambigua)
 // volvería a disparar la misma repregunta, dejándolo en bucle.
-async function intentarResolver(ses, texto, corregir, sedeRespuesta = null) {
-  // Una vez que la sede quedó resuelta, se FIJA en la sesión y manda sobre el texto. Si no, el
-  // texto que se va acumulando turno a turno sigue arrastrando la frase ambigua original ("m
-  // plaza norte") y el bot volvería a preguntar la sede en cada mensaje: un bucle con dos pasos.
-  const sedeCruda = sedeRespuesta || ses.sedeFijada || texto;
+// `mensajeNuevo` = solo lo último que dijo el técnico (`texto` es todo lo acumulado del turno).
+async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mensajeNuevo = null) {
   const pideSede = async (r) => {
     ses.pidiendoSede = true;                 // ← el próximo mensaje es LA SEDE, no más contexto
     await guardarSesion(ses.from, ses);
     return `¿De qué *sede* es el equipo? ${r.candidatosSede?.length ? 'Ej: ' + r.candidatosSede.slice(0, 5).join(', ') : ''}`;
   };
+
+  // Con qué texto se busca la SEDE:
+  let sedeCruda = sedeRespuesta || texto;
+  if (!sedeRespuesta && ses.sedeFijada) {
+    // La sede ya está resuelta y fijada. Manda ella y no el texto, porque el texto que se
+    // acumula turno a turno sigue arrastrando la frase ambigua original ("m plaza norte") y el
+    // bot volvería a preguntar la sede en cada mensaje.
+    sedeCruda = ses.sedeFijada;
+    // Salvo que el técnico haya CAMBIADO DE IDEA en este último mensaje y nombre otra sede sin
+    // ambigüedad ("mejor el chiller 1 de atocongo"): ahí manda la nueva, no la vieja.
+    if (mensajeNuevo) {
+      const nuevo = await resolverEquipo(mensajeNuevo, mensajeNuevo, mensajeNuevo);
+      if (nuevo.sede && !nuevo.sedeAmbigua && nuevo.sede !== ses.sedeFijada) sedeCruda = nuevo.sede;
+    }
+  }
 
   // EL MATCHER PRIMERO; GEMINI ES EL RESCATE.
   // El matcher es determinístico y ya tolera typos por su cuenta (fonética + siglas + distancia
