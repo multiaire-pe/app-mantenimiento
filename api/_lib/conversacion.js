@@ -8,7 +8,7 @@
 // Diseño desacoplado/testeable: `analizar` (Gemini) y `guardar` (escritura) se inyectan;
 // por defecto usan los módulos reales, pero en pruebas se pasan stubs.
 import { estructurarObservacion } from './gemini.js';
-import { resolverEquipo } from './equipos.js';
+import { resolverEquipo, etiquetaEquipo, opcionesEquipo, elegirRescate } from './equipos.js';
 import { contextoInventario } from './inventario.js';
 import { textoGuia } from './guia.js';
 import { getSesion, guardarSesion, limpiarSesion, nuevaSesion, guardarUltimaObs, getUltimaObs, limpiarUltimaObs } from './sesiones.js';
@@ -125,7 +125,7 @@ export async function manejarMensaje({
       // dejar la sesión en CONFIRMANDO (un reintento/"SÍ" re-ejecutaría `guardar` y duplicaría la obs).
       const b = ses.borrador;
       await limpiarFotoPendiente(from).catch(() => {});   // la foto pendiente ya se escribió con la obs
-      if (obs?.id) await guardarUltimaObs(from, obs.id, b.equipo).catch(() => {});
+      if (obs?.id) await guardarUltimaObs(from, obs.id, etiquetaEquipo(b)).catch(() => {});
       // Preguntamos la operatividad del equipo (opcional). La sesión sigue viva en fase OPERATIVIDAD.
       try {
         ses.fase = 'OPERATIVIDAD';
@@ -143,7 +143,7 @@ export async function manejarMensaje({
       }
     }
     if (t) ses.historial.push(t);             // corrección → reextraer con el texto nuevo
-    return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar });
+    return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t });
   }
 
   // Nuevo mensaje o sesión en RECOLECTANDO.
@@ -153,11 +153,52 @@ export async function manejarMensaje({
     await guardarSesion(from, ses);
     return 'Cuéntame la observación: en qué *sede* y *equipo*, y qué encontraste. 🛠️';
   }
-  return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar });
+  return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t });
+}
+
+// ── Resolver sede/equipo: EL MATCHER PRIMERO, GEMINI ES EL RESCATE ──────────────────
+//
+// A diferencia del flujo de mtto, acá a Gemini NO se lo puede sacar del camino: es quien estructura
+// el hallazgo, el estado y la repregunta. Lo que se le quita es la AUTORIDAD sobre la sede y el
+// equipo — su `sede`/`equipo` son una corazonada, no un dato, y solo se usan si el matcher no pudo.
+//
+// El orden importa y es a sangre (mismo hallazgo del Council que cerró esto en mtto, 2026-07-13):
+// si Gemini resolviera siempre, su respuesta entraría al matcher como sede canónica y le ganaría por
+// coincidencia exacta a lo que el matcher ya había resuelto bien. Ante "m plaza norte" (¿PLAZA NORTE
+// o MAC PLAZA NORTE?), Gemini contesta una con total aplomo → la observación queda contra la sede
+// equivocada. Son dos sedes distintas y reales.
+async function resolverSedeEquipo(ses, b, { textoAcum, mensajeNuevo, g }) {
+  // Si le acabamos de preguntar la SEDE, su respuesta ES la sede: se busca en ella y no en el
+  // acumulado, que sigue arrastrando la frase ambigua original y volvería a preguntar lo mismo.
+  const respondioSede = ses.faltante === 'sede' && !!mensajeNuevo;
+  let sedeCruda = respondioSede ? mensajeNuevo : (b.sede || textoAcum);
+
+  // Si la sede ya estaba resuelta pero el técnico CAMBIA DE IDEA en este mensaje y nombra otra sin
+  // ambigüedad ("no, era en atocongo"), manda la nueva.
+  if (!respondioSede && b.sede && mensajeNuevo) {
+    const otra = await resolverEquipo(mensajeNuevo, mensajeNuevo, mensajeNuevo);
+    if (otra.sede && !otra.sedeAmbigua && otra.sede !== b.sede) sedeCruda = otra.sede;
+  }
+
+  // El matcher es determinístico y ya tolera typos por su cuenta (fonética + siglas + distancia de
+  // edición), así que va PRIMERO.
+  let r = await resolverEquipo(sedeCruda, textoAcum, textoAcum);
+
+  // Ante una ambigüedad GENUINA entre dos sedes reales, Gemini tampoco desempata: se le pregunta al
+  // técnico, que es el único que sabe.
+  if (!r.ok && r.motivo === 'sede' && r.sedeAmbigua) return r;
+  if (r.ok || !(g.sede || g.equipo)) return r;
+
+  // Rescate: el matcher no reconoció algo (typo fuerte, jerga). Se prueba con lo que entendió
+  // Gemini — y `elegirRescate` (compartida con mtto) decide si esa corrección probabilística puede
+  // sustituir al resultado determinístico: no puede mudar de sede, no puede desempatar entre equipos
+  // reales y no puede ensanchar la lista de candidatos.
+  const rg = await resolverEquipo(r.sede || g.sede || sedeCruda, g.equipo || textoAcum, textoAcum);
+  return elegirRescate(r, rg);
 }
 
 // ── Núcleo: reextrae el acumulado, resuelve tienda/equipo y decide el siguiente paso ──
-async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar }) {
+async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo = null }) {
   const textoAcum = ses.historial.join('. ');
   let g;
   try {
@@ -185,9 +226,8 @@ async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar 
   b.observacion = g.observacion || b.observacion || '';
   b.estado = g.estado || b.estado || 'PENDIENTE';
 
-  // Resolver sede/equipo contra el inventario REAL (557 equipos). Pasamos el texto acumulado
-  // para detectar el cliente aunque lo haya dicho en una repregunta anterior (multi-cliente).
-  const r = await resolverEquipo(g.sede || b.sede, g.equipo, textoAcum);
+  // Resolver sede/equipo contra el inventario REAL (557 equipos), con el matcher al mando.
+  const r = await resolverSedeEquipo(ses, b, { textoAcum, mensajeNuevo, g });
   if (!r.ok && r.motivo === 'sede') {
     b.sede = ''; b.eqId = ''; b.equipo = '';
     return repreguntar(ses, from, 'sede', preguntarSede(r.candidatosSede));
@@ -250,20 +290,20 @@ function preguntarCliente(sede, clientes) {
   return `*${sinPrefijo(sede)}* es de más de un cliente. ¿De cuál es?\n${lista}`;
 }
 
+// La lista donde el técnico ELIGE el equipo. Siempre por UBICACIÓN: él dice "el extractor del
+// comedor", no "extractor 04" — y el número del nombre ni siquiera coincide con el del código.
 function preguntarEquipo(sede, cands) {
-  const lista = cands || [];
-  if (!lista.length) return `Dame el *código* del equipo de *${sinPrefijo(sede)}* (ej. MA-...).`;
-  if (lista.length <= 15) {
-    // Mostramos la UBICACIÓN (área) — es lo que el técnico reconoce ("el del comedor").
-    const items = lista.map((e) => `• ${e.nombre}${e.area ? ` — ${e.area}` : (e.tipo ? ` (${e.tipo.toLowerCase()})` : '')}`).join('\n');
-    return `¿Cuál equipo de *${sinPrefijo(sede)}*?\n${items}\n\n_(dime el nombre, la *ubicación*, el número o el código MA-...)_`;
+  const o = opcionesEquipo(cands);
+  if (!o) return `Dame el *código* del equipo de *${sinPrefijo(sede)}* (ej. MA-...).`;
+  const s = sinPrefijo(sede);
+  if (o.modo === 'tipos') {
+    return `*${s}* tiene ${o.total} equipos. ¿De qué *tipo* es?\n${o.texto}\n\n_(o dime la *ubicación* o el *código* MA-...)_`;
   }
-  // Muchos equipos → agrupar por tipo y pedir tipo+número o código.
-  const porTipo = {};
-  lista.forEach((e) => { const t = e.tipo || 'OTRO'; porTipo[t] = (porTipo[t] || 0) + 1; });
-  const tipos = Object.entries(porTipo).sort((a, b) => b[1] - a[1])
-    .map(([t, n]) => `• ${t.toLowerCase()} (${n})`).join('\n');
-  return `*${sinPrefijo(sede)}* tiene ${lista.length} equipos. ¿De qué *tipo* y número? O dame el *código* (MA-...).\nTipos disponibles:\n${tipos}`;
+  if (o.modo === 'areas') {
+    return `*${s}* tiene ${o.total} ${o.tipo.toLowerCase()}(s). ¿En qué *ubicación* está el tuyo?\n${o.texto}\n\n_(o dame el *código* MA-...)_`;
+  }
+  const mas = o.truncado ? `\n_(…y ${o.truncado} más — si no está, dame el código MA-...)_` : '';
+  return `¿Cuál equipo de *${s}*?\n${o.texto}${mas}\n\n_(dime la *ubicación*, el nombre, el número o el código MA-...)_`;
 }
 
 function resumenConfirmar(b, conFoto) {
@@ -279,10 +319,12 @@ function resumenConfirmar(b, conFoto) {
 }
 
 // Acuse tras guardar la observación + la pregunta de operatividad del equipo.
+// El equipo va SIEMPRE con su ubicación: el técnico piensa en "el extractor del comedor", no en el
+// número, y este es su último chance de notar que el bot registró el equipo equivocado.
 function guardadoConPreguntaOp(b) {
   return '✅ *Observación registrada.* ' +
-    `(🏪 ${sinPrefijo(b.sede)} · ❄️ ${b.equipo})\n\n` +
-    menuOperatividad();
+    `(🏪 ${sinPrefijo(b.sede)} · ❄️ ${etiquetaEquipo(b)})\n\n` +
+    menuOperatividad(etiquetaEquipo(b));
 }
 
 // Cierre del flujo tras responder/omitir la operatividad (incluye el recordatorio de foto si no hubo).
@@ -298,6 +340,7 @@ function cierreTrasOperatividad(conFoto, acuseOp) {
 // a la observación (la olvidó al registrar) y se sigue pidiendo el %. Nada bloquea el flujo.
 async function manejarOperatividad(ses, tecnico, from, { t, imagenB64, mime, registrarOp, adjuntarFoto }) {
   const conFoto = !!ses.opConFoto;
+  const equipo = etiquetaEquipo(ses.opEquipo);   // nombre · 📍 ubicación
 
   // Foto enviada aquí → adjuntar a la observación ya guardada y seguir pidiendo el %.
   if (imagenB64 && ses.opObsId) {
@@ -305,7 +348,7 @@ async function manejarOperatividad(ses, tecnico, from, { t, imagenB64, mime, reg
     try { ok = await adjuntarFoto(ses.opObsId, { base64: imagenB64, mime }); }
     catch (e) { console.error('[operatividad] adjuntar foto falló:', e?.message); }
     if (ok) { ses.opConFoto = true; await guardarSesion(from, ses); }
-    return (ok ? '✅ 📷 Foto agregada a la observación.\n\n' : '') + menuOperatividad();
+    return (ok ? '✅ 📷 Foto agregada a la observación.\n\n' : '') + menuOperatividad(equipo);
   }
 
   // "nueva/otra observación" → cerrar esta (la obs ya se guardó) y arrancar otra de cero.
@@ -330,7 +373,7 @@ async function manejarOperatividad(ses, tecnico, from, { t, imagenB64, mime, reg
       return cierreTrasOperatividad(conFoto, '');
     }
     await guardarSesion(from, ses);
-    return 'No te entendí 🤔. Responde el *número* del estado (o escribe *omitir*):\n\n' + menuOperatividad();
+    return 'No te entendí 🤔. Responde el *número* del estado (o escribe *omitir*):\n\n' + menuOperatividad(equipo);
   }
 
   // Valor válido (0/25/50/75/100) → registrar operatividad + estado vivo del equipo.
@@ -344,7 +387,7 @@ async function manejarOperatividad(ses, tecnico, from, { t, imagenB64, mime, reg
       tecnicoId: tecnico?.id || null, registradoPor: tecnico?.nombre || 'WhatsApp', origen: 'WHATSAPP',
     });
     const n = nivelDeOperatividad(val);
-    acuse = `✅ Operatividad registrada: *${val} %* ${n.emoji} _(${n.etiqueta})_`;
+    acuse = `✅ Operatividad de *${equipo}*: *${val} %* ${n.emoji} _(${n.etiqueta})_`;
   } catch (e) {
     console.error('[operatividad] registrar falló:', e?.message);
     acuse = '⚠️ No pude registrar la operatividad, pero la observación quedó guardada.';
@@ -382,5 +425,5 @@ async function manejarAdjuntarFoto(ses, tecnico, from, { t, imagenB64, mime, adj
   await limpiarUltimaObs(from);
   const nueva = nuevaSesion(from, tecnico);
   if (t) nueva.historial.push(t);
-  return procesarBorrador(nueva, tecnico, from, { imagenB64, mime, analizar });
+  return procesarBorrador(nueva, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t });
 }
