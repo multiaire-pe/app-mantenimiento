@@ -1688,12 +1688,23 @@ async function addUser(){
   const email=document.getElementById('new-user-email').value.trim().toLowerCase();
   const rol=document.getElementById('new-user-rol').value;
   if(!email||!email.includes('@')){toast('Email inválido','err');return;}
+  if(accessUsers.find(u=>u.email===email)){toast('Este usuario ya existe','err');return;}
   try{
-    await db.collection('usuarios').doc(email).set({email,rol});
+    // create-if-absent en transacción: la lista de arriba puede estar desactualizada (otro
+    // admin pudo crear al usuario en paralelo). Un .set() a secas le reemplazaría el doc
+    // entero y le borraría sus apps[] — un SUPERVISOR sin apps[] queda sin acceso a ningún
+    // módulo. Agregar es CREAR: si ya existe, se aborta sin escribir (el rol se cambia
+    // desde el selector de la fila, no re-agregando).
+    const _uref=db.collection('usuarios').doc(email);
+    await db.runTransaction(async tx=>{
+      const s=await tx.get(_uref);
+      if(s.exists){const e=new Error('Este usuario ya existe');e.code='ma-existe';throw e;}
+      tx.set(_uref,{email,rol});
+    });
     accessUsers.push({email,rol});
     document.getElementById('new-user-email').value='';
     renderAccessPanel();toast('Usuario agregado','ok');
-  }catch(e){toast('Error: '+e.message,'err');}
+  }catch(e){toast(e.code==='ma-existe'?'Este usuario ya existe':'Error: '+e.message,'err');}
 }
 
 // Con instancias marcadas en la tabla (checkboxes de la selección múltiple), estos botones
