@@ -286,6 +286,121 @@ function matchEquipo(equipoRaw, sede, equipos, cliente) {
 // Multi-cliente: detecta el cliente nombrado (si lo hay) para desambiguar sedes compartidas.
 // `textoCompleto` (opcional) = todo lo que dijo el técnico; se usa para detectar el cliente aunque
 // no esté en sedeRaw/equipoRaw (p.ej. lo respondió a una repregunta). Cae a sedeRaw+equipoRaw.
+// Cómo se le nombra un equipo AL TÉCNICO: siempre con su UBICACIÓN.
+// Los técnicos no dicen "Extractor 04": dicen "el extractor del comedor". Si el bot le contesta
+// solo el número, no tiene forma de saber si eligió el equipo correcto — y el número del nombre
+// ni siquiera coincide con el del código (el eq_id numera por orden de carga del Excel).
+// Úsese en TODO mensaje que nombre un equipo (listas de candidatos, confirmaciones, acuses).
+export function etiquetaEquipo(eq) {
+  if (!eq) return '';
+  const nombre = eq.nombre || eq.equipo || '';
+  const area = eq.area || '';
+  return area ? `${nombre} · 📍 ${area}` : nombre;
+}
+
+// Qué hacer con la corrección de Gemini (el RESCATE) cuando el matcher no resolvió solo.
+//   `r`  = lo que resolvió el matcher determinístico — MANDA.
+//   `rg` = lo que resuelve el matcher usando lo que Gemini entendió — es la red, no la autoridad.
+//
+// Compartida por observaciones y mtto a propósito: la regla de cuándo una corrección PROBABILÍSTICA
+// puede sustituir a un resultado DETERMINÍSTICO es la misma en los dos flujos, y tenerla duplicada
+// es justamente cómo se arregla uno y el otro se queda con el bucle (pasó: el fix del 2026-07-13 fue
+// solo a mtto y observaciones quedó registrando contra la sede equivocada seis meses).
+export function elegirRescate(r, rg) {
+  const cand = (x) => (x.candidatosEquipo || []).length;
+
+  // (1) La sede que el matcher YA resolvió es intocable. Si lo que falta es el equipo, Gemini ayuda
+  // con el equipo, pero no puede llevarse el registro a otra tienda. Ojo con lo pérfido del caso: su
+  // corrección puede hasta PARECER un avance —una sede con menos equipos de ese tipo "acorta" la
+  // lista de candidatos— y ser un desastre igual.
+  if (r.sede && rg.sede && rg.sede !== r.sede) return r;
+
+  // (2) Gemini tampoco DESEMPATA entre equipos reales. Si el matcher dejó varios candidatos es que
+  // el texto era ambiguo de verdad ("la cortina de aire", a secas): que Gemini elija una con aplomo
+  // es el mismo pecado que elegir la sede — un dato falso en el histórico del cliente. Se repregunta,
+  // que ahora además es barato: la lista le muestra la ubicación de cada equipo.
+  if (rg.ok && cand(r) > 1) return r;
+
+  if (rg.ok) return rg;                          // resolvió y no había ambigüedad: la corrección sirvió
+  if (rg.motivo === 'sede') return r;            // retrocede a "no sé la sede": se descarta
+  if (r.motivo === 'sede') return rg;            // ganamos la sede que el matcher no tenía: es un avance
+  if (rg.motivo !== 'equipo' || r.motivo !== 'equipo') return r;
+
+  // (3) Y no puede ENSANCHAR la lista. El técnico responde con la ubicación ("ingreso tienda 2do
+  // nivel"), el matcher ya acotó a las 9 cortinas de ese ingreso, pero Gemini extrae el equipo en
+  // genérico ("cortina de aire") y su "corrección" devolvería las 27 — repitiéndole la misma lista
+  // que acaba de contestar. Eso no es corregir: es el bucle.
+  return cand(rg) < cand(r) ? rg : r;
+}
+
+// El tope de la lista: en el inventario real, el grupo (sede, tipo) más grande son 28 equipos
+// (las cortinas de SAN JUAN DE LURIGANCHO). Con 30 caben TODOS de una: cuando el técnico ya dijo el
+// tipo, nunca hace falta acotar más — se le muestran sus equipos y elige.
+const MAX_LISTA = 30;
+// Cuándo conviene agrupar bajo el encabezado de la ubicación en vez de repetirla en cada línea.
+const MIN_POR_AREA = 3;
+
+const SIN_UBICACION = '(sin ubicación)';
+
+// Agrupa los equipos por su área, preservando el orden de aparición.
+function porArea(lista) {
+  const g = new Map();
+  for (const e of lista) {
+    const a = e.area || SIN_UBICACION;
+    if (!g.has(a)) g.set(a, []);
+    g.get(a).push(e);
+  }
+  return [...g.entries()];
+}
+
+// Cómo ofrecerle al técnico que ELIJA entre varios equipos. Devuelve el CUERPO de la lista (cada
+// flujo le pone su encabezado). Compartido por observaciones y mtto a propósito: si divergen, uno
+// de los dos vuelve a pedir "el tipo y el número", que es justo lo que el técnico NO usa.
+//
+// El criterio, en una línea: la lista se organiza por UBICACIÓN, porque es como el técnico piensa
+// el equipo ("el extractor del comedor"). Cómo se presenta depende de qué tanto discrimina el área:
+//   - modo 'equipos' → caben todos. Si la ubicación se REPITE (9 cortinas en el mismo ingreso) se
+//     agrupan bajo ella y el técnico elige el número dentro de su sitio; si cada equipo tiene la
+//     suya (los extractores, ~1 por área), repetir el encabezado sería ruido → una línea por equipo.
+//   - modo 'tipos'   → son muchos y variados (96 en ATOCONGO): primero acotamos por tipo.
+//   - modo 'areas'   → muchos y TODOS del mismo tipo: pedirle "el tipo" sería pedirle lo que ya
+//     dijo; acotamos por ubicación y en la vuelta siguiente ya caen en 'equipos'. Hoy no dispara
+//     (el grupo mayor son 28) — es la red para cuando entre un cliente más grande.
+export function opcionesEquipo(cands) {
+  const lista = cands || [];
+  if (!lista.length) return null;
+
+  const areas = porArea(lista);
+
+  if (lista.length <= MAX_LISTA) {
+    const texto = lista.length >= areas.length * MIN_POR_AREA
+      ? areas.map(([a, eqs]) => `📍 *${a}*\n${eqs.map((e) => `   • ${e.nombre || e.equipo || ''}`).join('\n')}`).join('\n')
+      : lista.map((e) => `• ${etiquetaEquipo(e)}`).join('\n');
+    return { modo: 'equipos', total: lista.length, texto };
+  }
+
+  const cuenta = {};
+  lista.forEach((e) => { const t = e.tipo || 'OTRO'; cuenta[t] = (cuenta[t] || 0) + 1; });
+  const tipos = Object.entries(cuenta).sort((a, b) => b[1] - a[1]);
+  if (tipos.length > 1) {
+    return { modo: 'tipos', total: lista.length, texto: tipos.map(([t, n]) => `• ${t.toLowerCase()} (${n})`).join('\n') };
+  }
+
+  if (areas.length > 1) {
+    return {
+      modo: 'areas', total: lista.length, tipo: tipos[0][0],
+      texto: areas.map(([a, eqs]) => `• ${a} (${eqs.length})`).join('\n'),
+    };
+  }
+
+  // Ni el tipo ni la ubicación los separan (todos iguales, mismo sitio): se muestran los primeros y
+  // el mensaje siempre deja la salida del código MA-... — el técnico nunca queda sin forma de elegir.
+  return {
+    modo: 'equipos', total: lista.length, truncado: lista.length - MAX_LISTA,
+    texto: lista.slice(0, MAX_LISTA).map((e) => `• ${etiquetaEquipo(e)}`).join('\n'),
+  };
+}
+
 export async function resolverEquipo(sedeRaw, equipoRaw, textoCompleto) {
   const { equipos, sedes, clientes } = await cargarInventario();
   const cliente = clienteMencionado(textoCompleto || `${sedeRaw || ''} ${equipoRaw || ''}`, clientes);

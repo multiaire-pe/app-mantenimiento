@@ -30,8 +30,11 @@ export function nivelDeOperatividad(pct) {
 }
 
 // Texto del menú que el bot envía para pedir el % por WhatsApp.
-export function menuOperatividad() {
-  return '¿En qué estado quedó el equipo? Responde el número:\n' +
+// `equipo` = etiqueta ya formateada (nombre · 📍 ubicación). Se nombra el equipo explícitamente:
+// preguntar "¿en qué estado quedó el equipo?" a secas obliga al técnico a adivinar de cuál habla el
+// bot, y es su última oportunidad de notar que se registró contra el equipo equivocado.
+export function menuOperatividad(equipo = '') {
+  return `¿En qué estado quedó ${equipo ? `*${equipo}*` : 'el equipo'}? Responde el número:\n` +
     '1️⃣ 100 % Operativo 🟢\n' +
     '2️⃣ 75 % Operativo c/observaciones 🟡\n' +
     '3️⃣ 50 % Parcial 🟠\n' +
