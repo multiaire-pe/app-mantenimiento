@@ -240,6 +240,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>usuarios.csv</div>
             <div class="backup-file"><span></span>tareas_config.csv</div>
             <div class="backup-file"><span></span>mtto_actividades_equipo.csv</div>
+            <div class="backup-file"><span></span>mtto_actividades_periodo.csv</div>
             <div class="backup-file"><span></span>mantenimiento_fotos.csv</div>
             <div class="backup-file"><span></span>mtto_log.csv</div>
             <div class="backup-file"><span></span>mtto_plan.csv</div>
@@ -654,7 +655,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap, cliCliSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoActPerSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap, cliCliSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
@@ -684,6 +685,7 @@ async function exportBackup() {
       window.__db.collection('manta_guia').get(),
       window.__db.collection('asistencia_registros_fotos').get(),
       window.__db.collection('mtto_actividades_equipo').get(),
+      window.__db.collection('mtto_actividades_periodo').get(),
       window.__db.collection('mantenimiento_fotos').get(),
       window.__db.collection('mtto_log').get(),
       window.__db.collection('mtto_plan').get(),
@@ -798,7 +800,9 @@ async function exportBackup() {
     const maintHeaders = ['CLAVE','SELECCIONADOS','TAREA_STATUS'];
     const maintRows = maintSnap.docs.map(d => {
       const r = d.data();
-      return [escapeCSV(d.id), escapeCSV(JSON.stringify(r.seleccionados||{})), escapeCSV(JSON.stringify(r.tarea_status||{}))].join(',');
+      // OJO: el campo es `tareaStatus` (camelCase). Decía `tarea_status` — un campo que no existe —,
+      // así que TODO backup salía con el checklist vacío y restaurarlo lo borraba sin avisar.
+      return [escapeCSV(d.id), escapeCSV(JSON.stringify(r.seleccionados||{})), escapeCSV(JSON.stringify(r.tareaStatus||{}))].join(',');
     });
     zip.file('mantenimiento.csv', [maintHeaders.join(','), ...maintRows].join('\n'));
 
@@ -908,11 +912,22 @@ async function exportBackup() {
     });
     zip.file('mtto_actividades_equipo.csv', [mttoActHeaders.join(','), ...mttoActRows].join('\n'));
 
+    // 14c-bis. Mantenimiento — ajuste de un TIPO en una sede, solo para un período (doc-id SEDE|PERIODO|AÑO|TIPO)
+    const mttoActPerHeaders = ['ID','SEDE','PERIODO','ANIO','TIPO','DATA'];
+    const mttoActPerRows = mttoActPerSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.sede||'', r.periodo||'', r.anio||'', r.tipo||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('mtto_actividades_periodo.csv', [mttoActPerHeaders.join(','), ...mttoActPerRows].join('\n'));
+
     // 14d. Mantenimiento — fotos de evidencia por actividad (base64, 1 doc por foto)
-    const mttoFotoHeaders = ['ID','CLAVE','EQ_ID','TAREA_IDX','TAREA','FOTO','CREATED_AT','CREATED_BY'];
+    // TAREA es la llave viva (la foto va por NOMBRE de actividad). TAREA_IDX se conserva solo como
+    // rastro de los datos anteriores a la migración: para una foto vieja que hubiera quedado sin
+    // TAREA, es la única evidencia con la que se podría recuperar a qué actividad pertenecía.
+    const mttoFotoHeaders = ['ID','CLAVE','EQ_ID','TAREA','TAREA_IDX','FOTO','CREATED_AT','CREATED_BY'];
     const mttoFotoRows = mttoFotoSnap.docs.map(d => {
       const r = d.data();
-      return [d.id, r.clave||'', r.eq_id||'', r.tareaIdx!=null?r.tareaIdx:'', r.tarea||'', r.foto||'', r.createdAt||'', r.createdBy||''].map(escapeCSV).join(',');
+      return [d.id, r.clave||'', r.eq_id||'', r.tarea||'', r.tareaIdx!=null?r.tareaIdx:'', r.foto||'', r.createdAt||'', r.createdBy||''].map(escapeCSV).join(',');
     });
     zip.file('mantenimiento_fotos.csv', [mttoFotoHeaders.join(','), ...mttoFotoRows].join('\n'));
 
@@ -1093,7 +1108,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv','operatividad_eventos.csv','maestros_criticidad.csv','maestros_clientes.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mtto_actividades_periodo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv','operatividad_eventos.csv','maestros_criticidad.csv','maestros_clientes.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1109,7 +1124,7 @@ async function processZip(file) {
     // "Reemplazar todo" fiel al backup: colecciones NUEVAS que un ZIP viejo no trae se
     // VACÍAN — antes quedaban datos fantasma (hallazgo del Council, cierra el backlog).
     if (mode === 'replace') {
-      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad', 'maestros_clientes'];
+      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mtto_actividades_periodo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad', 'maestros_clientes'];
       for (const colN of NUEVAS) {
         if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
         const _exN = await window.__db.collection(colN).get();
@@ -1372,15 +1387,25 @@ async function confirmImport() {
         for(const d of _ex1.docs){ _b1.delete(d.ref); if(++_n1>=400) await _flush1(); }
         await _flush1();
       }
+      let _dupPlant = 0;
       for(const g of Object.values(groups)){
         g.items.sort((a,b)=>a.orden-b.orden);
         const docId = g.cliente ? (g.cliente+'|'+g.tipo) : g.tipo;
-        const payload = { tipo:g.tipo, tareas:g.items.map(x=>x.tarea), minutos:g.items.map(x=>x.minutos) };
+        // El NOMBRE es la identidad de la actividad (con él se guarda si está hecha, su asignación, su
+        // ejecución y sus fotos). Dos con el mismo nombre serían la misma cosa para todo el sistema:
+        // marcar una marcaría la otra. Un backup viejo podría traerlas → se descarta la repetida.
+        const vistos = new Set(), items = [];
+        for(const it of g.items){
+          if(vistos.has(it.tarea)){ _dupPlant++; addLog('⚠ "'+it.tarea+'" está repetida en la plantilla '+docId+' — se importa una sola vez', 'info'); continue; }
+          vistos.add(it.tarea); items.push(it);
+        }
+        const payload = { tipo:g.tipo, tareas:items.map(x=>x.tarea), minutos:items.map(x=>x.minutos) };
         if(g.cliente) payload.cliente = g.cliente;
         _b1.set(_doc1(window.__db,'tareas_config',docId), payload); if(++_n1>=400) await _flush1();
       }
       await _flush1();
-      addLog('✓ Tareas importadas (' + Object.keys(groups).length + ' plantillas, ' + rows.length + ' filas)', 'ok');
+      addLog('✓ Tareas importadas (' + Object.keys(groups).length + ' plantillas, ' + rows.length + ' filas'
+             + (_dupPlant ? ', ' + _dupPlant + ' repetida(s) descartada(s)' : '') + ')', 'ok');
     }
 
     // 3. Usuarios
@@ -1420,7 +1445,10 @@ async function confirmImport() {
       const {writeBatch:_wb5,doc:_doc5,collection:_col5,getDocs:_dg5}=window.__fb;
       const _b5=_wb5(window.__db);
       if(mode==='replace'){const _ex5=await _dg5(_col5(window.__db,'mantenimiento'));_ex5.docs.forEach(d=>_b5.delete(d.ref));}
-      rows.forEach(r=>{if(r.CLAVE)_b5.set(_doc5(window.__db,'mantenimiento',r.CLAVE),{clave:r.CLAVE,seleccionados:r.SELECCIONADOS||{},tareaStatus:r.TAREA_STATUS||{}});});
+      // El CSV trae los mapas como TEXTO JSON: hay que parsearlos. Sin esto se escribía el string crudo
+      // en Firestore y el checklist quedaba ilegible para la app (que espera un objeto).
+      const _j5=(s)=>{try{const v=JSON.parse(s||'{}');return (v&&typeof v==='object'&&!Array.isArray(v))?v:{};}catch(e){return {};}};
+      rows.forEach(r=>{if(r.CLAVE)_b5.set(_doc5(window.__db,'mantenimiento',r.CLAVE),{clave:r.CLAVE,seleccionados:_j5(r.SELECCIONADOS),tareaStatus:_j5(r.TAREA_STATUS)});});
       await _b5.commit();
       addLog('✓ Mantenimiento importado (' + rows.length + ' registros)', 'ok');
     }
@@ -1498,10 +1526,23 @@ async function confirmImport() {
       addLog('✓ Actividades por equipo importadas (' + rows.length + ' registros)', 'ok');
     }
 
+    if (pendingImport.files['mtto_actividades_periodo.csv']) {
+      addLog('⚙️ Importando ajustes de actividades por período...', 'info');
+      const rows = parseCSV(pendingImport.files['mtto_actividades_periodo.csv']);
+      await batchWrite('mtto_actividades_periodo', rows, r => { const data=JSON.parse(r.DATA||'{}'); delete data.id; return {_docId:r.ID, ...data}; });
+      addLog('✓ Ajustes por período importados (' + rows.length + ' registros)', 'ok');
+    }
+
     if (pendingImport.files['mantenimiento_fotos.csv']) {
       addLog('📷 Importando fotos de mantenimiento...', 'info');
       const rows = parseCSV(pendingImport.files['mantenimiento_fotos.csv']);
-      await batchWrite('mantenimiento_fotos', rows, r => ({_docId:r.ID, clave:r.CLAVE, eq_id:r.EQ_ID, tareaIdx:parseInt(r.TAREA_IDX)||0, tarea:r.TAREA||'', foto:r.FOTO||'', createdAt:r.CREATED_AT||'', createdBy:r.CREATED_BY||''}));
+      // La foto se llavea por el NOMBRE de la actividad; TAREA_IDX solo se preserva si venía (rastro
+      // de los datos viejos, útil para recuperar una foto que hubiera quedado sin TAREA).
+      await batchWrite('mantenimiento_fotos', rows, r => {
+        const d = {_docId:r.ID, clave:r.CLAVE, eq_id:r.EQ_ID, tarea:r.TAREA||'', foto:r.FOTO||'', createdAt:r.CREATED_AT||'', createdBy:r.CREATED_BY||''};
+        if(r.TAREA_IDX !== '' && r.TAREA_IDX != null && !isNaN(parseInt(r.TAREA_IDX))) d.tareaIdx = parseInt(r.TAREA_IDX);
+        return d;
+      });
       addLog('✓ Fotos de mantenimiento importadas (' + rows.length + ' registros)', 'ok');
     }
 

@@ -1,6 +1,6 @@
 // Flujo de REGISTRO DE ACTIVIDADES de mantenimiento preventivo por WhatsApp (Etapa 3).
 // Escribe en el MISMO modelo que la app: doc `mantenimiento/{SEDE|PERIODO|AÑO}` con
-// seleccionados/tareaStatus por índice, y fotos como docs de `mantenimiento_fotos`
+// seleccionados/tareaStatus por NOMBRE de actividad, y fotos como docs de `mantenimiento_fotos`
 // (1 doc por foto). La lista de actividades es la EFECTIVA del equipo:
 // (plantilla tareas_config del tipo − quitadas) + agregadas de mtto_actividades_equipo.
 import { getDb } from './firestore.js';
@@ -66,10 +66,20 @@ export function parseSeleccion(texto, n) {
   return [...new Set(nums)].sort((a, b) => a - b).map((x) => x - 1);
 }
 
-// Fusiona índices marcados sobre el tareaStatus previo del equipo (tolerante a formatos viejos).
-export function mergeTareaStatus(prev, idxs) {
+// Doc-id de mtto_plan / mtto_ejecuciones: la actividad se identifica por NOMBRE, no por posición
+// (quitar una actividad de la lista ya no corre a las siguientes). `/` parte el path de Firestore y
+// `|` es el separador de la clave → se escapan de forma INYECTIVA (`%` primero): "Lavado a/c" y
+// "Lavado a-c" son actividades distintas y no pueden colapsar en el mismo doc. Misma convención que la app.
+export const actKey = (t) => String(t ?? '').replace(/[%|/]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+export const docTarea = (eqId, periodo, anio, tarea) => `${eqId}|${periodo}|${anio}|${actKey(tarea)}`;
+
+// Fusiona las actividades hechas (por NOMBRE) sobre el tareaStatus previo del equipo.
+// `prev === true` ("solo marcar") arranca limpio: ese estado es de un equipo SIN actividades, y si el
+// bot le mostró una lista es que sí las tiene — dejarlo en `true` diría "todo hecho" habiendo hecho
+// solo algunas. Las claves numéricas de los datos viejos se conservan: no estorban.
+export function mergeTareaStatus(prev, nombres) {
   const st = (prev && typeof prev === 'object') ? { ...prev } : {};
-  idxs.forEach((i) => { st[i] = true; });
+  (nombres || []).forEach((n) => { if (n) st[n] = true; });
   return st;
 }
 
@@ -89,15 +99,18 @@ export async function esActividadConocida(texto) {
   if (!t || t.length < 10) return false;
   if (Date.now() - _cacheNombres.ts > 5 * 60 * 1000) {
     const db = getDb();
-    const [plSnap, ovSnap] = await Promise.all([
+    const [plSnap, ovSnap, perSnap] = await Promise.all([
       db.collection('tareas_config').get(),
       db.collection('mtto_actividades_equipo').get(),
+      db.collection('mtto_actividades_periodo').get(),
     ]);
     const set = new Set();
-    // Todas las plantillas, de todos los clientes. Es un Set de NOMBRES para detectar INTENCIÓN de
-    // registro (no un map por tipo → no importa de qué cliente venga cada nombre, no hay colisión).
+    // Todos los nombres de actividad que existan en cualquier capa (plantillas de todos los
+    // clientes + lo agregado por período + lo agregado por equipo). Es un Set de NOMBRES para
+    // detectar INTENCIÓN de registro, no un map por tipo → no importa de dónde venga cada nombre.
     plSnap.docs.forEach((d) => (d.data().tareas || []).forEach((x) => set.add(x)));
     ovSnap.docs.forEach((d) => ((d.data() || {}).agregadas || []).forEach((a) => set.add(a.nombre)));
+    perSnap.docs.forEach((d) => ((d.data() || {}).agregadas || []).forEach((a) => set.add(a.nombre)));
     _cacheNombres.nombres = [...set].map(norm).filter((n) => n.length >= 10 && n.trim().split(/\s+/).length >= 2);
     _cacheNombres.ts = Date.now();
   }
@@ -118,41 +131,95 @@ export async function esRegistroActividad(texto) {
   return /(registr|hice|realic|complet|termin|marcar)/.test(t);   // problema + verbo explícito → registro igual
 }
 
-// ── Lista efectiva de actividades del equipo (Firestore, caché 5 min) ────────
-// Resuelve actividades Y minutos en paralelo (mismo criterio que actividadesDe de la app:
-// base − quitadas + agregadas; minutos por índice vigente, default 5) → los minutos alimentan
-// los KPIs de carga (Etapa 3) cuando la actividad no venía planificada.
-const _cacheActs = new Map();  // eqId → {ts, actividades, minutos}
-async function _resolverActs(eqId, tipo, cliente) {
-  const hit = _cacheActs.get(eqId);
-  if (hit && Date.now() - hit.ts < 5 * 60 * 1000) return hit;
+// ── Lista efectiva de actividades del equipo ─────────────────────────────────
+// TRES capas, de lo general a lo particular. Cada una puede QUITAR de lo que heredó y AGREGAR lo
+// suyo; se aplican en orden, así que la más específica siempre puede corregir a la anterior:
+//
+//   ① plantilla del CLIENTE      tareas_config/{cliente|tipo}          (su licitación)
+//   ② ajuste del PERÍODO         mtto_actividades_periodo/{sede|periodo|anio|tipo}
+//                                 ("este bimestre, a las cortinas de Atocongo además X")
+//   ③ ajuste del EQUIPO          mtto_actividades_equipo/{eq_id}       (permanente, ese equipo)
+//
+// ③ opera sobre el resultado de ②, así que un equipo puede quitarse una actividad que agregó el
+// período. Devuelve arrays PARALELOS tareas/minutos (el índice solo empareja una tarea con sus
+// minutos: el estado del checklist se guarda por NOMBRE, no por posición).
+export function componerActividades(base, minBase, ajuste) {
+  const quit = new Set((ajuste && ajuste.quitadas) || []);
+  const tareas = [], minutos = [];
+  (base || []).forEach((t, i) => { if (!quit.has(t)) { tareas.push(t); minutos.push(Number((minBase || [])[i]) || 5); } });
+  ((ajuste && ajuste.agregadas) || []).forEach((a) => { tareas.push(a.nombre); minutos.push(Number(a.minutos) || 5); });
+  return { tareas, minutos };
+}
+
+const _cacheActs = new Map();
+// La clave lleva TODO lo que determina el resultado (no solo el eqId): dos llamadas para el mismo
+// equipo con distinta sede/tipo/cliente —o una sin sede y otra con sede— resuelven capas distintas,
+// y con una clave incompleta la segunda se comería la caché de la primera.
+async function _resolverActs(eqId, tipo, cliente, sede, fresco) {
+  const { periodo, anio } = periodoLima();
+  const ck = `${eqId}|${sede || ''}|${tipo || ''}|${cliente || ''}|${periodo}|${anio}`;
+  const hit = _cacheActs.get(ck);
+  if (!fresco && hit && Date.now() - hit.ts < 5 * 60 * 1000) return hit;
   const db = getDb();
-  // La plantilla vive SOLO en el cliente: `tareas_config/{cliente|tipo}`. Sin fallback a una
-  // plantilla global — las actividades salen de la licitación de cada cliente, así que una global
-  // "para todos" no significa nada. Un equipo sin cliente, o de un cliente al que aún no le
+  // ① La plantilla vive SOLO en el cliente. Sin fallback a una plantilla global — las actividades
+  // salen de la licitación de cada cliente. Un equipo sin cliente, o de un cliente al que aún no le
   // configuraron el tipo, se queda SIN actividades y el caller lo dice explícito (mejor que
   // registrar contra una lista que no es la que el cliente contrató).
-  const clave = cliente ? `${cliente}|${tipo}` : '';
-  const [ownSnap, ovSnap] = await Promise.all([
-    clave ? db.collection('tareas_config').doc(clave).get() : Promise.resolve(null),
+  const clavePl = cliente ? `${cliente}|${tipo}` : '';
+  const clavePer = (sede && tipo) ? `${sede}|${periodo}|${anio}|${tipo}` : '';
+  const [plSnap, perSnap, eqSnap] = await Promise.all([
+    clavePl ? db.collection('tareas_config').doc(clavePl).get() : Promise.resolve(null),
+    clavePer ? db.collection('mtto_actividades_periodo').doc(clavePer).get() : Promise.resolve(null),
     db.collection('mtto_actividades_equipo').doc(String(eqId)).get(),
   ]);
-  const pd = (ownSnap && ownSnap.exists) ? ownSnap.data() : {};
-  const plantilla = pd.tareas || [], plMin = pd.minutos || [];
-  const ov = ovSnap.exists ? ovSnap.data() : null;
-  const quitadas = new Set(ov?.quitadas || []);
-  const actividades = [], minutos = [];
-  plantilla.forEach((t, i) => { if (!quitadas.has(t)) { actividades.push(t); minutos.push(Number(plMin[i]) || 5); } });
-  (ov?.agregadas || []).forEach((a) => { actividades.push(a.nombre); minutos.push(Number(a.minutos) || 5); });
-  const val = { ts: Date.now(), actividades, minutos };
-  _cacheActs.set(eqId, val);
+  const c2 = componerCapas(
+    (plSnap && plSnap.exists) ? plSnap.data() : null,   // ① plantilla del cliente
+    (perSnap && perSnap.exists) ? perSnap.data() : null, // ② vence con el período
+    eqSnap.exists ? eqSnap.data() : null,                // ③ permanente
+  );
+
+  const val = { ts: Date.now(), actividades: c2.tareas, minutos: c2.minutos };
+  _cacheActs.set(ck, val);
   return val;
 }
-export async function actividadesDeEquipo(eqId, tipo, cliente) {
-  return (await _resolverActs(eqId, tipo, cliente)).actividades;
+
+// Las 3 capas, desde los docs crudos. Se usa tanto en el resolver (con caché) como DENTRO de la
+// transacción del registro, que necesita resolver la lista sin pasar por ninguna caché.
+export function componerCapas(pl, per, eq) {
+  const c1 = componerActividades((pl && pl.tareas) || [], (pl && pl.minutos) || [], per);
+  return componerActividades(c1.tareas, c1.minutos, eq);
 }
-export async function minutosDeEquipo(eqId, tipo, cliente) {
-  return (await _resolverActs(eqId, tipo, cliente)).minutos;
+export async function actividadesDeEquipo(eqId, tipo, cliente, sede, fresco) {
+  return (await _resolverActs(eqId, tipo, cliente, sede, fresco)).actividades;
+}
+
+// El técnico eligió actividades por NOMBRE (las leyó en la lista que el bot le mostró); el número es
+// solo cómo las señaló. Si entre que el bot mostró la lista y el técnico confirmó un admin la cambió
+// desde la app —y el bot la cachea 5 minutos, así que puede mostrarla desactualizada un buen rato—,
+// esos números apuntarían a OTRA actividad. Por eso los números se traducen a nombres contra la lista
+// que el técnico VIO, y se contrastan con una lectura FRESCA justo antes de escribir.
+// Devuelve { nombres:[los que siguen vigentes], perdidas:[los que ya no están en la lista] }.
+// `ambiguo:true` = la lista tiene dos actividades con el MISMO nombre. El nombre deja de identificar
+// una actividad, así que marcarla por nombre las marcaría a las dos: se registraría una que el técnico
+// no hizo. No se adivina — el caller no escribe y avisa. La app bloquea los nombres duplicados al
+// guardar un ajuste, pero la plantilla del cliente (que se edita en la app de Clientes, o entra por
+// importación) todavía podría traerlos.
+export function nombresMarcados(marcadas, actividadesVistas, actividadesVigentes) {
+  const dup = (l) => (l || []).some((n, i) => l.indexOf(n) !== i);
+  if (dup(actividadesVistas) || dup(actividadesVigentes)) {
+    return { nombres: [], perdidas: [], ambiguo: true };
+  }
+  const nombres = [], perdidas = [];
+  (marcadas || []).forEach((i) => {
+    const nombre = (actividadesVistas || [])[i];
+    if (nombre == null) return;
+    if (!(actividadesVigentes || []).includes(nombre)) perdidas.push(nombre);
+    else if (!nombres.includes(nombre)) nombres.push(nombre);
+  });
+  return { nombres, perdidas };
+}
+export async function minutosDeEquipo(eqId, tipo, cliente, sede) {
+  return (await _resolverActs(eqId, tipo, cliente, sede)).minutos;
 }
 
 // ── Textos ────────────────────────────────────────────────────────────────────
@@ -167,9 +234,10 @@ function resumenConfirma(ses) {
   const hechas = ses.marcadas.map((i) => `✅ ${ses.actividades[i]}`).join('\n');
   return `📋 *Confirma el registro*\n${ses.nombreEq} (${ses.eqId}) · ${ses.sede}\nPeríodo: ${periodo} ${anio}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
 }
+// En la fase FOTOS ya se registró: se recorren las actividades REGISTRADAS (`ses.hechas`, por nombre).
 function pedirFotos(ses) {
-  const idx = ses.marcadas[ses.fotoPos];
-  return `📷 Fotos de *${ses.actividades[idx]}* (${ses.fotoPos + 1}/${ses.marcadas.length}): envía una o varias.\n· *SIGUIENTE* para pasar a la otra actividad\n· *FIN* para terminar`;
+  const tarea = (ses.hechas || [])[ses.fotoPos];
+  return `📷 Fotos de *${tarea}* (${ses.fotoPos + 1}/${(ses.hechas || []).length}): envía una o varias.\n· *SIGUIENTE* para pasar a la otra actividad\n· *FIN* para terminar`;
 }
 
 // ── Escritura ─────────────────────────────────────────────────────────────────
@@ -190,13 +258,14 @@ export function ejecTecnicos(plan, tecnico) {
   return [];
 }
 // Doc de mtto_ejecuciones (forma canónica; puro/testeable). minutos: del plan si estaba
-// planificada, si no del array de la plantilla (default 5).
-export function docEjecucion(ses, i, plan, tecnico, minutos, periodo, anio, fechaEjec) {
+// planificada, si no del array de la plantilla (default 5) — `vigentes` da la posición del minuto.
+export function docEjecucion(ses, tarea, plan, tecnico, vigentes, minutos, periodo, anio, fechaEjec) {
   const tecs = ejecTecnicos(plan, tecnico);
+  const i = (vigentes || []).indexOf(tarea);
   return {
     eq_id: ses.eqId, nombreEq: ses.nombreEq, tipo: ses.tipo || '', area: ses.area || '',
     sede: ses.sede, periodo, anio,
-    tareaIdx: i, tarea: ses.actividades[i] || `Actividad ${i + 1}`,
+    tarea,
     minutos: (plan && plan.minutos != null) ? plan.minutos : (Number((minutos || [])[i]) || 5),
     tecnicoIds: tecs.map((t) => t.id), tecnicos: tecs, modo: tecs.length >= 2 ? 'grupo' : 'individual',
     planificada: !!plan,
@@ -208,40 +277,108 @@ async function guardarRegistro(ses, tecnico) {
   const clave = `${ses.sede}|${periodo}|${anio}`;
   const db = getDb();
   const ref = db.collection('mantenimiento').doc(clave);
+
+  // El técnico eligió por NOMBRE (leyó la lista); los números solo señalan. Si un admin cambió la
+  // lista mientras él respondía —y el bot la cachea 5 min, así que puede mostrarla vieja un buen
+  // rato—, hay que saber qué nombres siguen vigentes. Por eso la lista se resuelve DENTRO de la
+  // transacción (las 3 capas, sin caché): si un admin toca una capa en el medio, Firestore ve el
+  // cambio, reintenta, y se vuelve a resolver.
+  const clavePl  = ses.cliente ? `${ses.cliente}|${ses.tipo}` : '';
+  const clavePer = (ses.sede && ses.tipo) ? `${ses.sede}|${periodo}|${anio}|${ses.tipo}` : '';
+  let vigentes = [], minutos = [], hechas = [], perdidas = [], ambiguo = false;
+
   await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
+    // TODAS las lecturas antes de las escrituras
+    const [snap, plSnap, perSnap, eqSnap] = await Promise.all([
+      tx.get(ref),
+      clavePl  ? tx.get(db.collection('tareas_config').doc(clavePl)) : Promise.resolve(null),
+      clavePer ? tx.get(db.collection('mtto_actividades_periodo').doc(clavePer)) : Promise.resolve(null),
+      tx.get(db.collection('mtto_actividades_equipo').doc(String(ses.eqId))),
+    ]);
+    const c = componerCapas(
+      (plSnap && plSnap.exists) ? plSnap.data() : null,
+      (perSnap && perSnap.exists) ? perSnap.data() : null,
+      eqSnap.exists ? eqSnap.data() : null,
+    );
+    vigentes = c.tareas; minutos = c.minutos;
+
+    const r = nombresMarcados(ses.marcadas, ses.actividades, vigentes);
+    hechas = r.nombres; perdidas = r.perdidas; ambiguo = !!r.ambiguo;
+    if (ambiguo) return;          // nombres duplicados: marcar por nombre marcaría las dos
+    if (!hechas.length) return;   // nada de lo que marcó sigue vigente: no se inventa un registro
+
     const d = snap.exists ? snap.data() : {};
     const sel = safeObj(d.seleccionados);
     const ts = safeObj(d.tareaStatus);
     sel[ses.eqId] = true;
-    ts[ses.eqId] = mergeTareaStatus(ts[ses.eqId], ses.marcadas);
+    ts[ses.eqId] = mergeTareaStatus(ts[ses.eqId], hechas);
     tx.set(ref, {
       clave, seleccionados: sel, tareaStatus: ts,
       updatedAt: new Date().toISOString(),
       updatedBy: `BOT · ${tecnico?.nombre || ses.nombre || ses.from}`,
     }, { merge: true });
   });
+
+  if (ambiguo) {
+    console.error('[mtto] lista con nombres DUPLICADOS, no se registra:', ses.eqId, vigentes.join(' · '));
+    return { clave, sinRegistrar: true, ambiguo: true, perdidas: [] };
+  }
+  if (perdidas.length) {
+    console.warn('[mtto] actividades ya no vigentes al confirmar:', ses.eqId, perdidas.join(' · '));
+  }
+  if (!hechas.length) return { clave, sinRegistrar: true, perdidas };
+
+  // La sesión adopta la lista VIGENTE y las actividades REGISTRADAS (por nombre): así todo lo que
+  // sigue (ejecuciones, bitácora, avisos y la fase de fotos) trabaja sobre lo que de verdad se escribió.
+  ses.actividades = vigentes;
+  ses.hechas = hechas;
   // Registro persistente de lo EJECUTADO (mtto_ejecuciones) → base de los KPIs (Etapa 2) +
-  // sincronización con el itinerario (lo ejecutado sale del plan). Por índice: LEER el plan
+  // sincronización con el itinerario (lo ejecutado sale del plan). Por actividad: LEER el plan
   // (atribución) → ESCRIBIR la ejecución → BORRAR el plan SOLO si la ejecución quedó registrada.
   // Si la escritura falla, se conserva el plan (atribución recuperable; el barrido del itinerario
   // es la red de seguridad). Ids determinísticos, idempotente. Nunca frustra el registro.
   try {
-    const minutos = await minutosDeEquipo(ses.eqId, ses.tipo, ses.cliente);
+    // los minutos salen de la MISMA resolución que fijó la lista (dentro de la transacción):
+    // releerlos acá podría traer otra lista y desalinear minutos ↔ actividad.
     const fechaEjec = hoyLima();
-    await Promise.all(ses.marcadas.map(async (i) => {
-      const ejecRef = db.collection('mtto_ejecuciones').doc(`${ses.eqId}|${periodo}|${anio}|${i}`);
-      const planRef = db.collection('mtto_plan').doc(`${ses.eqId}|${periodo}|${anio}|${i}`);
+    // El plan se busca por sus CAMPOS, no por el doc-id: los docs anteriores a la migración todavía
+    // tienen el id terminado en índice (`…|2`) y buscarlos por nombre no los encontraría — se
+    // registraría la ejecución SIN la atribución del técnico asignado, y el plan quedaría fantasma.
+    // Una sola query por equipo+período (4 igualdades → sin índice compuesto).
+    const planPorTarea = new Map();
+    let ps = null;
+    for (let intento = 0; intento < 2 && !ps; intento++) {
+      try {
+        ps = await db.collection('mtto_plan')
+          .where('eq_id', '==', ses.eqId).where('periodo', '==', periodo).where('anio', '==', anio).get();
+      } catch (err) {
+        if (intento === 1) {
+          // Sin saber si había plan, escribir la ejecución la marcaría como espontánea y sin técnico —y
+          // encima el barrido del itinerario, al ver que la ejecución ya existe, borraría el plan sin
+          // copiarle la atribución: el crédito del técnico se perdería para siempre. Mejor no escribir
+          // nada: el registro en `mantenimiento` ya se guardó, y el plan sigue vivo para que el barrido
+          // lo convierta CON su atribución.
+          console.error('[mtto_plan lookup] no se registra la ejecución para no perder la atribución:', ses.eqId, err.message);
+          throw err;
+        }
+        await new Promise((r) => setTimeout(r, 800));   // fallo transitorio de red: un reintento
+      }
+    }
+    ps.docs.forEach((d) => { const r = d.data(); if (r.tarea) planPorTarea.set(r.tarea, d.id); });
+
+    await Promise.all(hechas.map(async (tarea) => {
+      const ejecRef = db.collection('mtto_ejecuciones').doc(docTarea(ses.eqId, periodo, anio, tarea));
+      const planRef = db.collection('mtto_plan').doc(planPorTarea.get(tarea) || docTarea(ses.eqId, periodo, anio, tarea));
       try {
         await db.runTransaction(async (tx) => {
           const [esEjec, esPlan] = await Promise.all([tx.get(ejecRef), tx.get(planRef)]);
           const plan = esPlan.exists ? esPlan.data() : null;
           // CREATE-IF-ABSENT: no sobrescribir una ejecución ya registrada (p.ej. por la app con la
           // atribución del plan) con una espontánea del reportante.
-          if (!esEjec.exists) tx.set(ejecRef, docEjecucion(ses, i, plan, tecnico, minutos, periodo, anio, fechaEjec));
+          if (!esEjec.exists) tx.set(ejecRef, docEjecucion(ses, tarea, plan, tecnico, vigentes, minutos, periodo, anio, fechaEjec));
           if (plan) tx.delete(planRef);   // lo ejecutado sale del itinerario (atómico con el registro)
         });
-      } catch (err) { console.error('[mtto_ejecuciones]', ses.eqId, periodo, anio, i, err.message); }
+      } catch (err) { console.error('[mtto_ejecuciones]', ses.eqId, periodo, anio, tarea, err.message); }
     }));
   } catch (e) { console.error('[mtto_ejecuciones]', e.message); }
   // Bitácora (tab Historial de la app): quién registró qué y cuándo
@@ -253,14 +390,14 @@ async function guardarRegistro(ses, tecnico) {
     origen: 'BOT',
     sede: ses.sede, periodo, anio,
     eq_id: ses.eqId, nombreEq: ses.nombreEq,
-    actividades: ses.marcadas.map((i) => ses.actividades[i]),
+    actividades: hechas,
     done: true,
   }).catch(() => {});   // el log nunca debe frustrar el registro
   // Aviso a los designados (Personal → 🔔 Alertas del bot); nunca frustra el registro
   try {
     const { notificarPorTipo } = await import('./avisos.js');
     const autor = tecnico?.nombre || ses.nombre || ses.from;
-    const acts = ses.marcadas.map((i) => ses.actividades[i]);
+    const acts = hechas;
     await notificarPorTipo('mtto',
       `🔧 *Registro de mantenimiento* — ${autor}\n` +
       `❄️ ${ses.nombreEq} · 🏪 ${ses.sede} · 📅 ${periodo} ${anio}\n` +
@@ -268,18 +405,18 @@ async function guardarRegistro(ses, tecnico) {
       tecnico?.id || '',
       { params: [autor, ses.nombreEq, ses.sede, `${periodo} ${anio}`, acts.join(' · ')] });
   } catch (e) { console.error('[avisos mtto]', e.message); }
-  return clave;
+  return { clave, perdidas };
 }
 
 // nº de fotos de ESTA SESIÓN (docs con createdAt >= inicio de la sesión), inmune a la
 // carrera de mensajes concurrentes. Sin el corte por sesión, el resumen final sumaba las
 // fotos históricas del equipo en el período (12 en vez de 3 — reporte del usuario).
-async function contarFotos(ses, tareaIdx) {
+async function contarFotos(ses, tarea) {
   const { periodo, anio } = periodoLima();
   let q = getDb().collection('mantenimiento_fotos')
     .where('clave', '==', `${ses.sede}|${periodo}|${anio}`)
     .where('eq_id', '==', ses.eqId);
-  if (tareaIdx != null) q = q.where('tareaIdx', '==', tareaIdx);
+  if (tarea != null) q = q.where('tarea', '==', tarea);
   const snap = await q.select('createdAt').get();   // solo headers, no baja los base64
   const desde = ses.inicio || '';                    // sesiones viejas sin inicio: cuenta todo
   // normaliza por si un doc trajera Timestamp en vez de ISO string (defensa del Council;
@@ -290,12 +427,10 @@ async function contarFotos(ses, tareaIdx) {
 
 async function guardarFoto(ses, tecnico, imagenB64, mime) {
   const { periodo, anio } = periodoLima();
-  const idx = ses.marcadas[ses.fotoPos];
   await getDb().collection('mantenimiento_fotos').add({
     clave: `${ses.sede}|${periodo}|${anio}`,
     eq_id: ses.eqId,
-    tareaIdx: idx,
-    tarea: ses.actividades[idx] || '',
+    tarea: (ses.hechas || [])[ses.fotoPos] || '',
     foto: `data:${mime || 'image/jpeg'};base64,${imagenB64}`,
     createdAt: new Date().toISOString(),
     createdBy: `BOT · ${tecnico?.nombre || ses.nombre || ses.from}`,
@@ -373,11 +508,27 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     if (imagenB64) return '📷 Esa foto te la pido después de confirmar. Responde *SÍ* para guardar el registro — las fotos vienen al toque.';
     if (/^(si|sí|s|ok|dale|confirmo|confirmar)[\s!.]*$/.test(t)) {
       if (onWriteStart) onWriteStart();   // idempotencia: de aquí en adelante no reprocesar
-      await guardarRegistro(ses, tecnico);
+      const res = await guardarRegistro(ses, tecnico);
+      if (res.ambiguo) {
+        // La lista tiene dos actividades con el mismo nombre: marcar una marcaría las dos.
+        await limpiarSesion(from);
+        return '⚠️ Este equipo tiene dos actividades con el MISMO nombre en su lista, así que no puedo saber cuál marcaste. Avisale a un administrador para que las diferencie en la app de Clientes.';
+      }
+      // La lista pudo cambiar desde la app mientras el técnico respondía (ver guardarRegistro).
+      if (res.sinRegistrar) {
+        ses.fase = 'ACTIVIDADES';
+        ses.marcadas = [];
+        ses.actividades = await actividadesDeEquipo(ses.eqId, ses.tipo, ses.cliente, ses.sede, true);
+        await guardarSesion(from, ses);
+        return `⚠️ Las actividades que marcaste ya no están en la lista de este equipo (la cambiaron desde la app). Esta es la lista al día:\n\n${pedirActividades(ses)}`;
+      }
       ses.fase = 'FOTOS';
       ses.fotoPos = 0;
       await guardarSesion(from, ses);
-      return `✅ *Registro guardado.*\n\n${pedirFotos(ses)}`;
+      const aviso = (res.perdidas && res.perdidas.length)
+        ? `\n⚠️ No registré ${res.perdidas.map((p) => `"${p}"`).join(', ')}: ya no está(n) en la lista de este equipo.`
+        : '';
+      return `✅ *Registro guardado.*${aviso}\n\n${pedirFotos(ses)}`;
     }
     if (/^(no|n)[\s!.]*$/.test(t)) {
       ses.fase = 'ACTIVIDADES';
@@ -395,15 +546,16 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       }
       if (onWriteStart) onWriteStart();   // idempotencia: la foto se escribe una sola vez
       await guardarFoto(ses, tecnico, imagenB64, mime);
-      const n = await contarFotos(ses, ses.marcadas[ses.fotoPos]);
-      return `📷 Foto ${n} guardada para *${ses.actividades[ses.marcadas[ses.fotoPos]]}*. Envía otra, *SIGUIENTE* o *FIN*.`;
+      const tarea = (ses.hechas || [])[ses.fotoPos];
+      const n = await contarFotos(ses, tarea);
+      return `📷 Foto ${n} guardada para *${tarea}*. Envía otra, *SIGUIENTE* o *FIN*.`;
     }
     if (/(^|\s)(siguiente|listo|next)(\s|$)/.test(t)) {
       ses.fotoPos += 1;
-      if (ses.fotoPos >= ses.marcadas.length) {
+      if (ses.fotoPos >= (ses.hechas || []).length) {
         const n = await contarFotos(ses, null);
         await limpiarSesion(from);
-        return `🏁 *Registro completo* — ${ses.marcadas.length} actividad(es), ${n} foto(s). ¡Gracias!`;
+        return `🏁 *Registro completo* — ${(ses.hechas || []).length} actividad(es), ${n} foto(s). ¡Gracias!`;
       }
       await guardarSesion(from, ses);
       return pedirFotos(ses);
@@ -411,7 +563,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     if (/(^|\s)(fin|terminar|termine|ya)(\s|$)/.test(t)) {
       const n = await contarFotos(ses, null);
       await limpiarSesion(from);
-      return `🏁 *Registro completo* — ${ses.marcadas.length} actividad(es), ${n} foto(s). ¡Gracias!`;
+      return `🏁 *Registro completo* — ${(ses.hechas || []).length} actividad(es), ${n} foto(s). ¡Gracias!`;
     }
     // El registro anterior YA está guardado: un saludo o una NUEVA intención de registro
     // no deben quedar atrapados pidiendo fotos (pasó en la prueba en vivo).
@@ -526,7 +678,7 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
     return `¿Qué *equipo* es? ${r.candidatosEquipo?.length ? 'Opciones: ' + r.candidatosEquipo.slice(0, 6).map((e) => e.nombre).join(' · ') : 'Dime el nombre como figura en el inventario.'}`;
   }
   ses.pidiendoSede = false;
-  const acts = await actividadesDeEquipo(r.equipo.eqId, r.equipo.tipo, r.equipo.cliente);
+  const acts = await actividadesDeEquipo(r.equipo.eqId, r.equipo.tipo, r.equipo.cliente, r.sede);
   if (!acts.length) {
     await limpiarSesion(ses.from);
     return `⚠️ El equipo *${r.equipo.nombre}* (${r.equipo.eqId}) no tiene actividades configuradas. Pídele al administrador que configure las actividades de *${r.equipo.tipo}* para el cliente *${r.equipo.cliente || '—'}* en la app de Clientes.`;
