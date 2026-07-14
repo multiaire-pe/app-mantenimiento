@@ -138,22 +138,40 @@ async function avanzar(ses, msg, d) {
     ses.punto = { lat: Number(msg.ubicacion.lat), lng: Number(msg.ubicacion.lng) };
   }
 
-  // Elegir sede por nombre (cuando se le preguntó porque su ubicación no cae en ninguna sede).
+  // Elegir sede por nombre o por número (cuando se le preguntó porque su ubicación no cae en ninguna).
   if (ses.fase === 'ELIGE_SEDE' && msg.t && !msg.ubicacion) {
     const plan = await enriquecerPlan(ses.planSedes, d);
-    const sede = await resolverSedePorNombre(msg.t, d, plan);
-    if (!sede) { await d.store.guardarSesion(from, ses); return `No reconocí esa sede. ${await listaSedesTxt(d, await sedesElegibles(d, plan))}`; }
-    ses.sede = compactSede(sede);
+    const r = await resolverSedePorNombre(msg.t, d, plan, ses.opciones || []);
+
+    if (!r) {
+      ses.opciones = (await sedesElegibles(d, plan)).map(compactSede);
+      await d.store.guardarSesion(from, ses);
+      return `No reconocí esa sede. Responde el número:\n${listaNumerada(ses.opciones)}`;
+    }
+    // Empate: NO se elige por el bot. Registrar la sede equivocada es peor que un mensaje más.
+    if (r.ambiguas) {
+      ses.opciones = r.ambiguas.map(compactSede);
+      await d.store.guardarSesion(from, ses);
+      return `Hay varias que coinciden. ¿En cuál estás? Responde el número:\n${listaNumerada(ses.opciones)}`;
+    }
+
+    ses.sede = compactSede(r.sede);
     // Si la sede que dijo SÍ estaba en su itinerario, no corresponde la bandera de fuera de plan
     // (antes se ponía en `true` a ciegas y le mentía al que estaba justo donde debía estar).
-    ses.fueraDePlan = !estaEnLista(sede, plan);
+    ses.fueraDePlan = !estaEnLista(r.sede, plan);
+    ses.opciones = null;
     ses.fase = 'RECOLECTA';
   }
 
   // Resolver sede automáticamente a partir de la ubicación, si aún no hay sede.
   if (!ses.sede && ses.punto) {
     const r = await resolverSedePorUbicacion(ses, d);
-    if (r.preguntar) { ses.fase = 'ELIGE_SEDE'; await d.store.guardarSesion(from, ses); return r.mensaje; }
+    if (r.preguntar) {
+      ses.fase = 'ELIGE_SEDE';
+      ses.opciones = r.opciones || null; // para poder responder con el número de la lista
+      await d.store.guardarSesion(from, ses);
+      return r.mensaje;
+    }
     ses.sede = compactSede(r.sede);
     ses.fueraDePlan = r.fueraDePlan;
   }
@@ -211,13 +229,29 @@ function compactSede(s) {
   };
 }
 
+// Todos los nombres con los que se puede referir a una sede: su `sede`, su `tienda`, y las mismas
+// sin el prefijo del cliente ("RIPLEY COMAS" → también "COMAS"). El prefijo sale del campo `cliente`
+// (es dato, no una lista hardcodeada que se desactualice al entrar el segundo cliente).
+// UNA sola definición de "cómo se llama esta sede", usada tanto para comparar dos sedes como para
+// emparejar lo que escribe el técnico — si divergen, una sede del plan se ve como ajena.
+function nombresDe(s) {
+  const out = new Set();
+  const cli = norm(s.cliente || '');
+  for (const raw of [s.sede, s.tienda]) {
+    const n = norm(raw || '');
+    if (!n) continue;
+    out.add(n);
+    if (cli && n.startsWith(`${cli} `)) out.add(n.slice(cli.length + 1));
+  }
+  return [...out];
+}
+
 // ¿Son la misma sede? Por id cuando ambos lo traen (es autoritativo); si no, por nombre + cliente
 // (una "zona de trabajo" escrita a mano en el itinerario no tiene `idTienda`).
 function mismaSede(a, b) {
   const ida = a.idTienda || a.id || '', idb = b.idTienda || b.id || '';
   if (ida && idb) return ida === idb;
-  const na = [norm(a.sede), norm(a.tienda)].filter(Boolean);
-  const nb = [norm(b.sede), norm(b.tienda)].filter(Boolean);
+  const na = nombresDe(a), nb = nombresDe(b);
   if (!na.some((n) => nb.includes(n))) return false;
   const ca = norm(a.cliente || ''), cb = norm(b.cliente || '');
   return !ca || !cb || ca === cb; // si ambos declaran cliente, tiene que coincidir
@@ -267,31 +301,45 @@ async function resolverSedePorUbicacion(ses, d) {
   const preambulo = plan.length
     ? 'Tu ubicación no cae dentro de ninguna sede'
     : 'No tienes sede asignada hoy en el itinerario y tu ubicación no cae dentro de ninguna sede';
-  return { preguntar: true, mensaje: `${preambulo}. ¿En qué sede estás?\n${await listaSedesTxt(d, await sedesElegibles(d, plan))}` };
+  const opciones = (await sedesElegibles(d, plan)).map(compactSede);
+  return { preguntar: true, opciones, mensaje: `${preambulo}. ¿En qué sede estás? Responde el número:\n${listaNumerada(opciones)}` };
 }
 
-// Empareja un texto contra las sedes que puede elegir: el maestro + las zonas libres de su plan.
-async function resolverSedePorNombre(texto, d, plan = []) {
+// Empareja lo que escribió el técnico contra las sedes que puede elegir (maestro + zonas libres de
+// su plan). Devuelve { sede } · { ambiguas } · null.
+//
+// NUNCA desempata por su cuenta: el match por substring es ambiguo por naturaleza ("plaza" calza con
+// PLAZA NORTE, MAC PLAZA NORTE y JOCKEY PLAZA), y quedarse con la primera del array —lo que hacía
+// antes— escribe el marcaje en una sede donde el técnico no está. Ante empate se le pregunta.
+// Si se le ofreció una lista numerada, un número la resuelve sin ambigüedad posible.
+async function resolverSedePorNombre(texto, d, plan = [], opciones = []) {
   const q = norm(texto);
   if (!q) return null;
-  const tiendas = await sedesElegibles(d, plan);
-  let mejor = null, mejorScore = 0;
-  for (const t of tiendas) {
-    const campos = [norm(t.sede), norm(t.tienda), norm(t.sede).replace(/^ripley\s+/, '')];
+
+  const soloNum = /^\s*(\d{1,2})\s*$/.exec(q);
+  if (soloNum && opciones.length) {
+    const i = Number(soloNum[1]) - 1;
+    return i >= 0 && i < opciones.length ? { sede: opciones[i] } : null;
+  }
+
+  let mejorScore = 0, mejores = [];
+  for (const t of await sedesElegibles(d, plan)) {
     let score = 0;
-    for (const c of campos) {
-      if (!c) continue;
+    for (const c of nombresDe(t)) {
       if (c === q) score = Math.max(score, 3);
       else if (c.includes(q) || q.includes(c)) score = Math.max(score, 2);
     }
-    if (score > mejorScore) { mejorScore = score; mejor = t; }
+    if (!score) continue;
+    if (score > mejorScore) { mejorScore = score; mejores = [t]; }
+    else if (score === mejorScore && !estaEnLista(t, mejores)) mejores.push(t);
   }
-  return mejorScore >= 2 ? mejor : null;
+  if (!mejorScore) return null;
+  return mejores.length === 1 ? { sede: mejores[0] } : { ambiguas: mejores };
 }
 
-async function listaSedesTxt(d, lista = null) {
-  const sedes = lista || (await d.cargarTiendas()).filter((t) => t.activo);
-  return sedes.slice(0, 15).map((s) => `• ${labelSede(s)}`).join('\n');
+// Lista numerada: el técnico puede responder el número y no hay ambigüedad que resolver.
+function listaNumerada(sedes) {
+  return sedes.slice(0, 15).map((s, i) => `${i + 1}. ${labelSede(s)}`).join('\n');
 }
 
 // ── Mensajes ──────────────────────────────────────────────────────────────────
