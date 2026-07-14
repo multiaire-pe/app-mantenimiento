@@ -712,8 +712,9 @@ function applyRoleRestrictions() {
   // Modo solo-lectura (oculta sidebar + botones del modal) para quien NO puede
   // editar asistencia (p.ej. TECNICO). El SUPERVISOR con la app SÍ opera.
   if(!MA.can('editar','asistencia'))document.body.classList.add('supervisor-mode');
-  // Borrar registros es solo del super admin: oculta el botón Eliminar al resto.
-  if(!MA.can('borrar'))document.body.classList.add('no-delete');
+  // Borrar registros: ADMIN/SUPER_ADMIN (2026-07-14, pedido del usuario). Oculta el botón
+  // Eliminar al resto (SUPERVISOR/TECNICO ya son solo-lectura por supervisor-mode arriba).
+  if(!MA.can('borrarRegistroAsistencia'))document.body.classList.add('no-delete');
 }
 
 // ── UTILS ─────────────────────────────────────────────────────────────────────
@@ -1156,7 +1157,7 @@ async function saveEditReg() {
 }
 
 async function deleteReg() {
-  if(!MA.can('borrar')){toast('Solo el super admin puede eliminar','err');return;}
+  if(!MA.can('borrarRegistroAsistencia')){toast('Sin permiso para eliminar registros','err');return;}
   const regId=document.getElementById('edit-reg-id').value;
   if(!regId){closeEditReg();return;}
   if(!confirm('¿Eliminar este registro?'))return;
