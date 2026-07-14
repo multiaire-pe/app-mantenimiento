@@ -139,7 +139,10 @@ async function avanzar(ses, msg, d) {
   }
 
   // Elegir sede por nombre o por número (cuando se le preguntó porque su ubicación no cae en ninguna).
-  if (ses.fase === 'ELIGE_SEDE' && msg.t && !msg.ubicacion) {
+  // El guard `!ses.sede` es necesario: si ya se resolvió la sede (p.ej. mandó una ubicación nueva que
+  // sí cae dentro de una), un texto suelto posterior NO puede reentrar acá y pisarla con una opción
+  // de la lista vieja.
+  if (ses.fase === 'ELIGE_SEDE' && !ses.sede && msg.t && !msg.ubicacion) {
     const plan = await enriquecerPlan(ses.planSedes, d);
     const r = await resolverSedePorNombre(msg.t, d, plan, ses.opciones || []);
 
@@ -174,6 +177,11 @@ async function avanzar(ses, msg, d) {
     }
     ses.sede = compactSede(r.sede);
     ses.fueraDePlan = r.fueraDePlan;
+    // Si venía de ELIGE_SEDE (le habíamos preguntado) y ahora una ubicación nueva SÍ resolvió la
+    // sede, hay que salir de esa fase y tirar las opciones: si no, la sesión queda diciendo
+    // "todavía le estoy preguntando" con la sede ya elegida.
+    ses.fase = 'RECOLECTA';
+    ses.opciones = null;
   }
 
   // Evaluar la ubicación contra la sede elegida.
@@ -265,14 +273,17 @@ async function enriquecerPlan(planSedes, d) {
   return out;
 }
 
-// Sedes que el técnico puede elegir cuando se le pregunta: las del maestro MÁS las de su plan que
-// no estén en él (si su itinerario lo mandó a una "zona de trabajo" libre, tiene que poder decirla;
-// si no, quedaría sin poder marcar). Una zona así no tiene coordenadas → el registro sale con
-// `geovalidada:false`, que es exactamente lo que corresponde: no se pudo verificar dónde estaba.
+// Sedes que el técnico puede elegir cuando se le pregunta: las de su plan primero (son las más
+// probables) y luego el resto del maestro. Incluye las zonas de su plan que NO estén en el maestro
+// (si su itinerario lo mandó a una "zona de trabajo" libre, tiene que poder decirla; si no, quedaría
+// sin poder marcar). Una zona así no tiene coordenadas → el registro sale con `geovalidada:false`,
+// que es exactamente lo que corresponde: no se pudo verificar dónde estaba.
 async function sedesElegibles(d, plan) {
   const tiendas = (await d.cargarTiendas()).filter((t) => t.activo);
-  const extra = (plan || []).filter((p) => !estaEnLista(p, tiendas));
-  return [...tiendas, ...extra];
+  const delPlan = tiendas.filter((t) => estaEnLista(t, plan));
+  const resto = tiendas.filter((t) => !estaEnLista(t, plan));
+  const zonasLibres = (plan || []).filter((p) => !estaEnLista(p, tiendas));
+  return [...delPlan, ...zonasLibres, ...resto];
 }
 
 // Elige la sede a partir de la ubicación compartida. LA UBICACIÓN REAL MANDA SOBRE EL PLAN:
@@ -338,8 +349,11 @@ async function resolverSedePorNombre(texto, d, plan = [], opciones = []) {
 }
 
 // Lista numerada: el técnico puede responder el número y no hay ambigüedad que resolver.
+// NO recorta: el número que responde tiene que corresponder SIEMPRE a una opción que vio. Si acá se
+// mostraran 15 y la sesión guardara 20, un "16" elegiría una sede que nunca se le ofreció.
+// Por eso `sedesElegibles` pone las de su plan primero: lo más probable queda arriba de la lista.
 function listaNumerada(sedes) {
-  return sedes.slice(0, 15).map((s, i) => `${i + 1}. ${labelSede(s)}`).join('\n');
+  return sedes.map((s, i) => `${i + 1}. ${labelSede(s)}`).join('\n');
 }
 
 // ── Mensajes ──────────────────────────────────────────────────────────────────
