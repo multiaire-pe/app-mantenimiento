@@ -67,6 +67,10 @@ service cloud.firestore {
     // actividades personalizadas por equipo (mantenimiento): editarlas —incluido borrar el
     // override para volver a heredar la plantilla— es operación normal del módulo
     match /mtto_actividades_equipo/{doc} { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
+    // ajuste de un TIPO en una sede, SOLO para un período (doc-id `SEDE|PERIODO|AÑO|TIPO`): p.ej.
+    // "este bimestre, a las cortinas de Atocongo hay que hacerles además X". Vence con el período;
+    // mismo criterio de permisos que el ajuste por equipo
+    match /mtto_actividades_periodo/{doc} { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
     // fotos de evidencia por actividad (1 doc por foto); borrar una foto propia del
     // período es parte de la operación normal del módulo
     match /mantenimiento_fotos/{doc}     { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }

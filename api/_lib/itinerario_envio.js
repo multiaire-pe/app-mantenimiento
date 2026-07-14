@@ -69,7 +69,7 @@ function bloqueActs(acts) {
   for (const p of acts) {
     const k = p.nombreEq || p.eq_id || 'Equipo';
     if (!porEq.has(k)) porEq.set(k, { area: p.area || '', tareas: [] });
-    porEq.get(k).tareas.push(p.tarea || ('Actividad ' + ((Number(p.tareaIdx) || 0) + 1)));
+    porEq.get(k).tareas.push(p.tarea || 'Actividad');
   }
   let s = '';
   for (const [eq, v] of porEq) {
@@ -81,7 +81,7 @@ function bloqueActs(acts) {
 
 // PURA. Arma el mensaje de cada técnico.
 //   bloques = bd_bloques del itinerario/versión (personal[], tienda, horaInicio/Fin, detalle, estado, nBloque)
-//   planes  = mtto_plan del día (tecnicos[]/modo/tarea/eq_id/nombreEq/area/nBloque/tareaIdx)
+//   planes  = mtto_plan del día (tecnicos[]/modo/tarea/eq_id/nombreEq/area/nBloque)
 //   opts    = { fechaStr, actualizacion:bool, pie:string }
 // Devuelve [{ tecnicoId, nombre, texto, nTareas, sedes:[...] }] ordenado por nombre.
 export function mensajesPorTecnico(bloques, planes, opts = {}) {
