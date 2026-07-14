@@ -776,6 +776,11 @@ async function saveActs(){
     tareas.push(n); minutos.push(Math.max(1, parseInt(r.querySelector('.act-min').value)||5));
   });
   if(!tareas.length){ toast('Agregá al menos una actividad, copiala de otro cliente, o cancelá','err'); return; }
+  // El NOMBRE es la identidad de la actividad: es la llave con la que se guarda si está hecha, su
+  // asignación en el itinerario, su ejecución y sus fotos. Dos actividades con el mismo nombre serían
+  // la misma cosa para todo el sistema — marcar una marcaría la otra. Se corta acá, en el origen.
+  const dup = tareas.find((n,i) => tareas.indexOf(n) !== i);
+  if(dup){ toast(`"${dup}" está repetida. Cada actividad necesita un nombre distinto.`,'err'); return; }
   const btn=document.getElementById('btn-save-acts'); btn.disabled=true; btn.textContent='⏳...';
   const docId = _cliCur+'|'+_actTipo;
   const data = { cliente:_cliCur, tipo:_actTipo, tareas, minutos };

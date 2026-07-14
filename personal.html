@@ -956,7 +956,10 @@ async function toggleAvisoTipo(id, tipo, checked){
   const av = { obs: avisoDe(p,'obs'), asistencia: avisoDe(p,'asistencia'), mtto: avisoDe(p,'mtto') };
   av[tipo] = checked;
   try{
-    await window.__db.collection('maestros_personal').doc(id).set({ avisos: av, recibeAvisos: av.obs === true }, { merge: true });
+    // `db`, NO `window.__db`: este módulo define `window.__fb` (solo helpers de auth) pero
+    // nunca `window.__db` — su Firestore es la const `db` de arriba. Usar `window.__db` lanzaba
+    // TypeError, el catch revertía el checkbox y NUNCA se podía activar un aviso nuevo.
+    await db.collection('maestros_personal').doc(id).set({ avisos: av, recibeAvisos: av.obs === true }, { merge: true });
     p.avisos = av; p.recibeAvisos = av.obs === true;
     toast((checked?'🔔 ':'🔕 ') + (p.nombre||id) + ' · ' + ({obs:'observaciones',asistencia:'asistencia',mtto:'actividades'})[tipo], 'ok');
   }catch(e){ toast('Error: '+e.message,'err'); renderAlertas(); }

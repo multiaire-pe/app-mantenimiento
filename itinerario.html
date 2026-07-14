@@ -236,7 +236,7 @@ input[type=date],input[type=time]{-webkit-appearance:none;appearance:none;text-a
     getDoc: (r) => r.get(),
     collection: (db, col) => db.collection(col),
     doc: (db, col, id) => db.collection(col).doc(id),
-    setDoc: (ref, data) => ref.set(data),
+    setDoc: (ref, data, opts) => opts ? ref.set(data, opts) : ref.set(data),
     updateDoc: (ref, data) => ref.update(data),
     deleteDoc: (ref) => ref.delete(),
     writeBatch: (db) => db.batch(),
@@ -767,7 +767,7 @@ function renderBloqueCard(b, i) {
 
 
 // ── ACTIVIDADES DE MTTO PREVENTIVO EN EL ITINERARIO ───────────────────────────
-// Colección mtto_plan: 1 doc por actividad asignada, id = EQ|PERIODO|AÑO|IDX
+// Colección mtto_plan: 1 doc por actividad asignada, id = EQ|PERIODO|AÑO|<actividad>
 // (re-asignar sobreescribe fecha/bloque: una actividad se planifica una vez por período).
 // El panel muestra las PENDIENTES de la sede del bloque: lista efectiva del equipo
 // (tareas_config − quitadas + agregadas de mtto_actividades_equipo) − hechas del
@@ -795,6 +795,22 @@ function periodoDe(fechaStr){
   return { periodo: _PERIODOS_ITI[Math.floor(((mes||1)-1)/2)], anio: anio||new Date().getFullYear() };
 }
 const _pEsc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+// ── Actividades por NOMBRE ────────────────────────────────────────────────────
+// El estado del checklist y los doc-id de mtto_plan/mtto_ejecuciones se llavean por el NOMBRE de la
+// actividad, no por su posición: quitar una actividad de la lista ya no corre a las siguientes.
+// `/` parte el path de Firestore y `|` es el separador de nuestras claves → se escapan de forma
+// INYECTIVA (`%` primero): "Lavado a/c" y "Lavado a-c" no pueden colapsar en el mismo doc.
+const actKey = (t) => String(t ?? '').replace(/[%|/]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+const docTarea = (eqId, periodo, anio, tarea) => `${eqId}|${periodo}|${anio}|${actKey(tarea)}`;
+// ¿Está hecha esta actividad? `true` = "solo marcar" (equipo completo). Se acepta también la marca
+// por índice de los datos anteriores a la migración.
+function tareaHecha(st, tarea, i){
+  if(st === true) return true;
+  if(!st || typeof st !== 'object') return false;
+  if(st[tarea] === true) return true;              // por NOMBRE
+  return i != null && st[i] === true;              // por índice (dato viejo)
+}
 
 // Multi-técnico (mtto grupal): técnicos de un doc/objeto de plan.
 // Retrocompat: docs nuevos traen tecnicos[]/tecnicoIds[]/modo; los viejos, solo el escalar tecnicoNombre.
@@ -845,24 +861,22 @@ async function cargarPlanDia(fecha){
           const d = sp.exists ? sp.data() : {};
           tsSede[sedesPlan[i]] = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } })(d.tareaStatus);
         });
-        const hechas = planDia.filter(p => {
-          const st = (tsSede[p.sede] || {})[p.eq_id];
-          return st === true || (st && typeof st === 'object' && st[p.tareaIdx] === true);
-        });
+        const hechas = planDia.filter(p => tareaHecha((tsSede[p.sede] || {})[p.eq_id], p.tarea, p.tareaIdx));
         if (hechas.length && _planFecha === fecha) {
           // Red de seguridad KPIs: NO borrar un plan ejecutado sin que su ejecución quede
           // registrada. Si mtto_ejecuciones/{p._id} no existe (el set de la app/bot falló), se
           // escribe desde el propio plan (que trae la atribución); solo entonces se borra el plan.
           // Si la escritura falla (p.ej. sin permiso mantenimiento), se CONSERVA el plan.
           const _res = await Promise.allSettled(hechas.map(async p => {
-            const ejecRef = window.__db.collection('mtto_ejecuciones').doc(p._id);
+            if (!p.tarea) throw new Error('plan sin nombre de actividad: ' + p._id);   // sin nombre no hay llave → se conserva
+            const ejecRef = window.__db.collection('mtto_ejecuciones').doc(docTarea(p.eq_id, periodo, anio, p.tarea));
             const es = await ejecRef.get();
             if (!es.exists) {   // create-if-absent: solo si la app/bot no la registró aún
               const tecs = planTecnicos(p);
               await ejecRef.set({
                 eq_id: p.eq_id, nombreEq: p.nombreEq || p.eq_id, tipo: p.tipo || '', area: p.area || '',
                 sede: p.sede, periodo, anio,
-                tareaIdx: p.tareaIdx, tarea: p.tarea || ('Actividad ' + ((p.tareaIdx||0)+1)),
+                tarea: p.tarea,
                 minutos: (p.minutos != null) ? p.minutos : 5,
                 tecnicoIds: tecs.map(t => t.id), tecnicos: tecs, modo: tecs.length >= 2 ? 'grupo' : 'individual',
                 planificada: true,
@@ -974,13 +988,13 @@ function _resolverSede(tiendaCruda, sedesInv){
 // actividades de mtto asignadas en la versión anterior a la nueva, remapeando el bloque por
 // sede (decisión de José: "automática con confirmación"). Las que no encajen (su sede ya no
 // está en la v nueva) NO se tocan → quedan re-seleccionables como pendientes (flujo actual) y
-// se avisan. El doc-id de mtto_plan es determinístico (EQ|PERIODO|AÑO|IDX): actualizar sus
+// se avisan. El doc-id de mtto_plan es determinístico (EQ|PERIODO|AÑO|<actividad>): actualizar sus
 // campos itiVersion/nBloque MUEVE la actividad, no la duplica.
 async function _migrarPlanAVersionNueva(idIti, vNueva, bloques){
   try{
     const { getDocs, getDoc, collection, writeBatch, doc } = window.__fb;
     // Todas las actividades VIVAS del itinerario en cualquier versión anterior. El doc-id de
-    // mtto_plan es determinístico (EQ|PERIODO|AÑO|IDX, SIN versión) → hay una sola por actividad,
+    // mtto_plan es determinístico (EQ|PERIODO|AÑO|<actividad>, SIN versión) → hay una sola por actividad,
     // con la itiVersion de su última asignación. Se buscan TODAS las versiones < vNueva (no solo
     // vNueva-1) para arrastrar también lo que quedó sin migrar en ciclos previos.
     const planSnap = await window.__db.collection('mtto_plan').where('itiId','==',idIti).get();
@@ -992,7 +1006,7 @@ async function _migrarPlanAVersionNueva(idIti, vNueva, bloques){
     // Excluir las YA EJECUTADAS (mismo criterio que el barrido de cargarPlanDia): una actividad
     // hecha no debe re-aparecer en la versión nueva aunque el sweep aún no la haya limpiado. Se
     // lee mantenimiento/{sede|periodo|anio}.tareaStatus, indexado por eq_id (true = equipo
-    // completo, o {tareaIdx:true}).
+    // completo, o {'<actividad>':true}).
     const claveDe = p => (p.sede||'')+'|'+(p.periodo||'')+'|'+(p.anio||'');
     const claves = [...new Set(planes.map(pd => claveDe(pd.data())))].filter(k => !k.startsWith('|'));
     const tsPorClave = {};
@@ -1003,9 +1017,7 @@ async function _migrarPlanAVersionNueva(idIti, vNueva, bloques){
     });
     planes = planes.filter(pd => {
       const p = pd.data();
-      const st = (tsPorClave[claveDe(p)] || {})[p.eq_id];
-      const ejecutada = st === true || (st && typeof st === 'object' && st[p.tareaIdx] === true);
-      return !ejecutada;
+      return !tareaHecha((tsPorClave[claveDe(p)] || {})[p.eq_id], p.tarea, p.tareaIdx);
     });
     if(!planes.length) return;   // todas las anteriores ya se ejecutaron: nada que migrar
     if(!confirm('Hay '+planes.length+' actividad(es) de mantenimiento asignadas a técnicos en versiones anteriores.\n\n'
@@ -1038,17 +1050,29 @@ async function _migrarPlanAVersionNueva(idIti, vNueva, bloques){
 async function pendientesDeSede(sede, fecha){
   const { periodo, anio } = periodoDe(fecha);
   const { getDocs, getDoc, doc, collection } = window.__fb;
-  const [invS, tcS, ovS] = await Promise.all([
+  const [invS, tcS, ovS, perS] = await Promise.all([
     getDocs(collection(window.__db, 'inventario')),
     getDocs(collection(window.__db, 'tareas_config')),
     getDocs(collection(window.__db, 'mtto_actividades_equipo')),
+    getDocs(collection(window.__db, 'mtto_actividades_periodo')),
   ]);
   const plantillasCli = {}, plantillasMinCli = {};
-  // La plantilla vive SOLO en el cliente (doc-id `cliente|tipo`). Se ignora cualquier doc suelto por
+  // ① La plantilla vive SOLO en el cliente (doc-id `cliente|tipo`). Se ignora cualquier doc suelto por
   // `tipo` (plantillas globales del modelo viejo, ya retiradas): un tipo que el cliente no configuró
   // no tiene actividades que planificar.
   tcS.docs.forEach(d => { if (!d.id.includes('|')) return; const dd = d.data(); plantillasCli[d.id] = dd.tareas || []; plantillasMinCli[d.id] = dd.minutos || []; });
+  // ② ajustes del PERÍODO que se está planificando (doc-id `sede|periodo|anio|tipo`)
+  const pers = {}; perS.docs.forEach(d => { pers[d.id] = d.data(); });
+  // ③ ajustes por equipo (permanentes)
   const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
+  // aplica un ajuste {agregadas, quitadas} sobre una lista base (arrays paralelos tareas/minutos)
+  const _componer = (base, min, aj) => {
+    const quit = new Set((aj && aj.quitadas) || []);
+    const t = [], m = [];
+    (base||[]).forEach((x,i) => { if(!quit.has(x)){ t.push(x); m.push(Number((min||[])[i]) || 5); } });
+    ((aj && aj.agregadas) || []).forEach(a => { t.push(a.nombre); m.push(Number(a.minutos) || 5); });
+    return { t, m };
+  };
   // Sede real del bloque (ver _resolverSede: exacto o sufijo más largo que sea sede del inventario)
   const sedesInv = new Set(invS.docs.map(d => (d.data().sede||'').toUpperCase()).filter(Boolean));
   const target = _resolverSede(sede, sedesInv) || null;
@@ -1094,31 +1118,34 @@ async function pendientesDeSede(sede, fecha){
   const _limaHora = Number(_lp('hour')) + Number(_lp('minute')) / 60;
   const yaVencio = (f) => f < _limaHoy || (f === _limaHoy && _limaHora >= 19);
   const arrastradas = {};
+  // Se llavea por (equipo, NOMBRE de actividad) tomado de los campos del doc, no por su id: así
+  // también cuentan los docs viejos cuyo id todavía termina en índice.
+  const _planKey = (r) => (r.eq_id || '') + '|' + actKey(r.tarea);
   const planificadas = new Set(planS.docs.filter(d => {
     const r = d.data();
     if ((r.itiId || '') !== _idAct) {
-      if (r.fecha && String(r.fecha) < String(fecha || '') && yaVencio(String(r.fecha))) { arrastradas[d.id] = r.fecha; return false; }
+      if (r.fecha && String(r.fecha) < String(fecha || '') && yaVencio(String(r.fecha))) { arrastradas[_planKey(r)] = r.fecha; return false; }
       return true;   // asignada en otro día vigente/futuro (o de hoy antes de las 19:00) → sigue bloqueando
     }
     return Number(r.itiVersion ?? 1) === _vAct;
-  }).map(d => d.id));
+  }).map(d => _planKey(d.data())));
   invS.docs.forEach(d => {
     const eq = d.data();
     if((eq.sede||'').toUpperCase() !== target || !eq.eq_id) return;
     if(!sel[eq.eq_id]) return;   // no seleccionado para el período → no se planifica
-    const ov = ovs[eq.eq_id], quit = new Set(ov?.quitadas || []);
-    // acts + minutos (mismo criterio que actividadesDe de mantenimiento: minutos por índice vigente,
-    // default 5). Plantilla del CLIENTE del equipo (`cliente|tipo`), sin fallback global.
+    // Las 3 capas, en orden (mismo criterio que actividadesDe de mantenimiento; los minutos van en
+    // arrays paralelos, default 5): plantilla del cliente → ajuste del período → ajuste del equipo.
     const _ck = (eq.cliente && eq.tipo) ? (eq.cliente + '|' + eq.tipo) : '';
+    const _cp = (eq.sede && eq.tipo) ? `${eq.sede}|${periodo}|${anio}|${eq.tipo}` : '';
     const _bt = (_ck && plantillasCli[_ck]) || [], _bm = (_ck && plantillasMinCli[_ck]) || [];
-    const acts = [], actsMin = [];
-    _bt.forEach((t, i) => { if(!quit.has(t)){ acts.push(t); actsMin.push(Number(_bm[i]) || 5); } });
-    (ov?.agregadas || []).forEach(a => { acts.push(a.nombre); actsMin.push(Number(a.minutos) || 5); });
+    const _c1 = _componer(_bt, _bm, pers[_cp]);
+    const _c2 = _componer(_c1.t, _c1.m, ovs[eq.eq_id]);
+    const acts = _c2.t, actsMin = _c2.m;
     const st = ts[eq.eq_id];
     acts.forEach((tarea, idx) => {
-      const hecha = st === true || (st && typeof st === 'object' && st[idx] === true);
-      const pid = `${eq.eq_id}|${periodo}|${anio}|${idx}`;
-      if (!hecha && !planificadas.has(pid)) out.push({ pid, eq_id: eq.eq_id, nombreEq: eq.nombre||eq.eq_id, tipo: eq.tipo||'', area: eq.area||'', tarea, idx, minutos: actsMin[idx], prev: arrastradas[pid] || '' });
+      const pkey = eq.eq_id + '|' + actKey(tarea);
+      const pid = docTarea(eq.eq_id, periodo, anio, tarea);
+      if (!tareaHecha(st, tarea, idx) && !planificadas.has(pkey)) out.push({ pid, eq_id: eq.eq_id, nombreEq: eq.nombre||eq.eq_id, tipo: eq.tipo||'', area: eq.area||'', tarea, idx, minutos: actsMin[idx], prev: arrastradas[pkey] || '' });
     });
   });
   return out.sort((a,b) => a.nombreEq.localeCompare(b.nombreEq) || a.idx - b.idx);
@@ -1224,7 +1251,7 @@ async function _finalizarMulti(pids, nBloque, tecs){
     pids.forEach(pid => {
       const p = (window._paPend||{})[pid]; if(!p) return;
       batch.set(docP(window.__db, 'mtto_plan', p.pid), {
-        eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tareaIdx: p.idx, tarea: p.tarea,
+        eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tarea: p.tarea,
         minutos: p.minutos ?? null,
         sede: window._paSede || '', periodo, anio, fecha,
         itiId: currentIti?.id || '', itiVersion: Number(currentIti?.version) || 1, nBloque,
@@ -1287,7 +1314,7 @@ async function _finalizarAsignacion(p, nBloque, tecs){
   try{
     if(!(await _sigueEditable())) return;
     await window.__db.collection('mtto_plan').doc(p.pid).set({
-      eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tareaIdx: p.idx, tarea: p.tarea,
+      eq_id: p.eq_id, nombreEq: p.nombreEq, tipo: p.tipo, area: p.area || '', tarea: p.tarea,
       minutos: p.minutos ?? null,
       sede: window._paSede || '', periodo, anio, fecha,
       itiId: currentIti?.id || '', itiVersion: Number(currentIti?.version) || 1, nBloque,
@@ -2477,12 +2504,21 @@ function maAddUser() {
   var rol   = document.getElementById('ma-new-rol').value;
   if (!email || email.indexOf('@') === -1) { alert('Ingresa un email v\xE1lido'); return; }
   if (maAccessUsers.find(function(u){ return u.email === email; })) { alert('Este usuario ya existe'); return; }
-  window.__db.collection('usuarios').doc(email).set({email: email, rol: rol, apps: []}).then(function() {
+  // create-if-absent en transacción: si el doc YA existe (la lista en memoria puede estar
+  // desactualizada — otro admin pudo crearlo en paralelo), este set con apps:[] le borraría
+  // sus accesos. Un SUPERVISOR sin apps[] queda sin acceso a ningún módulo.
+  var _uref = window.__db.collection('usuarios').doc(email);
+  window.__db.runTransaction(function(tx) {
+    return tx.get(_uref).then(function(s) {
+      if (s.exists) { var _e = new Error('Este usuario ya existe'); _e.code = 'ma-existe'; throw _e; }
+      tx.set(_uref, {email: email, rol: rol, apps: []});
+    });
+  }).then(function() {
     maAccessUsers.push({email: email, rol: rol, apps: []});
     document.getElementById('ma-new-email').value = '';
     sessionStorage.removeItem('ma_emails'); sessionStorage.removeItem('ma_emails_time');
     maRenderAccessPanel();
-  }).catch(function(e) { alert('Error: ' + e.message); });
+  }).catch(function(e) { alert(e.code === 'ma-existe' ? 'Este usuario ya existe' : 'Error: ' + e.message); });
 }
 
 document.addEventListener('click', function(e) {

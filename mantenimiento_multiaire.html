@@ -304,7 +304,7 @@ option{background:#fff}
     getDoc: (r) => r.get(),
     collection: (db, col) => db.collection(col),
     doc: (db, col, id) => db.collection(col).doc(id),
-    setDoc: (ref, data) => ref.set(data),
+    setDoc: (ref, data, opts) => opts ? ref.set(data, opts) : ref.set(data),
     deleteDoc: (ref) => ref.delete(),
     writeBatch: (db) => db.batch(),
     query: (col, ...args) => col, // simplified
@@ -469,37 +469,63 @@ option{background:#fff}
 
 <script>
 
-// La plantilla de actividades vive SOLO en el cliente (`tareas_config/{cliente|tipo}`) y se edita
-// en la app de Clientes: las actividades salen de la licitación de cada cliente. Acá solo se AJUSTA
-// por equipo (mtto_actividades_equipo): quitarle una heredada o agregarle una propia.
+// Las actividades de un equipo se resuelven en TRES capas, de lo general a lo particular. Cada una
+// puede QUITAR de lo que heredó y AGREGAR lo suyo; se aplican en orden, así que la más específica
+// siempre puede corregir a la anterior:
+//
+//   ① plantilla del CLIENTE   tareas_config/{cliente|tipo}                 → se edita en Clientes
+//   ② ajuste del PERÍODO      mtto_actividades_periodo/{sede|periodo|año|tipo}  → acá (⚙️)
+//                              "este bimestre, a las cortinas de Atocongo además X"
+//   ③ ajuste del EQUIPO       mtto_actividades_equipo/{eq_id}              → acá (⚙️), permanente
+//
+// ③ opera sobre el resultado de ②, así que a un equipo se le puede quitar una actividad que agregó
+// el período. Los arrays tareas/minutos son PARALELOS — el índice solo empareja una tarea con sus
+// minutos; el estado del checklist se guarda por NOMBRE, no por posición.
 let TAREAS_CLI = {};     // plantillas por cliente → `${cliente}|${tipo}` -> [tareas]
 let MIN_CLI = {};        // minutos por cliente    → `${cliente}|${tipo}` -> [minutos]
-let ACT_EQ = {};         // ajustes por equipo: eq_id -> {agregadas:[{nombre,minutos}], quitadas:[nombre]}
+let ACT_PER = {};        // ② ajustes por período  → `${sede}|${periodo}|${anio}|${tipo}` -> {agregadas, quitadas}
+let ACT_EQ = {};         // ③ ajustes por equipo   → eq_id -> {agregadas:[{nombre,minutos}], quitadas:[nombre]}
 
-// Plantilla del cliente de un equipo (sin fallback global: un tipo que el cliente no configuró
-// no tiene actividades, y decirlo es mejor que mostrar una lista que no contrató).
+// ① Plantilla del cliente (sin fallback global: un tipo que el cliente no configuró no tiene
+// actividades, y decirlo es mejor que mostrar una lista que no contrató).
 function plantillaDeEq(eq){
   const k = (eq.cliente && eq.tipo) ? (eq.cliente + '|' + eq.tipo) : '';
   return { base: (k && TAREAS_CLI[k]) || [], min: (k && MIN_CLI[k]) || [] };
 }
-
-// Lista EFECTIVA de actividades de un equipo: (plantilla del cliente − quitadas) + agregadas.
-// Devuelve los mismos arrays paralelos tareas/minutos que usa todo el módulo (estado por índice).
-function actividadesDe(eq){
-  const { base: bt, min: bm } = plantillaDeEq(eq);
-  const ov = ACT_EQ[eq.eq_id];
-  if(!ov) return { tareas: bt.length ? bt : null, minutos: bm };
-  const quit = new Set(ov.quitadas || []);
+// Clave del ajuste de período de un equipo. La sede sale del EQUIPO (no de currentSede): el tab
+// Global recorre todas las sedes con el mismo período.
+function clavePeriodoDe(eq, periodo, anio){
+  const p = periodo || currentPeriodo, a = anio || currentAnio;
+  return (eq.sede && eq.tipo) ? `${eq.sede}|${p}|${a}|${eq.tipo}` : '';
+}
+// Aplica un ajuste {agregadas, quitadas} sobre una lista base. Devuelve arrays paralelos.
+function componerActs(base, min, ajuste){
+  const quit = new Set((ajuste && ajuste.quitadas) || []);
   const tareas = [], minutos = [];
-  bt.forEach((t,i) => { if(!quit.has(t)){ tareas.push(t); minutos.push(Number(bm[i]) || 5); } });
-  (ov.agregadas || []).forEach(a => { tareas.push(a.nombre); minutos.push(Number(a.minutos) || 5); });
-  return { tareas: tareas.length ? tareas : null, minutos };
+  (base||[]).forEach((t,i) => { if(!quit.has(t)){ tareas.push(t); minutos.push(Number((min||[])[i]) || 5); } });
+  ((ajuste && ajuste.agregadas) || []).forEach(a => { tareas.push(a.nombre); minutos.push(Number(a.minutos) || 5); });
+  return { tareas, minutos };
+}
+// Lo que hereda un equipo ANTES de su propio ajuste: plantilla del cliente + ajuste del período.
+// Es la "base" que el editor por equipo muestra como heredada.
+function heredadasDe(eq, periodo, anio){
+  const { base, min } = plantillaDeEq(eq);
+  return componerActs(base, min, ACT_PER[clavePeriodoDe(eq, periodo, anio)]);
+}
+// Lista EFECTIVA de actividades de un equipo (las 3 capas).
+function actividadesDe(eq, periodo, anio){
+  const h = heredadasDe(eq, periodo, anio);
+  const r = componerActs(h.tareas, h.minutos, ACT_EQ[eq.eq_id]);
+  return { tareas: r.tareas.length ? r.tareas : null, minutos: r.minutos };
 }
 
-// ── AJUSTE DE ACTIVIDADES POR EQUIPO ──────────────────────────────────────────
-// Solo el AJUSTE del equipo (mtto_actividades_equipo — canWrite mantenimiento): quitarle una
-// actividad heredada del cliente o agregarle una propia. La PLANTILLA del cliente se edita en la
-// app de Clientes (viene de su licitación), no acá.
+// ── AJUSTE DE ACTIVIDADES (capas ② y ③) ───────────────────────────────────────
+// Dos ALCANCES, el mismo editor:
+//   · TIPO EN ESTA SEDE Y PERÍODO (②, mtto_actividades_periodo) — "este bimestre, a las cortinas
+//     de Atocongo además X". Vence con el período: el siguiente vuelven a la plantilla del cliente.
+//   · UN EQUIPO (③, mtto_actividades_equipo) — permanente, solo ese equipo. Puede además quitarse
+//     una actividad que agregó el período (③ se aplica sobre ②).
+// La PLANTILLA del cliente (①) NO se toca acá: se edita en la app de Clientes (viene de su licitación).
 let _acts = null;  // estado del editor
 const _actEsc = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 // cita un valor para un onclick inline: JSON para JS + escape para el atributo
@@ -511,12 +537,13 @@ const _fotoSrc = v => /^data:image\/(jpeg|png|webp|gif);base64,/.test(String(v||
 
 function openActsEditor(){
   if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); return; }
-  // Los tipos salen del INVENTARIO de la sede (antes salían de las plantillas globales, que ya no existen)
+  // Los tipos salen del INVENTARIO de la sede (la plantilla global ya no existe)
   const tipos = [...new Set((sedeEquipos||[]).map(e=>e.tipo).filter(Boolean))].sort();
   const selT = document.getElementById('act-tipo');
   selT.innerHTML = tipos.length
     ? tipos.map(t=>'<option>'+_actEsc(t)+'</option>').join('')
     : '<option value="">— Sin equipos en esta sede —</option>';
+  document.getElementById('act-alcance').value = 'periodo';
   onActsTipo();
   document.getElementById('acts-overlay').style.display = 'flex';
 }
@@ -525,46 +552,90 @@ function onActsTipo(){
   const tipo = document.getElementById('act-tipo').value;
   const selE = document.getElementById('act-eq');
   const eqs = (sedeEquipos||[]).filter(e=>e.tipo===tipo);
-  // Ya no hay "plantilla del tipo": acá SIEMPRE se ajusta un equipo concreto.
   selE.innerHTML = eqs.length
     ? eqs.map(e=>'<option value="'+_actEsc(e.eq_id)+'">'+_actEsc(e.nombre)+' ('+_actEsc(e.eq_id)+')</option>').join('')
     : '<option value="">— Sin equipos de este tipo —</option>';
+  onActsAlcance();
+}
+// El selector de equipo solo aplica al alcance EQUIPO
+function onActsAlcance(){
+  const esEq = document.getElementById('act-alcance').value === 'equipo';
+  document.getElementById('act-eq-wrap').style.display = esEq ? '' : 'none';
   renderActsList();
 }
+// Equipos de la sede+tipo elegidos (los afectados por un ajuste de período)
+function _actsEquiposDelTipo(tipo){ return (sedeEquipos||[]).filter(e=>e.tipo===tipo); }
+
 // reconstruye el estado desde los datos vivos y pinta
 function renderActsList(){
+  const alcance = document.getElementById('act-alcance').value;   // 'periodo' | 'equipo'
+  const tipo = document.getElementById('act-tipo').value;
   const eqId = document.getElementById('act-eq').value;
-  const eqSel = eqId ? (sedeEquipos||[]).find(e=>e.eq_id===eqId) : null;
-  // Base heredada = la plantilla del CLIENTE del equipo (misma que usa actividadesDe, para que
-  // "desmarcar heredadas" opere sobre las que el técnico realmente ve).
-  const { base: bt, min: bm } = eqSel ? plantillaDeEq(eqSel) : { base: [], min: [] };
-  _acts = { tipo: eqSel ? eqSel.tipo : '', eqId,
-    plantilla: bt.map((t,i)=>({nombre:t, minutos:Number(bm[i])||5})),
-    agregadas: eqId ? JSON.parse(JSON.stringify((ACT_EQ[eqId]||{}).agregadas||[])) : [],
-    quitadas: new Set(eqId ? ((ACT_EQ[eqId]||{}).quitadas||[]) : []) };
-  const cli = eqSel ? (eqSel.cliente || '—') : '—';
-  document.getElementById('acts-hint').textContent = !eqId
-    ? 'Elige un equipo para ajustarle las actividades.'
-    : (bt.length
-        ? 'Ajustas SOLO este equipo: desmarca una heredada para quitársela, o agrégale una propia. La plantilla de ' + cli + ' no cambia — esa se edita en la app de Clientes.'
-        : 'El cliente ' + cli + ' no tiene actividades configuradas para ' + (eqSel.tipo||'este tipo') + '. Configúralas en la app de Clientes, o agrégale acá actividades propias solo a este equipo.');
-  document.getElementById('acts-save').disabled = !eqId;
+  const delTipo = _actsEquiposDelTipo(tipo);
+  const eqSel = alcance === 'equipo' ? delTipo.find(e=>e.eq_id===eqId) : null;
+  const hint = document.getElementById('acts-hint');
+  const save = document.getElementById('acts-save');
+
+  if(alcance === 'periodo'){
+    // Base heredada = la plantilla del CLIENTE. Se ajusta el TIPO en esta sede, solo este período.
+    // (Los equipos del tipo pueden tener distinto cliente en teoría; en la práctica una sede es de
+    // un cliente. Se toma el del primer equipo y se avisa si hubiera más de uno.)
+    const clientes = [...new Set(delTipo.map(e=>e.cliente).filter(Boolean))];
+    const ref = delTipo[0] || null;
+    const { base: bt, min: bm } = ref ? plantillaDeEq(ref) : { base: [], min: [] };
+    const clave = ref ? clavePeriodoDe(ref) : '';
+    const aj = ACT_PER[clave];
+    _acts = { alcance:'periodo', tipo, eqId:'', clave, nAfectados: delTipo.length,
+      plantilla: bt.map((t,i)=>({nombre:t, minutos:Number(bm[i])||5})),
+      agregadas: JSON.parse(JSON.stringify((aj||{}).agregadas||[])),
+      quitadas: new Set((aj||{}).quitadas||[]) };
+    if(!delTipo.length){
+      hint.textContent = 'No hay equipos de este tipo en ' + currentSede + '.';
+    } else if(clientes.length > 1){
+      hint.textContent = '⚠️ Los equipos de este tipo en ' + currentSede + ' son de más de un cliente (' + clientes.join(', ') + '): ajústalos de a uno.';
+    } else if(!bt.length){
+      hint.textContent = 'El cliente ' + (clientes[0]||'—') + ' no tiene actividades configuradas para ' + tipo + '. Configúralas en la app de Clientes, o agrégalas acá solo para este período.';
+    } else {
+      hint.textContent = 'Aplica a los ' + delTipo.length + ' equipo(s) de tipo ' + tipo + ' en ' + currentSede + ', SOLO en ' + currentPeriodo + ' ' + currentAnio + '. El próximo período vuelven a la plantilla de ' + (clientes[0]||'su cliente') + '.';
+    }
+    save.disabled = !delTipo.length || clientes.length > 1;
+  } else {
+    // Base heredada = plantilla del cliente + el ajuste del período (lo que el técnico realmente ve)
+    const h = eqSel ? heredadasDe(eqSel) : { tareas:[], minutos:[] };
+    const perAj = eqSel ? ACT_PER[clavePeriodoDe(eqSel)] : null;
+    const nPer = perAj ? ((perAj.agregadas||[]).length + (perAj.quitadas||[]).length) : 0;
+    _acts = { alcance:'equipo', tipo: eqSel ? eqSel.tipo : tipo, eqId, clave:'', nAfectados: 1,
+      plantilla: h.tareas.map((t,i)=>({nombre:t, minutos:Number(h.minutos[i])||5})),
+      agregadas: JSON.parse(JSON.stringify((ACT_EQ[eqId]||{}).agregadas||[])),
+      quitadas: new Set((ACT_EQ[eqId]||{}).quitadas||[]) };
+    const cli = eqSel ? (eqSel.cliente || '—') : '—';
+    hint.textContent = !eqSel
+      ? 'Elige un equipo.'
+      : (h.tareas.length
+          ? 'Ajusta SOLO ' + eqSel.nombre + ', de forma permanente (todos los períodos).'
+            + (nPer ? ' Lo heredado incluye el ajuste de ' + currentPeriodo + ' ' + currentAnio + ' para este tipo.' : '')
+          : 'Este equipo no hereda ninguna actividad. Configura la plantilla de ' + cli + ' en la app de Clientes, o agrégale acá actividades propias.');
+    save.disabled = !eqSel;
+  }
   _redrawActs();
 }
 // pinta desde _acts (estado en edición), sin re-leer los globals
 function _redrawActs(){
+  const esPer = _acts.alcance === 'periodo';
+  const etiqHer = esPer ? 'de la plantilla' : 'heredada';
+  const etiqPro = esPer ? 'de este período' : 'propia';
   let html = '';
   _acts.plantilla.forEach((a,i)=>{
     const off = _acts.quitadas.has(a.nombre);
     html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;'+(off?'opacity:.45':'')+'">'
       + '<input type="checkbox" '+(off?'':'checked')+' onchange="actsToggleHeredada('+i+')">'
       + '<span style="flex:1;font-size:12px;'+(off?'text-decoration:line-through':'')+'">'+_actEsc(a.nombre)+'</span>'
-      + '<span style="font-size:10px;color:var(--muted2);font-family:var(--mono)">'+a.minutos+'min · heredada</span></div>';
+      + '<span style="font-size:10px;color:var(--muted2);font-family:var(--mono)">'+a.minutos+'min · '+etiqHer+'</span></div>';
   });
   _acts.agregadas.forEach((a,i)=>{
     html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--blue);border-radius:6px">'
       + '<span style="flex:1;font-size:12px">'+_actEsc(a.nombre)+'</span>'
-      + '<span style="font-size:10px;color:var(--muted2);font-family:var(--mono)">'+a.minutos+'min · propia</span>'
+      + '<span style="font-size:10px;color:var(--muted2);font-family:var(--mono)">'+a.minutos+'min · '+etiqPro+'</span>'
       + '<button class="btn btn-sm" onclick="actsQuitarAgregada('+i+')">✕</button></div>';
   });
   document.getElementById('act-list').innerHTML = html || '<div style="font-size:12px;color:var(--muted);padding:8px">Sin actividades.</div>';
@@ -572,7 +643,7 @@ function _redrawActs(){
 function actsToggleHeredada(i){ const n=_acts.plantilla[i].nombre; _acts.quitadas.has(n)?_acts.quitadas.delete(n):_acts.quitadas.add(n); _redrawActs(); }
 function actsQuitarAgregada(i){ _acts.agregadas.splice(i,1); _redrawActs(); }
 function actsAgregar(){
-  if(!_acts.eqId){ toast('Elige un equipo primero','err'); return; }
+  if(document.getElementById('acts-save').disabled){ toast('Elige un equipo o un tipo con equipos','err'); return; }
   const nombre = document.getElementById('act-new-nombre').value.trim();
   const minutos = Math.max(1, parseInt(document.getElementById('act-new-min').value)||5);
   if(!nombre) return;
@@ -581,48 +652,178 @@ function actsAgregar(){
   document.getElementById('act-new-nombre').value='';
   _redrawActs();
 }
+
+// ── EL ESTADO SE IDENTIFICA POR NOMBRE DE ACTIVIDAD ───────────────────────────
+// Antes se guardaba por ÍNDICE (`tareaStatus[eq]={0:true}`, doc-id `EQ|PERIODO|AÑO|IDX`,
+// `mantenimiento_fotos.tareaIdx`). El problema: al quitar una actividad, los índices de las
+// siguientes se corrían y una marca que decía "hice la 2" pasaba a apuntar a OTRA actividad. Y no
+// era solo el editor: el checklist, el autosave, el bot y el itinerario escriben ese estado, así que
+// cualquiera de ellos con una lista desactualizada escribía un índice que ya significaba otra cosa.
+//
+// El nombre no se corre. Con él como clave, cambiar la lista no invalida nada: lo que se quitó deja
+// de contarse (su marca queda inerte, y vuelve si se re-agrega la actividad) y lo que se agrega nace
+// sin marcar. No hace falta remapear, ni coordinar escritores, ni migrar índices al vuelo.
+
+// Saneo para el doc-id: `/` parte el path de Firestore y `|` es el separador de nuestras claves.
+// El escape es INYECTIVO (se escapa `%` primero): "Lavado a/c" y "Lavado a-c" son actividades
+// distintas y deben seguir siéndolo. Reemplazar por "-" las habría colapsado en el mismo doc.
+const actKey = (t) => String(t ?? '').replace(/[%|/]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+const docTarea = (eqId, periodo, anio, tarea) => `${eqId}|${periodo}|${anio}|${actKey(tarea)}`;
+
+// ¿Esta actividad está hecha? `i` (la posición) solo sirve para leer los datos ANTERIORES a la
+// migración, que guardaban la marca por índice. Lo que se escribe hoy siempre va por nombre.
+function tareaHecha(st, tarea, i){
+  if(st === true) return true;                     // "solo marcar": el equipo entero se dio por hecho
+  if(!st || typeof st !== 'object') return false;
+  if(st[tarea] === true) return true;              // por NOMBRE (lo actual)
+  return st[i] === true;                           // por índice (dato viejo)
+}
+const nHechas = (st, tareas) => (tareas || []).filter((t, i) => tareaHecha(st, t, i)).length;
+
+// La app NO reinterpreta las marcas viejas por índice: traducirlas por su posición de HOY sería creer
+// que la lista nunca cambió, y si una actividad se quitó después de marcarse, le pondría a la marca el
+// nombre de OTRA actividad — la corrupción que este modelo viene a matar. Las claves numéricas se
+// dejan como están (inertes, `tareaHecha` las respeta) y la conversión la hace UNA sola vez el script
+// migrar_indices_a_nombres.js, que resuelve cada índice con la EVIDENCIA de lo que se registró en su
+// momento (mtto_ejecuciones/mantenimiento_fotos guardan tareaIdx Y tarea).
+// Lo único que sí se apaga acá es la marca legacy de la actividad que el usuario DESMARCA: es la que
+// la hacía verse marcada, así que apagarla es exactamente lo que el usuario pidió (ver toggleTarea).
+
 async function actsGuardar(){
   const btn = document.getElementById('acts-save');
   if(btn.disabled) return;
-  if(!_acts.eqId){ toast('Elige un equipo','err'); return; }
   if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); return; }
+  const esPer = _acts.alcance === 'periodo';
+  const afectados = esPer ? _actsEquiposDelTipo(_acts.tipo)
+                          : (sedeEquipos||[]).filter(e => e.eq_id === _acts.eqId);
+  if(!afectados.length){ toast('No hay equipos que ajustar','err'); return; }
+
+  // El doc-id es `sede|periodo|año|tipo` (misma convención que mantenimiento/mtto_plan/mtto_ejecuciones):
+  // un `|` dentro de la sede o el tipo partiría la clave mal y dos combinaciones podrían colisionar.
+  if(String(currentSede).includes('|') || String(_acts.tipo).includes('|')){
+    toast('La sede o el tipo contienen "|", que es el separador de la clave. Corregilo en Inventario.', 'err');
+    return;
+  }
+
+  const quitadas = [..._acts.quitadas];
+  const sinDiferencias = !quitadas.length && !_acts.agregadas.length;
+  const ajuste = sinDiferencias ? null : { agregadas: _acts.agregadas, quitadas };
+
+  // Las listas se leen FRESCAS (la caché de loadTareas dura 30 min) y se validan: el NOMBRE es la
+  // identidad de la actividad, así que dos homónimas serían indistinguibles — marcar una marcaría la
+  // otra. (Los caracteres raros del nombre NO son problema: `actKey` los escapa de forma inyectiva.)
+  await loadTareas(true);
+  const viejas = new Map(), nuevas = new Map();
+  for(const e of afectados){
+    viejas.set(e.eq_id, (actividadesDe(e).tareas || []).slice());
+    const lista = _actsListaNueva(e, ajuste, esPer);
+    const dup = lista.find((n,i) => lista.indexOf(n) !== i);
+    if(dup){ toast(`"${dup}" está repetida en la lista de ${e.eq_id}. Los nombres deben ser únicos.`, 'err'); return; }
+    nuevas.set(e.eq_id, lista);
+  }
+
+  let msg;
+  if(esPer){
+    msg = `Ajuste de ${_acts.tipo} en ${currentSede}, solo para ${currentPeriodo} ${currentAnio}.\n\n`
+        + `Aplica a ${afectados.length} equipo(s). El próximo período vuelven a la plantilla de su cliente.`;
+  } else {
+    msg = `Ajuste PERMANENTE de este equipo (todos los períodos).\n\nAplica a 1 equipo.`;
+  }
+  if(quitadas.length){
+    msg += `\n\nLo ya marcado NO se pierde: las actividades que quitás dejan de contarse, y si más adelante las volvés a agregar, sus marcas reaparecen.`;
+  }
+  if(!confirm(msg + '\n\n¿Continuar?')) return;
+
   btn.disabled = true;
   try{
-    const { setDoc, deleteDoc, doc } = window.__fb;
+    const db = window.__db;
     let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
-    const quitadas = [..._acts.quitadas];
-    if(!quitadas.length && !_acts.agregadas.length){
-      await deleteDoc(doc(window.__db, 'mtto_actividades_equipo', _acts.eqId));  // sin diferencias: vuelve a heredar todo
-    } else {
-      await setDoc(doc(window.__db, 'mtto_actividades_equipo', _acts.eqId), {
-        eq_id:_acts.eqId, tipo:_acts.tipo, agregadas:_acts.agregadas, quitadas,
-        updatedAt:new Date().toISOString(), updatedBy:_by });
-    }
+
+    // El autosave del checklist tiene 800ms de debounce y reescribe el mapa `tareaStatus` ENTERO
+    // desde memoria. Si quedó uno pendiente, dispararía DESPUÉS de esta transacción y la pisaría con
+    // la copia vieja (el "solo marcar" volvería a `true`). Se vacía antes de tocar nada.
+    await _flushSave();
+
+    const ref = esPer
+      ? db.collection('mtto_actividades_periodo').doc(_acts.clave)
+      : db.collection('mtto_actividades_equipo').doc(_acts.eqId);
+    const data = esPer
+      ? { sede: currentSede, periodo: currentPeriodo, anio: currentAnio, tipo: _acts.tipo,
+          agregadas: _acts.agregadas, quitadas, updatedAt: new Date().toISOString(), updatedBy: _by }
+      : { eq_id: _acts.eqId, tipo: _acts.tipo,
+          agregadas: _acts.agregadas, quitadas, updatedAt: new Date().toISOString(), updatedBy: _by };
+
+    // Cambiar la lista ya no obliga a tocar NADA de lo registrado (las marcas van por nombre). Lo
+    // único que hay que resolver es el modo "solo marcar" (`tareaStatus[eq] === true`, que significa
+    // "el equipo entero está hecho" y se usa cuando NO tiene actividades): si el ajuste le agrega
+    // actividades, ese `true` pasaría a afirmar que también se hicieron las nuevas. Se vuelve
+    // explícito: lo que ya existía queda hecho, lo nuevo queda pendiente.
+    const mRef = db.collection('mantenimiento').doc(`${currentSede}|${currentPeriodo}|${currentAnio}`);
+    const soloMarcar = afectados.filter(e => {
+      if(tareaStatus[e.eq_id] !== true) return false;
+      const viejo = viejas.get(e.eq_id) || [], nuevo = nuevas.get(e.eq_id) || [];
+      return nuevo.some(n => !viejo.includes(n));   // ¿el ajuste le agrega alguna?
+    });
+
+    // Transacción (no batch): el mapa `tareaStatus` se lee y se reescribe entero, y el bot escribe ese
+    // mismo doc en producción — un batch le pisaría la marca al técnico con la copia vieja.
+    await db.runTransaction(async (tx) => {
+      const snap = soloMarcar.length ? await tx.get(mRef) : null;   // lecturas antes que escrituras
+      if(snap && snap.exists){
+        const ts = _safeObj(snap.data().tareaStatus);
+        soloMarcar.forEach(e => {
+          if(ts[e.eq_id] !== true) return;          // lo cambiaron en el medio: no se toca
+          const nst = {};
+          (viejas.get(e.eq_id) || []).forEach(t => { nst[t] = true; });
+          ts[e.eq_id] = nst;
+        });
+        tx.update(mRef, { tareaStatus: ts });
+      }
+      if(sinDiferencias) tx.delete(ref);            // sin ajuste: vuelve a heredar la capa de arriba
+      else tx.set(ref, data);
+    });
+
     sessionStorage.removeItem('ma_tareas2'); sessionStorage.removeItem('ma_tareas2_time');
-    await loadTareas(); renderMain();
-    toast('Actividades guardadas ✓','ok');
+    await loadTareas(true);
+    await loadPeriodo(); renderMain();
+    toast('Actividades guardadas ✓', 'ok');
     closeActsEditor();
   }catch(e){ toast('Error: '+e.message,'err'); }
   finally{ btn.disabled = false; }
 }
 
+
+// Lista efectiva que TENDRÍA el equipo con el ajuste pendiente, sin escribir nada todavía.
+// Replica las 3 capas de actividadesDe() sustituyendo la capa que se está editando.
+function _actsListaNueva(eq, ajuste, esPer){
+  if(esPer){
+    const h = componerActs(plantillaDeEq(eq).base, plantillaDeEq(eq).min, ajuste);
+    return componerActs(h.tareas, h.minutos, ACT_EQ[eq.eq_id]).tareas;
+  }
+  const h = heredadasDe(eq);
+  return componerActs(h.tareas, h.minutos, ajuste).tareas;
+}
+
 // ── ETAPA 2: FOTOS POR ACTIVIDAD ──────────────────────────────────────────────
-// Colección mantenimiento_fotos: UN doc por foto {clave, eq_id, tareaIdx, tarea,
-// foto(base64), createdAt, createdBy} — 1 foto/doc esquiva el límite de 1MB.
-let fotosCount = {};   // `${eq_id}|${idx}` → n (del período actual)
-let _ftCtx = null;     // contexto del modal de fotos {eqId, idx, tarea}
+// Colección mantenimiento_fotos: UN doc por foto {clave, eq_id, tarea, foto(base64), createdAt,
+// createdBy} — 1 foto/doc esquiva el límite de 1MB. La foto se ata a la actividad por NOMBRE (antes
+// llevaba además `tareaIdx`, que se corría al cambiar la lista y dejaba la foto en otra actividad).
+let fotosCount = {};   // `${eq_id}|${actKey(tarea)}` → n (del período actual)
+let _ftCtx = null;     // contexto del modal de fotos {eqId, tarea}
 
 function _mttoKey(){ return currentSede + '|' + currentPeriodo + '|' + currentAnio; }
 
-let planBadges = {};   // `${eq_id}|${idx}` → fecha planificada (mtto_plan del período/sede)
-let planDocs = {};     // `${eq_id}|${idx}` → doc de plan COMPLETO (para atribuir la ejecución — Etapa 2)
+let planBadges = {};   // `${eq_id}|${actKey(tarea)}` → fecha planificada (mtto_plan del período/sede)
+let planDocs = {};     // `${eq_id}|${actKey(tarea)}` → doc de plan COMPLETO (para atribuir la ejecución)
 async function loadPlanBadges(){
   planBadges = {}; planDocs = {};
   try{
     const { periodo, anio } = (() => { const k=_mttoKey().split('|'); return { periodo:k[1], anio:Number(k[2]) }; })();
     const snap = await window.__db.collection('mtto_plan')
       .where('sede','==',currentSede).where('periodo','==',periodo).where('anio','==',anio).get();
-    snap.docs.forEach(d => { const r=d.data(); const k=r.eq_id+'|'+r.tareaIdx; planBadges[k] = r.fecha || ''; planDocs[k] = r; });
+    // Se indexa por el CAMPO `tarea`, no por el doc-id: así también entran los docs viejos cuyo
+    // id todavía termina en índice (`…|2`). `_id` guarda el id real para poder borrarlos.
+    snap.docs.forEach(d => { const r=d.data(); const k=r.eq_id+'|'+actKey(r.tarea); planBadges[k] = r.fecha || ''; planDocs[k] = { ...r, _id: d.id }; });
   }catch(e){ console.warn('[mtto_plan]', e.message); }
   refreshPlanBadges();
 }
@@ -639,7 +840,7 @@ async function loadFotosCounts(){
   try{
     const { getDocs, collection } = window.__fb;
     const snap = await window.__db.collection('mantenimiento_fotos').where('clave','==',_mttoKey()).get();
-    snap.docs.forEach(d => { const r=d.data(); const k=r.eq_id+'|'+r.tareaIdx; fotosCount[k]=(fotosCount[k]||0)+1; });
+    snap.docs.forEach(d => { const r=d.data(); const k=r.eq_id+'|'+actKey(r.tarea); fotosCount[k]=(fotosCount[k]||0)+1; });
   }catch(e){ /* sin permiso o sin datos: badges en 0 */ }
   refreshFotoBadges();
 }
@@ -664,11 +865,10 @@ function _ftComprimir(file){
     img.src = URL.createObjectURL(file);
   });
 }
-function openFotosTarea(eqId, idx){
+function openFotosTarea(eqId, tarea){
   const eq = sedeEquipos.find(e => e.eq_id === eqId); if(!eq) return;
-  const tareas = actividadesDe(eq).tareas || [];
-  _ftCtx = { eqId, idx, tarea: tareas[idx] || ('Actividad '+(idx+1)) };
-  document.getElementById('ft-title').textContent = _ftCtx.tarea;
+  _ftCtx = { eqId, tarea };
+  document.getElementById('ft-title').textContent = tarea;
   document.getElementById('ft-sub').textContent = eq.nombre + ' · ' + eqId + ' · ' + currentPeriodo + ' ' + currentAnio;
   document.getElementById('ft-add').style.display = MA.can('editar','mantenimiento') ? 'inline-flex' : 'none';
   document.getElementById('ft-overlay').style.display = 'flex';
@@ -680,7 +880,7 @@ async function renderFotosTarea(){
   cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando…</div>';
   try{
     const snap = await window.__db.collection('mantenimiento_fotos')
-      .where('clave','==',_mttoKey()).where('eq_id','==',_ftCtx.eqId).where('tareaIdx','==',_ftCtx.idx).get();
+      .where('clave','==',_mttoKey()).where('eq_id','==',_ftCtx.eqId).where('tarea','==',_ftCtx.tarea).get();
     const puedeBorrar = MA.can('editar','mantenimiento');
     cont.innerHTML = snap.docs.length ? snap.docs.map(d => {
       const r = d.data();
@@ -700,9 +900,9 @@ async function ftAgregar(input){
     for(const file of [...input.files]){
       const foto = await _ftComprimir(file);
       await window.__db.collection('mantenimiento_fotos').add({
-        clave:_mttoKey(), eq_id:_ftCtx.eqId, tareaIdx:_ftCtx.idx, tarea:_ftCtx.tarea,
+        clave:_mttoKey(), eq_id:_ftCtx.eqId, tarea:_ftCtx.tarea,
         foto, createdAt:new Date().toISOString(), createdBy:_by });
-      const k=_ftCtx.eqId+'|'+_ftCtx.idx; fotosCount[k]=(fotosCount[k]||0)+1;
+      const k=_ftCtx.eqId+'|'+actKey(_ftCtx.tarea); fotosCount[k]=(fotosCount[k]||0)+1;
     }
     toast('Foto(s) guardada(s) ✓','ok');
     refreshFotoBadges(); renderFotosTarea();
@@ -713,7 +913,7 @@ async function ftBorrar(id){
   if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); return; }
   try{
     await window.__db.collection('mantenimiento_fotos').doc(id).delete();
-    const k=_ftCtx.eqId+'|'+_ftCtx.idx; fotosCount[k]=Math.max(0,(fotosCount[k]||1)-1);
+    const k=_ftCtx.eqId+'|'+actKey(_ftCtx.tarea); fotosCount[k]=Math.max(0,(fotosCount[k]||1)-1);
     refreshFotoBadges(); renderFotosTarea();
   }catch(e){ toast('Error: '+e.message,'err'); }
 }
@@ -739,8 +939,6 @@ async function openHistorialEq(eqId){
     ]);
     const fotosPorClave = {};
     fSnap.docs.forEach(d => { const c=d.data().clave; fotosPorClave[c]=(fotosPorClave[c]||0)+1; });
-    const _tEq = actividadesDe(eq).tareas || [];
-    const nTareas = _tEq.length;
     const ORD = {'ENE-FEB':1,'MAR-ABR':2,'MAY-JUN':3,'JUL-AGO':4,'SEP-OCT':5,'NOV-DIC':6};
     const filas = [];
     mSnap.docs.forEach(d => {
@@ -750,20 +948,23 @@ async function openHistorialEq(eqId){
       const sel = _safeObj(r.seleccionados), ts = _safeObj(r.tareaStatus);
       if(!sel[eqId] && !ts[eqId]) return;
       const st = ts[eqId] || {};
-      const done = (typeof st === 'boolean') ? (st ? nTareas : 0) : _tEq.filter((_,i)=>st[i]===true).length;
-      filas.push({ periodo, anio: parseInt(anio)||0, done, fotos: fotosPorClave[r.clave || d.id] || 0, upd: r.updatedAt||'' });
+      // La lista se resuelve CON EL PERÍODO DE LA FILA: un ajuste de período cambia cuántas
+      // actividades tenía el equipo en ese bimestre (antes se usaba la lista vigente para todos).
+      const _tEq = actividadesDe(eq, periodo, parseInt(anio)||0).tareas || [];
+      const nT = _tEq.length;
+      const done = (typeof st === 'boolean') ? (st ? nT : 0) : nHechas(st, _tEq);
+      filas.push({ periodo, anio: parseInt(anio)||0, done, nT, fotos: fotosPorClave[r.clave || d.id] || 0, upd: r.updatedAt||'' });
     });
     filas.sort((a,b) => b.anio - a.anio || (ORD[b.periodo]||0) - (ORD[a.periodo]||0));
     cont.innerHTML = filas.length ? filas.map(f => {
-      const pct = nTareas ? Math.round(100*f.done/nTareas) : 0;
-      const em = f.done >= nTareas && nTareas ? '🟢' : f.done > 0 ? '🟡' : '🔴';
+      const pct = f.nT ? Math.round(100*f.done/f.nT) : 0;
+      const em = f.done >= f.nT && f.nT ? '🟢' : f.done > 0 ? '🟡' : '🔴';
       return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px">'
         + '<span>'+em+'</span>'
         + '<div style="flex:1"><div style="font-size:12px;font-weight:700">'+_actEsc(f.periodo)+' '+f.anio+'</div>'
-        + '<div style="font-size:10px;color:var(--muted2)">'+f.done+'/'+nTareas+' actividades'+(f.fotos?' · 📷 '+f.fotos:'')+'</div></div>'
+        + '<div style="font-size:10px;color:var(--muted2)">'+f.done+'/'+f.nT+' actividades'+(f.fotos?' · 📷 '+f.fotos:'')+'</div></div>'
         + '<span style="font-size:12px;font-weight:700;color:'+(pct===100?'var(--green,#0a4)':pct>0?'#cc8800':'var(--red,#c33)')+'">'+pct+'%</span></div>';
     }).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px">Sin intervenciones registradas para este equipo.</div>';
-    cont.innerHTML += '<div style="font-size:10px;color:var(--muted);padding:6px 2px">El total de actividades se calcula con la lista vigente del equipo.</div>';
   }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+_actEsc(e.message)+'</div>'; }
 }
 function closeHistorialEq(){ document.getElementById('he-overlay').style.display='none'; }
@@ -797,9 +998,9 @@ async function renderGlobal(){
         const _a = eq ? actividadesDe(eq) : {tareas:null,minutos:[]};
         const tareas = _a.tareas || [], mins = _a.minutos || [], nT = tareas.length;
         const st = ts[id];
-        // solo cuenta actividades VIGENTES marcadas (índices 0..nT-1), igual que getPct — ignora marcas obsoletas de actividades ya quitadas
-        const done = (st === true) ? nT
-                   : (st && typeof st === 'object') ? tareas.filter((_,i)=>st[i]===true).length : 0;
+        // solo cuenta actividades VIGENTES, igual que getPct — una marca de una actividad que ya no
+        // está en la lista queda inerte (no se cuenta), y vuelve a contar si se la re-agrega
+        const done = (st === true) ? nT : nHechas(st, tareas);
         // % de avance del equipo — mismo criterio que getPct (0 si no tiene actividades, ponderado por minutos, con fallback a peso igual)
         let eqPct = 0;
         if(nT){
@@ -807,7 +1008,7 @@ async function renderGlobal(){
           else if(st && typeof st === 'object'){
             if(mins.length){
               const tm = mins.reduce((a,b)=>a+(b||0),0);
-              let dw=0; tareas.forEach((_,i)=>{ if(st[i]===true) dw += (mins[i]||0); });
+              let dw=0; tareas.forEach((t,i)=>{ if(tareaHecha(st, t, i)) dw += (mins[i]||0); });
               eqPct = tm ? Math.round(dw/tm*100) : 0;
             } else {
               eqPct = Math.round(done/nT*100);
@@ -831,24 +1032,29 @@ async function renderGlobal(){
 
 
 
-async function loadTareas() {
+// `fresco` saltea la caché: obligatorio antes de guardar un ajuste de actividades (actsGuardar), que
+// necesita saber qué actividades tiene HOY cada equipo. Con una lista de hace 30 minutos —que es lo
+// que puede devolver la caché— el ajuste se calcularía contra un estado que ya no existe.
+async function loadTareas(fresco) {
   // Check cache first (valid for 30 minutes)
-  const cached = sessionStorage.getItem('ma_tareas2');
+  const cached = fresco ? null : sessionStorage.getItem('ma_tareas2');
   const cachedTime = sessionStorage.getItem('ma_tareas2_time');
   if (cached && cachedTime && (Date.now() - parseInt(cachedTime)) < 30 * 60 * 1000) {
     const d = JSON.parse(cached);
     TAREAS_CLI = d.tareasCli || {};
     MIN_CLI = d.minCli || {};
+    ACT_PER = d.actPer || {};
     ACT_EQ = d.actEq || {};
     return;
   }
   try {
     const { getDocs, collection } = window.__fb;
-    const [snap, ovSnap] = await Promise.all([
+    const [snap, ovSnap, perSnap] = await Promise.all([
       getDocs(collection(window.__db, 'tareas_config')),
-      getDocs(collection(window.__db, 'mtto_actividades_equipo'))
+      getDocs(collection(window.__db, 'mtto_actividades_equipo')),
+      getDocs(collection(window.__db, 'mtto_actividades_periodo'))
     ]);
-    // La plantilla vive solo en el cliente: doc-id `cliente|tipo`. Se ignora cualquier doc suelto
+    // ① La plantilla vive solo en el cliente: doc-id `cliente|tipo`. Se ignora cualquier doc suelto
     // por `tipo` (plantillas globales del modelo viejo, ya retiradas).
     const tareasCli = {}, minCli = {};
     snap.docs.forEach(d => {
@@ -856,17 +1062,22 @@ async function loadTareas() {
       const data = d.data();
       tareasCli[d.id] = data.tareas||[]; minCli[d.id] = data.minutos||[];
     });
+    // ② ajustes por período (doc-id `sede|periodo|anio|tipo`) — se cargan TODOS: el tab Global
+    // necesita los de las otras sedes, y el histórico los de otros períodos.
+    const actPer = {};
+    perSnap.docs.forEach(d => { const o = d.data(); actPer[d.id] = { agregadas: o.agregadas||[], quitadas: o.quitadas||[] }; });
+    // ③ ajustes por equipo
     const actEq = {};
     ovSnap.docs.forEach(d => { const o = d.data(); actEq[d.id] = { agregadas: o.agregadas||[], quitadas: o.quitadas||[] }; });
-    TAREAS_CLI = tareasCli; MIN_CLI = minCli; ACT_EQ = actEq;
-    const _d = { tareasCli, minCli, actEq };
+    TAREAS_CLI = tareasCli; MIN_CLI = minCli; ACT_PER = actPer; ACT_EQ = actEq;
+    const _d = { tareasCli, minCli, actPer, actEq };
     sessionStorage.setItem('ma_tareas2', JSON.stringify(_d));
     sessionStorage.setItem('ma_tareas2_time', String(Date.now()));
   } catch(e) {
     // Sin plantillas no se inventa una lista: los equipos aparecen sin actividades y el checklist
     // lo dice. Antes había un fallback hardcodeado que se desactualizaba en silencio.
     console.warn('No se pudo cargar tareas_config:', e.message);
-    TAREAS_CLI = {}; MIN_CLI = {}; ACT_EQ = {};
+    TAREAS_CLI = {}; MIN_CLI = {}; ACT_PER = {}; ACT_EQ = {};
     toast('No se pudieron cargar las actividades. Recargá la página.','err');
   }
 }
@@ -882,7 +1093,17 @@ const TIPO_ICON = {
 let allEquipos = [];     // todos los equipos del sheet
 let sedeEquipos = [];    // equipos de la sede actual
 let seleccionados = {};  // eq_id → true (equipos seleccionados para este periodo)
-let tareaStatus = {};    // eq_id → {tarea: bool} o eq_id → bool (para solo-marcar)
+// eq_id → { "<nombre de actividad>": true }  ó  eq_id → true ("solo marcar": el equipo entero)
+//
+// LA CLAVE ES EL NOMBRE DE LA ACTIVIDAD, no su posición. Antes era el ÍNDICE, y ahí estaba el
+// problema: al quitar una actividad de la lista, los índices de las siguientes se corrían y una
+// marca que decía "hice la 2" pasaba a apuntar a OTRA actividad — en silencio. El nombre no se corre.
+// Lo mismo vale para los doc-id de mtto_plan/mtto_ejecuciones (`EQ|PERIODO|AÑO|<actividad>`) y para
+// las fotos, que ya guardaban el nombre.
+//
+// Los datos anteriores a la migración usan claves numéricas; se siguen LEYENDO (ver tareaHecha) para
+// no perder el histórico, y se normalizan a nombre la primera vez que se escribe sobre ese equipo.
+let tareaStatus = {};
 let currentSede = '', currentPeriodo = '', currentAnio = '';
 let currentUpdatedAt = null, currentUpdatedBy = null;
 let saveTimeout = null;
@@ -1101,15 +1322,16 @@ function renderEquipo(eq, tareas) {
     const statusMap = tareaStatus[eq.eq_id] || {};
     const mins = _act.minutos;
     tareasHtml = '<div class="tareas">' + tareas.map((t,i) => {
-      const done = statusMap[i] === true;
+      const done = tareaHecha(statusMap, t, i);
       const peso = mins[i] != null ? `<span style="font-size:10px;color:var(--muted2);margin-left:auto;font-family:var(--mono)">${mins[i]}min</span>` : '';
       const isParams = t === 'Toma de parámetros';
       const style = isParams ? 'border-top:1px dashed var(--border2);margin-top:4px;padding-top:8px;' : '';
+      const k = _actEsc(eq.eq_id + '|' + actKey(t));   // clave de los badges: por NOMBRE
       return `<label class="tarea-row ${done?'done':''}" style="${style}">
-        <input type="checkbox" class="tarea-cb" ${done?'checked':''} onchange="toggleTarea(${_jsq(eq.eq_id)},${i},this.checked)">
+        <input type="checkbox" class="tarea-cb" ${done?'checked':''} onchange="toggleTarea(${_jsq(eq.eq_id)},${_jsq(t)},this.checked)">
         <span class="tarea-label">${_actEsc(t)}</span>
         ${peso}
-        <button type="button" class="btn-foto mant-edit-ok" onclick="event.preventDefault();event.stopPropagation();openFotosTarea(${_jsq(eq.eq_id)},${i})" title="Fotos de esta actividad">📷<span class="fc-badge" data-fc="${_actEsc(eq.eq_id)}|${i}" style="display:none"></span></button><span class="plan-badge" data-pb="${_actEsc(eq.eq_id)}|${i}" style="display:none;font-size:10px;color:var(--blue);font-family:var(--mono);margin-left:4px"></span>
+        <button type="button" class="btn-foto mant-edit-ok" onclick="event.preventDefault();event.stopPropagation();openFotosTarea(${_jsq(eq.eq_id)},${_jsq(t)})" title="Fotos de esta actividad">📷<span class="fc-badge" data-fc="${k}" style="display:none"></span></button><span class="plan-badge" data-pb="${k}" style="display:none;font-size:10px;color:var(--blue);font-family:var(--mono);margin-left:4px"></span>
       </label>`;
     }).join('') + `</div>`;
   }
@@ -1142,7 +1364,7 @@ function getSemaforo(eq, tareas) {
   const statusMap = tareaStatus[eq.eq_id] || {};
   if(statusMap === true) return 'green';   // equipos solo-marcar: estado booleano
   if(typeof statusMap !== 'object') return 'red';
-  const done = tareas.filter((_,i) => statusMap[i]===true).length;
+  const done = nHechas(statusMap, tareas);
   if(done === 0) return 'red';
   if(done === tareas.length) return 'green';
   return 'yellow';
@@ -1162,7 +1384,7 @@ function updateStatusBar(stats) {
 // Lo ejecutado sale del plan del itinerario en automático (ids determinísticos)
 // Etapa 2 (mtto grupal + KPIs): registro persistente de lo EJECUTADO → base de los KPIs.
 // La ATRIBUCIÓN sale del PLAN (mtto_plan), no de quién marca; marcar sin plan → sin técnico (esperado).
-// Doc id determinístico EQ|PERIODO|AÑO|IDX (idempotente: re-marcar no duplica; desmarcar borra).
+// Doc id determinístico EQ|PERIODO|AÑO|actKey(nombre) (idempotente: re-marcar no duplica; desmarcar borra).
 function _ejecTecnicos(p){   // retrocompat escalar↔array, igual que planTecnicos del itinerario
   if(!p) return [];
   if(Array.isArray(p.tecnicos) && p.tecnicos.length){
@@ -1172,36 +1394,90 @@ function _ejecTecnicos(p){   // retrocompat escalar↔array, igual que planTecni
   if(p.tecnicoNombre) return [{ id:p.tecnicoId||'', nombre:p.tecnicoNombre }];
   return [];
 }
-function registrarEjecucion(eqId, idxs, done){
+async function registrarEjecucion(eqId, tareasMarcadas, done){
   try{
-    const [, periodo, anioStr] = _mttoKey().split('|');
+    // TODO el contexto se captura ANTES del primer `await`. Esta función es fire-and-forget: sigue
+    // corriendo en 2º plano mientras el usuario usa la app, y si en el medio cambia de sede o de
+    // período, `loadPeriodo` reasigna los globals (currentSede, tareaStatus, sedeEquipos). Leerlos
+    // después del await escribiría la ejecución con la SEDE EQUIVOCADA, o la abortaría porque el
+    // `tareaStatus` ya es el de otra sede. Con el contexto congelado, la escritura describe el
+    // marcado que de verdad ocurrió, sin importar dónde esté parado el usuario cuando termine.
+    const clave = _mttoKey();
+    const [sede, periodo, anioStr] = clave.split('|');
     const anio = Number(anioStr);
     const eq = sedeEquipos.find(e => e.eq_id === eqId);
     const act = eq ? actividadesDe(eq) : { tareas: [], minutos: [] };
     const tareas = act.tareas || [], minutos = act.minutos || [];
     let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
     const fechaEjec = new Date(Date.now() - 5*60*60*1000).toISOString().slice(0,10);  // día en Lima (UTC-5)
-    // Fire-and-forget por índice (no bloquea la UI). El callback async corre en 2º plano.
-    idxs.forEach(async (i) => {
-      const ejecRef = window.__db.collection('mtto_ejecuciones').doc(`${eqId}|${periodo}|${anio}|${i}`);
-      const planRef = window.__db.collection('mtto_plan').doc(`${eqId}|${periodo}|${anio}|${i}`);
-      if(!done){ ejecRef.delete().catch(()=>{}); return; }   // desmarcar borra la ejecución
+
+    // Guarda anti-carrera (marcar→destildar rápido): no registrar algo que ya se destildó.
+    // Se captura la REFERENCIA al mapa de esta sede/período. `loadPeriodo` reasigna `tareaStatus` a un
+    // objeto NUEVO al navegar, así que esta referencia sigue apuntando al mapa donde se marcó — y los
+    // destildados que hayan pasado mientras tanto lo mutaron, así que la guarda los ve. Consultar el
+    // global en cambio nos haría leer el mapa de OTRA sede (que no dice nada de esta marca).
+    const tsCtx = tareaStatus;
+    const sigueMarcada = (tarea) => tareaHecha(tsCtx[eqId], tarea, tareas.indexOf(tarea));
+
+    // El plan se busca FRESCO en Firestore, no en el caché `planDocs`: ese caché se llena al cargar la
+    // sede y puede estar vacío (falló), viejo (la asignación se hizo con la pestaña ya abierta) o
+    // incompleto. Si la atribución sale de un caché stale, la ejecución se escribe como espontánea y
+    // sin técnico — y después el barrido del itinerario, al ver que la ejecución ya existe, borra el
+    // plan sin copiarle el crédito: el técnico asignado lo pierde para siempre.
+    // Se busca por CAMPOS (no por doc-id) para encontrar también los planes anteriores a la migración,
+    // cuyo id todavía termina en índice. Si la query falla, NO se escribe nada: el plan sigue vivo y el
+    // barrido del itinerario lo convierte en ejecución CON su atribución.
+    const planPorTarea = new Map();
+    if(done){
+      let ps = null;
+      for(let intento = 0; intento < 2 && !ps; intento++){
+        try{
+          ps = await window.__db.collection('mtto_plan')
+            .where('eq_id','==',eqId).where('periodo','==',periodo).where('anio','==',anio).get();
+        }catch(e){
+          if(intento === 1){
+            console.warn('[mtto_plan] no se registra la ejecución para no perder la atribución:', e.message);
+            return;   // el plan sobrevive → el barrido del itinerario lo convierte con su técnico
+          }
+          await new Promise(r => setTimeout(r, 800));   // fallo transitorio de red: un reintento
+        }
+      }
+      ps.docs.forEach(d => { const r = d.data(); if(r.tarea) planPorTarea.set(r.tarea, { _id: d.id, ...r }); });
+    }
+
+    // Fire-and-forget por ACTIVIDAD (no bloquea la UI). El callback async corre en 2º plano.
+    tareasMarcadas.forEach(async (tarea) => {
+      const _pk = eqId + '|' + actKey(tarea);
+      const ejecRef = window.__db.collection('mtto_ejecuciones').doc(docTarea(eqId, periodo, anio, tarea));
+      const _pl = planPorTarea.get(tarea);
+      const planRef = window.__db.collection('mtto_plan').doc((_pl && _pl._id) || docTarea(eqId, periodo, anio, tarea));
+      if(!done){
+        // Desmarcar borra la ejecución. Se borra por doc-id (el nuevo) Y por campos: una ejecución
+        // anterior a la migración tiene el id terminado en índice, así que borrarla por nombre no la
+        // encontraría — sobreviviría al desmarcado y el script de migración la resucitaría como una
+        // ejecución fantasma (un KPI que cuenta algo que el usuario deshizo).
+        ejecRef.delete().catch(()=>{});
+        window.__db.collection('mtto_ejecuciones')
+          .where('eq_id','==',eqId).where('periodo','==',periodo).where('anio','==',anio).where('tarea','==',tarea).get()
+          .then(s => s.docs.forEach(d => { if(d.id !== ejecRef.id) d.ref.delete().catch(()=>{}); }))
+          .catch(()=>{});
+        return;
+      }
       try{
-        // Transacción por índice: leer ejecución + plan (autoritativo) → registrar y sacar del plan.
+        // Transacción por actividad: leer ejecución + plan (autoritativo) → registrar y sacar del plan.
         await window.__db.runTransaction(async (tx) => {
           const [esEjec, esPlan] = await Promise.all([tx.get(ejecRef), tx.get(planRef)]);  // reads antes de writes
-          // Guarda anti-carrera (marcar→desmarcar rápido): si ya NO está marcada, no registrar.
-          const stNow = tareaStatus[eqId];
-          if(!(stNow === true || (stNow && typeof stNow === 'object' && stNow[i] === true))) return;
+          if(!sigueMarcada(tarea)) return;
           const plan = esPlan.exists ? esPlan.data() : null;
           // CREATE-IF-ABSENT: nunca sobrescribir una ejecución ya registrada (preserva su
           // atribución canónica; una 2ª pasada con el plan ya consumido no la pisa como espontánea).
           if(!esEjec.exists){
             const tecs = _ejecTecnicos(plan);
+            const i = tareas.indexOf(tarea);
             tx.set(ejecRef, {
               eq_id: eqId, nombreEq: eq?.nombre || eqId, tipo: eq?.tipo || '', area: eq?.area || '',
-              sede: currentSede, periodo, anio,
-              tareaIdx: i, tarea: tareas[i] || ('Actividad ' + (i+1)),
+              sede, periodo, anio,
+              tarea,
               minutos: (plan && plan.minutos != null) ? plan.minutos : (Number(minutos[i]) || 5),
               tecnicoIds: tecs.map(t=>t.id), tecnicos: tecs, modo: tecs.length>=2 ? 'grupo' : 'individual',
               planificada: !!plan,
@@ -1210,7 +1486,7 @@ function registrarEjecucion(eqId, idxs, done){
           }
           if(plan) tx.delete(planRef);   // lo ejecutado sale del itinerario (atómico con el registro)
         });
-        delete planDocs[eqId+'|'+i];
+        delete planDocs[_pk];
       }catch(e){ /* tx no confirmada: se conserva el plan, atribución recuperable */ }
     });
   }catch(e){ /* nunca romper el marcado por la ejecución */ }
@@ -1236,53 +1512,51 @@ function toggleSoloMarcar(eqId, checked) {
   tareaStatus[eqId] = checked;
   logRegistro(eqId, ['(equipo completo)'], checked);
   { const eq = sedeEquipos.find(e => e.eq_id === eqId);
-    const n = eq ? (actividadesDe(eq).tareas || []).length : 0;
-    const allIdx = Array.from({length: n}, (_, i) => i);
-    registrarEjecucion(eqId, allIdx, checked);   // leer plan (Firestore) → escribir ejecución → borrar plan
-    if (checked) allIdx.forEach(i => { delete planBadges[eqId+'|'+i]; }); }   // UI: el 🗓 desaparece al instante
+    const acts = eq ? (actividadesDe(eq).tareas || []) : [];
+    registrarEjecucion(eqId, acts, checked);   // leer plan (Firestore) → escribir ejecución → borrar plan
+    if (checked) acts.forEach(t => { delete planBadges[eqId+'|'+actKey(t)]; }); }   // UI: el 🗓 desaparece al instante
   markDirty(eqId);
   renderMain();
   updateStats();
 }
 
-function toggleTarea(eqId, idx, checked) {
+function toggleTarea(eqId, tarea, checked) {
   if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
-  if(!tareaStatus[eqId]) tareaStatus[eqId] = {};
-  tareaStatus[eqId][idx] = checked;
-  { const eq = sedeEquipos.find(e => e.eq_id === eqId);
-    const acts = eq ? (actividadesDe(eq).tareas || []) : [];
-    logRegistro(eqId, [acts[idx] || ('Actividad ' + (idx+1))], checked); }
-  registrarEjecucion(eqId, [idx], checked);   // leer plan (Firestore) → escribir ejecución → borrar plan
-  if (checked) delete planBadges[eqId+'|'+idx];   // UI: el 🗓 desaparece al instante
+  // `true` = "solo marcar": el equipo entero está hecho, así que TODAS sus actividades se ven tildadas
+  // (`tareaHecha` devuelve true para cualquiera). Colapsarlo a `{}` acá apagaría todas las demás de un
+  // saque: el usuario destilda UNA y pierde el resto sin que nadie se lo diga. Primero se expande a los
+  // nombres explícitos —que es lo que ese `true` estaba diciendo—, y recién después se aplica el toggle.
+  if(tareaStatus[eqId] === true){
+    const eq0 = (sedeEquipos || []).find(e => e.eq_id === eqId);
+    const acts0 = eq0 ? (actividadesDe(eq0).tareas || []) : [];
+    tareaStatus[eqId] = {};
+    acts0.forEach(t => { tareaStatus[eqId][t] = true; });
+  } else if(!tareaStatus[eqId]) tareaStatus[eqId] = {};
+  const st = tareaStatus[eqId];
+  if(checked){
+    st[tarea] = true;                  // ← la marca va por NOMBRE: no se corre si cambia la lista
+  } else {
+    delete st[tarea];
+    // Un dato anterior a la migración pudo dejar la marca en la clave numérica de esta actividad: es
+    // lo que la hacía verse tildada (tareaHecha mira ambas), así que destildar tiene que apagar esa
+    // también. Se apaga la posición que el usuario ESTÁ VIENDO — no se reinterpreta el índice.
+    const eq = (sedeEquipos || []).find(e => e.eq_id === eqId);
+    const i = eq ? (actividadesDe(eq).tareas || []).indexOf(tarea) : -1;
+    if(i >= 0) delete st[i];
+  }
+  logRegistro(eqId, [tarea], checked);
+  registrarEjecucion(eqId, [tarea], checked);   // leer plan (Firestore) → escribir ejecución → borrar plan
+  if (checked) delete planBadges[eqId+'|'+actKey(tarea)];   // UI: el 🗓 desaparece al instante
   markDirty(eqId);
   renderMain();
   updateStats();
 }
 
 function markDirty(eqId) {
+  if(eqId) _ctxSave().dirty.add(eqId);   // solo este equipo se reescribirá en Firestore
   scheduleSave();
 }
 
-async function saveNow(eqId) { /* autosave — button removed */ return;
-  const btn = document.getElementById('savebtn-' + eqId);
-  if(btn){ btn.classList.add('saving'); btn.textContent = '⟳ Guardando...'; btn.disabled = true; }
-  const key = currentSede + '|' + currentPeriodo + '|' + currentAnio;
-  try {
-    const { setDoc, doc } = window.__fb;
-    await setDoc(doc(window.__db, 'mantenimiento', key), {
-      clave: key, seleccionados, tareaStatus, updatedAt: new Date().toISOString()
-    });
-    sessionStorage.setItem('ma_maint_' + key, JSON.stringify({ seleccionados, tareaStatus }));
-    if(btn){ btn.classList.remove('saving'); btn.classList.add('saved'); btn.textContent = '✓ Guardado'; btn.disabled = false; }
-    toast('Guardado ✓', 'ok');
-    setTimeout(() => {
-      if(btn){ btn.classList.remove('saved'); btn.textContent = '💾 GUARDAR'; }
-    }, 2000);
-  } catch(e) {
-    if(btn){ btn.classList.remove('saving'); btn.textContent = '💾 GUARDAR'; btn.disabled = false; }
-    toast('Error al guardar', 'err');
-  }
-}
 
 function refreshEquipoCard(eqId) {
   const eq = sedeEquipos.find(e => e.eq_id === eqId);
@@ -1310,28 +1584,94 @@ function updateStats() {
 }
 
 // ── SAVE ─────────────────────────────────────────────────────────────────────
+// doSave reescribe el mapa `tareaStatus` ENTERO desde la copia en memoria, con 800ms de debounce.
+// Dos consecuencias:
+//  · Un autosave pendiente pisaría cualquier escritura que otro haga sobre ese mapa en el medio →
+//    `_savePendiente` permite vaciarlo antes (ver `_flushSave`, que usa `actsGuardar`).
+//  · Los 800ms alcanzan para que el usuario CAMBIE DE SEDE: si al disparar leyera los globals,
+//    escribiría el mapa de la sede NUEVA bajo la clave de la vieja (o al revés) — la marca del técnico
+//    se perdería, o aparecería en la sede equivocada. Por eso `scheduleSave` congela el contexto
+//    (clave + referencias a los mapas de ESA sede; `loadPeriodo` reasigna los globals a objetos nuevos
+//    al navegar, así que las referencias viejas siguen apuntando al mapa correcto).
+let _savePendiente = false;
+let _saveCtx = null;
+
+// El contexto del guardado pendiente: la clave de la sede/período, los mapas de ESA pantalla, y qué
+// equipos tocó el usuario. `loadPeriodo` reasigna los globals a objetos nuevos al navegar, así que
+// estas referencias siguen apuntando al mapa correcto aunque el usuario se vaya a otra sede.
+function _ctxSave(){
+  const key = _mttoKey();
+  // Un pendiente de OTRA sede no se puede cancelar (esa marca se perdería): se vacía ya, con su propio
+  // contexto. Pasa al marcar en ATOCONGO, navegar, y marcar en MEGAPLAZA dentro de los 800ms.
+  if(_saveCtx && _saveCtx.key !== key){ clearTimeout(saveTimeout); doSave(); }
+  if(!_saveCtx) _saveCtx = { key, seleccionados, tareaStatus, dirty: new Set(), selFull: false };
+  return _saveCtx;
+}
 function scheduleSave() {
+  _ctxSave();
   clearTimeout(saveTimeout);
+  _savePendiente = true;
   const ind = document.getElementById('savingInd');
   if(ind){ ind.classList.add('show'); ind.classList.remove('saved'); ind.innerHTML = '<div class="spin"></div> Guardando...'; }
   saveTimeout = setTimeout(doSave, 800);
 }
 
+// Fuerza el autosave pendiente y mata el timer: deja Firestore al día y garantiza que no va a
+// dispararse una escritura vieja más tarde.
+async function _flushSave(){
+  clearTimeout(saveTimeout);
+  if(!_savePendiente) return;
+  await doSave();
+}
+
+// Guarda SOLO lo que esta pantalla tocó, en una transacción.
+//
+// Antes reescribía el mapa `tareaStatus` ENTERO desde memoria con un `setDoc`. Ese mapa es de TODA la
+// sede, y el bot de WhatsApp escribe en el mismo doc: si un técnico registraba una actividad desde el
+// celular entre que la app cargó la sede y disparó el autosave, la app le pisaba la marca con su copia
+// vieja. El técnico hacía el trabajo, lo reportaba, y desaparecía — sin error, sin rastro.
+// Ahora se leen los mapas frescos dentro de una transacción y se reemplazan únicamente las entradas de
+// los equipos que el usuario tocó (`ctx.dirty`); todo lo demás queda como está en Firestore.
 async function doSave() {
+  const ctx = _saveCtx;
+  _savePendiente = false; _saveCtx = null;
+  clearTimeout(saveTimeout);
   if(!MA.can('editar','mantenimiento')) return; // técnico: solo lectura
-  const key = currentSede + '|' + currentPeriodo + '|' + currentAnio;
+  if(!ctx || (!ctx.dirty.size && !ctx.selFull)) return;   // nada que escribir
+  const key = ctx.key;
   const ind = document.getElementById('savingInd');
   try {
-    const { setDoc, doc } = window.__fb;
     const now = new Date().toISOString();
     const updatedBy = maUser?.email || '';
-    await setDoc(doc(window.__db, 'mantenimiento', key), {
-      clave: key, seleccionados, tareaStatus, updatedAt: now, updatedBy
+    const ref = window.__db.collection('mantenimiento').doc(key);
+    await window.__db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const d = snap.exists ? snap.data() : {};
+      // `selFull` = el usuario reeditó la selección de equipos entera (acción deliberada sobre todo el
+      // conjunto): ahí sí manda la copia local. Si no, se parte de lo que hay en Firestore.
+      const sel = ctx.selFull ? { ...ctx.seleccionados } : _safeObj(d.seleccionados);
+      const ts  = _safeObj(d.tareaStatus);
+      ctx.dirty.forEach(eqId => {
+        const v = ctx.tareaStatus[eqId];
+        if(v === undefined || v === false) delete ts[eqId]; else ts[eqId] = v;
+        if(!ctx.selFull){ if(ctx.seleccionados[eqId]) sel[eqId] = true; else delete sel[eqId]; }
+      });
+      // `update` y NO `set(merge:true)`: Firestore hace merge PROFUNDO de los mapas anidados, así que
+      // con merge una clave BORRADA del mapa (destildar una actividad, sacar un equipo de la
+      // selección) sobreviviría en Firestore — la actividad volvería tildada al recargar. `update`
+      // reemplaza el campo que nombra, que es justo lo que queremos: `ts`/`sel` ya vienen de la
+      // lectura fresca de esta misma transacción, con solo los equipos tocados reemplazados.
+      const campos = { clave: key, seleccionados: sel, tareaStatus: ts, updatedAt: now, updatedBy };
+      if(snap.exists) tx.update(ref, campos); else tx.set(ref, campos);   // update falla si el doc no existe
     });
-    currentUpdatedAt = now;
-    currentUpdatedBy = updatedBy;
-    sessionStorage.setItem('ma_maint_' + key, JSON.stringify({ seleccionados, tareaStatus, updatedAt: now, updatedBy }));
-    renderLastUpdated();
+    sessionStorage.setItem('ma_maint_' + key, JSON.stringify({ seleccionados: ctx.seleccionados, tareaStatus: ctx.tareaStatus, updatedAt: now, updatedBy }));
+    // el indicador "última actualización" es de la pantalla ACTUAL: si lo que se guardó era de otra
+    // sede (el usuario navegó mientras se guardaba), no se toca
+    if(key === _mttoKey()){
+      currentUpdatedAt = now;
+      currentUpdatedBy = updatedBy;
+      renderLastUpdated();
+    }
     if(ind){ ind.classList.remove('show'); ind.classList.add('saved'); ind.innerHTML = '✓ Guardado'; }
     setTimeout(() => { if(ind){ ind.classList.remove('saved'); ind.innerHTML = '<div class="spin"></div> Guardando...'; } }, 2000);
   } catch(e) {
@@ -1420,6 +1760,9 @@ async function saveEquipoSelection() {
   seleccionados = {...tempSel};
   closeSelEquipos();
   renderMain();
+  const c = _ctxSave();
+  c.seleccionados = seleccionados;   // el objeto se reasignó recién
+  c.selFull = true;                  // se reeditó la selección ENTERA: esta copia manda sobre Firestore
   scheduleSave();
 }
 
@@ -1456,7 +1799,7 @@ function exportWhatsApp() {
       if(tareas) {
         const statusMap = tareaStatus[eq.eq_id] || {};
         tareas.forEach((t,i) => {
-          const done = statusMap[i]===true;
+          const done = tareaHecha(statusMap, t, i);
           msg += `   ${done?'✅':'❌'} ${t}\n`;
         });
       }
@@ -1499,12 +1842,11 @@ function getPct(eq) {
     const totalMins = mins.reduce((a,b) => a+b, 0);
     if(!totalMins) return 0;
     let done = 0;
-    tareas.forEach((_,i) => { if(statusMap[i]===true) done += (mins[i]||0); });
+    tareas.forEach((t,i) => { if(tareaHecha(statusMap, t, i)) done += (mins[i]||0); });
     return Math.round((done/totalMins)*100);
   }
   // Fallback: equal weight
-  const done = tareas.filter((_,i) => statusMap[i]===true).length;
-  return Math.round((done/tareas.length)*100);
+  return Math.round((nHechas(statusMap, tareas)/tareas.length)*100);
 }
 
 function pctColor(p) { return p===100?'green':p>0?'yellow':'red'; }
@@ -1878,7 +2220,7 @@ function exportPDF() {
       let tareasHtml = '';
       if(tareas) {
         tareasHtml = tareas.map((t,i) => {
-          const done = statusMap[i]===true;
+          const done = tareaHecha(statusMap, t, i);
           const pw = pesos[i] != null ? `<span style="color:#999;font-size:9px;margin-left:auto">${pesos[i]}%</span>` : '';
           const isP = t==='Toma de parámetros';
           return `<div style="display:flex;align-items:center;gap:5px;padding:3px 0;${isP?'border-top:1px dashed #ccc;margin-top:3px;padding-top:5px':''}">
@@ -2632,12 +2974,21 @@ function maAddUser() {
   var rol = document.getElementById('ma-new-rol').value;
   if (!email || email.indexOf('@') === -1) { alert('Email inv\xE1lido'); return; }
   if (maAccessUsers.find(function(u){ return u.email === email; })) { alert('Ya existe'); return; }
-  window.__db.collection('usuarios').doc(email).set({email: email, rol: rol, apps: []}).then(function() {
+  // create-if-absent en transacción: si el doc YA existe (la lista en memoria puede estar
+  // desactualizada — otro admin pudo crearlo en paralelo), este set con apps:[] le borraría
+  // sus accesos. Un SUPERVISOR sin apps[] queda sin acceso a ningún módulo.
+  var _uref = window.__db.collection('usuarios').doc(email);
+  window.__db.runTransaction(function(tx) {
+    return tx.get(_uref).then(function(s) {
+      if (s.exists) { var _e = new Error('Este usuario ya existe'); _e.code = 'ma-existe'; throw _e; }
+      tx.set(_uref, {email: email, rol: rol, apps: []});
+    });
+  }).then(function() {
     maAccessUsers.push({email: email, rol: rol, apps: []});
     document.getElementById('ma-new-email').value = '';
     sessionStorage.removeItem('ma_emails'); sessionStorage.removeItem('ma_emails_time');
     maRenderAccessPanel();
-  }).catch(function(e) { alert('Error: ' + e.message); });
+  }).catch(function(e) { alert(e.code === 'ma-existe' ? 'Este usuario ya existe' : 'Error: ' + e.message); });
 }
 document.addEventListener('click', function(e) {
   var ov = document.getElementById('ma-access-overlay');
@@ -2707,11 +3058,17 @@ document.addEventListener('click', function(e) {
 <!-- EDITOR DE ACTIVIDADES (por tipo / por equipo) -->
 <div id="acts-overlay" style="position:fixed;inset:0;background:rgba(10,20,50,.45);z-index:600;display:none;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)closeActsEditor()">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;width:560px;max-width:100%;max-height:90vh;overflow-y:auto;padding:20px">
-    <h2 style="font-size:15px;color:var(--blue);margin-bottom:4px">⚙️ Ajustar actividades de un equipo</h2>
+    <h2 style="font-size:15px;color:var(--blue);margin-bottom:4px">⚙️ Ajustar actividades</h2>
     <div style="font-size:11px;color:var(--muted2);margin-bottom:14px" id="acts-hint"></div>
-    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <select id="act-tipo" onchange="onActsTipo()" style="flex:1;min-width:160px"></select>
-      <select id="act-eq" onchange="renderActsList()" style="flex:1.4;min-width:180px"></select>
+    <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      <select id="act-tipo" onchange="onActsTipo()" style="flex:1;min-width:150px" title="Tipo de equipo"></select>
+      <select id="act-alcance" onchange="onActsAlcance()" style="flex:1.6;min-width:210px" title="A qué se aplica el ajuste">
+        <option value="periodo">📅 A todo el tipo, en esta sede y período</option>
+        <option value="equipo">🔧 A un equipo, siempre</option>
+      </select>
+    </div>
+    <div id="act-eq-wrap" style="margin-bottom:12px;display:none">
+      <select id="act-eq" onchange="renderActsList()" style="width:100%"></select>
     </div>
     <div id="act-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:12px"></div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
