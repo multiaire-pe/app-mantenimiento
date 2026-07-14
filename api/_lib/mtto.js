@@ -4,7 +4,7 @@
 // (1 doc por foto). La lista de actividades es la EFECTIVA del equipo:
 // (plantilla tareas_config del tipo − quitadas) + agregadas de mtto_actividades_equipo.
 import { getDb } from './firestore.js';
-import { resolverEquipo } from './equipos.js';
+import { resolverEquipo, etiquetaEquipo, opcionesEquipo, elegirRescate } from './equipos.js';
 import { corregirSedeEquipo } from './gemini.js';
 import { contextoInventario } from './inventario.js';
 import { hoyLima } from './fecha.js';
@@ -227,12 +227,12 @@ function listaNumerada(acts) {
   return acts.map((t, i) => `${i + 1}. ${t}`).join('\n');
 }
 function pedirActividades(ses) {
-  return `🔧 *${ses.nombreEq}* (${ses.eqId}) · ${ses.sede}\n\nActividades del equipo:\n${listaNumerada(ses.actividades)}\n\n¿Cuáles realizaste? Responde con los números (ej: *1, 3, 5*) o *todas*.`;
+  return `🔧 *${etiquetaEquipo(ses)}*\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\n\nActividades del equipo:\n${listaNumerada(ses.actividades)}\n\n¿Cuáles realizaste? Responde con los números (ej: *1, 3, 5*) o *todas*.\n_(si ese NO es el equipo, escribe *cancelar*)_`;
 }
 function resumenConfirma(ses) {
   const { periodo, anio } = periodoLima();
   const hechas = ses.marcadas.map((i) => `✅ ${ses.actividades[i]}`).join('\n');
-  return `📋 *Confirma el registro*\n${ses.nombreEq} (${ses.eqId}) · ${ses.sede}\nPeríodo: ${periodo} ${anio}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
+  return `📋 *Confirma el registro*\n❄️ ${etiquetaEquipo(ses)}\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\nPeríodo: ${periodo} ${anio}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
 }
 // En la fase FOTOS ya se registró: se recorren las actividades REGISTRADAS (`ses.hechas`, por nombre).
 function pedirFotos(ses) {
@@ -400,10 +400,12 @@ async function guardarRegistro(ses, tecnico) {
     const acts = hechas;
     await notificarPorTipo('mtto',
       `🔧 *Registro de mantenimiento* — ${autor}\n` +
-      `❄️ ${ses.nombreEq} · 🏪 ${ses.sede} · 📅 ${periodo} ${anio}\n` +
+      `❄️ ${etiquetaEquipo(ses)} · 🏪 ${ses.sede} · 📅 ${periodo} ${anio}\n` +
       acts.map((a) => `✅ ${a}`).join('\n'),
       tecnico?.id || '',
-      { params: [autor, ses.nombreEq, ses.sede, `${periodo} ${anio}`, acts.join(' · ')] });
+      // En los params de la PLANTILLA de Meta el equipo va con su ubicación pero SIN emoji: un
+      // carácter inesperado puede hacer que Meta rechace el envío (y caeríamos a texto libre).
+      { params: [autor, ses.area ? `${ses.nombreEq} (${ses.area})` : ses.nombreEq, ses.sede, `${periodo} ${anio}`, acts.join(' · ')] });
   } catch (e) { console.error('[avisos mtto]', e.message); }
   return { clave, perdidas };
 }
@@ -570,16 +572,16 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     if (texto && esSaludo(texto)) {
       const n = await contarFotos(ses, null);
       await limpiarSesion(from);
-      return `🏁 Cerré el registro de *${ses.nombreEq}* (${n} foto(s)).\n\n${MENU_TEXTO}`;
+      return `🏁 Cerré el registro de *${etiquetaEquipo(ses)}* (${n} foto(s)).\n\n${MENU_TEXTO}`;
     }
     if (texto && await esRegistroActividad(texto)) {
       const n = await contarFotos(ses, null);
-      const cierre = `🏁 Cerré el registro de *${ses.nombreEq}* (${n} foto(s)).`;
+      const cierre = `🏁 Cerré el registro de *${etiquetaEquipo(ses)}* (${n} foto(s)).`;
       await limpiarSesion(from);
       const resp = await manejarMtto({ tecnico, from, texto, imagenB64: null, mime: null, onWriteStart });
       return `${cierre}\n\n${resp || ''}`;
     }
-    return `Envía una foto, *SIGUIENTE* para pasar de actividad o *FIN* para terminar. (Registro en curso: *${ses.nombreEq}*)`;
+    return `Envía una foto, *SIGUIENTE* para pasar de actividad o *FIN* para terminar. (Registro en curso: *${etiquetaEquipo(ses)}*)`;
   }
 
   await limpiarSesion(from);   // fase desconocida: reset defensivo
@@ -643,10 +645,10 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
     // falla (rate limit, key rotada, red), nos quedamos con lo que ya teníamos — no se pierde
     // nada respecto de no haberlo llamado.
     //
-    // La sede que el matcher YA resolvió queda CONGELADA: si lo que falta es el equipo, Gemini
-    // ayuda con el equipo, pero no puede mudar el registro a otra sede. Sin esto, ante "cortina
-    // 99 de mac plaza norte" (sede correcta, equipo inexistente) Gemini podía contestar "Plaza
-    // Norte", encontrar ahí una cortina 99, y registrarla en la sede equivocada.
+    // Qué puede y qué no puede hacer esa corrección lo decide `elegirRescate` (compartida con
+    // observaciones — tener la regla duplicada es cómo se arregla un flujo y el otro se queda con
+    // el bucle): no puede mudar de sede, no puede desempatar entre equipos reales y no puede
+    // ensanchar la lista de candidatos que el matcher ya había acotado.
     const sedeFijada = r.sede || null;
     let g = null;
     try {
@@ -658,10 +660,7 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
     if (g && (g.sede || g.equipo)) {
       const { sedeTxt, equipoTxt } = aplicarCorreccion(texto, g);
       const rg = await resolverEquipo(sedeFijada || sedeRespuesta || sedeTxt, equipoTxt, texto);
-      const mudoDeSede = sedeFijada && rg.sede && rg.sede !== sedeFijada;
-      // La corrección se acepta solo si AVANZA (resolvió, o al menos fijó la sede y falta el
-      // equipo) y si NO se lleva el registro a otra sede.
-      if (!mudoDeSede && (rg.ok || rg.motivo !== 'sede')) r = rg;
+      r = elegirRescate(r, rg);
       if (!r.ok && r.motivo === 'sede' && r.sedeAmbigua) return pideSede(r);
     }
   }
@@ -675,13 +674,20 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
     if (r.sede) ses.sedeFijada = r.sede;
     await guardarSesion(ses.from, ses);
     if (r.motivo === 'cliente') return `Esa sede existe para varios clientes (${(r.candidatosCliente || []).join(', ')}). ¿De cuál es?`;
-    return `¿Qué *equipo* es? ${r.candidatosEquipo?.length ? 'Opciones: ' + r.candidatosEquipo.slice(0, 6).map((e) => e.nombre).join(' · ') : 'Dime el nombre como figura en el inventario.'}`;
+    // Los candidatos se ofrecen por UBICACIÓN (mismo helper que observaciones): el técnico dice
+    // "el extractor del comedor", no "extractor 04" — sin el área no tiene con qué elegir.
+    const o = opcionesEquipo(r.candidatosEquipo);
+    if (!o) return '¿Qué *equipo* es? Dime el nombre como figura en el inventario.';
+    if (o.modo === 'tipos') return `Hay ${o.total} equipos. ¿De qué *tipo* es?\n${o.texto}\n\n_(o dime la *ubicación* o el *código* MA-...)_`;
+    if (o.modo === 'areas') return `Hay ${o.total} ${o.tipo.toLowerCase()}(s). ¿En qué *ubicación* está el tuyo?\n${o.texto}\n\n_(o dame el *código* MA-...)_`;
+    const mas = o.truncado ? `\n_(…y ${o.truncado} más — si no está, dame el código MA-...)_` : '';
+    return `¿Qué *equipo* es?\n${o.texto}${mas}\n\n_(dime la *ubicación*, el nombre o el código MA-...)_`;
   }
   ses.pidiendoSede = false;
   const acts = await actividadesDeEquipo(r.equipo.eqId, r.equipo.tipo, r.equipo.cliente, r.sede);
   if (!acts.length) {
     await limpiarSesion(ses.from);
-    return `⚠️ El equipo *${r.equipo.nombre}* (${r.equipo.eqId}) no tiene actividades configuradas. Pídele al administrador que configure las actividades de *${r.equipo.tipo}* para el cliente *${r.equipo.cliente || '—'}* en la app de Clientes.`;
+    return `⚠️ El equipo *${etiquetaEquipo(r.equipo)}* (${r.equipo.eqId}) no tiene actividades configuradas. Pídele al administrador que configure las actividades de *${r.equipo.tipo}* para el cliente *${r.equipo.cliente || '—'}* en la app de Clientes.`;
   }
   ses.sede = r.sede;
   ses.eqId = r.equipo.eqId;
