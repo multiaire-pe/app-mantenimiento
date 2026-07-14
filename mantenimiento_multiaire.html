@@ -304,7 +304,7 @@ option{background:#fff}
     getDoc: (r) => r.get(),
     collection: (db, col) => db.collection(col),
     doc: (db, col, id) => db.collection(col).doc(id),
-    setDoc: (ref, data) => ref.set(data),
+    setDoc: (ref, data, opts) => opts ? ref.set(data, opts) : ref.set(data),
     deleteDoc: (ref) => ref.delete(),
     writeBatch: (db) => db.batch(),
     query: (col, ...args) => col, // simplified
@@ -2974,12 +2974,21 @@ function maAddUser() {
   var rol = document.getElementById('ma-new-rol').value;
   if (!email || email.indexOf('@') === -1) { alert('Email inv\xE1lido'); return; }
   if (maAccessUsers.find(function(u){ return u.email === email; })) { alert('Ya existe'); return; }
-  window.__db.collection('usuarios').doc(email).set({email: email, rol: rol, apps: []}).then(function() {
+  // create-if-absent en transacción: si el doc YA existe (la lista en memoria puede estar
+  // desactualizada — otro admin pudo crearlo en paralelo), este set con apps:[] le borraría
+  // sus accesos. Un SUPERVISOR sin apps[] queda sin acceso a ningún módulo.
+  var _uref = window.__db.collection('usuarios').doc(email);
+  window.__db.runTransaction(function(tx) {
+    return tx.get(_uref).then(function(s) {
+      if (s.exists) { var _e = new Error('Este usuario ya existe'); _e.code = 'ma-existe'; throw _e; }
+      tx.set(_uref, {email: email, rol: rol, apps: []});
+    });
+  }).then(function() {
     maAccessUsers.push({email: email, rol: rol, apps: []});
     document.getElementById('ma-new-email').value = '';
     sessionStorage.removeItem('ma_emails'); sessionStorage.removeItem('ma_emails_time');
     maRenderAccessPanel();
-  }).catch(function(e) { alert('Error: ' + e.message); });
+  }).catch(function(e) { alert(e.code === 'ma-existe' ? 'Este usuario ya existe' : 'Error: ' + e.message); });
 }
 document.addEventListener('click', function(e) {
   var ov = document.getElementById('ma-access-overlay');
