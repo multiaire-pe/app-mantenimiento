@@ -185,6 +185,17 @@ async function avanzar(ses, msg, d) {
   }
 
   // Evaluar la ubicación contra la sede elegida.
+  //
+  // OJO — DECISIÓN DELIBERADA (usuario, 2026-07-01 y ratificada el 2026-07-14): estar FUERA DEL RADIO
+  // **no** bloquea el marcaje. Se registra con `dentroRadio:false` y la distancia real, y esa es
+  // justamente la evidencia que lo delata (el módulo de Asistencia lo muestra como "⚠️ fuera de radio
+  // · N m"). NO se debe "endurecer" esto exigiendo `ev.dentro` para avanzar al registro:
+  //   - Se llega a preguntarle la sede PRECISAMENTE porque ninguna la contiene, así que rechazar toda
+  //     respuesta fuera de radio deja al técnico en un BUCLE del que no sale (probado: 0 marcajes).
+  //   - Y solo podría marcar eligiendo una sede SIN coordenadas → premiaría la opción no verificable.
+  // Lo que sí es un bug (y era el de Enrique) es que el BOT INVENTE la sede. Que el técnico la DECLARE
+  // y quede registrado que no se pudo verificar es información honesta, no un agujero.
+  // Blindado en test_sede_por_ubicacion.mjs (mutación 'bloqueo').
   if (ses.sede && ses.punto) {
     const ev = evaluarSede(ses.punto, ses.sede);
     ses.ubicacion = { ...ev, lat: ses.punto.lat, lng: ses.punto.lng };
@@ -327,7 +338,7 @@ async function resolverSedePorNombre(texto, d, plan = [], opciones = []) {
   const q = norm(texto);
   if (!q) return null;
 
-  const soloNum = /^\s*(\d{1,2})\s*$/.exec(q);
+  const soloNum = /^\s*(\d+)\s*$/.exec(q); // sin tope de dígitos: la lista no se recorta
   if (soloNum && opciones.length) {
     const i = Number(soloNum[1]) - 1;
     return i >= 0 && i < opciones.length ? { sede: opciones[i] } : null;
