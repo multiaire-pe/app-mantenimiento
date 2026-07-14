@@ -186,7 +186,7 @@ async function avanzar(ses, msg, d) {
   // Aviso a los designados (Personal → 🔔 Alertas del bot); nunca frustra el marcaje
   try {
     const u = ses.ubicacion || {};
-    const hora = res.registro?.marcajeEntrada?.hora || res.registro?.marcajeSalida?.hora || '';
+    const hora = (ses.tipo === 'SALIDA' ? res.registro?.marcajeSalida?.hora : res.registro?.marcajeEntrada?.hora) || '';
     const geo = u.valida === false ? 'sin validación de distancia'
       : u.dentro ? `en la sede (${fmtDistancia(u.distancia)})`
       : `⚠️ fuera de radio (${fmtDistancia(u.distancia)})`;
@@ -273,7 +273,7 @@ function confirmacion(ses, res) {
   if (u.valida === false) geo = '📍 Sede sin coordenadas (no se pudo validar la distancia)';
   else if (u.dentro) geo = `📍 En la sede (${fmtDistancia(u.distancia)})`;
   else geo = `📍 A ${fmtDistancia(u.distancia)} de la sede · ⚠️ *fuera de radio*`;
-  const hora = res.registro?.marcajeEntrada?.hora || res.registro?.marcajeSalida?.hora || '';
+  const hora = (ses.tipo === 'SALIDA' ? res.registro?.marcajeSalida?.hora : res.registro?.marcajeEntrada?.hora) || '';
   return `✅ *${ses.tipo === 'SALIDA' ? 'Salida' : 'Entrada'} registrada* — ${ses.nombre}\n` +
     `🏪 ${labelSede(ses.sede)}${ses.fueraDePlan ? ' · ⚠️ *fuera de plan*' : ''}\n` +
     `🕐 ${hora}\n${geo}\n📷 Selfie recibida\n\n` +
