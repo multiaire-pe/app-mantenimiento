@@ -138,12 +138,15 @@ async function avanzar(ses, msg, d) {
     ses.punto = { lat: Number(msg.ubicacion.lat), lng: Number(msg.ubicacion.lng) };
   }
 
-  // Elegir sede por nombre (cuando se le preguntó).
+  // Elegir sede por nombre (cuando se le preguntó porque su ubicación no cae en ninguna sede).
   if (ses.fase === 'ELIGE_SEDE' && msg.t && !msg.ubicacion) {
-    const sede = await resolverSedePorNombre(msg.t, d);
-    if (!sede) { await d.store.guardarSesion(from, ses); return `No reconocí esa sede. ${await listaSedesTxt(d)}`; }
+    const plan = await enriquecerPlan(ses.planSedes, d);
+    const sede = await resolverSedePorNombre(msg.t, d, plan);
+    if (!sede) { await d.store.guardarSesion(from, ses); return `No reconocí esa sede. ${await listaSedesTxt(d, await sedesElegibles(d, plan))}`; }
     ses.sede = compactSede(sede);
-    ses.fueraDePlan = true;
+    // Si la sede que dijo SÍ estaba en su itinerario, no corresponde la bandera de fuera de plan
+    // (antes se ponía en `true` a ciegas y le mentía al que estaba justo donde debía estar).
+    ses.fueraDePlan = !estaEnLista(sede, plan);
     ses.fase = 'RECOLECTA';
   }
 
@@ -208,16 +211,34 @@ function compactSede(s) {
   };
 }
 
-// ¿Esta sede es una de las del plan del día? Por id, o por nombre si el bloque no trae `idTienda`
-// (una "zona de trabajo" escrita a mano en el itinerario no lo tiene).
-function esDelPlan(sede, plan) {
-  const id = sede.idTienda || sede.id || '';
-  const nom = norm(sede.sede || sede.tienda || '');
-  return (plan || []).some((p) => {
-    const pid = p.idTienda || p.id || '';
-    if (id && pid && id === pid) return true;
-    return !!nom && nom === norm(p.sede || p.tienda || '');
-  });
+// ¿Son la misma sede? Por id cuando ambos lo traen (es autoritativo); si no, por nombre + cliente
+// (una "zona de trabajo" escrita a mano en el itinerario no tiene `idTienda`).
+function mismaSede(a, b) {
+  const ida = a.idTienda || a.id || '', idb = b.idTienda || b.id || '';
+  if (ida && idb) return ida === idb;
+  const na = [norm(a.sede), norm(a.tienda)].filter(Boolean);
+  const nb = [norm(b.sede), norm(b.tienda)].filter(Boolean);
+  if (!na.some((n) => nb.includes(n))) return false;
+  const ca = norm(a.cliente || ''), cb = norm(b.cliente || '');
+  return !ca || !cb || ca === cb; // si ambos declaran cliente, tiene que coincidir
+}
+const estaEnLista = (sede, lista) => (lista || []).some((s) => mismaSede(sede, s));
+
+// Las sedes del plan del día, con sus coordenadas traídas de maestros_tiendas.
+async function enriquecerPlan(planSedes, d) {
+  const out = [];
+  for (const sp of planSedes || []) out.push(await enriquecer(sp, d.tiendaPorId));
+  return out;
+}
+
+// Sedes que el técnico puede elegir cuando se le pregunta: las del maestro MÁS las de su plan que
+// no estén en él (si su itinerario lo mandó a una "zona de trabajo" libre, tiene que poder decirla;
+// si no, quedaría sin poder marcar). Una zona así no tiene coordenadas → el registro sale con
+// `geovalidada:false`, que es exactamente lo que corresponde: no se pudo verificar dónde estaba.
+async function sedesElegibles(d, plan) {
+  const tiendas = (await d.cargarTiendas()).filter((t) => t.activo);
+  const extra = (plan || []).filter((p) => !estaEnLista(p, tiendas));
+  return [...tiendas, ...extra];
 }
 
 // Elige la sede a partir de la ubicación compartida. LA UBICACIÓN REAL MANDA SOBRE EL PLAN:
@@ -226,39 +247,34 @@ function esDelPlan(sede, plan) {
 //      tienda que no estaba en su itinerario, y la evidencia tiene que decir dónde estuvo de verdad.
 //   3) ¿No está dentro de NINGUNA sede? → no se asume ninguna: se le pregunta (fase ELIGE_SEDE).
 //
-// El plan NO puede ganarle a la geo: antes se registraba "la sede del plan más cercana" sin mirar el
-// radio, así que con un plan de una sola sede cualquier coordenada del planeta caía en ella (un
-// técnico parado en Jockey Plaza quedó registrado en Comas, a 19,7 km — 2026-07-14).
+// El plan NO puede ganarle a la geo, NUNCA: antes se registraba "la sede del plan más cercana" sin
+// mirar el radio, así que con un plan de una sola sede cualquier coordenada del planeta caía en ella
+// (un técnico parado en Jockey Plaza quedó registrado en Comas, a 19,7 km — 2026-07-14). Tampoco hay
+// excepción para el plan sin coordenadas: si no se puede geovalidar, se pregunta (Council, 2026-07-14).
 async function resolverSedePorUbicacion(ses, d) {
-  const plan = [];
-  for (const sp of ses.planSedes || []) plan.push(await enriquecer(sp, d.tiendaPorId));
-  const planConGeo = plan.filter((s) => s.latitud != null && s.longitud != null);
+  const plan = await enriquecerPlan(ses.planSedes, d);
 
   // 1) Dentro de una sede de su plan.
-  const enPlan = sedeQueContiene(ses.punto, planConGeo);
+  const enPlan = sedeQueContiene(ses.punto, plan.filter((s) => s.latitud != null && s.longitud != null));
   if (enPlan) return { sede: enPlan.sede, fueraDePlan: false };
 
-  // 2) Dentro de otra sede real (la realidad gana). `esDelPlan` evita marcar una bandera falsa
+  // 2) Dentro de otra sede real (la realidad gana). `estaEnLista` evita marcar una bandera falsa
   //    cuando la sede sí era de su plan pero el bloque no traía coordenadas.
   const enOtra = sedeQueContiene(ses.punto, await d.tiendasConGeo());
-  if (enOtra) return { sede: enOtra.sede, fueraDePlan: !esDelPlan(enOtra.sede, plan) };
+  if (enOtra) return { sede: enOtra.sede, fueraDePlan: !estaEnLista(enOtra.sede, plan) };
 
-  // 3) Su plan tiene UNA sola sede y no tiene coordenadas cargadas: no hay geo que contradiga al
-  //    itinerario (esto es ausencia de dato, no una discrepancia) → se acepta la sede del plan.
-  if (plan.length === 1 && !planConGeo.length) return { sede: plan[0], fueraDePlan: false };
-
-  // 4) Ninguna sede lo contiene: NO se asume ninguna.
+  // 3) Ninguna sede lo contiene: NO se asume ninguna.
   const preambulo = plan.length
     ? 'Tu ubicación no cae dentro de ninguna sede'
     : 'No tienes sede asignada hoy en el itinerario y tu ubicación no cae dentro de ninguna sede';
-  return { preguntar: true, mensaje: `${preambulo}. ¿En qué sede estás?\n${await listaSedesTxt(d)}` };
+  return { preguntar: true, mensaje: `${preambulo}. ¿En qué sede estás?\n${await listaSedesTxt(d, await sedesElegibles(d, plan))}` };
 }
 
-// Empareja un texto contra el maestro de sedes (por sede/tienda/cliente).
-async function resolverSedePorNombre(texto, d) {
+// Empareja un texto contra las sedes que puede elegir: el maestro + las zonas libres de su plan.
+async function resolverSedePorNombre(texto, d, plan = []) {
   const q = norm(texto);
   if (!q) return null;
-  const tiendas = (await d.cargarTiendas()).filter((t) => t.activo);
+  const tiendas = await sedesElegibles(d, plan);
   let mejor = null, mejorScore = 0;
   for (const t of tiendas) {
     const campos = [norm(t.sede), norm(t.tienda), norm(t.sede).replace(/^ripley\s+/, '')];
