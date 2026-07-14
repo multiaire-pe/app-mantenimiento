@@ -5,8 +5,8 @@
 //
 // Estados de la sesión (wa_asistencia_sesiones):
 //   RECOLECTA   → espera ubicación y/o selfie (en cualquier orden).
-//   ELIGE_SEDE  → sin plan y fuera de todo radio: se pregunta en qué sede está.
-import { evaluarSede, sedeMasCercana, fmtDistancia } from './geo.js';
+//   ELIGE_SEDE  → su ubicación no cae dentro de ninguna sede: se pregunta en cuál está (tenga plan o no).
+import { evaluarSede, sedeQueContiene, fmtDistancia } from './geo.js';
 import { hoyLima, ahoraDecimalLima, horaHHMMLima, decimalAHHMM } from './fecha.js';
 import { sedesDelDia as _sedesDelDia } from './plan_dia.js';
 import { cargarTiendas as _cargarTiendas, tiendaPorId as _tiendaPorId, tiendasConGeo as _tiendasConGeo } from './tiendas.js';
@@ -138,24 +138,64 @@ async function avanzar(ses, msg, d) {
     ses.punto = { lat: Number(msg.ubicacion.lat), lng: Number(msg.ubicacion.lng) };
   }
 
-  // Elegir sede por nombre (cuando se le preguntó).
-  if (ses.fase === 'ELIGE_SEDE' && msg.t && !msg.ubicacion) {
-    const sede = await resolverSedePorNombre(msg.t, d);
-    if (!sede) { await d.store.guardarSesion(from, ses); return `No reconocí esa sede. ${await listaSedesTxt(d)}`; }
-    ses.sede = compactSede(sede);
-    ses.fueraDePlan = true;
+  // Elegir sede por nombre o por número (cuando se le preguntó porque su ubicación no cae en ninguna).
+  // El guard `!ses.sede` es necesario: si ya se resolvió la sede (p.ej. mandó una ubicación nueva que
+  // sí cae dentro de una), un texto suelto posterior NO puede reentrar acá y pisarla con una opción
+  // de la lista vieja.
+  if (ses.fase === 'ELIGE_SEDE' && !ses.sede && msg.t && !msg.ubicacion) {
+    const plan = await enriquecerPlan(ses.planSedes, d);
+    const r = await resolverSedePorNombre(msg.t, d, plan, ses.opciones || []);
+
+    if (!r) {
+      ses.opciones = (await sedesElegibles(d, plan)).map(compactSede);
+      await d.store.guardarSesion(from, ses);
+      return `No reconocí esa sede. Responde el número:\n${listaNumerada(ses.opciones)}`;
+    }
+    // Empate: NO se elige por el bot. Registrar la sede equivocada es peor que un mensaje más.
+    if (r.ambiguas) {
+      ses.opciones = r.ambiguas.map(compactSede);
+      await d.store.guardarSesion(from, ses);
+      return `Hay varias que coinciden. ¿En cuál estás? Responde el número:\n${listaNumerada(ses.opciones)}`;
+    }
+
+    ses.sede = compactSede(r.sede);
+    // Si la sede que dijo SÍ estaba en su itinerario, no corresponde la bandera de fuera de plan
+    // (antes se ponía en `true` a ciegas y le mentía al que estaba justo donde debía estar).
+    ses.fueraDePlan = !estaEnLista(r.sede, plan);
+    ses.opciones = null;
     ses.fase = 'RECOLECTA';
   }
 
   // Resolver sede automáticamente a partir de la ubicación, si aún no hay sede.
   if (!ses.sede && ses.punto) {
     const r = await resolverSedePorUbicacion(ses, d);
-    if (r.preguntar) { ses.fase = 'ELIGE_SEDE'; await d.store.guardarSesion(from, ses); return r.mensaje; }
+    if (r.preguntar) {
+      ses.fase = 'ELIGE_SEDE';
+      ses.opciones = r.opciones || null; // para poder responder con el número de la lista
+      await d.store.guardarSesion(from, ses);
+      return r.mensaje;
+    }
     ses.sede = compactSede(r.sede);
     ses.fueraDePlan = r.fueraDePlan;
+    // Si venía de ELIGE_SEDE (le habíamos preguntado) y ahora una ubicación nueva SÍ resolvió la
+    // sede, hay que salir de esa fase y tirar las opciones: si no, la sesión queda diciendo
+    // "todavía le estoy preguntando" con la sede ya elegida.
+    ses.fase = 'RECOLECTA';
+    ses.opciones = null;
   }
 
   // Evaluar la ubicación contra la sede elegida.
+  //
+  // OJO — DECISIÓN DELIBERADA (usuario, 2026-07-01 y ratificada el 2026-07-14): estar FUERA DEL RADIO
+  // **no** bloquea el marcaje. Se registra con `dentroRadio:false` y la distancia real, y esa es
+  // justamente la evidencia que lo delata (el módulo de Asistencia lo muestra como "⚠️ fuera de radio
+  // · N m"). NO se debe "endurecer" esto exigiendo `ev.dentro` para avanzar al registro:
+  //   - Se llega a preguntarle la sede PRECISAMENTE porque ninguna la contiene, así que rechazar toda
+  //     respuesta fuera de radio deja al técnico en un BUCLE del que no sale (probado: 0 marcajes).
+  //   - Y solo podría marcar eligiendo una sede SIN coordenadas → premiaría la opción no verificable.
+  // Lo que sí es un bug (y era el de Enrique) es que el BOT INVENTE la sede. Que el técnico la DECLARE
+  // y quede registrado que no se pudo verificar es información honesta, no un agujero.
+  // Blindado en test_sede_por_ubicacion.mjs (mutación 'bloqueo').
   if (ses.sede && ses.punto) {
     const ev = evaluarSede(ses.punto, ses.sede);
     ses.ubicacion = { ...ev, lat: ses.punto.lat, lng: ses.punto.lng };
@@ -208,49 +248,123 @@ function compactSede(s) {
   };
 }
 
-// Elige la sede a partir de la ubicación compartida.
-//   - Con plan del día: la sede del plan MÁS CERCANA (aunque quede fuera de radio → se marca la bandera).
-//   - Sin plan: la sede (de todas) más cercana que caiga dentro de su radio; si ninguna, se pregunta.
-async function resolverSedePorUbicacion(ses, d) {
-  if (ses.planSedes && ses.planSedes.length) {
-    const enriquecidas = [];
-    for (const sp of ses.planSedes) enriquecidas.push(await enriquecer(sp, d.tiendaPorId));
-    const conGeo = enriquecidas.filter((s) => s.latitud != null && s.longitud != null);
-    if (conGeo.length) {
-      const mejor = sedeMasCercana(ses.punto, conGeo);
-      if (mejor) return { sede: mejor.sede, fueraDePlan: false };
-    }
-    if (enriquecidas.length === 1) return { sede: enriquecidas[0], fueraDePlan: false };
-    return { preguntar: true, mensaje: `Tu itinerario de hoy tiene varias sedes pero aún sin coordenadas cargadas. ¿En cuál estás?\n${await listaSedesTxt(d, enriquecidas)}` };
+// Todos los nombres con los que se puede referir a una sede: su `sede`, su `tienda`, y las mismas
+// sin el prefijo del cliente ("RIPLEY COMAS" → también "COMAS"). El prefijo sale del campo `cliente`
+// (es dato, no una lista hardcodeada que se desactualice al entrar el segundo cliente).
+// UNA sola definición de "cómo se llama esta sede", usada tanto para comparar dos sedes como para
+// emparejar lo que escribe el técnico — si divergen, una sede del plan se ve como ajena.
+function nombresDe(s) {
+  const out = new Set();
+  const cli = norm(s.cliente || '');
+  for (const raw of [s.sede, s.tienda]) {
+    const n = norm(raw || '');
+    if (!n) continue;
+    out.add(n);
+    if (cli && n.startsWith(`${cli} `)) out.add(n.slice(cli.length + 1));
   }
-  const conGeo = await d.tiendasConGeo();
-  const mejor = sedeMasCercana(ses.punto, conGeo);
-  if (mejor && mejor.dentro) return { sede: mejor.sede, fueraDePlan: true };
-  return { preguntar: true, mensaje: `No tienes sede asignada hoy en el itinerario y no reconozco dónde estás por el GPS. ¿En qué sede estás?\n${await listaSedesTxt(d)}` };
+  return [...out];
 }
 
-// Empareja un texto contra el maestro de sedes (por sede/tienda/cliente).
-async function resolverSedePorNombre(texto, d) {
+// ¿Son la misma sede? Por id cuando ambos lo traen (es autoritativo); si no, por nombre + cliente
+// (una "zona de trabajo" escrita a mano en el itinerario no tiene `idTienda`).
+function mismaSede(a, b) {
+  const ida = a.idTienda || a.id || '', idb = b.idTienda || b.id || '';
+  if (ida && idb) return ida === idb;
+  const na = nombresDe(a), nb = nombresDe(b);
+  if (!na.some((n) => nb.includes(n))) return false;
+  const ca = norm(a.cliente || ''), cb = norm(b.cliente || '');
+  return !ca || !cb || ca === cb; // si ambos declaran cliente, tiene que coincidir
+}
+const estaEnLista = (sede, lista) => (lista || []).some((s) => mismaSede(sede, s));
+
+// Las sedes del plan del día, con sus coordenadas traídas de maestros_tiendas.
+async function enriquecerPlan(planSedes, d) {
+  const out = [];
+  for (const sp of planSedes || []) out.push(await enriquecer(sp, d.tiendaPorId));
+  return out;
+}
+
+// Sedes que el técnico puede elegir cuando se le pregunta: las de su plan primero (son las más
+// probables) y luego el resto del maestro. Incluye las zonas de su plan que NO estén en el maestro
+// (si su itinerario lo mandó a una "zona de trabajo" libre, tiene que poder decirla; si no, quedaría
+// sin poder marcar). Una zona así no tiene coordenadas → el registro sale con `geovalidada:false`,
+// que es exactamente lo que corresponde: no se pudo verificar dónde estaba.
+async function sedesElegibles(d, plan) {
+  const tiendas = (await d.cargarTiendas()).filter((t) => t.activo);
+  const delPlan = tiendas.filter((t) => estaEnLista(t, plan));
+  const resto = tiendas.filter((t) => !estaEnLista(t, plan));
+  const zonasLibres = (plan || []).filter((p) => !estaEnLista(p, tiendas));
+  return [...delPlan, ...zonasLibres, ...resto];
+}
+
+// Elige la sede a partir de la ubicación compartida. LA UBICACIÓN REAL MANDA SOBRE EL PLAN:
+//   1) ¿Está dentro del radio de una sede de su plan? → esa (el caso normal).
+//   2) ¿No, pero está parado dentro de OTRA sede real? → esa, con bandera FUERA DE PLAN. Fue a una
+//      tienda que no estaba en su itinerario, y la evidencia tiene que decir dónde estuvo de verdad.
+//   3) ¿No está dentro de NINGUNA sede? → no se asume ninguna: se le pregunta (fase ELIGE_SEDE).
+//
+// El plan NO puede ganarle a la geo, NUNCA: antes se registraba "la sede del plan más cercana" sin
+// mirar el radio, así que con un plan de una sola sede cualquier coordenada del planeta caía en ella
+// (un técnico parado en Jockey Plaza quedó registrado en Comas, a 19,7 km — 2026-07-14). Tampoco hay
+// excepción para el plan sin coordenadas: si no se puede geovalidar, se pregunta (Council, 2026-07-14).
+async function resolverSedePorUbicacion(ses, d) {
+  const plan = await enriquecerPlan(ses.planSedes, d);
+
+  // 1) Dentro de una sede de su plan.
+  const enPlan = sedeQueContiene(ses.punto, plan.filter((s) => s.latitud != null && s.longitud != null));
+  if (enPlan) return { sede: enPlan.sede, fueraDePlan: false };
+
+  // 2) Dentro de otra sede real (la realidad gana). `estaEnLista` evita marcar una bandera falsa
+  //    cuando la sede sí era de su plan pero el bloque no traía coordenadas.
+  const enOtra = sedeQueContiene(ses.punto, await d.tiendasConGeo());
+  if (enOtra) return { sede: enOtra.sede, fueraDePlan: !estaEnLista(enOtra.sede, plan) };
+
+  // 3) Ninguna sede lo contiene: NO se asume ninguna.
+  const preambulo = plan.length
+    ? 'Tu ubicación no cae dentro de ninguna sede'
+    : 'No tienes sede asignada hoy en el itinerario y tu ubicación no cae dentro de ninguna sede';
+  const opciones = (await sedesElegibles(d, plan)).map(compactSede);
+  return { preguntar: true, opciones, mensaje: `${preambulo}. ¿En qué sede estás? Responde el número:\n${listaNumerada(opciones)}` };
+}
+
+// Empareja lo que escribió el técnico contra las sedes que puede elegir (maestro + zonas libres de
+// su plan). Devuelve { sede } · { ambiguas } · null.
+//
+// NUNCA desempata por su cuenta: el match por substring es ambiguo por naturaleza ("plaza" calza con
+// PLAZA NORTE, MAC PLAZA NORTE y JOCKEY PLAZA), y quedarse con la primera del array —lo que hacía
+// antes— escribe el marcaje en una sede donde el técnico no está. Ante empate se le pregunta.
+// Si se le ofreció una lista numerada, un número la resuelve sin ambigüedad posible.
+async function resolverSedePorNombre(texto, d, plan = [], opciones = []) {
   const q = norm(texto);
   if (!q) return null;
-  const tiendas = (await d.cargarTiendas()).filter((t) => t.activo);
-  let mejor = null, mejorScore = 0;
-  for (const t of tiendas) {
-    const campos = [norm(t.sede), norm(t.tienda), norm(t.sede).replace(/^ripley\s+/, '')];
+
+  const soloNum = /^\s*(\d+)\s*$/.exec(q); // sin tope de dígitos: la lista no se recorta
+  if (soloNum && opciones.length) {
+    const i = Number(soloNum[1]) - 1;
+    return i >= 0 && i < opciones.length ? { sede: opciones[i] } : null;
+  }
+
+  let mejorScore = 0, mejores = [];
+  for (const t of await sedesElegibles(d, plan)) {
     let score = 0;
-    for (const c of campos) {
-      if (!c) continue;
+    for (const c of nombresDe(t)) {
       if (c === q) score = Math.max(score, 3);
       else if (c.includes(q) || q.includes(c)) score = Math.max(score, 2);
     }
-    if (score > mejorScore) { mejorScore = score; mejor = t; }
+    if (!score) continue;
+    if (score > mejorScore) { mejorScore = score; mejores = [t]; }
+    else if (score === mejorScore && !estaEnLista(t, mejores)) mejores.push(t);
   }
-  return mejorScore >= 2 ? mejor : null;
+  if (!mejorScore) return null;
+  return mejores.length === 1 ? { sede: mejores[0] } : { ambiguas: mejores };
 }
 
-async function listaSedesTxt(d, lista = null) {
-  const sedes = lista || (await d.cargarTiendas()).filter((t) => t.activo);
-  return sedes.slice(0, 15).map((s) => `• ${labelSede(s)}`).join('\n');
+// Lista numerada: el técnico puede responder el número y no hay ambigüedad que resolver.
+// NO recorta: el número que responde tiene que corresponder SIEMPRE a una opción que vio. Si acá se
+// mostraran 15 y la sesión guardara 20, un "16" elegiría una sede que nunca se le ofreció.
+// Por eso `sedesElegibles` pone las de su plan primero: lo más probable queda arriba de la lista.
+function listaNumerada(sedes) {
+  return sedes.map((s, i) => `${i + 1}. ${labelSede(s)}`).join('\n');
 }
 
 // ── Mensajes ──────────────────────────────────────────────────────────────────
