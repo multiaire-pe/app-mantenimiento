@@ -5,8 +5,8 @@
 //
 // Estados de la sesión (wa_asistencia_sesiones):
 //   RECOLECTA   → espera ubicación y/o selfie (en cualquier orden).
-//   ELIGE_SEDE  → sin plan y fuera de todo radio: se pregunta en qué sede está.
-import { evaluarSede, sedeMasCercana, fmtDistancia } from './geo.js';
+//   ELIGE_SEDE  → su ubicación no cae dentro de ninguna sede: se pregunta en cuál está (tenga plan o no).
+import { evaluarSede, sedeQueContiene, fmtDistancia } from './geo.js';
 import { hoyLima, ahoraDecimalLima, horaHHMMLima, decimalAHHMM } from './fecha.js';
 import { sedesDelDia as _sedesDelDia } from './plan_dia.js';
 import { cargarTiendas as _cargarTiendas, tiendaPorId as _tiendaPorId, tiendasConGeo as _tiendasConGeo } from './tiendas.js';
@@ -208,25 +208,50 @@ function compactSede(s) {
   };
 }
 
-// Elige la sede a partir de la ubicación compartida.
-//   - Con plan del día: la sede del plan MÁS CERCANA (aunque quede fuera de radio → se marca la bandera).
-//   - Sin plan: la sede (de todas) más cercana que caiga dentro de su radio; si ninguna, se pregunta.
+// ¿Esta sede es una de las del plan del día? Por id, o por nombre si el bloque no trae `idTienda`
+// (una "zona de trabajo" escrita a mano en el itinerario no lo tiene).
+function esDelPlan(sede, plan) {
+  const id = sede.idTienda || sede.id || '';
+  const nom = norm(sede.sede || sede.tienda || '');
+  return (plan || []).some((p) => {
+    const pid = p.idTienda || p.id || '';
+    if (id && pid && id === pid) return true;
+    return !!nom && nom === norm(p.sede || p.tienda || '');
+  });
+}
+
+// Elige la sede a partir de la ubicación compartida. LA UBICACIÓN REAL MANDA SOBRE EL PLAN:
+//   1) ¿Está dentro del radio de una sede de su plan? → esa (el caso normal).
+//   2) ¿No, pero está parado dentro de OTRA sede real? → esa, con bandera FUERA DE PLAN. Fue a una
+//      tienda que no estaba en su itinerario, y la evidencia tiene que decir dónde estuvo de verdad.
+//   3) ¿No está dentro de NINGUNA sede? → no se asume ninguna: se le pregunta (fase ELIGE_SEDE).
+//
+// El plan NO puede ganarle a la geo: antes se registraba "la sede del plan más cercana" sin mirar el
+// radio, así que con un plan de una sola sede cualquier coordenada del planeta caía en ella (un
+// técnico parado en Jockey Plaza quedó registrado en Comas, a 19,7 km — 2026-07-14).
 async function resolverSedePorUbicacion(ses, d) {
-  if (ses.planSedes && ses.planSedes.length) {
-    const enriquecidas = [];
-    for (const sp of ses.planSedes) enriquecidas.push(await enriquecer(sp, d.tiendaPorId));
-    const conGeo = enriquecidas.filter((s) => s.latitud != null && s.longitud != null);
-    if (conGeo.length) {
-      const mejor = sedeMasCercana(ses.punto, conGeo);
-      if (mejor) return { sede: mejor.sede, fueraDePlan: false };
-    }
-    if (enriquecidas.length === 1) return { sede: enriquecidas[0], fueraDePlan: false };
-    return { preguntar: true, mensaje: `Tu itinerario de hoy tiene varias sedes pero aún sin coordenadas cargadas. ¿En cuál estás?\n${await listaSedesTxt(d, enriquecidas)}` };
-  }
-  const conGeo = await d.tiendasConGeo();
-  const mejor = sedeMasCercana(ses.punto, conGeo);
-  if (mejor && mejor.dentro) return { sede: mejor.sede, fueraDePlan: true };
-  return { preguntar: true, mensaje: `No tienes sede asignada hoy en el itinerario y no reconozco dónde estás por el GPS. ¿En qué sede estás?\n${await listaSedesTxt(d)}` };
+  const plan = [];
+  for (const sp of ses.planSedes || []) plan.push(await enriquecer(sp, d.tiendaPorId));
+  const planConGeo = plan.filter((s) => s.latitud != null && s.longitud != null);
+
+  // 1) Dentro de una sede de su plan.
+  const enPlan = sedeQueContiene(ses.punto, planConGeo);
+  if (enPlan) return { sede: enPlan.sede, fueraDePlan: false };
+
+  // 2) Dentro de otra sede real (la realidad gana). `esDelPlan` evita marcar una bandera falsa
+  //    cuando la sede sí era de su plan pero el bloque no traía coordenadas.
+  const enOtra = sedeQueContiene(ses.punto, await d.tiendasConGeo());
+  if (enOtra) return { sede: enOtra.sede, fueraDePlan: !esDelPlan(enOtra.sede, plan) };
+
+  // 3) Su plan tiene UNA sola sede y no tiene coordenadas cargadas: no hay geo que contradiga al
+  //    itinerario (esto es ausencia de dato, no una discrepancia) → se acepta la sede del plan.
+  if (plan.length === 1 && !planConGeo.length) return { sede: plan[0], fueraDePlan: false };
+
+  // 4) Ninguna sede lo contiene: NO se asume ninguna.
+  const preambulo = plan.length
+    ? 'Tu ubicación no cae dentro de ninguna sede'
+    : 'No tienes sede asignada hoy en el itinerario y tu ubicación no cae dentro de ninguna sede';
+  return { preguntar: true, mensaje: `${preambulo}. ¿En qué sede estás?\n${await listaSedesTxt(d)}` };
 }
 
 // Empareja un texto contra el maestro de sedes (por sede/tienda/cliente).

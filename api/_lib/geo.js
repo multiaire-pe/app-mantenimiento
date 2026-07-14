@@ -56,6 +56,20 @@ export function sedeMasCercana(punto, sedes) {
   return mejor;
 }
 
+// La sede que CONTIENE al punto (está dentro de su radio); si varias lo contienen, la más cercana.
+// Distinto de `sedeMasCercana`: esta nunca devuelve una sede que no contenga al punto.
+// No basta con filtrar el resultado de `sedeMasCercana` por `dentro` — cada sede tiene su propio
+// radio, así que la más cercana puede quedar fuera del suyo mientras otra más lejana sí lo contiene.
+export function sedeQueContiene(punto, sedes) {
+  let mejor = null;
+  for (const sede of sedes || []) {
+    const ev = evaluarSede(punto, sede);
+    if (!ev.valida || !ev.dentro) continue;
+    if (!mejor || ev.distancia < mejor.distancia) mejor = { sede, ...ev };
+  }
+  return mejor;
+}
+
 // Formatea metros para el mensaje al técnico ("120 m", "1.3 km").
 export function fmtDistancia(m) {
   if (m == null || !Number.isFinite(m)) return '—';
