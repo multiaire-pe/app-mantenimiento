@@ -93,7 +93,11 @@ service cloud.firestore {
 
     // ── Datos operativos: lectura autorizada; crear/editar según rol+app; borrar SOLO super ──
     match /inventario/{doc}                { allow read: if authorized(); allow create, update: if canWrite('inventario');    allow delete: if isSuper(); }
-    match /asistencia_registros/{doc}      { allow read: if authorized(); allow create, update: if canWrite('asistencia');    allow delete: if isSuper(); }
+    // delete: isAdmin (no isSuper) — pedido explícito del usuario 2026-07-14: borrar un
+    // registro suelto de asistencia es corrección operativa normal (fecha mal cargada,
+    // duplicado de importación, etc.), no un borrado crítico. UX alineada en auth-guard.js
+    // ('borrarRegistroAsistencia', tratado como OPERATIVA en vez de SOLO_SUPER).
+    match /asistencia_registros/{doc}      { allow read: if authorized(); allow create, update: if canWrite('asistencia');    allow delete: if isAdmin(); }
     match /asistencia_registros_fotos/{doc}{ allow read: if authorized(); allow create, update: if canWrite('asistencia');    allow delete: if isSuper(); }
     match /proveedores/{doc}               { allow read: if authorized(); allow create, update: if canWrite('proveedores');   allow delete: if isSuper(); }
     // compras: historial de compras a proveedores (proveedores.html). Mismo permiso que
