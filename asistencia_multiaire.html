@@ -858,8 +858,8 @@ async function loadColabs() {
   const snap=await window.__db.collection('maestros_personal').get();
   allColabs=snap.docs.map((d,i)=>{
     const p=d.data();
-    return{id:String(p.id||('PER'+String(i+1).padStart(3,'0'))).trim(),nombre:String(p.nombre||'').trim(),cargo:String(p.cargo||'TÉCNICO').trim(),activo:String(p.activo||'SI').trim().toUpperCase()!=='NO',fechaIngreso:String(p.fechaIngreso||'').trim(),fechaCese:String(p.fechaCese||'').trim()};
-  }).filter(p=>p.nombre).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+    return{id:String(p.id||('PER'+String(i+1).padStart(3,'0'))).trim(),nombre:String(p.nombre||'').trim(),cargo:String(p.cargo||'TÉCNICO').trim(),activo:String(p.activo||'SI').trim().toUpperCase()!=='NO',fechaIngreso:String(p.fechaIngreso||'').trim(),fechaCese:String(p.fechaCese||'').trim(),regimenAsistencia:String(p.regimenAsistencia||'MARCA').trim().toUpperCase()};
+  }).filter(p=>p.nombre&&p.regimenAsistencia!=='NO_MARCA').sort((a,b)=>a.nombre.localeCompare(b.nombre));
   renderColabsGrid();
   populateColabSelects();
 }
