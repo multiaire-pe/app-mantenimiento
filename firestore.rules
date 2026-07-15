@@ -96,7 +96,7 @@ service cloud.firestore {
     // delete: isAdmin (no isSuper) — pedido explícito del usuario 2026-07-14: borrar un
     // registro suelto de asistencia es corrección operativa normal (fecha mal cargada,
     // duplicado de importación, etc.), no un borrado crítico. UX alineada en auth-guard.js
-    // ('borrarRegistroAsistencia', tratado como OPERATIVA en vez de SOLO_SUPER).
+    // ('borrarRegistroAsistencia' es admin-only: rama explícita en can() → isAdmin()).
     match /asistencia_registros/{doc}      { allow read: if authorized(); allow create, update: if canWrite('asistencia');    allow delete: if isAdmin(); }
     match /asistencia_registros_fotos/{doc}{ allow read: if authorized(); allow create, update: if canWrite('asistencia');    allow delete: if isSuper(); }
     match /proveedores/{doc}               { allow read: if authorized(); allow create, update: if canWrite('proveedores');   allow delete: if isSuper(); }
