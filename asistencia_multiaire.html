@@ -1243,10 +1243,13 @@ async function loadVistaTA() {
         const fer=isFeriado(f);
         if(isDom){html+=`<td class="ta-cell-DOM">—</td>`;return;}
         if(fer){html+=`<td class="ta-cell-FER">FER</td>`;return;}
+        // Fuera del período laboral (antes de ingresar / después de cesar): celda vacía,
+        // sin marcar falta, aunque exista un registro suelto fuera de vigencia.
+        if(fueraDeVigencia(c,f)){html+=`<td class="ta-cell-empty"></td>`;return;}
         const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
         if(!reg){
-          // Fecha futura o fuera del período laboral del colaborador (antes de ingresar / después de cesar): vacía, sin marcar falta
-          if(f>todayKey()||fueraDeVigencia(c,f)){html+=`<td class="ta-cell-empty"></td>`;return;}
+          // Fecha futura: vacía, sin marcar falta
+          if(f>todayKey()){html+=`<td class="ta-cell-empty"></td>`;return;}
           html+=`<td class="ta-cell-X" onclick="openEditReg(null,'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">X</td>`;return;
         }
         if(reg.estado==='DM'){html+=`<td class="ta-cell-DM">DM</td>`;return;}
@@ -1294,22 +1297,25 @@ async function loadVistaES() {
         const[,m,dd]=f.split('-');
         const fechaStr=`${dd}/${m}`;
 
+        // Fuera del período laboral (antes de ingresar / después de cesar): fila gris
+        // decorativa, sin penalización — se antepone a todo, así un registro suelto que
+        // caiga fuera de vigencia tampoco suma H.E. ni deuda al total del período.
+        if(fueraDeVigencia(c,f)){
+          const vigLabel=(c.fechaCese&&f>c.fechaCese)?'Cesado':'Sin ingresar aún';
+          html+=`<div class="es-table-row" style="opacity:.45;cursor:default">
+            <div style="font-family:var(--mono);font-size:11px">${fechaStr}</div>
+            <div style="font-size:11px;color:var(--muted2)">${diaStr}</div>
+            <div><span style="font-size:10px;color:var(--muted2);font-weight:600">${vigLabel}</span></div>
+            <div></div><div></div><div></div>
+          </div>`;
+          return;
+        }
         // Día no laboral sin registro: fila naranja decorativa, sin penalización
         if(noLab&&!reg){
           html+=`<div class="es-table-row" style="background:#FEF3E2;cursor:default">
             <div style="font-family:var(--mono);font-size:11px;color:#8a5a00">${fechaStr}</div>
             <div style="font-size:11px;color:#8a5a00">${diaStr}</div>
             <div><span style="font-size:10px;color:#8a5a00;font-weight:600">${dow===0?'Domingo':'Feriado'}</span></div>
-            <div></div><div></div><div></div>
-          </div>`;
-          return;
-        }
-        // Fuera del período laboral (antes de ingresar / después de cesar): fila gris decorativa, sin penalización
-        if(!reg&&fueraDeVigencia(c,f)){
-          html+=`<div class="es-table-row" style="opacity:.45;cursor:default">
-            <div style="font-family:var(--mono);font-size:11px">${fechaStr}</div>
-            <div style="font-size:11px;color:var(--muted2)">${diaStr}</div>
-            <div><span style="font-size:10px;color:var(--muted2);font-weight:600">Sin ingresar aún</span></div>
             <div></div><div></div><div></div>
           </div>`;
           return;
@@ -1367,7 +1373,7 @@ async function loadResumen() {
     while(cur<=end){const f=cur.toISOString().slice(0,10);if(!esDiaNoLaboral(f))diasRango.push(f);cur=new Date(cur.getTime()+86400000);}}
     const hoy=todayKey();
     activos.forEach(c=>{
-      const cRegs=regs.filter(r=>r.colabId===c.id&&(r.estado==='A'||!r.estado)&&r.horaEntrada!=null&&r.horaSalida!=null);
+      const cRegs=regs.filter(r=>r.colabId===c.id&&(r.estado==='A'||!r.estado)&&r.horaEntrada!=null&&r.horaSalida!=null&&!fueraDeVigencia(c,r.fecha));
       let diasTrab=0,heAuto=0,heTotal=0;
       cRegs.forEach(r=>{
         diasTrab++;
@@ -1376,11 +1382,12 @@ async function loadResumen() {
         const he=getHeValue(r);
         heTotal+=(he.val||0);
       });
-      // Ausencias: sin registro O Falta registrada (fuera del período laboral del colaborador no cuenta)
+      // Ausencias: sin registro O Falta registrada (fuera del período laboral del colaborador
+      // no cuenta, haya o no registro — un F suelto fuera de vigencia no debe sumar deuda)
       diasRango.forEach(f=>{
         if(f>hoy)return;
+        if(fueraDeVigencia(c,f))return;
         const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
-        if(!reg&&fueraDeVigencia(c,f))return;
         if(!reg||reg.estado==='F'){
           const saved=reg?.horasExtra;
           heTotal+=(saved!==null&&saved!==undefined)?saved:heAusencia(f);
@@ -1432,10 +1439,12 @@ async function exportESPDF() {
   function celdasColab(c,f){
     const dow=new Date(f+'T12:00:00').getDay();
     const noLab=dow===0||isFeriado(f);
+    // Fuera de vigencia gana antes de mirar el registro: celda vacía/no laboral, sin
+    // penalización ni H.E., aunque exista un registro suelto en esa fecha.
+    if(fueraDeVigencia(c,f))return{noLaboral:true,cels:['','','',null]};
     const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
     if(reg){const he=getHeValue(reg);return{noLaboral:noLab,cels:[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val]};}
     if(noLab)return{noLaboral:true,cels:['','','',null]};
-    if(fueraDeVigencia(c,f))return{noLaboral:true,cels:['','','',null]};
     if(f<=hoy)return{ausente:true,cels:['X','','',heNoShow(f)]};
     return{cels:['','','',null]};
   }
@@ -1543,10 +1552,12 @@ async function exportESExcel() {
   function celdasColab(c,f){
     const dow=new Date(f+'T12:00:00').getDay();
     const noLab=dow===0||isFeriado(f);
+    // Fuera de vigencia gana antes de mirar el registro: celda vacía/no laboral, sin
+    // penalización ni H.E., aunque exista un registro suelto en esa fecha.
+    if(fueraDeVigencia(c,f))return{noLaboral:true,cels:['','','',null]};
     const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
     if(reg){const he=getHeValue(reg);return{noLaboral:noLab,cels:[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:'']};}
     if(noLab)return{noLaboral:true,cels:['','','',null]};
-    if(fueraDeVigencia(c,f))return{noLaboral:true,cels:['','','',null]};
     if(f<=hoy)return{ausente:true,cels:['X','','',heNoShow(f)]};
     return{cels:['','','',null]};
   }
