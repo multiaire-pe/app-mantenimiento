@@ -46,13 +46,8 @@ window.MA = (function () {
   //  • 'backup' = respaldo/restauración COMPLETA del sistema (configuracion.html).
   //  • 'exportar' (Excel operativo de un módulo) es OPERATIVA, no crítica.
   var SOLO_SUPER = ['borrar', 'backup', 'importMasiva', 'gestionUsuarios', 'config'];
-  // 'borrarRegistroAsistencia' es una excepción puntual a SOLO_SUPER (pedido explícito
-  // del usuario 2026-07-14): borrar un registro suelto de asistencia (fecha mal cargada,
-  // duplicado, etc.) es una corrección operativa normal, NO un borrado crítico como
-  // backup/reset de BD — se trata como OPERATIVA para no tocar 'borrar' (que gatea esas
-  // otras acciones en el resto de módulos).
   // Acciones operativas que un SUPERVISOR sí puede ejercer dentro de sus apps[].
-  var OPERATIVAS = ['ver', 'crear', 'editar', 'aprobar', 'exportar', 'salida', 'transferencia', 'crearItem', 'borrarRegistroAsistencia'];
+  var OPERATIVAS = ['ver', 'crear', 'editar', 'aprobar', 'exportar', 'salida', 'transferencia', 'crearItem'];
 
   var _user = null; // { email, rol, apps:[] }
 
@@ -85,6 +80,11 @@ window.MA = (function () {
     if (!_user) return false;
     if (isSuperAdmin()) return true;                      // super admin: todo
     if (SOLO_SUPER.indexOf(accion) !== -1) return false;  // crítico: solo super
+    // Borrar un registro suelto de asistencia (fecha mal cargada, duplicado, etc.) es
+    // admin-only: ADMIN o SUPER_ADMIN, NUNCA un SUPERVISOR aunque tenga 'asistencia'
+    // habilitada, y sin depender de que se pase `app`. Coherente con firestore.rules
+    // (asistencia_registros → allow delete: if isAdmin()). Pedido explícito 2026-07-14.
+    if (accion === 'borrarRegistroAsistencia') return isAdmin();
     var esOperativa = OPERATIVAS.indexOf(accion) !== -1;
     if (rol() === 'ADMIN') return esOperativa;            // admin: SOLO operativas conocidas
     if (rol() === 'SUPERVISOR') return esOperativa && !!app && canEnter(app); // exige app habilitada
