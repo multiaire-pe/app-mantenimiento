@@ -1707,16 +1707,15 @@ async function addUser(){
   }catch(e){toast(e.code==='ma-existe'?'Este usuario ya existe':'Error: '+e.message,'err');}
 }
 
-// Con instancias marcadas en la tabla (checkboxes de la selección múltiple), estos botones
-// del panel izquierdo actúan en LOTE sobre esa selección (mismo flujo que la barra de
-// selección); sin nada marcado, abren el modal individual de siempre.
+// Estos botones del panel izquierdo SIEMPRE abren el modal de LOTE (lo común es operar sobre
+// varias instancias a la vez): si ya había instancias marcadas en la tabla, arrancan con esa
+// selección; si no había ninguna, arrancan vacíos y se arman con el buscador del propio modal
+// ("＋ Añadir por código o nombre...") — sirve igual para una sola instancia que para muchas.
 function sidebarSalida(tipo){
-  if(selectedInstQRIds.size > 0) openModalSalidaLote(tipo);
-  else openModalSalida(tipo);
+  openModalSalidaLote(tipo);
 }
 function sidebarTransferencia(){
-  if(selectedInstQRIds.size > 0) openModalTransfLote();
-  else openModalTransferencia();
+  openModalTransfLote();
 }
 
 function buildSidebar(){
@@ -3322,8 +3321,8 @@ function cerrarLoteModal(id) { closeModal(id); renderInstancias(); }
 
 function openModalSalidaLote(tipo = 'SALIDA') {
   if (can('salida') !== 1) { toast('No tienes permiso para registrar salidas', 'err'); return; }
-  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
-  if (!ids.length) { toast('Selecciona al menos una instancia', 'warn'); return; }
+  // Puede abrirse sin ninguna instancia preseleccionada — el modal deja agregarlas con el
+  // buscador (renderLoteInst); saveSalidaLote exige al menos una antes de guardar.
   currentLoteTipo = tipo;
   const esBaja = tipo === 'BAJA';
   loteFotos = { guia: null, entrega: null };
@@ -3452,8 +3451,8 @@ async function saveSalidaLote() {
 // Un movimiento TRANSFERENCIA con instancias[] + instanciasSnapshot[] (valores previos para revertir cada una).
 function openModalTransfLote() {
   if (can('transferencia') !== 1) { toast('No tienes permiso para transferir', 'err'); return; }
-  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
-  if (!ids.length) { toast('Selecciona al menos una instancia', 'warn'); return; }
+  // Puede abrirse sin ninguna instancia preseleccionada — el modal deja agregarlas con el
+  // buscador (renderLoteInst); saveTransfLote exige al menos una antes de guardar.
   loteFotos = { guia: null, entrega: null };
   loteFotoPrefix = 'ftl';
   document.getElementById('ftl-obs').value = '';
