@@ -1707,16 +1707,15 @@ async function addUser(){
   }catch(e){toast(e.code==='ma-existe'?'Este usuario ya existe':'Error: '+e.message,'err');}
 }
 
-// Con instancias marcadas en la tabla (checkboxes de la selección múltiple), estos botones
-// del panel izquierdo actúan en LOTE sobre esa selección (mismo flujo que la barra de
-// selección); sin nada marcado, abren el modal individual de siempre.
+// Estos botones del panel izquierdo SIEMPRE abren el modal de LOTE (lo común es operar sobre
+// varias instancias a la vez): si ya había instancias marcadas en la tabla, arrancan con esa
+// selección; si no había ninguna, arrancan vacíos y se arman con el buscador del propio modal
+// ("＋ Añadir por código o nombre...") — sirve igual para una sola instancia que para muchas.
 function sidebarSalida(tipo){
-  if(selectedInstQRIds.size > 0) openModalSalidaLote(tipo);
-  else openModalSalida(tipo);
+  openModalSalidaLote(tipo);
 }
 function sidebarTransferencia(){
-  if(selectedInstQRIds.size > 0) openModalTransfLote();
-  else openModalTransferencia();
+  openModalTransfLote();
 }
 
 function buildSidebar(){
@@ -3230,6 +3229,10 @@ async function saveSalida() {
 let currentLoteTipo = 'SALIDA';
 let loteFotos = { guia: null, entrega: null };  // dataURLs temporales hasta confirmar
 let loteFotoPrefix = 'flote';  // prefijo de ids del modal de lote activo ('flote' salida/baja, 'ftl' transferencia)
+// Snapshot de la selección global (selectedInstQRIds) al ABRIR un modal de lote. El modal la edita
+// en vivo (buscador ＋Añadir / ✕Quitar); si el usuario CANCELA se restaura este snapshot para no
+// dejar pegada una selección que no pidió. Un guardado/limpieza lo anula (clearInstQRSelection).
+let loteSelectionBeforeOpen = null;
 
 // Comprime manteniendo proporción (para documentos/escenas: guía, entrega). Distinto de compressSquare (recorte cuadrado, avatares).
 function compressFit(file, maxSide, quality) {
@@ -3318,12 +3321,27 @@ function removeInstLote(id, which) {
 }
 
 // Cerrar un modal de lote re-sincronizando el tab Instancias (el buscador pudo cambiar la selección)
-function cerrarLoteModal(id) { closeModal(id); renderInstancias(); }
+function cerrarLoteModal(id) {
+  // Cancelar: deshacer lo que el buscador del modal tocó en la selección global (＋Añadir/✕Quitar),
+  // restaurando la que había al abrir. Un guardado exitoso ya anuló el snapshot (clearInstQRSelection),
+  // así que ahí no se restaura nada.
+  if (loteSelectionBeforeOpen) {
+    selectedInstQRIds.clear();
+    loteSelectionBeforeOpen.forEach(id => selectedInstQRIds.add(id));
+    loteSelectionBeforeOpen = null;
+  }
+  closeModal(id);
+  renderInstancias();
+}
 
 function openModalSalidaLote(tipo = 'SALIDA') {
   if (can('salida') !== 1) { toast('No tienes permiso para registrar salidas', 'err'); return; }
-  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
-  if (!ids.length) { toast('Selecciona al menos una instancia', 'warn'); return; }
+  // Puede abrirse sin ninguna instancia preseleccionada — el modal deja agregarlas con el
+  // buscador (renderLoteInst); saveSalidaLote exige al menos una antes de guardar.
+  // Purga IDs obsoletos (ya no en la tabla) para que el contador cuadre, y guarda el snapshot
+  // de la selección por si el usuario cancela.
+  [...selectedInstQRIds].forEach(id => { if (!instanciasData.some(i => i.id === id)) selectedInstQRIds.delete(id); });
+  loteSelectionBeforeOpen = new Set(selectedInstQRIds);
   currentLoteTipo = tipo;
   const esBaja = tipo === 'BAJA';
   loteFotos = { guia: null, entrega: null };
@@ -3452,8 +3470,12 @@ async function saveSalidaLote() {
 // Un movimiento TRANSFERENCIA con instancias[] + instanciasSnapshot[] (valores previos para revertir cada una).
 function openModalTransfLote() {
   if (can('transferencia') !== 1) { toast('No tienes permiso para transferir', 'err'); return; }
-  const ids = [...selectedInstQRIds].filter(id => instanciasData.some(i => i.id === id));
-  if (!ids.length) { toast('Selecciona al menos una instancia', 'warn'); return; }
+  // Puede abrirse sin ninguna instancia preseleccionada — el modal deja agregarlas con el
+  // buscador (renderLoteInst); saveTransfLote exige al menos una antes de guardar.
+  // Purga IDs obsoletos (ya no en la tabla) para que el contador cuadre, y guarda el snapshot
+  // de la selección por si el usuario cancela.
+  [...selectedInstQRIds].forEach(id => { if (!instanciasData.some(i => i.id === id)) selectedInstQRIds.delete(id); });
+  loteSelectionBeforeOpen = new Set(selectedInstQRIds);
   loteFotos = { guia: null, entrega: null };
   loteFotoPrefix = 'ftl';
   document.getElementById('ftl-obs').value = '';
@@ -4242,6 +4264,7 @@ function updateInstQRSelectionBar() {
 
 function clearInstQRSelection() {
   selectedInstQRIds.clear();
+  loteSelectionBeforeOpen = null;  // limpieza/guardado explícito: cerrarLoteModal ya no debe restaurar
   document.querySelectorAll('.inst-qr-chk').forEach(c => c.checked = false);
   const chkAll = document.getElementById('inst-chk-all');
   if (chkAll) chkAll.checked = false;
