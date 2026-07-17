@@ -107,6 +107,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .badge-ausente{background:var(--red-bg);color:var(--red);border:1px solid var(--red-border)}
 .badge-dm{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
 .badge-permiso{background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-border)}
+.badge-vacaciones{background:var(--blue-pale);color:var(--blue);border:1px solid #c0d0ef}
 .supervisor-mode .sidebar{display:none}
 .supervisor-mode #modal-edit-reg .btn-danger,.supervisor-mode #modal-edit-reg .btn-primary{display:none}
 .no-delete #modal-edit-reg .btn-danger{display:none}
@@ -129,6 +130,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .ta-cell-X{background:#fdf0f2;color:#d63344;font-weight:700}
 .ta-cell-DM{background:#fff8ee;color:#d48a00;font-weight:700}
 .ta-cell-P{background:#f3eeff;color:#6b3fa0;font-weight:700}
+.ta-cell-V{background:#eef4fc;color:#1B3F8B;font-weight:700}
 .ta-cell-DOM{background:#f0f4fa;color:#8a9ab8}
 .ta-cell-FER{background:#e8eef8;color:#1B3F8B;font-weight:700}
 .ta-cell-empty{background:#fff;color:#ccc}
@@ -278,10 +280,11 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 
       <div style="border-top:1px solid var(--border);padding-top:10px">
         <div class="sb-label">Estado especial</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
           <button class="btn btn-sm" onclick="registrarEstado('DM')" style="font-size:10px">🏥 Desc. médico</button>
           <button class="btn btn-sm" onclick="registrarEstado('P')" style="font-size:10px">⚠️ Permiso</button>
           <button class="btn btn-sm" onclick="registrarEstado('F')" style="font-size:10px">✗ Falta</button>
+          <button class="btn btn-sm" onclick="registrarEstado('V')" style="font-size:10px">🏖️ Vacaciones</button>
         </div>
       </div>
     </div>
@@ -453,6 +456,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
           <option value="DM">DM – Descanso médico</option>
           <option value="P">P – Permiso</option>
           <option value="F">F – Falta</option>
+          <option value="V">V – Vacaciones</option>
         </select>
       </div>
       <div class="field-group">
@@ -884,6 +888,7 @@ function selectColab(id) {
   else if(reg.estado==='DM'){el.innerHTML='<span class="badge badge-dm">🏥 Desc. médico</span>';}
   else if(reg.estado==='P'){el.innerHTML='<span class="badge badge-permiso">⚠️ Permiso</span>';}
   else if(reg.estado==='F'){el.innerHTML='<span class="badge badge-ausente">✗ Falta</span>';}
+  else if(reg.estado==='V'){el.innerHTML='<span class="badge badge-vacaciones">🏖️ Vacaciones</span>';}
   else if(reg.horaEntrada!=null&&reg.horaSalida==null){el.innerHTML=`<span class="badge badge-dentro">▶ Entrada: ${decimalToHora(reg.horaEntrada)}</span>`;}
   else if(reg.horaEntrada!=null&&reg.horaSalida!=null){el.innerHTML=`<span class="badge badge-fuera">■ Salida: ${decimalToHora(reg.horaSalida)}</span>`;}
   el.style.display='block';
@@ -948,6 +953,7 @@ function renderTodayTable() {
       if(reg.estado==='DM'){estado='DESC. MÉDICO';estadoClass='badge-dm';}
       else if(reg.estado==='P'){estado='PERMISO';estadoClass='badge-permiso';}
       else if(reg.estado==='F'){estado='FALTA';estadoClass='badge-ausente';}
+      else if(reg.estado==='V'){estado='VACACIONES';estadoClass='badge-vacaciones';}
       else if(reg.horaEntrada!=null&&reg.horaSalida==null){estado='EN TRABAJO';estadoClass='badge-dentro';dentro++;}
       else if(reg.horaEntrada!=null&&reg.horaSalida!=null){estado='SALIÓ';estadoClass='badge-fuera';salio++;}
       else sinReg++;
@@ -1017,7 +1023,7 @@ async function registrarEstado(estado) {
   if(!colab)return;
   const fecha=document.getElementById('sidebar-fecha').value||todayKey();
   if(fecha>todayKey()){toast('No se puede registrar en fechas futuras','err');return;}
-  const labels={DM:'Descanso médico',P:'Permiso',F:'Falta'};
+  const labels={DM:'Descanso médico',P:'Permiso',F:'Falta',V:'Vacaciones'};
   if(!confirm(`¿Registrar "${labels[estado]}" para ${colab.nombre} el ${fecha}?`))return;
   const loading=document.getElementById('loading');
   loading.classList.add('show');
@@ -1192,8 +1198,8 @@ async function loadHistorial() {
       const salStr=r.horaSalida!=null?decimalToHora(r.horaSalida):'—';
       const he=getHeValue(r);
       const heStr=he.val!=null?he.val.toFixed(1)+'h':'—';
-      const estadoLabel={A:'Asistió',DM:'Desc. médico',P:'Permiso',F:'Falta'}[r.estado]||r.estado;
-      const estadoClass={A:r.horaSalida?'badge-fuera':'badge-dentro',DM:'badge-dm',P:'badge-permiso',F:'badge-ausente'}[r.estado]||'';
+      const estadoLabel={A:'Asistió',DM:'Desc. médico',P:'Permiso',F:'Falta',V:'Vacaciones'}[r.estado]||r.estado;
+      const estadoClass={A:r.horaSalida?'badge-fuera':'badge-dentro',DM:'badge-dm',P:'badge-permiso',F:'badge-ausente',V:'badge-vacaciones'}[r.estado]||'';
       const heColor=he.val&&he.val>0?'color:var(--orange);font-weight:700':'';
       const manualBadge=he.manual?'<span class="he-manual-badge">M</span>':'';
       return`<div class="hist-table-row" onclick="openEditReg('${r.id}','${r.colabId}','${escHtml(r.nombre||'')}','${escHtml(r.cargo||'')}','${r.fecha}')">
@@ -1254,6 +1260,7 @@ async function loadVistaTA() {
         }
         if(reg.estado==='DM'){html+=`<td class="ta-cell-DM">DM</td>`;return;}
         if(reg.estado==='P'){html+=`<td class="ta-cell-P">P</td>`;return;}
+        if(reg.estado==='V'){html+=`<td class="ta-cell-V">V</td>`;return;}
         if(reg.estado==='F'){html+=`<td class="ta-cell-X">X</td>`;return;}
         const ent=reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'?';
         html+=`<td class="ta-cell-A" onclick="openEditReg('${reg.id}','${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">${ent}</td>`;
@@ -1341,7 +1348,7 @@ async function loadVistaES() {
         html+=`<div class="es-table-row" style="${rowBg}" onclick="openEditReg(${regIdParam},'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">
           <div style="font-family:var(--mono);font-size:11px">${fechaStr}</div>
           <div style="font-size:11px;color:var(--muted2)">${diaStr}</div>
-          <div><span class="badge ${estadoStr==='X'||estadoStr==='F'?'badge-ausente':estadoStr==='A'||estadoStr==='DM'||estadoStr==='P'?'badge-fuera':''}">${estadoStr}</span></div>
+          <div><span class="badge ${estadoStr==='X'||estadoStr==='F'?'badge-ausente':estadoStr==='A'||estadoStr==='DM'||estadoStr==='P'||estadoStr==='V'?'badge-fuera':''}">${estadoStr}</span></div>
           <div style="font-family:var(--mono);font-size:12px">${entStr}</div>
           <div style="font-family:var(--mono);font-size:12px">${salStr}</div>
           <div style="font-family:var(--mono);font-size:12px;${heColor}">${heStr}${manualBadge}</div>
@@ -1412,7 +1419,7 @@ function exportTAPDF() {
   if(!content||content.includes('empty-state')){toast('Genera la vista primero','err');return;}
   const w=window.open('','_blank');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vista T/A</title>
-  <style>body{font-family:Arial,sans-serif;font-size:10px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 6px;text-align:center}th{background:#e8eef8;font-weight:700}.nombre-col{text-align:left}.ta-cell-A{background:#f0faf5;color:#1a9e5a;font-weight:700}.ta-cell-X{background:#fdf0f2;color:#d63344;font-weight:700}.ta-cell-DM{background:#fff8ee;color:#d48a00}.ta-cell-P{background:#f3eeff;color:#6b3fa0}.ta-cell-DOM,.ta-cell-FER{background:#e8eef8;color:#6a7a9a}</style>
+  <style>body{font-family:Arial,sans-serif;font-size:10px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 6px;text-align:center}th{background:#e8eef8;font-weight:700}.nombre-col{text-align:left}.ta-cell-A{background:#f0faf5;color:#1a9e5a;font-weight:700}.ta-cell-X{background:#fdf0f2;color:#d63344;font-weight:700}.ta-cell-DM{background:#fff8ee;color:#d48a00}.ta-cell-P{background:#f3eeff;color:#6b3fa0}.ta-cell-V{background:#eef4fc;color:#1B3F8B}.ta-cell-DOM,.ta-cell-FER{background:#e8eef8;color:#6a7a9a}</style>
   </head><body>${content}<script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
   w.document.close();
 }
