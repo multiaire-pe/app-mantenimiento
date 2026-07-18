@@ -798,6 +798,11 @@ function getHeValue(reg) {
   if(reg.heManual===true&&reg.horasExtra!==null&&reg.horasExtra!==undefined)return{val:reg.horasExtra,manual:true};
   // Falta injustificada = jornada completa no trabajada
   if(reg.estado==='F')return{val:-8,manual:false};
+  // Descanso médico / Permiso / Vacaciones: días NO laborados → nunca generan H.E. automática,
+  // aunque el registro conserve horaEntrada/Salida (p.ej. si se convirtió un registro con horas
+  // a uno de estos estados desde el modal de edición). Sin esto, un 'V'/'DM'/'P' con horas
+  // sumaría H.E. en Vista E/S y exports.
+  if(reg.estado==='DM'||reg.estado==='P'||reg.estado==='V')return{val:null,manual:false};
   const auto=calcHorasExtra(reg.horaEntrada,reg.horaSalida,reg.fecha);
   return{val:auto,manual:false};
 }
@@ -1031,7 +1036,7 @@ async function registrarEstado(estado) {
     const regsDelDia=await loadRegsByFecha(fecha);
     const existing=regsDelDia.find(r=>r.colabId===selectedColabId);
     const data={colabId:selectedColabId,nombre:colab.nombre,cargo:colab.cargo||'',fecha,horaEntrada:null,horaSalida:null,estado,observacion:labels[estado]||estado,heManual:false,horasExtra:null,registradoPor:maUser?.email||'',timestamp:new Date().toISOString()};
-    // DM/Permiso/Falta ya no es asistencia → overwrite completo (descarta origen/evidencia del bot si la había), igual que saveEditReg al pasar a no-A.
+    // DM/Permiso/Falta/Vacaciones ya no es asistencia → overwrite completo (descarta origen/evidencia del bot si la había), igual que saveEditReg al pasar a no-A.
     if(existing){await window.__db.collection('asistencia_registros').doc(existing.id).set({...data,id:existing.id});}
     else{const _id='AST-'+selectedColabId+'-'+fecha;await window.__db.collection('asistencia_registros').doc(_id).set({...data,id:_id});}
     toast(`✓ ${colab.nombre} → ${labels[estado]}`,'ok');
@@ -1151,7 +1156,7 @@ async function saveEditReg() {
   try {
     const data={colabId,nombre:colab.nombre,cargo:colab.cargo||'',fecha,horaEntrada,horaSalida,estado,observacion:obs,heManual:heIsManual,horasExtra,registradoPor:maUser?.email||'',timestamp:new Date().toISOString()};
     // Si sigue siendo asistencia (estado A) → merge:true para PRESERVAR la evidencia del bot (origen,
-    // marcajeEntrada/Salida). Si el admin lo convierte a DM/Permiso/Falta → overwrite completo: la
+    // marcajeEntrada/Salida). Si el admin lo convierte a DM/Permiso/Falta/Vacaciones → overwrite completo: la
     // evidencia geolocalizada ya no aplica y se descarta (evita badge/selfie de un día que ya no es asistencia).
     if(regId){const ref=window.__db.collection('asistencia_registros').doc(regId); if(estado==='A'){await ref.set({...data,id:regId},{merge:true});}else{await ref.set({...data,id:regId});}}
     else{const _id='AST-'+colabId+'-'+fecha;await window.__db.collection('asistencia_registros').doc(_id).set({...data,id:_id});}
@@ -1345,10 +1350,11 @@ async function loadVistaES() {
         }
         const heColor=heVal==null?'':heVal<0?'color:var(--red);font-weight:700':heVal>0?'color:var(--orange);font-weight:700':'';
         const manualBadge=heManual?'<span class="he-manual-badge">M</span>':'';
+        const estadoBadge={X:'badge-ausente',F:'badge-ausente',A:'badge-fuera',DM:'badge-dm',P:'badge-permiso',V:'badge-vacaciones'}[estadoStr]||'';
         html+=`<div class="es-table-row" style="${rowBg}" onclick="openEditReg(${regIdParam},'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">
           <div style="font-family:var(--mono);font-size:11px">${fechaStr}</div>
           <div style="font-size:11px;color:var(--muted2)">${diaStr}</div>
-          <div><span class="badge ${estadoStr==='X'||estadoStr==='F'?'badge-ausente':estadoStr==='A'||estadoStr==='DM'||estadoStr==='P'||estadoStr==='V'?'badge-fuera':''}">${estadoStr}</span></div>
+          <div><span class="badge ${estadoBadge}">${estadoStr}</span></div>
           <div style="font-family:var(--mono);font-size:12px">${entStr}</div>
           <div style="font-family:var(--mono);font-size:12px">${salStr}</div>
           <div style="font-family:var(--mono);font-size:12px;${heColor}">${heStr}${manualBadge}</div>
