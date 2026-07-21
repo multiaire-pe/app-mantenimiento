@@ -11,7 +11,7 @@
 // acá la hora la fija el usuario desde la app, sin tocar código.
 import crypto from 'node:crypto';
 import { getDb } from './_lib/firestore.js';
-import { hoyLima, ahoraDecimalLima, decimalAHHMM } from './_lib/fecha.js';
+import { hoyLima, horaHHMMLima, decimalAHHMM } from './_lib/fecha.js';
 import { notificarPorTipo } from './_lib/avisos.js';
 
 function secretoValido(header) {
@@ -20,6 +20,14 @@ function secretoValido(header) {
   const a = Buffer.from(String(header));
   const b = Buffer.from(esperado);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Hora EXACTA (sin redondear) del momento en Lima, en decimal — a propósito distinta de
+// `ahoraDecimalLima()` de fecha.js, que redondea a la media hora (convención de asistencia,
+// no sirve acá: "¿ya pasó la hora del recordatorio?" necesita precisión de minuto).
+function ahoraExactaLima() {
+  const [h, m] = horaHHMMLima().split(':').map(Number);
+  return h + m / 60;
 }
 
 const TEXTO = {
@@ -37,7 +45,7 @@ export default async function handler(req, res) {
   const snap = await ref.get();
   const cfg = snap.exists ? snap.data() : {};
   const hoy = hoyLima();
-  const ahora = ahoraDecimalLima();
+  const ahora = ahoraExactaLima();
   const ultimoEnvio = { ...(cfg.ultimoEnvio || {}) };
   const resultados = {};
 
