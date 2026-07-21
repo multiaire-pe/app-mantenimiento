@@ -10,6 +10,7 @@
 // permite un horario editable sin redeploy y solo corre sobre deployments de Producción —
 // acá la hora la fija el usuario desde la app, sin tocar código.
 import crypto from 'node:crypto';
+import admin from 'firebase-admin';
 import { getDb } from './_lib/firestore.js';
 import { hoyLima, horaHHMMLima, decimalAHHMM } from './_lib/fecha.js';
 import { notificarPorTipo } from './_lib/avisos.js';
@@ -42,6 +43,24 @@ export default async function handler(req, res) {
 
   const db = getDb();
   const ref = db.collection('config_recordatorios').doc('default');
+
+  // ?reset=entrada|salida|all — borra la marca de "ya enviado hoy" para volver a probar el
+  // mismo tipo sin esperar al día siguiente. Uso manual/administrativo, protegido por el
+  // mismo CRON_SECRET (no es un endpoint público).
+  const reset = req.query?.reset;
+  if (reset) {
+    const tipos = reset === 'all' ? ['entrada', 'salida'] : [String(reset)];
+    if (tipos.some((t) => t !== 'entrada' && t !== 'salida')) {
+      return res.status(400).json({ error: `reset inválido: ${reset} (usar entrada, salida o all)` });
+    }
+    const snapReset = await ref.get();
+    if (!snapReset.exists) return res.status(200).json({ ok: true, reset: [] }); // nada que resetear
+    const updates = {};
+    for (const t of tipos) updates[`ultimoEnvio.${t}`] = admin.firestore.FieldValue.delete();
+    await ref.update(updates);
+    return res.status(200).json({ ok: true, reset: tipos });
+  }
+
   const snap = await ref.get();
   const cfg = snap.exists ? snap.data() : {};
   const hoy = hoyLima();
