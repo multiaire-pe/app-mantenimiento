@@ -8,6 +8,9 @@
     },
     "api/comprobante.js": {
       "maxDuration": 30
+    },
+    "api/cron_recordatorios.js": {
+      "maxDuration": 30
     }
   },
   "redirects": [

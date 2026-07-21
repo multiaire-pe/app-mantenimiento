@@ -26,6 +26,18 @@ const PLANTILLAS = [
     }],
   },
   {
+    // Recordatorio proactivo de marcaje de asistencia (cron_recordatorios.js). El bot lo manda
+    // FUERA de la ventana de 24h casi siempre (nadie le escribió antes), así que necesita
+    // plantilla aprobada — sin ella, cron_recordatorios cae a texto libre y solo le llega a
+    // quien esté dentro de su ventana (poco frecuente para un recordatorio proactivo).
+    name: 'recordatorio_asistencia', language: 'es', category: 'UTILITY',
+    components: [{
+      type: 'BODY',
+      text: '⏰ *Recordatorio — MultiAire*\nNo olvides marcar tu *{{1}}* de hoy.',
+      example: { body_text: [['Entrada']] },
+    }],
+  },
+  {
     // Fallback FUERA de la ventana de 24h para el envío de itinerario por técnico (aviso corto:
     // variables de una línea; el detalle completo va por texto libre dentro de la ventana).
     // Orden de las variables = params del endpoint enviar_itinerario.js: nombre, fecha, nº, sedes.

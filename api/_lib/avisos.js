@@ -29,7 +29,7 @@ export async function destinatariosAviso(tipo = 'obs') {
 // Aviso a los designados de un tipo. Con plantilla de Meta aprobada (env
 // WHATSAPP_TEMPLATE_ASISTENCIA / WHATSAPP_TEMPLATE_MTTO) llega FUERA de la ventana
 // de 24h; si falla o no hay plantilla, cae a texto libre (mismo patrón que obs).
-const TEMPLATE_ENV = { asistencia: 'WHATSAPP_TEMPLATE_ASISTENCIA', mtto: 'WHATSAPP_TEMPLATE_MTTO' };
+const TEMPLATE_ENV = { asistencia: 'WHATSAPP_TEMPLATE_ASISTENCIA', mtto: 'WHATSAPP_TEMPLATE_MTTO', recordatorio: 'WHATSAPP_TEMPLATE_RECORDATORIO' };
 const paramTexto = (x) => ({ type: 'text', text: (String(x || '').replace(/\s+/g, ' ').trim() || '—').slice(0, 600) });
 
 export async function notificarPorTipo(tipo, texto, excluirId = '', opts = {}) {
