@@ -57,6 +57,10 @@ service cloud.firestore {
     // (mismo criterio que maestros_personal). Las sedes siguen en maestros_tiendas; las actividades por
     // cliente en tareas_config/{cliente|tipo} (cuya regla no cambia).
     match /maestros_clientes/{doc} { allow read: if authorized(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
+    // config_recordatorios: doc único ('default') con la hora de entrada/salida del recordatorio
+    // proactivo de asistencia (editable en Personal → 🔔 Alertas del bot). El cron (api/cron_recordatorios.js)
+    // lee/escribe por Admin SDK (ignora esta regla); esta es solo para la escritura desde el cliente.
+    match /config_recordatorios/{doc} { allow read: if authorized(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
     match /maestros_tiendas/{doc}  { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_grupos/{doc}   { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_feriados/{doc} { allow read: if authorized(); allow write: if isSuper(); }

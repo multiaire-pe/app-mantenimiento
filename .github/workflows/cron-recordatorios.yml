@@ -1,0 +1,22 @@
+name: Cron recordatorios de asistencia
+
+# Dispara api/cron_recordatorios.js cada 30 min. GitHub Actions no soporta cron con secretos
+# de repo distintos por rama: el destino (develop o producción) y el secreto se leen de
+# secrets del repo (RECORDATORIOS_URL / CRON_SECRET) — cambiar de entorno es cambiar el
+# secret, sin tocar este archivo. IMPORTANTE: un trigger `schedule` solo se dispara desde
+# la copia de este workflow que vive en la rama POR DEFECTO del repo (GitHub lo exige) —
+# no alcanza con que exista en `develop` si la rama por defecto es otra.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:        # permite disparar a mano para probar sin esperar el schedule
+
+jobs:
+  disparar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar a cron_recordatorios
+        run: |
+          curl -sS -o /dev/null -w "HTTP %{http_code}\n" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.RECORDATORIOS_URL }}/api/cron_recordatorios"
