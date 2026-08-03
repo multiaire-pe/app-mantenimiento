@@ -277,6 +277,32 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script>
+// ── FIREBASE / AUTH (scaffold idéntico a los demás módulos) ───────────────────
+const MA_ADM  = 'marchenaangulojoseluis@gmail.com';
+const _fbApp  = firebase.initializeApp(window.__firebaseConfig);
+const db      = firebase.firestore();
+window.__auth = firebase.auth();
+window.__prov = new firebase.auth.GoogleAuthProvider();
+window.__fb   = {
+  onAuthStateChanged: (auth, cb) => firebase.auth().onAuthStateChanged(cb),
+  signInWithPopup:    (auth, prov) => firebase.auth().signInWithPopup(prov),
+  signOut:            () => firebase.auth().signOut(),
+};
+let maUser = null;
+
+(function(){
+  function waitForFirebase(){
+    if(window.__auth && window.__fb){
+      window.__fb.onAuthStateChanged(window.__auth, function(user){
+        if(user && !window._maInitDone){ window._maInitDone = true; maVerify({email:user.email, name:user.displayName, picture:user.photoURL}, true); }
+        else if(!user && !window._maInitDone){ window._maInitDone = true; maShowLogin(); }
+      });
+    } else { setTimeout(waitForFirebase, 50); }
+  }
+  waitForFirebase();
+})();
+
+
 // ── UTILIDADES (mismas que el resto de los módulos) ───────────────────────────
 // `_toastT` se declara acá y no en el bloque de auth: la lógica va primero en el archivo
 // (ver la nota del reordenamiento) y toast() puede usarse antes de llegar a aquel bloque.
@@ -292,11 +318,14 @@ function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,
 //
 // Salida .docx y no PDF a propósito: el informe se termina de editar a mano.
 
-const DOCX_CDN = 'https://unpkg.com/docx@9.7.1/dist/index.umd.cjs';
-const PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SET-OCT', 'NOV-DIC'];
-const PERIODO_LARGO = { 'ENE-FEB': 'ENERO – FEBRERO', 'MAR-ABR': 'MARZO – ABRIL', 'MAY-JUN': 'MAYO – JUNIO', 'JUL-AGO': 'JULIO – AGOSTO', 'SET-OCT': 'SETIEMBRE – OCTUBRE', 'NOV-DIC': 'NOVIEMBRE – DICIEMBRE' };
+// Dos orígenes: si el primero no responde (CDN caído, red de la tienda con bloqueos) se
+// intenta el segundo antes de rendirse — sin la librería no hay informe.
+const DOCX_CDN = ['https://unpkg.com/docx@9.7.1/dist/index.umd.cjs',
+                  'https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.umd.cjs'];
+const PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
+const PERIODO_LARGO = { 'ENE-FEB': 'ENERO – FEBRERO', 'MAR-ABR': 'MARZO – ABRIL', 'MAY-JUN': 'MAYO – JUNIO', 'JUL-AGO': 'JULIO – AGOSTO', 'SEP-OCT': 'SETIEMBRE – OCTUBRE', 'NOV-DIC': 'NOVIEMBRE – DICIEMBRE' };
 // Rango de fechas del bimestre, para filtrar las observaciones (que se guardan por fecha).
-const MESES_PERIODO = { 'ENE-FEB': [1, 2], 'MAR-ABR': [3, 4], 'MAY-JUN': [5, 6], 'JUL-AGO': [7, 8], 'SET-OCT': [9, 10], 'NOV-DIC': [11, 12] };
+const MESES_PERIODO = { 'ENE-FEB': [1, 2], 'MAR-ABR': [3, 4], 'MAY-JUN': [5, 6], 'JUL-AGO': [7, 8], 'SEP-OCT': [9, 10], 'NOV-DIC': [11, 12] };
 // El tipo del inventario no siempre se llama igual que en el informe del cliente.
 const TIPO_INFORME = { PAQUETE: 'ROOF TOP' };
 
@@ -324,10 +353,9 @@ function initApp() {
 async function loadAll() {
   const pill = document.getElementById('conn-pill');
   try {
-    const { getDocs, collection } = window.__fb;
     const [inv, obs] = await Promise.all([
-      getDocs(collection(window.__db, 'inventario')),
-      getDocs(collection(window.__db, 'manta_observaciones')),
+      db.collection('inventario').get(),
+      db.collection('manta_observaciones').get(),
     ]);
     inventario = inv.docs.map((d) => ({ id: d.id, ...d.data() }));
     observaciones = obs.docs.map((d) => d.data());
@@ -362,10 +390,9 @@ async function preparar() {
   document.getElementById('detalle').innerHTML = '';
 
   try {
-    const { getDocs, collection, query, where } = window.__fb;
     const [ejSnap, foSnap] = await Promise.all([
-      getDocs(query(collection(window.__db, 'mtto_ejecuciones'), where('sede', '==', sede), where('periodo', '==', periodo), where('anio', '==', anio))),
-      getDocs(query(collection(window.__db, 'mantenimiento_fotos'), where('clave', '==', `${sede}|${periodo}|${anio}`))),
+      db.collection('mtto_ejecuciones').where('sede', '==', sede).where('periodo', '==', periodo).where('anio', '==', anio).get(),
+      db.collection('mantenimiento_fotos').where('clave', '==', `${sede}|${periodo}|${anio}`).get(),
     ]);
     ejecuciones = ejSnap.docs.map((d) => d.data());
     fotos = foSnap.docs.map((d) => d.data());
@@ -441,15 +468,19 @@ function render() {
 }
 
 // ── Generación del .docx ─────────────────────────────────────────────────────────────
-function cargarDocx() {
-  if (window.docx) return Promise.resolve(window.docx);
-  return new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = DOCX_CDN;
-    s.onload = () => res(window.docx);
-    s.onerror = () => rej(new Error('no se pudo cargar la librería de Word'));
-    document.head.appendChild(s);
-  });
+async function cargarDocx() {
+  if (window.docx) return window.docx;
+  for (const url of DOCX_CDN) {
+    try {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = url; s.onload = res; s.onerror = () => rej(new Error(url));
+        document.head.appendChild(s);
+      });
+      if (window.docx) return window.docx;
+    } catch (e) { /* se prueba el siguiente origen */ }
+  }
+  throw new Error('no se pudo cargar la librería de Word (sin conexión?)');
 }
 
 const b64aBytes = (dataUrl) => {
@@ -559,31 +590,6 @@ async function generar() {
 }
 
 
-// ── FIREBASE / AUTH (scaffold idéntico a los demás módulos) ───────────────────
-const MA_ADM  = 'marchenaangulojoseluis@gmail.com';
-const _fbApp  = firebase.initializeApp(window.__firebaseConfig);
-const db      = firebase.firestore();
-window.__auth = firebase.auth();
-window.__prov = new firebase.auth.GoogleAuthProvider();
-window.__fb   = {
-  onAuthStateChanged: (auth, cb) => firebase.auth().onAuthStateChanged(cb),
-  signInWithPopup:    (auth, prov) => firebase.auth().signInWithPopup(prov),
-  signOut:            () => firebase.auth().signOut(),
-};
-let maUser = null;
-
-(function(){
-  function waitForFirebase(){
-    if(window.__auth && window.__fb){
-      window.__fb.onAuthStateChanged(window.__auth, function(user){
-        if(user && !window._maInitDone){ window._maInitDone = true; maVerify({email:user.email, name:user.displayName, picture:user.photoURL}, true); }
-        else if(!user && !window._maInitDone){ window._maInitDone = true; maShowLogin(); }
-      });
-    } else { setTimeout(waitForFirebase, 50); }
-  }
-  waitForFirebase();
-})();
-
 function maShowLogin(){
   var ov = document.getElementById('auth-overlay');
   if(ov){ ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
@@ -623,7 +629,12 @@ async function maVerify(payload, save){
     document.getElementById('conn-pill').textContent = '✓ Conectado';
     document.getElementById('conn-pill').className   = 'hpill ok';
     renderUserPill();
-    initApp();
+    // Diferido a propósito: maVerify() puede ejecutarse mientras este mismo <script> se está
+    // evaluando (sesión cacheada), y entonces initApp() vería las const de la lógica todavía
+    // en su zona muerta temporal → "Cannot access 'X' before initialization" y el módulo no
+    // arranca. Con el setTimeout, corre siempre con el script ya evaluado, sin depender del
+    // orden en que estén escritos los bloques.
+    setTimeout(initApp, 0);
   }catch(e){
     if(ldEl) ldEl.classList.remove('show');
     if(errEl){ errEl.textContent = 'Error: ' + e.message; errEl.classList.add('show'); }
