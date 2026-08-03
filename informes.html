@@ -377,7 +377,7 @@ let inventario = [], ejecuciones = [], fotos = [], observaciones = [], datos = n
 // mismo. Por eso se elige a mano; acá solo se propone un punto de partida razonable.
 let seleccion = {};
 const MAX_FOTOS = 3;
-const claveSel = () => `informes_fotos_${datos ? `${datos.sede}|${datos.periodo}|${datos.anio}` : ''}`;
+const claveSel = () => `informes_fotos_${datos ? `${datos.cliente}|${datos.sede}|${datos.periodo}|${datos.anio}` : ''}`;
 
 // Propuesta inicial: la primera foto de cada actividad distinta, hasta 3. Si el equipo tiene
 // menos de 3 actividades con foto, se completa con las que sobren de las mismas.
@@ -488,7 +488,8 @@ async function preparar() {
     try { guardada = JSON.parse(localStorage.getItem(claveSel()) || '{}'); } catch (e) { guardada = {}; }
     seleccion = {};
     Object.keys(fotosPorEq).forEach((eqId) => {
-      const validas = (guardada[eqId] || []).filter((id) => fotosPorEq[eqId].some((f) => f.id === id));
+      const previas = Array.isArray(guardada[eqId]) ? guardada[eqId] : [];   // el localStorage puede traer basura
+      const validas = previas.filter((id) => fotosPorEq[eqId].some((f) => f.id === id));
       seleccion[eqId] = validas.length ? validas.slice(0, MAX_FOTOS) : preseleccionar(fotosPorEq[eqId]);
     });
     render();
@@ -538,13 +539,22 @@ function render() {
         <td class="${String(e.capacidad || '').trim() ? '' : 'falta'}">${esc(e.capacidad || '—')}</td>
         <td class="c">${ej ? '<b>' + ej + '</b>' : '<span class="mut">—</span>'}</td>
         <td class="c">${ob ? '<b>' + ob + '</b>' : '<span class="mut">—</span>'}</td>
-        <td class="c">${fo ? `<button class="mini" onclick="abrirSelector('${esc(e.eq_id || e.id)}')" title="Elegir las 3 fotos del informe">${(seleccion[e.eq_id || e.id] || []).length}/${Math.min(fo, 3)} de ${fo} 📷</button>` : '<span class="mut">—</span>'}</td></tr>`;
+        <td class="c">${fo ? `<button class="mini" data-eq="${esc(e.eq_id || e.id)}" title="Elegir las 3 fotos del informe">${(seleccion[e.eq_id || e.id] || []).length}/${Math.min(fo, 3)} de ${fo} 📷</button>` : '<span class="mut">—</span>'}</td></tr>`;
     }).join('');
     return `<div class="bloque"><div class="bt">${esc(nomTipo(t))} <span class="mut">· ${eqs.length}</span></div>
       <table class="tb"><thead><tr><th>Equipo</th><th>Ubicación</th><th>Capacidad</th><th class="c">Activ.</th><th class="c">Obs.</th><th class="c">Fotos</th></tr></thead>
       <tbody>${filas}</tbody></table></div>`;
   }).join('');
 }
+
+// Delegación en vez de handlers inline: el id del equipo y el de la foto son datos, y
+// meterlos dentro de un onclick="..." obliga a escaparlos como JS (esc() solo escapa HTML).
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('#detalle .mini[data-eq]');
+  if (b) { abrirSelector(b.dataset.eq); return; }
+  const ph = ev.target.closest('#sel-body .ph[data-id]');
+  if (ph) toggleFoto(ph.dataset.id);
+});
 
 // ── Selector de fotos por equipo ─────────────────────────────────────────────────────
 let _eqSel = null;
@@ -561,7 +571,7 @@ function abrirSelector(eqId) {
     <div class="act">
       <div class="act-t">${esc(act)} <span class="mut">· ${porAct[act].length} foto(s)</span></div>
       <div class="act-g">${porAct[act].map((f) => `
-        <div class="ph" data-id="${esc(f.id)}" onclick="toggleFoto('${esc(f.id)}')">
+        <div class="ph" data-id="${esc(f.id)}">
           <img src="${esc(f.foto)}" alt="">
           <div class="ord"></div>
         </div>`).join('')}</div>
@@ -613,6 +623,9 @@ async function cargarDocx() {
 }
 
 const b64aBytes = (dataUrl) => {
+  // Si el dato no es una imagen en base64, se devuelve vacío: una foto corrupta no puede
+  // hacer fallar el informe completo.
+  if (!/^data:image\/[a-z+]+;base64,/i.test(String(dataUrl || ''))) return new Uint8Array();
   const b64 = String(dataUrl || '').split(',')[1] || '';
   const bin = atob(b64);
   const u = new Uint8Array(bin.length);
@@ -675,7 +688,7 @@ async function generar() {
       hijos.push(new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, columnWidths: [2800, 2300, 2300, 2300],
         rows: [new D.TableRow({ tableHeader: true, children: ['Nombre de activo', 'Foto 1', 'Foto 2', 'Foto 3'].map(th) }),
           ...eqs.map((e) => {
-            const fs = fotosElegidas(e.eq_id || e.id);
+            const fs = fotosElegidas(e.eq_id || e.id).filter((f) => /^data:image\/[a-z+]+;base64,/i.test(String(f.foto || '')));
             if (fs.length) algunaFoto = true;
             const celda = (f) => new D.TableCell({ borders: bordes(), margins: { top: 60, bottom: 60, left: 60, right: 60 },
               shading: f ? undefined : { type: D.ShadingType.CLEAR, fill: FALTA },
