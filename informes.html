@@ -246,6 +246,13 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 .ph .ord{position:absolute;top:5px;left:5px;width:20px;height:20px;border-radius:50%;background:var(--blue);color:#fff;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;font-family:var(--mono)}
 .ph.on .ord{display:flex}
 @media(max-width:768px){.modal{max-height:94vh}.act-g{grid-template-columns:repeat(auto-fill,minmax(90px,1fr))}}
+
+.bt{display:flex;align-items:center;gap:8px}
+.bt .pos{font-family:var(--mono);font-size:10px;background:var(--blue-pale);color:var(--blue);width:19px;height:19px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+.bt .mover{margin-left:auto;display:flex;gap:4px}
+.ord-btn{width:26px;height:26px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface);color:var(--blue);cursor:pointer;font-size:13px;line-height:1;padding:0}
+.ord-btn:hover:not(:disabled){border-color:var(--blue);background:var(--blue-pale)}
+.ord-btn:disabled{opacity:.3;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -389,6 +396,32 @@ let inventario = [], ejecuciones = [], fotos = [], observaciones = [], datos = n
 // mismo. Por eso se elige a mano; acá solo se propone un punto de partida razonable.
 let seleccion = {};
 const MAX_FOTOS = 3;
+
+// Orden en que los tipos de equipo salen en el informe. Es una decisión de quien lo arma
+// —cada cliente tiene su convención—, así que se elige acá y se recuerda; alfabético solo
+// como punto de partida.
+let ordenTipos = [];
+const claveOrden = () => `informes_orden_${datos ? datos.cliente : ''}`;
+
+// Los tipos presentes, en el orden guardado; los que aparezcan después (un tipo nuevo en el
+// inventario) se agregan al final en vez de perderse.
+function tiposOrdenados(tipos) {
+  const hay = Object.keys(tipos);
+  // Dedupe: un localStorage con el mismo tipo repetido duplicaría su tarjeta y su sección
+  // entera en el .docx.
+  const ordenados = [...new Set(ordenTipos)].filter((t) => hay.includes(t));
+  return [...ordenados, ...hay.filter((t) => !ordenados.includes(t)).sort()];
+}
+
+function moverTipo(tipo, dir) {
+  const actual = tiposOrdenados(porTipo(datos.equipos));
+  const i = actual.indexOf(tipo), j = i + dir;
+  if (i < 0 || j < 0 || j >= actual.length) return;
+  actual.splice(j, 0, actual.splice(i, 1)[0]);
+  ordenTipos = actual;
+  try { localStorage.setItem(claveOrden(), JSON.stringify(ordenTipos)); } catch (e) { /* queda en memoria */ }
+  render();
+}
 const claveSel = () => `informes_fotos_${datos ? `${datos.cliente}|${datos.sede}|${datos.periodo}|${datos.anio}` : ''}`;
 
 // Propuesta inicial: la primera foto de cada actividad distinta, hasta 3. Si el equipo tiene
@@ -496,6 +529,11 @@ async function preparar() {
     // La selección se recuerda por sede+período: rehacer un informe no obliga a volver a
     // elegir. Se guarda en el navegador (no en Firestore): es una preferencia de armado del
     // documento, no un dato del sistema.
+    try {
+      const o = JSON.parse(localStorage.getItem(`informes_orden_${cliente}`) || '[]');
+      ordenTipos = Array.isArray(o) ? o.filter((t) => typeof t === 'string') : [];
+    } catch (e) { ordenTipos = []; }
+
     let guardada = {};
     try { guardada = JSON.parse(localStorage.getItem(claveSel()) || '{}'); } catch (e) { guardada = {}; }
     seleccion = {};
@@ -540,7 +578,8 @@ function render() {
     ${sinCap ? `<div class="aviso">⚠️ ${sinCap} equipo(s) sin <b>capacidad</b>: en el informe esa celda sale vacía. Se carga en <b>Inventario</b>.</div>` : ''}
     ${!d.obsPeriodo.length ? '<div class="aviso">⚠️ Sin observaciones en el período: la sección <b>Observaciones y recomendaciones</b> saldrá vacía. Se llenan desde el bot de WhatsApp o el módulo <b>Observaciones</b>.</div>' : ''}`;
 
-  document.getElementById('detalle').innerHTML = Object.keys(tipos).sort().map((t) => {
+  const orden = tiposOrdenados(tipos);
+  document.getElementById('detalle').innerHTML = orden.map((t, iT) => {
     const eqs = tipos[t];
     const filas = eqs.map((e) => {
       const ej = (d.ejecPorEq[e.eq_id || e.id] || []).length;
@@ -553,7 +592,12 @@ function render() {
         <td data-l="Obs." class="c">${ob ? '<b>' + ob + '</b>' : '<span class="mut">—</span>'}</td>
         <td data-l="Fotos" class="c">${fo ? `<button class="mini" data-eq="${esc(e.eq_id || e.id)}" title="Elegir las 3 fotos del informe">${(seleccion[e.eq_id || e.id] || []).length}/${Math.min(fo, 3)} de ${fo} 📷</button>` : '<span class="mut">—</span>'}</td></tr>`;
     }).join('');
-    return `<div class="bloque"><div class="bt">${esc(nomTipo(t))} <span class="mut">· ${eqs.length}</span></div>
+    return `<div class="bloque"><div class="bt">
+        <span class="pos">${iT + 1}</span> ${esc(nomTipo(t))} <span class="mut">· ${eqs.length}</span>
+        <span class="mover">
+          <button class="ord-btn" data-tipo="${esc(t)}" data-dir="-1"${iT === 0 ? ' disabled' : ''} title="Subir: sale antes en el informe">↑</button>
+          <button class="ord-btn" data-tipo="${esc(t)}" data-dir="1"${iT === orden.length - 1 ? ' disabled' : ''} title="Bajar: sale después en el informe">↓</button>
+        </span></div>
       <table class="tb"><thead><tr><th>Equipo</th><th>Ubicación</th><th>Capacidad</th><th class="c">Activ.</th><th class="c">Obs.</th><th class="c">Fotos</th></tr></thead>
       <tbody>${filas}</tbody></table></div>`;
   }).join('');
@@ -565,7 +609,9 @@ document.addEventListener('click', (ev) => {
   const b = ev.target.closest('#detalle .mini[data-eq]');
   if (b) { abrirSelector(b.dataset.eq); return; }
   const ph = ev.target.closest('#sel-body .ph[data-id]');
-  if (ph) toggleFoto(ph.dataset.id);
+  if (ph) { toggleFoto(ph.dataset.id); return; }
+  const om = ev.target.closest('#detalle .ord-btn[data-tipo]');
+  if (om && !om.disabled) moverTipo(om.dataset.tipo, Number(om.dataset.dir));
 });
 
 // ── Selector de fotos por equipo ─────────────────────────────────────────────────────
@@ -666,7 +712,7 @@ async function generar() {
     const hTipo = (t) => new D.Paragraph({ spacing: { before: 200, after: 60 }, children: [new D.TextRun({ text: t.toUpperCase(), bold: true, underline: {}, size: 21, font: 'Aptos' })] });
 
     const tipos = porTipo(d.equipos);
-    const orden = Object.keys(tipos).sort();
+    const orden = tiposOrdenados(tipos);      // el que se eligió en pantalla
     const hijos = [];
 
     // ── 1. Alcance ──
