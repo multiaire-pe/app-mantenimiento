@@ -16,7 +16,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Llamar a cron_recordatorios
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          RECORDATORIOS_URL: ${{ secrets.RECORDATORIOS_URL }}
         run: |
-          curl -sS -o /dev/null -w "HTTP %{http_code}\n" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.RECORDATORIOS_URL }}/api/cron_recordatorios"
+          set -euo pipefail
+          # `curl -sS` sale con éxito aunque la respuesta sea 401/404/500: sin este chequeo
+          # el job quedaría VERDE mientras el recordatorio no le llega a nadie (p. ej. si
+          # falta CRON_SECRET en el entorno de destino). Un cron que falla en silencio es
+          # peor que no tenerlo.
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$RECORDATORIOS_URL/api/cron_recordatorios")
+          echo "HTTP $code"
+          cat /tmp/resp.json; echo
+          if [ "$code" != "200" ]; then
+            echo "::error::cron_recordatorios respondió HTTP $code (esperado 200)"
+            exit 1
+          fi

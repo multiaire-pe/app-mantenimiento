@@ -13,7 +13,7 @@ import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 import { getDb } from './_lib/firestore.js';
 import { hoyLima, horaHHMMLima, decimalAHHMM } from './_lib/fecha.js';
-import { notificarPorTipo } from './_lib/avisos.js';
+import { notificarPorTipo, destinatariosAviso } from './_lib/avisos.js';
 
 function secretoValido(header) {
   const esperado = process.env.CRON_SECRET || '';
@@ -21,6 +21,29 @@ function secretoValido(header) {
   const a = Buffer.from(String(header));
   const b = Buffer.from(esperado);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// TURNO DEL DÍA (lock atómico) — la marca `ultimoEnvio` del config NO alcanza para decidir
+// si mandar: se escribe DESPUÉS de enviar, así que dos ejecuciones solapadas (el schedule
+// de 30 min con un workflow_dispatch manual, un reintento, o una función que se corta tras
+// enviar y antes del set) leen las dos "todavía no se mandó" y el técnico recibe el
+// recordatorio dos veces. Acá el turno se toma ANTES de enviar con `create()`, que falla si
+// el doc ya existe (ALREADY_EXISTS): solo una ejecución puede ganarlo por (fecha, tipo).
+// Colección `recordatorio_envios` — operativa/transitoria, como `wa_mensajes` del bot
+// (idempotencia): no se respalda.
+const YA_EXISTE = (e) => e?.code === 6 || /ALREADY_EXISTS/i.test(e?.message || '');
+
+// Exportada (además de usarse acá) para poder testearla con un Firestore inyectado:
+// es la pieza que decide si se manda o no, y su modo de fallo son los duplicados.
+export async function tomarTurno(db, hoy, tipo) {
+  const ref = db.collection('recordatorio_envios').doc(`${hoy}_${tipo}`);
+  try {
+    await ref.create({ fecha: hoy, tipo, inicioTs: new Date().toISOString() });
+    return ref;
+  } catch (e) {
+    if (YA_EXISTE(e)) return null;   // otra ejecución ya lo tomó → esta no envía
+    throw e;
+  }
 }
 
 // Hora EXACTA (sin redondear) del momento en Lima, en decimal — a propósito distinta de
@@ -44,20 +67,32 @@ export default async function handler(req, res) {
   const db = getDb();
   const ref = db.collection('config_recordatorios').doc('default');
 
-  // ?reset=entrada|salida|all — borra la marca de "ya enviado hoy" para volver a probar el
-  // mismo tipo sin esperar al día siguiente. Uso manual/administrativo, protegido por el
-  // mismo CRON_SECRET (no es un endpoint público).
+  // ?reset=entrada|salida|all — borra la marca de "ya enviado hoy" (turno + ultimoEnvio) para
+  // volver a probar el mismo tipo sin esperar al día siguiente. Es una herramienta de PRUEBA:
+  // rearma un envío masivo real, así que en producción queda APAGADA. Requiere las dos cosas —
+  // env ALLOW_RECORDATORIOS_RESET=true (solo se setea en Preview/develop) y método POST (un
+  // GET no debe tener efectos) — además del CRON_SECRET que ya protege todo el endpoint.
   const reset = req.query?.reset;
   if (reset) {
+    if (process.env.ALLOW_RECORDATORIOS_RESET !== 'true') {
+      return res.status(403).json({ error: 'reset deshabilitado en este entorno' });
+    }
+    if (req.method !== 'POST') {
+      return res.status(405).json({ error: 'reset requiere POST' });
+    }
     const tipos = reset === 'all' ? ['entrada', 'salida'] : [String(reset)];
     if (tipos.some((t) => t !== 'entrada' && t !== 'salida')) {
       return res.status(400).json({ error: `reset inválido: ${reset} (usar entrada, salida o all)` });
     }
+    // El turno manda sobre `ultimoEnvio`: si no se borra, resetear la marca no reactiva nada.
+    const hoyReset = hoyLima();
+    await Promise.all(tipos.map((t) => db.collection('recordatorio_envios').doc(`${hoyReset}_${t}`).delete()));
     const snapReset = await ref.get();
-    if (!snapReset.exists) return res.status(200).json({ ok: true, reset: [] }); // nada que resetear
-    const updates = {};
-    for (const t of tipos) updates[`ultimoEnvio.${t}`] = admin.firestore.FieldValue.delete();
-    await ref.update(updates);
+    if (snapReset.exists) {
+      const updates = {};
+      for (const t of tipos) updates[`ultimoEnvio.${t}`] = admin.firestore.FieldValue.delete();
+      await ref.update(updates);
+    }
     return res.status(200).json({ ok: true, reset: tipos });
   }
 
@@ -67,22 +102,46 @@ export default async function handler(req, res) {
   const ahora = ahoraExactaLima();
   const ultimoEnvio = { ...(cfg.ultimoEnvio || {}) };
   const resultados = {};
+  let enviadoAhora = false;   // solo se reescribe el config si esta ejecución mandó algo
 
   for (const tipo of ['entrada', 'salida']) {
     const hora = cfg[tipo === 'entrada' ? 'horaEntrada' : 'horaSalida'];
     if (hora == null || !Number.isFinite(Number(hora))) continue; // sin hora configurada
-    if (ultimoEnvio[tipo] === hoy) continue;                      // ya se mandó hoy
+    if (ultimoEnvio[tipo] === hoy) continue;                      // ya se mandó hoy (atajo barato)
     if (ahora < Number(hora)) continue;                           // aún no llega la hora
 
-    const n = await notificarPorTipo('recordatorio', TEXTO[tipo], '', {
-      params: [tipo === 'entrada' ? 'Entrada' : 'Salida'],
-    });
+    // Los destinatarios se resuelven ANTES de tomar el turno, a propósito: si esa lectura
+    // falla (o todavía no hay nadie marcado en 🔔 Alertas del bot), el turno queda libre y
+    // el próximo tick reintenta. Después de tomarlo ya no se libera: `notificarPorTipo`
+    // atrapa los errores de cada envío por dentro, así que una excepción posterior puede
+    // haber mandado parte de los mensajes — reintentar duplicaría.
+    const destinos = await destinatariosAviso('recordatorio');
+    if (!destinos.length) { console.log(`[cron_recordatorios] ${tipo} · 0 destinatarios con avisos.recordatorio`); continue; }
+
+    const turno = await tomarTurno(db, hoy, tipo);
+    if (!turno) { console.log(`[cron_recordatorios] ${tipo} · turno ya tomado hoy, no se envía`); continue; }
+
+    let n = 0;
+    try {
+      n = await notificarPorTipo('recordatorio', TEXTO[tipo], '', {
+        destinos,
+        params: [tipo === 'entrada' ? 'Entrada' : 'Salida'],
+      });
+      await turno.update({ enviados: n, finTs: new Date().toISOString() });
+    } catch (e) {
+      // El turno NO se libera (ver arriba): se deja el error anotado para diagnóstico.
+      await turno.update({ error: String(e?.message || e), finTs: new Date().toISOString() }).catch(() => {});
+      console.error(`[cron_recordatorios] ${tipo} · falló el envío:`, e?.message || e);
+      resultados[tipo] = { error: true, enviados: n };
+      continue;
+    }
     ultimoEnvio[tipo] = hoy;
+    enviadoAhora = true;
     resultados[tipo] = n;
     console.log(`[cron_recordatorios] ${tipo} · ${n} enviado(s) · hora config ${decimalAHHMM(hora)} · ahora ${decimalAHHMM(ahora)}`);
   }
 
-  if (Object.keys(resultados).length) {
+  if (enviadoAhora) {
     await ref.set({ ultimoEnvio }, { merge: true });
   }
   return res.status(200).json({ ok: true, hoy, ahora: decimalAHHMM(ahora), resultados });
