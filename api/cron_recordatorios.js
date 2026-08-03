@@ -59,6 +59,23 @@ const TEXTO = {
   salida: '⏰ *Recordatorio* — no olvides marcar tu *salida* de hoy.',
 };
 
+// QUÉ HACER DESPUÉS DE ENVIAR. `notificarPorTipo` NO lanza si WhatsApp falla: atrapa el
+// error de cada destinatario por dentro y devuelve cuántos salieron. Con el token vencido
+// o Meta caído devuelve 0 — y sin esta política el cron marcaba el día como enviado,
+// respondía 200 y el workflow quedaba verde: el recordatorio se perdía en silencio, que es
+// justo el modo de fallo que este endpoint vino a eliminar.
+//   · 0 enviados → NADIE recibió nada, así que reintentar no puede duplicar: se libera el
+//     turno (el próximo tick de 30 min reintenta) y se responde no-2xx para que el job falle.
+//   · envío parcial → algunos SÍ recibieron: reintentar duplicaría, así que el día se marca
+//     igual; los fallidos se anotan y se avisan, pero no ponen el job en rojo (un técnico con
+//     el número muerto dejaría el cron rojo todos los días y la alerta se volvería ruido).
+export function politicaEnvio(enviados, intentados) {
+  if (enviados === 0) {
+    return { liberarTurno: true, marcarDia: false, fallidos: intentados, error: `ningún envío salió (0/${intentados})` };
+  }
+  return { liberarTurno: false, marcarDia: true, fallidos: intentados - enviados, error: null };
+}
+
 export default async function handler(req, res) {
   if (!secretoValido(req.headers['x-cron-secret'])) {
     return res.status(401).json({ error: 'unauthorized' });
@@ -74,7 +91,9 @@ export default async function handler(req, res) {
   // GET no debe tener efectos) — además del CRON_SECRET que ya protege todo el endpoint.
   const reset = req.query?.reset;
   if (reset) {
-    if (process.env.ALLOW_RECORDATORIOS_RESET !== 'true') {
+    // Doble llave: el env explícito Y que el deployment no sea Production — así, si algún día
+    // ALLOW_RECORDATORIOS_RESET se copia por error al entorno equivocado, sigue sin reactivarse.
+    if (process.env.ALLOW_RECORDATORIOS_RESET !== 'true' || process.env.VERCEL_ENV === 'production') {
       return res.status(403).json({ error: 'reset deshabilitado en este entorno' });
     }
     if (req.method !== 'POST') {
@@ -103,6 +122,7 @@ export default async function handler(req, res) {
   const ultimoEnvio = { ...(cfg.ultimoEnvio || {}) };
   const resultados = {};
   let enviadoAhora = false;   // solo se reescribe el config si esta ejecución mandó algo
+  let huboError = false;      // → responde 502 para que el workflow NO quede verde en falso
 
   for (const tipo of ['entrada', 'salida']) {
     const hora = cfg[tipo === 'entrada' ? 'horaEntrada' : 'horaSalida'];
@@ -127,22 +147,38 @@ export default async function handler(req, res) {
         destinos,
         params: [tipo === 'entrada' ? 'Entrada' : 'Salida'],
       });
-      await turno.update({ enviados: n, finTs: new Date().toISOString() });
     } catch (e) {
-      // El turno NO se libera (ver arriba): se deja el error anotado para diagnóstico.
+      // Excepción a mitad del envío: pudo haber mandado parte, así que el turno NO se libera
+      // (reintentar duplicaría). Se anota el error y el job va a fallar por el 502 de abajo.
       await turno.update({ error: String(e?.message || e), finTs: new Date().toISOString() }).catch(() => {});
       console.error(`[cron_recordatorios] ${tipo} · falló el envío:`, e?.message || e);
-      resultados[tipo] = { error: true, enviados: n };
+      resultados[tipo] = { error: String(e?.message || e), enviados: n, intentados: destinos.length };
+      huboError = true;
       continue;
     }
+
+    const pol = politicaEnvio(n, destinos.length);
+    if (pol.liberarTurno) await turno.delete().catch(() => {});
+    else await turno.update({ enviados: n, fallidos: pol.fallidos, finTs: new Date().toISOString() }).catch(() => {});
+
+    if (pol.error) {
+      console.error(`[cron_recordatorios] ${tipo} · ${pol.error} — turno liberado, se reintenta en el próximo tick`);
+      resultados[tipo] = { error: pol.error, enviados: 0, intentados: destinos.length };
+      huboError = true;
+      continue;
+    }
+    if (pol.fallidos > 0) console.warn(`[cron_recordatorios] ${tipo} · ${pol.fallidos} destinatario(s) no recibieron (no se reintenta: duplicaría)`);
+
     ultimoEnvio[tipo] = hoy;
     enviadoAhora = true;
-    resultados[tipo] = n;
-    console.log(`[cron_recordatorios] ${tipo} · ${n} enviado(s) · hora config ${decimalAHHMM(hora)} · ahora ${decimalAHHMM(ahora)}`);
+    resultados[tipo] = { enviados: n, fallidos: pol.fallidos, intentados: destinos.length };
+    console.log(`[cron_recordatorios] ${tipo} · ${n}/${destinos.length} enviado(s) · hora config ${decimalAHHMM(hora)} · ahora ${decimalAHHMM(ahora)}`);
   }
 
   if (enviadoAhora) {
     await ref.set({ ultimoEnvio }, { merge: true });
   }
-  return res.status(200).json({ ok: true, hoy, ahora: decimalAHHMM(ahora), resultados });
+  // no-2xx ante fallo real: es lo único que pone el job de GitHub Actions en rojo.
+  const status = huboError ? 502 : 200;
+  return res.status(status).json({ ok: !huboError, hoy, ahora: decimalAHHMM(ahora), resultados });
 }

@@ -34,3 +34,14 @@ jobs:
             echo "::error::cron_recordatorios respondió HTTP $code (esperado 200)"
             exit 1
           fi
+          # Cinturón y tirantes: el endpoint ya responde 502 ante un fallo real, pero si
+          # alguna vez devolviera 200 con `ok:false`, el job igual tiene que ponerse rojo.
+          if ! grep -q '"ok":[[:space:]]*true' /tmp/resp.json; then
+            echo "::error::cron_recordatorios respondió 200 pero sin ok:true"
+            exit 1
+          fi
+          # Envío parcial: alguien no recibió el recordatorio. No falla el job a propósito
+          # (un teléfono muerto lo dejaría rojo todos los días y la alerta sería ruido).
+          if grep -q '"fallidos":[[:space:]]*[1-9]' /tmp/resp.json; then
+            echo "::warning::algunos destinatarios NO recibieron el recordatorio (ver la respuesta)"
+          fi
