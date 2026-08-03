@@ -788,10 +788,10 @@ async function exportBackup() {
     // 8. Inventario CSV. Incluye el ESTADO VIVO de operatividad (campos operatividad*), que es
     //    donde el panel lee el % actual de cada equipo — sin estas columnas, un restore lo perdería.
     //    operatividad null (nunca reportado) → celda vacía; 0 (inoperativo) NO es vacío y se conserva.
-    const invHeaders = ['EQ_ID','SEDE','CLIENTE','TIPO','NOMBRE','AREA','MARCA','MODELO','SERIE','OPERATIVIDAD','OP_FECHA','OP_POR','OP_OBSID','OP_ORIGEN'];
+    const invHeaders = ['EQ_ID','SEDE','CLIENTE','TIPO','NOMBRE','AREA','MARCA','MODELO','SERIE','CAPACIDAD','OPERATIVIDAD','OP_FECHA','OP_POR','OP_OBSID','OP_ORIGEN'];
     const invRows = invSnap.docs.map(d => {
       const r = d.data();
-      return [r.eq_id||d.id,r.sede||'',r.cliente||'',r.tipo||'',r.nombre||'',r.area||'',r.marca||'',r.modelo||'',r.serie||'',
+      return [r.eq_id||d.id,r.sede||'',r.cliente||'',r.tipo||'',r.nombre||'',r.area||'',r.marca||'',r.modelo||'',r.serie||'',r.capacidad||'',
         (r.operatividad==null?'':r.operatividad),r.operatividadFecha||'',r.operatividadPor||'',r.operatividadObsId||'',r.operatividadOrigen||''].map(escapeCSV).join(',');
     });
     zip.file('inventario.csv', [invHeaders.join(','), ...invRows].join('\n'));
@@ -1336,6 +1336,9 @@ async function confirmImport() {
       // (no desde rows[0]): un backup nuevo con header pero 0 equipos debe seguir contando como "nuevo"
       // para que 'replace' borre fielmente. Los headers son identificadores simples (sin comas/comillas).
       const _hasOp = ((pendingImport.files['inventario.csv'].split(/\r?\n/)[0]||'').split(',').map(h=>h.trim()).indexOf('OPERATIVIDAD') !== -1);
+      // Ídem para CAPACIDAD: si el backup es previo al campo, NO se escribe la clave (un `set`
+      // sin merge la borraría) y el dato ya cargado sobrevive.
+      const _hasCap = ((pendingImport.files['inventario.csv'].split(/\r?\n/)[0]||'').split(',').map(h=>h.trim()).indexOf('CAPACIDAD') !== -1);
       // El delete-all de 'replace' solo aplica si el backup ES nuevo (trae operatividad): así el restore
       // es fiel. Con un backup VIEJO (sin la columna) NO borramos la colección, porque recrear los docs
       // con set/merge SIN operatividad perdería el estado vivo actual (el delete-all lo aniquilaría antes
@@ -1348,6 +1351,7 @@ async function confirmImport() {
         // el cliente se importa tal cual (antes se inventaba 'RIPLEY'): es la llave que resuelve la
         // plantilla de actividades del equipo — asignarle otro cliente le cambiaría las actividades
         const p={eq_id:r.EQ_ID,sede:r.SEDE||'',cliente:r.CLIENTE||'',tipo:r.TIPO||'',nombre:r.NOMBRE||'',area:r.AREA||'',marca:r.MARCA||'',modelo:r.MODELO||'',serie:r.SERIE||''};
+        if(_hasCap) p.capacidad=r.CAPACIDAD||'';
         if(_hasOp){
           // backup NUEVO (trae el estado vivo): restaurar tal cual. '' → null (nunca reportado); '0' se conserva.
           p.operatividad=(r.OPERATIVIDAD!==''&&r.OPERATIVIDAD!=null)?+r.OPERATIVIDAD:null;
