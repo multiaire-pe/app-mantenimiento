@@ -223,9 +223,21 @@ tr:hover td{background:var(--surface2)}
       <span style="font-size:11px;color:var(--muted2)">requiere teléfono con WhatsApp</span>
     </div>
     <div style="font-size:11.5px;color:var(--muted2);padding:0 16px 10px">Marca quién recibe la notificación cuando el bot registra una <b>observación</b>, un <b>marcaje de asistencia</b> o una <b>actividad de mantenimiento</b>. No se avisa a quien hizo la acción.</div>
+    <div class="form-row" style="padding:0 16px 12px;align-items:flex-end;gap:14px;flex-wrap:wrap">
+      <div class="form-group" style="flex:0 0 150px">
+        <label class="form-label">⏰ Recordatorio entrada</label>
+        <input type="time" id="rec-hora-entrada" class="form-input" onchange="markRecordatoriosDirty()">
+      </div>
+      <div class="form-group" style="flex:0 0 150px">
+        <label class="form-label">⏰ Recordatorio salida</label>
+        <input type="time" id="rec-hora-salida" class="form-input" onchange="markRecordatoriosDirty()">
+      </div>
+      <button class="btn btn-sm btn-primary" id="btn-save-recordatorios" onclick="saveRecordatoriosConfig()" style="display:none" disabled>💾 Guardar horarios</button>
+      <span style="font-size:10.5px;color:var(--muted2);flex:1 1 220px">A esta hora fija, el bot manda el recordatorio a los colaboradores marcados en la columna ⏰ Recordatorios (no revisa si ya marcaron asistencia).</span>
+    </div>
     <div class="table-scroll">
       <table>
-        <thead><tr><th>Colaborador</th><th style="text-align:center">👁 Observaciones</th><th style="text-align:center">🕐 Asistencia</th><th style="text-align:center">🔧 Actividades</th></tr></thead>
+        <thead><tr><th>Colaborador</th><th style="text-align:center">👁 Observaciones</th><th style="text-align:center">🕐 Asistencia</th><th style="text-align:center">🔧 Actividades</th><th style="text-align:center">⏰ Recordatorios</th></tr></thead>
         <tbody id="alertas-tbody"></tbody>
       </table>
     </div>
@@ -923,7 +935,7 @@ function persTab(t){
   document.getElementById('view-alertas').style.display = t==='alertas' ? '' : 'none';
   document.getElementById('ptab-dir').classList.toggle('btn-primary', t==='dir');
   document.getElementById('ptab-alertas').classList.toggle('btn-primary', t==='alertas');
-  if (t==='alertas') renderAlertas();
+  if (t==='alertas'){ renderAlertas(); loadRecordatoriosConfig(); }
 }
 function avisoDe(p, tipo){
   const av = p.avisos;
@@ -947,13 +959,13 @@ function renderAlertas(){
     return '<tr' + (tel ? '' : ' style="opacity:.55"') + '><td><b>'+esc(p.nombre||'')+'</b>'
       + ' <span style="font-size:10px;color:var(--muted2)">'+esc(p.cargo||'')+'</span>'
       + (tel ? '' : ' <span title="Sin teléfono WhatsApp: no puede recibir avisos">📵</span>')
-      + '</td>' + chk('obs') + chk('asistencia') + chk('mtto') + '</tr>';
-  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted2);padding:16px">Sin personal activo</td></tr>';
+      + '</td>' + chk('obs') + chk('asistencia') + chk('mtto') + chk('recordatorio') + '</tr>';
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted2);padding:16px">Sin personal activo</td></tr>';
 }
 async function toggleAvisoTipo(id, tipo, checked){
   if(!isPersAdmin()){ toast('Sin permisos','err'); return; }
   const p = personal.find(x => x.id === id); if(!p) return;
-  const av = { obs: avisoDe(p,'obs'), asistencia: avisoDe(p,'asistencia'), mtto: avisoDe(p,'mtto') };
+  const av = { obs: avisoDe(p,'obs'), asistencia: avisoDe(p,'asistencia'), mtto: avisoDe(p,'mtto'), recordatorio: avisoDe(p,'recordatorio') };
   av[tipo] = checked;
   try{
     // `db`, NO `window.__db`: este módulo define `window.__fb` (solo helpers de auth) pero
@@ -961,8 +973,44 @@ async function toggleAvisoTipo(id, tipo, checked){
     // TypeError, el catch revertía el checkbox y NUNCA se podía activar un aviso nuevo.
     await db.collection('maestros_personal').doc(id).set({ avisos: av, recibeAvisos: av.obs === true }, { merge: true });
     p.avisos = av; p.recibeAvisos = av.obs === true;
-    toast((checked?'🔔 ':'🔕 ') + (p.nombre||id) + ' · ' + ({obs:'observaciones',asistencia:'asistencia',mtto:'actividades'})[tipo], 'ok');
+    toast((checked?'🔔 ':'🔕 ') + (p.nombre||id) + ' · ' + ({obs:'observaciones',asistencia:'asistencia',mtto:'actividades',recordatorio:'recordatorios'})[tipo], 'ok');
   }catch(e){ toast('Error: '+e.message,'err'); renderAlertas(); }
+}
+
+// ── Horarios de recordatorio (config_recordatorios/default) ──────────────────
+// Hora ÚNICA global de entrada/salida (decimal, mismo formato 8.5=08:30 que el resto
+// del sistema) a la que el bot manda el recordatorio (cron_recordatorios, api/_lib/avisos.js
+// tipo 'recordatorio'). Incondicional: no revisa asistencia_registros — decisión explícita
+// para no tocar la lógica de registro de asistencia en producción.
+async function loadRecordatoriosConfig(){
+  const btn = document.getElementById('btn-save-recordatorios');
+  if(isPersAdmin() && btn){ btn.style.display = 'inline-flex'; }
+  try{
+    const snap = await db.collection('config_recordatorios').doc('default').get();
+    const cfg = snap.exists ? snap.data() : {};
+    document.getElementById('rec-hora-entrada').value = cfg.horaEntrada!=null ? decToHHMM(cfg.horaEntrada) : '';
+    document.getElementById('rec-hora-salida').value  = cfg.horaSalida!=null  ? decToHHMM(cfg.horaSalida)  : '';
+  }catch(e){ console.error('[recordatorios] no se pudo cargar la config:', e.message); }
+  if(btn) btn.disabled = true;
+  ['rec-hora-entrada','rec-hora-salida'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = !isPersAdmin(); });
+}
+function markRecordatoriosDirty(){
+  const btn = document.getElementById('btn-save-recordatorios');
+  if(btn) btn.disabled = false;
+}
+async function saveRecordatoriosConfig(){
+  if(!isPersAdmin()){ toast('Sin permisos','err'); return; }
+  const horaEntrada = hhmmToDec(val('rec-hora-entrada'));
+  const horaSalida  = hhmmToDec(val('rec-hora-salida'));
+  const btn = document.getElementById('btn-save-recordatorios');
+  if(btn) btn.disabled = true;
+  try{
+    await db.collection('config_recordatorios').doc('default').set({
+      horaEntrada, horaSalida,
+      updatedAt: new Date().toISOString(), updatedBy: maUser?.email || ''
+    }, { merge: true });
+    toast('⏰ Horarios de recordatorio guardados', 'ok');
+  }catch(e){ toast('Error: '+e.message, 'err'); if(btn) btn.disabled = false; }
 }
 
 async function loadPersonal(){

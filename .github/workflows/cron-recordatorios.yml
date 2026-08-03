@@ -1,0 +1,51 @@
+name: Cron recordatorios de asistencia
+
+# Dispara api/cron_recordatorios.js cada 30 min. GitHub Actions no soporta cron con secretos
+# de repo distintos por rama: el destino (develop o producción) y el secreto se leen de
+# secrets del repo (RECORDATORIOS_URL / CRON_SECRET) — cambiar de entorno es cambiar el
+# secret, sin tocar este archivo. IMPORTANTE: un trigger `schedule` solo se dispara desde
+# la copia de este workflow que vive en la rama POR DEFECTO del repo (GitHub lo exige) —
+# no alcanza con que exista en `develop` si la rama por defecto es otra.
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:        # permite disparar a mano para probar sin esperar el schedule
+
+jobs:
+  disparar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar a cron_recordatorios
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          RECORDATORIOS_URL: ${{ secrets.RECORDATORIOS_URL }}
+        run: |
+          set -euo pipefail
+          # `curl -sS` sale con éxito aunque la respuesta sea 401/404/500: sin este chequeo
+          # el job quedaría VERDE mientras el recordatorio no le llega a nadie (p. ej. si
+          # falta CRON_SECRET en el entorno de destino). Un cron que falla en silencio es
+          # peor que no tenerlo.
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' \
+            -H "x-cron-secret: $CRON_SECRET" \
+            "$RECORDATORIOS_URL/api/cron_recordatorios")
+          echo "HTTP $code"
+          cat /tmp/resp.json; echo
+          if [ "$code" != "200" ]; then
+            echo "::error::cron_recordatorios respondió HTTP $code (esperado 200)"
+            exit 1
+          fi
+          # Se parsea el JSON de verdad, no con grep: un `"ok": true` anidado dentro de
+          # `resultados` habría dado verde con el top-level en false.
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("/tmp/resp.json","utf8"));
+            // Cinturón y tirantes: el endpoint ya responde 502 ante un fallo real, pero si
+            // alguna vez devolviera 200 con ok:false, el job igual tiene que ponerse rojo.
+            if (r.ok !== true) { console.log("::error::cron_recordatorios respondió 200 pero con ok:" + r.ok); process.exit(1); }
+            const res = r.resultados || {};
+            // Envío parcial: alguien no recibió el recordatorio. No falla el job a propósito
+            // (un teléfono muerto lo dejaría rojo todos los días y la alerta sería ruido).
+            for (const [tipo, d] of Object.entries(res)) {
+              if (d && d.fallidos > 0) console.log(`::warning::${tipo}: ${d.fallidos} de ${d.intentados} destinatario(s) NO recibieron el recordatorio`);
+              if (d && d.sinDestinatarios) console.log(`::warning::${tipo}: ya pasó la hora configurada y NADIE está marcado en Personal → 🔔 Alertas del bot`);
+            }
+          '

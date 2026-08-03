@@ -57,6 +57,10 @@ service cloud.firestore {
     // (mismo criterio que maestros_personal). Las sedes siguen en maestros_tiendas; las actividades por
     // cliente en tareas_config/{cliente|tipo} (cuya regla no cambia).
     match /maestros_clientes/{doc} { allow read: if authorized(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
+    // config_recordatorios: doc único ('default') con la hora de entrada/salida del recordatorio
+    // proactivo de asistencia (editable en Personal → 🔔 Alertas del bot). El cron (api/cron_recordatorios.js)
+    // lee/escribe por Admin SDK (ignora esta regla); esta es solo para la escritura desde el cliente.
+    match /config_recordatorios/{doc} { allow read: if authorized(); allow create, update: if isAdmin(); allow delete: if isSuper(); }
     match /maestros_tiendas/{doc}  { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_grupos/{doc}   { allow read: if authorized(); allow write: if isSuper(); }
     match /maestros_feriados/{doc} { allow read: if authorized(); allow write: if isSuper(); }
@@ -156,6 +160,10 @@ service cloud.firestore {
     match /wa_ultima_obs/{doc}     { allow read: if authorized(); allow write: if false; }
     match /wa_asistencia_sesiones/{doc} { allow read: if authorized(); allow write: if false; }
     match /wa_asistencia_fotos/{doc}    { allow read: if authorized(); allow write: if false; }
+    // recordatorio_envios: turno diario del cron de recordatorios (doc `YYYY-MM-DD_tipo`,
+    // creado con create() antes de enviar para que dos ejecuciones solapadas no dupliquen
+    // el WhatsApp). Mismo criterio que las wa_*: la escribe el Admin SDK, nunca el cliente.
+    match /recordatorio_envios/{doc}    { allow read: if authorized(); allow write: if false; }
 
     // ── Catch-all (FAIL-CLOSED) ────────────────────────────────────────────────────
     //  OJO: en Firestore los `match` se combinan con OR — un allow más amplio aquí
