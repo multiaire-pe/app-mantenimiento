@@ -23,27 +23,46 @@ function secretoValido(header) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-// TURNO DEL DÍA (lock atómico) — la marca `ultimoEnvio` del config NO alcanza para decidir
-// si mandar: se escribe DESPUÉS de enviar, así que dos ejecuciones solapadas (el schedule
-// de 30 min con un workflow_dispatch manual, un reintento, o una función que se corta tras
-// enviar y antes del set) leen las dos "todavía no se mandó" y el técnico recibe el
-// recordatorio dos veces. Acá el turno se toma ANTES de enviar con `create()`, que falla si
-// el doc ya existe (ALREADY_EXISTS): solo una ejecución puede ganarlo por (fecha, tipo).
-// Colección `recordatorio_envios` — operativa/transitoria, como `wa_mensajes` del bot
-// (idempotencia): no se respalda.
-const YA_EXISTE = (e) => e?.code === 6 || /ALREADY_EXISTS/i.test(e?.message || '');
+// TURNO DEL DÍA — la marca `ultimoEnvio` del config NO alcanza para decidir si mandar: se
+// escribe DESPUÉS de enviar, así que dos ejecuciones solapadas (el schedule de 30 min con un
+// workflow_dispatch manual, un reintento, o una función que se corta tras enviar y antes del
+// set) leen las dos "todavía no se mandó" y el técnico recibe el recordatorio dos veces. El
+// turno se toma ANTES de enviar, en una TRANSACCIÓN: solo una ejecución puede ganarlo por
+// (fecha, tipo). Colección `recordatorio_envios` — operativa/transitoria, como `wa_mensajes`
+// del bot (idempotencia): no se respalda.
+//
+// El turno además ACOTA LOS REINTENTOS. Un fallo definitivo (Meta rechaza porque el
+// destinatario está fuera de la ventana de 24h y no hay plantilla aprobada, por ejemplo) se
+// repite idéntico en cada tick: sin tope, el cron reintentaría cada 30 min hasta medianoche
+// —unos 14 intentos y 14 jobs en rojo— sin ninguna chance de éxito. Con tope, se intenta lo
+// justo para cubrir una caída pasajera de Meta y después se rinde con el error a la vista.
+//
+// Estados: 'en_curso' (alguien lo tiene) · 'enviado' (listo, no se repite) · 'reintentable'
+// (falló y consta que NADIE recibió) · 'incierto' (falló con algún envío ambiguo: pudo haber
+// llegado, así que NO se reintenta nunca — reintentar es como se duplica).
+export const MAX_INTENTOS_DIA = 3;
 
-// Exportada (además de usarse acá) para poder testearla con un Firestore inyectado:
-// es la pieza que decide si se manda o no, y su modo de fallo son los duplicados.
-export async function tomarTurno(db, hoy, tipo) {
+// Exportada (además de usarse acá) para poder testearla con un Firestore inyectado: es la
+// pieza que decide si se manda o no, y sus modos de fallo son el duplicado y el spam.
+export async function tomarTurno(db, hoy, tipo, maxIntentos = MAX_INTENTOS_DIA) {
   const ref = db.collection('recordatorio_envios').doc(`${hoy}_${tipo}`);
-  try {
-    await ref.create({ fecha: hoy, tipo, inicioTs: new Date().toISOString() });
-    return ref;
-  } catch (e) {
-    if (YA_EXISTE(e)) return null;   // otra ejecución ya lo tomó → esta no envía
-    throw e;
-  }
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const ahora = new Date().toISOString();
+    if (!snap.exists) {
+      tx.set(ref, { fecha: hoy, tipo, estado: 'en_curso', intentos: 1, inicioTs: ahora });
+      return { ok: true, ref, intento: 1 };
+    }
+    const d = snap.data() || {};
+    if (d.estado !== 'reintentable') {
+      // 'enviado' / 'incierto' / 'en_curso' → esta ejecución NO envía.
+      return { ok: false, ref, motivo: d.estado || 'desconocido', doc: d };
+    }
+    const intento = (d.intentos || 0) + 1;
+    if (intento > maxIntentos) return { ok: false, ref, motivo: 'agotado', doc: d };
+    tx.update(ref, { estado: 'en_curso', intentos: intento, inicioTs: ahora });
+    return { ok: true, ref, intento };
+  });
 }
 
 // Hora EXACTA (sin redondear) del momento en Lima, en decimal — a propósito distinta de
@@ -156,7 +175,31 @@ export default async function handler(req, res) {
     }
 
     const turno = await tomarTurno(db, hoy, tipo);
-    if (!turno) { console.log(`[cron_recordatorios] ${tipo} · turno ya tomado hoy, no se envía`); continue; }
+    if (!turno.ok) {
+      // Si el día terminó SIN entrega confirmada, no puede quedar en silencio: los ticks
+      // siguientes veían el turno tomado y respondían 200 con `resultados` vacío, así que el
+      // monitoreo dejaba de avisar aunque nadie hubiera recibido nada. Se reporta con 502 UNA
+      // vez (el primero que lo detecta marca `reportado`) y después se sigue devolviendo el
+      // error en la respuesta, pero sin repetir el rojo cada 30 min.
+      const fallado = turno.motivo === 'agotado' || turno.motivo === 'incierto';
+      if (fallado) {
+        const yaReportado = turno.doc?.reportado === true;
+        resultados[tipo] = {
+          error: turno.doc?.error || turno.motivo,
+          motivo: turno.motivo,
+          intentos: turno.doc?.intentos ?? null,
+          reportadoAntes: yaReportado,
+        };
+        if (!yaReportado) {
+          huboError = true;
+          await turno.ref.update({ reportado: true }).catch(() => {});
+          console.error(`[cron_recordatorios] ${tipo} · ${turno.motivo} — ${turno.doc?.error || 'sin entrega confirmada'}`);
+        }
+      } else {
+        console.log(`[cron_recordatorios] ${tipo} · turno ${turno.motivo}, no se envía`);
+      }
+      continue;
+    }
 
     let n = 0, ambiguos = 0;
     try {
@@ -176,14 +219,27 @@ export default async function handler(req, res) {
       continue;
     }
 
+    // El turno ya no se BORRA para reintentar: cambia de estado. Borrarlo perdía la cuenta de
+    // intentos y por eso un fallo definitivo se repetía cada 30 min hasta medianoche.
     const pol = politicaEnvio(n, destinos.length, ambiguos);
-    if (pol.liberarTurno) await turno.delete().catch(() => {});
-    else await turno.update({ enviados: n, fallidos: pol.fallidos, ambiguos, error: pol.error || null, finTs: new Date().toISOString() }).catch(() => {});
+    const estado = pol.error ? (pol.liberarTurno ? 'reintentable' : 'incierto') : 'enviado';
+    const quedanIntentos = turno.intento < MAX_INTENTOS_DIA;
+    await turno.ref.update({
+      estado, enviados: n, fallidos: pol.fallidos, ambiguos,
+      error: pol.error || null, finTs: new Date().toISOString(),
+    }).catch(() => {});
 
     if (pol.error) {
-      console.error(`[cron_recordatorios] ${tipo} · ${pol.error}${pol.liberarTurno ? ' — turno liberado, se reintenta en el próximo tick' : ''}`);
-      resultados[tipo] = { error: pol.error, enviados: 0, intentados: destinos.length, ambiguos };
+      const cola = estado === 'incierto' ? ' — no se reintenta (pudo haber llegado)'
+        : quedanIntentos ? ` — se reintenta en el próximo tick (intento ${turno.intento}/${MAX_INTENTOS_DIA})`
+        : ` — sin más reintentos hoy (${turno.intento}/${MAX_INTENTOS_DIA})`;
+      console.error(`[cron_recordatorios] ${tipo} · ${pol.error}${cola}`);
+      resultados[tipo] = {
+        error: pol.error, enviados: 0, intentados: destinos.length, ambiguos,
+        intento: turno.intento, reintentara: estado === 'reintentable' && quedanIntentos,
+      };
       huboError = true;
+      await turno.ref.update({ reportado: true }).catch(() => {});
       continue;
     }
     if (pol.fallidos > 0) console.warn(`[cron_recordatorios] ${tipo} · ${pol.fallidos} destinatario(s) no recibieron (no se reintenta: duplicaría)`);
