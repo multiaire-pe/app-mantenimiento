@@ -788,10 +788,10 @@ async function exportBackup() {
     // 8. Inventario CSV. Incluye el ESTADO VIVO de operatividad (campos operatividad*), que es
     //    donde el panel lee el % actual de cada equipo — sin estas columnas, un restore lo perdería.
     //    operatividad null (nunca reportado) → celda vacía; 0 (inoperativo) NO es vacío y se conserva.
-    const invHeaders = ['EQ_ID','SEDE','CLIENTE','TIPO','NOMBRE','AREA','MARCA','MODELO','SERIE','OPERATIVIDAD','OP_FECHA','OP_POR','OP_OBSID','OP_ORIGEN'];
+    const invHeaders = ['EQ_ID','SEDE','CLIENTE','TIPO','NOMBRE','AREA','MARCA','MODELO','SERIE','CAPACIDAD','OPERATIVIDAD','OP_FECHA','OP_POR','OP_OBSID','OP_ORIGEN'];
     const invRows = invSnap.docs.map(d => {
       const r = d.data();
-      return [r.eq_id||d.id,r.sede||'',r.cliente||'',r.tipo||'',r.nombre||'',r.area||'',r.marca||'',r.modelo||'',r.serie||'',
+      return [r.eq_id||d.id,r.sede||'',r.cliente||'',r.tipo||'',r.nombre||'',r.area||'',r.marca||'',r.modelo||'',r.serie||'',r.capacidad||'',
         (r.operatividad==null?'':r.operatividad),r.operatividadFecha||'',r.operatividadPor||'',r.operatividadObsId||'',r.operatividadOrigen||''].map(escapeCSV).join(',');
     });
     zip.file('inventario.csv', [invHeaders.join(','), ...invRows].join('\n'));
@@ -1121,22 +1121,7 @@ async function processZip(file) {
     const mode = document.querySelector('input[name="import-mode"]:checked').value;
     addLog('Modo: ' + (mode === 'replace' ? '🔄 Reemplazar todo' : '🔀 Fusionar'), 'info');
 
-    // "Reemplazar todo" fiel al backup: colecciones NUEVAS que un ZIP viejo no trae se
-    // VACÍAN — antes quedaban datos fantasma (hallazgo del Council, cierra el backlog).
-    if (mode === 'replace') {
-      const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mtto_actividades_periodo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad', 'maestros_clientes'];
-      for (const colN of NUEVAS) {
-        if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
-        const _exN = await window.__db.collection(colN).get();
-        if (!_exN.size) continue;
-        for (let i = 0; i < _exN.docs.length; i += 450) {
-          const _bN = window.__db.batch();
-          _exN.docs.slice(i, i + 450).forEach(d => _bN.delete(d.ref));
-          await _bN.commit();
-        }
-        addLog('🧹 ' + colN + ' vaciada (' + _exN.size + ' docs; el backup no la incluía)', 'info');
-      }
-    }
+    if (mode === 'replace') addLog('ℹ️ Al confirmar se vaciarán las colecciones que este backup no incluye.', 'info');
     addLog('Listo para importar. Confirma para proceder.', 'info');
     document.getElementById('confirm-btn').style.display = 'block';
 
@@ -1158,6 +1143,25 @@ async function confirmImport() {
 
   const log = document.getElementById('import-log');
   const btn = document.getElementById('confirm-btn');
+
+  // "Reemplazar todo" fiel al backup: las colecciones NUEVAS que un ZIP viejo no trae se
+  // VACÍAN — si no, quedan datos fantasma. Va acá y no en processZip: allá corría al SOLTAR
+  // el archivo, así que elegir un ZIP viejo con "Reemplazar todo" marcado ya borraba datos
+  // aunque después se cancelara. Ahora ocurre recién tras el confirm().
+  if (mode === 'replace') {
+    const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mtto_actividades_periodo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad', 'maestros_clientes'];
+    for (const colN of NUEVAS) {
+      if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
+      const _exN = await window.__db.collection(colN).get();
+      if (!_exN.size) continue;
+      for (let i = 0; i < _exN.docs.length; i += 450) {
+        const _bN = window.__db.batch();
+        _exN.docs.slice(i, i + 450).forEach(d => _bN.delete(d.ref));
+        await _bN.commit();
+      }
+      addLog('🧹 ' + colN + ' vaciada (' + _exN.size + ' docs; el backup no la incluía)', 'info');
+    }
+  }
   btn.disabled = true;
   btn.textContent = '⏳ Importando...';
 
@@ -1198,11 +1202,25 @@ async function confirmImport() {
       .map(r => { const o = {}; headers.forEach((h, i) => o[h] = (r[i] || '').trim()); return o; });
   }
 
+  // Ejecuta una lista de operaciones de escritura: ATÓMICA si cabe en un batch (o todo o
+  // nada, como era antes) y troceada solo si excede el límite de 500 de Firestore. Chunkear
+  // siempre habría cambiado un fallo por límite —que no borra nada— por un riesgo peor:
+  // quedarse a mitad con la colección vacía. En `usuarios` eso deja a todos sin acceso.
+  // Los deletes van SIEMPRE antes que los sets, así un doc borrado y recreado queda bien.
+  async function _commitOps(ops) {
+    const { writeBatch: _w } = window.__fb;
+    const aplicar = (b, lista) => lista.forEach((o) => (o.tipo === 'del' ? b.delete(o.ref) : (o.opts ? b.set(o.ref, o.data, o.opts) : b.set(o.ref, o.data))));
+    if (ops.length <= 450) { const b = _w(window.__db); aplicar(b, ops); await b.commit(); return; }
+    for (let i = 0; i < ops.length; i += 400) { const b = _w(window.__db); aplicar(b, ops.slice(i, i + 400)); await b.commit(); }
+  }
+
   async function batchWrite(col, rows, mapFn, opts) {
     opts = opts || {};
     if(!MA.can('backup')) return;
     const {writeBatch:_wb,doc:_doc,collection:_col,getDocs:_dg}=window.__fb;
-    if(mode==='replace'){const _b=_wb(window.__db);const _ex=await _dg(_col(window.__db,col));_ex.docs.forEach(d=>_b.delete(d.ref));await _b.commit();}
+    // El límite de 500 ops por batch también aplica al borrado: colecciones grandes
+    // (inventario 557, asistencia, insumos) hacían fallar el "Reemplazar todo" entero.
+    if(mode==='replace'){const _ex=await _dg(_col(window.__db,col));await _commitOps(_ex.docs.map(d=>({tipo:'del',ref:d.ref})));}
     let b=_wb(window.__db), n=0;
     for(const r of rows){
       const data=mapFn(r);
@@ -1331,34 +1349,38 @@ async function confirmImport() {
       addLog('📦 Importando inventario...', 'info');
       const rows = parseCSV(pendingImport.files['inventario.csv']);
       const {writeBatch:_wb2,doc:_doc2,collection:_col2,getDocs:_dg2}=window.__fb;
-      const _b2=_wb2(window.__db);
+
       // ¿El backup trae el estado vivo de operatividad? Se detecta desde el HEADER crudo del CSV
       // (no desde rows[0]): un backup nuevo con header pero 0 equipos debe seguir contando como "nuevo"
       // para que 'replace' borre fielmente. Los headers son identificadores simples (sin comas/comillas).
       const _hasOp = ((pendingImport.files['inventario.csv'].split(/\r?\n/)[0]||'').split(',').map(h=>h.trim()).indexOf('OPERATIVIDAD') !== -1);
+      const _hasCap = ((pendingImport.files['inventario.csv'].split(/\r?\n/)[0]||'').split(',').map(h=>h.trim()).indexOf('CAPACIDAD') !== -1);
+      // Un backup solo se restaura TAL CUAL (set sin merge + delete-all) si trae TODAS las
+      // columnas de estado vivo. Si le falta alguna, se hace upsert-merge: reescribir el doc
+      // entero desde un CSV incompleto borraría lo que ese CSV no conoce — con `capacidad` pasó
+      // exactamente eso (omitir la clave no alcanza: el `set` sin merge reemplaza el doc).
+      const _completo = _hasOp && _hasCap;
       // El delete-all de 'replace' solo aplica si el backup ES nuevo (trae operatividad): así el restore
       // es fiel. Con un backup VIEJO (sin la columna) NO borramos la colección, porque recrear los docs
       // con set/merge SIN operatividad perdería el estado vivo actual (el delete-all lo aniquilaría antes
       // de que el merge por fila pueda preservarlo). En ese caso se hace upsert-merge (no elimina equipos
       // ausentes del backup viejo — tradeoff consciente para no perder operatividad).
-      if(mode==='replace' && _hasOp){const _ex=await _dg2(_col2(window.__db,'inventario'));_ex.docs.forEach(d=>_b2.delete(d.ref));}
-      if(mode==='replace' && !_hasOp){ addLog('ℹ️ Backup previo a operatividad: se preservó el estado vivo (sin borrado total del inventario).', 'info'); }
-      rows.forEach(r=>{
-        if(!r.EQ_ID) return;
+      const _ops=[];
+      if(mode==='replace' && _completo){const _ex=await _dg2(_col2(window.__db,'inventario'));_ex.docs.forEach(d=>_ops.push({tipo:'del',ref:d.ref}));}
+      if(mode==='replace' && !_completo){ addLog('ℹ️ Backup sin ' + (!_hasOp?'operatividad':'capacidad') + ': se preservó el estado vivo (sin borrado total del inventario).', 'info'); }
+      rows.filter(r=>r.EQ_ID).forEach((r) => {
         // el cliente se importa tal cual (antes se inventaba 'RIPLEY'): es la llave que resuelve la
         // plantilla de actividades del equipo — asignarle otro cliente le cambiaría las actividades
         const p={eq_id:r.EQ_ID,sede:r.SEDE||'',cliente:r.CLIENTE||'',tipo:r.TIPO||'',nombre:r.NOMBRE||'',area:r.AREA||'',marca:r.MARCA||'',modelo:r.MODELO||'',serie:r.SERIE||''};
+        if(_hasCap) p.capacidad=r.CAPACIDAD||'';
         if(_hasOp){
-          // backup NUEVO (trae el estado vivo): restaurar tal cual. '' → null (nunca reportado); '0' se conserva.
+          // '' → null (nunca reportado); '0' (inoperativo) se conserva.
           p.operatividad=(r.OPERATIVIDAD!==''&&r.OPERATIVIDAD!=null)?+r.OPERATIVIDAD:null;
           p.operatividadFecha=r.OP_FECHA||null; p.operatividadPor=r.OP_POR||''; p.operatividadObsId=r.OP_OBSID||null; p.operatividadOrigen=r.OP_ORIGEN||'';
-          _b2.set(_doc2(window.__db,'inventario',r.EQ_ID),p);
-        } else {
-          // backup VIEJO (sin columnas operatividad*): merge para NO borrar el estado vivo actual.
-          _b2.set(_doc2(window.__db,'inventario',r.EQ_ID),p,{merge:true});
         }
+        _ops.push({tipo:'set',ref:_doc2(window.__db,'inventario',r.EQ_ID),data:p,opts:_completo?null:{merge:true}});
       });
-      await _b2.commit();
+      await _commitOps(_ops);
       addLog('✓ Inventario importado (' + rows.length + ' equipos)', 'ok');
     }
 
@@ -1431,9 +1453,11 @@ async function confirmImport() {
         addLog('✓ Usuarios fusionados (' + newUsers.length + ' nuevos)', 'ok');
       } else {
         const {writeBatch:wb,doc:wd,collection:wc,getDocs:wg}=window.__fb;
-    const wb1=wb(window.__db); const ex=await wg(wc(window.__db,'usuarios')); ex.docs.forEach(d=>wb1.delete(d.ref));
-    users.forEach(u=>wb1.set(wd(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:u.rol||'USUARIO',apps:u.apps||[]}));
-    await wb1.commit();
+    const ex=await wg(wc(window.__db,'usuarios'));
+    await _commitOps([
+      ...ex.docs.map(d=>({tipo:'del',ref:d.ref})),
+      ...users.map(u=>({tipo:'set',ref:wd(window.__db,'usuarios',u.email.toLowerCase()),data:{email:u.email.toLowerCase(),rol:u.rol||'USUARIO',apps:u.apps||[]}})),
+    ]);
         addLog('✓ Usuarios reemplazados (' + users.length + ' usuarios)', 'ok');
       }
     }
@@ -1443,13 +1467,13 @@ async function confirmImport() {
       addLog('🔧 Importando mantenimiento...', 'info');
       const rows = parseCSV(pendingImport.files['mantenimiento.csv']);
       const {writeBatch:_wb5,doc:_doc5,collection:_col5,getDocs:_dg5}=window.__fb;
-      const _b5=_wb5(window.__db);
-      if(mode==='replace'){const _ex5=await _dg5(_col5(window.__db,'mantenimiento'));_ex5.docs.forEach(d=>_b5.delete(d.ref));}
+      const _ops5=[];
+      if(mode==='replace'){const _ex5=await _dg5(_col5(window.__db,'mantenimiento'));_ex5.docs.forEach(d=>_ops5.push({tipo:'del',ref:d.ref}));}
       // El CSV trae los mapas como TEXTO JSON: hay que parsearlos. Sin esto se escribía el string crudo
       // en Firestore y el checklist quedaba ilegible para la app (que espera un objeto).
       const _j5=(s)=>{try{const v=JSON.parse(s||'{}');return (v&&typeof v==='object'&&!Array.isArray(v))?v:{};}catch(e){return {};}};
-      rows.forEach(r=>{if(r.CLAVE)_b5.set(_doc5(window.__db,'mantenimiento',r.CLAVE),{clave:r.CLAVE,seleccionados:_j5(r.SELECCIONADOS),tareaStatus:_j5(r.TAREA_STATUS)});});
-      await _b5.commit();
+      rows.filter(r=>r.CLAVE).forEach(r=>_ops5.push({tipo:'set',ref:_doc5(window.__db,'mantenimiento',r.CLAVE),data:{clave:r.CLAVE,seleccionados:_j5(r.SELECCIONADOS),tareaStatus:_j5(r.TAREA_STATUS)}}));
+      await _commitOps(_ops5);
       addLog('✓ Mantenimiento importado (' + rows.length + ' registros)', 'ok');
     }
 

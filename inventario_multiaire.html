@@ -245,7 +245,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
   </div>
   <div class="main">
     <div class="toolbar">
-      <input type="text" id="search" placeholder="Buscar descripción, modelo, serie..." oninput="af()">
+      <input type="text" id="search" placeholder="Buscar descripción, modelo, serie, capacidad..." oninput="af()">
       <button class="btn btn-sm inv-bulk" onclick="selAll()">☑ Todo</button>
       <button class="btn btn-sm inv-bulk" onclick="desel()">☐ Ninguno</button>
       <span class="cnt" id="cnt">— equipos</span>
@@ -271,7 +271,8 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
       <div class="fgg full"><label>Área / Ubicación</label><input type="text" id="f_area" placeholder="Ej: Almacén, Azotea..."></div>
       <div class="fgg"><label>Marca</label><input type="text" id="f_marca" list="dl_marca" placeholder="Ej: Midea"><datalist id="dl_marca"></datalist></div>
       <div class="fgg"><label>Modelo</label><input type="text" id="f_modelo" placeholder="Ej: MKT3H-400"></div>
-      <div class="fgg full"><label>Serie</label><input type="text" id="f_serie" placeholder="Número de serie"></div>
+      <div class="fgg"><label>Serie</label><input type="text" id="f_serie" placeholder="Número de serie"></div>
+      <div class="fgg"><label>Capacidad</label><input type="text" id="f_capacidad" placeholder="Ej: 24000 BTU · 130 TN · 2000 CFM"></div>
     </div>
     <div class="ma">
       <button class="btn" onclick="cm()">Cancelar</button>
@@ -320,7 +321,7 @@ async function gasGet() {
   // Convert Firestore docs to array format matching original row structure
   return snap.docs.map(d => {
     const e = d.data();
-    return [e.eq_id||'', e.sede||'', e.cliente||'', e.tipo||'', e.nombre||'', e.area||'', e.marca||'', e.modelo||'', e.serie||''];
+    return [e.eq_id||'', e.sede||'', e.cliente||'', e.tipo||'', e.nombre||'', e.area||'', e.marca||'', e.modelo||'', e.serie||'', e.capacidad||''];
   });
 }
 
@@ -332,7 +333,7 @@ async function crearEquipoUnico(row) {
   const equipo = {
     eq_id: row[0], sede: row[1], cliente: row[2]||'RIPLEY',
     tipo: row[3], nombre: row[4], area: row[5],
-    marca: row[6], modelo: row[7], serie: row[8]||''
+    marca: row[6], modelo: row[7], serie: row[8]||'', capacidad: row[9]||''
   };
   const ref = window.__db.collection('inventario').doc(equipo.eq_id);
   await window.__db.runTransaction(async tx => {
@@ -349,7 +350,7 @@ async function gasPost(body) {
     const equipo = {
       eq_id: row[0], sede: row[1], cliente: row[2]||'RIPLEY',
       tipo: row[3], nombre: row[4], area: row[5],
-      marca: row[6], modelo: row[7], serie: row[8]||''
+      marca: row[6], modelo: row[7], serie: row[8]||'', capacidad: row[9]||''
     };
     // merge: el doc de inventario también guarda el estado vivo de operatividad
     // (operatividad*, que escriben operatividad.html y el bot). Sin merge, editar la
@@ -375,7 +376,7 @@ async function sync() {
       .filter(r => r[1] || r[3])
       .map((r,i) => ({
         row:i+2, eq_id:r[0]||'', sede:r[1]||'', cliente:r[2]||'', equipo:r[3]||'', descripcion:r[4]||'',
-        area:r[5]||'', marca:r[6]||'', modelo:r[7]||'', serie:r[8]||''
+        area:r[5]||'', marca:r[6]||'', modelo:r[7]||'', serie:r[8]||'', capacidad:r[9]||''
       }));
     setPill('ok', '✓ ' + data.length + ' equipos');
     pf(); af(); us();
@@ -462,7 +463,7 @@ function af() {
     if(skip!=='equipo'&&equipo&&r.equipo!==equipo)return false;
     if(skip!=='area'&&area&&r.area!==area)return false;
     if(skip!=='marca'&&marca&&r.marca!==marca)return false;
-    if(q){const h=[r.eq_id,r.descripcion,r.modelo,r.serie,r.sede,r.equipo,r.area,r.marca].join(' ').toLowerCase();if(!h.includes(q))return false;}
+    if(q){const h=[r.eq_id,r.descripcion,r.modelo,r.serie,r.capacidad,r.sede,r.equipo,r.area,r.marca].join(' ').toLowerCase();if(!h.includes(q))return false;}
     return true;
   };
   filtered=data.filter(r=>pass(r,null));
@@ -485,12 +486,12 @@ function rf(){['fSede','fEquipo','fArea','fMarca'].forEach(id=>document.getEleme
 function rt() {
   const tw=document.getElementById('tw');
   if(!filtered.length){tw.innerHTML='<div class="empty"><div class="empty-icon">🔍</div>Sin resultados con los filtros actuales</div>';return;}
-  tw.innerHTML='<table><thead><tr><th class="inv-bulk" style="width:32px"><input type="checkbox" onchange="toggleAll(this.checked)"></th><th onclick="sb(\'eq_id\')" style="color:#00cc66">EQ_ID</th><th onclick="sb(\'sede\')">SEDE</th><th onclick="sb(\'equipo\')">TIPO</th><th onclick="sb(\'descripcion\')">DESCRIPCIÓN</th><th onclick="sb(\'area\')">ÁREA</th><th onclick="sb(\'marca\')">MARCA</th><th onclick="sb(\'modelo\')">MODELO</th><th>SERIE</th><th style="width:90px">ACCIONES</th></tr></thead><tbody id="tbody"></tbody></table>';
+  tw.innerHTML='<table><thead><tr><th class="inv-bulk" style="width:32px"><input type="checkbox" onchange="toggleAll(this.checked)"></th><th onclick="sb(\'eq_id\')" style="color:#00cc66">EQ_ID</th><th onclick="sb(\'sede\')">SEDE</th><th onclick="sb(\'equipo\')">TIPO</th><th onclick="sb(\'descripcion\')">DESCRIPCIÓN</th><th onclick="sb(\'area\')">ÁREA</th><th onclick="sb(\'marca\')">MARCA</th><th onclick="sb(\'modelo\')">MODELO</th><th>SERIE</th><th onclick="sb(\'capacidad\')">CAPACIDAD</th><th style="width:90px">ACCIONES</th></tr></thead><tbody id="tbody"></tbody></table>';
   const tb=document.getElementById('tbody');
   filtered.forEach(r=>{
     const is=selected.has(r.row),tr=document.createElement('tr');
     if(is)tr.classList.add('sel');
-    tr.innerHTML='<td class="inv-bulk"><input type="checkbox"'+(is?' checked':'')+' onchange="togRow('+r.row+',this.checked)" onclick="event.stopPropagation()"></td><td class="mono" style="color:#00cc66;font-size:10px">'+esc(r.eq_id)+'</td><td><span class="badge">'+esc(r.sede)+'</span></td><td style="color:#aaa">'+esc(r.equipo)+'</td><td style="font-weight:500">'+esc(r.descripcion)+'</td><td style="color:var(--muted2)">'+esc(r.area)+'</td><td>'+esc(r.marca)+'</td><td class="mono">'+esc(r.modelo)+'</td><td class="mono" style="color:var(--muted)">'+esc(r.serie)+'</td><td>'+(MA.can('editar','inventario')?'<button class="btn btn-sm" onclick="editItem('+r.row+');event.stopPropagation()">✎</button> ':'')+(MA.can('borrar')?'<button class="btn btn-sm btn-d" onclick="delItem('+r.row+');event.stopPropagation()">✕</button>':'')+'</td>';
+    tr.innerHTML='<td class="inv-bulk"><input type="checkbox"'+(is?' checked':'')+' onchange="togRow('+r.row+',this.checked)" onclick="event.stopPropagation()"></td><td class="mono" style="color:#00cc66;font-size:10px">'+esc(r.eq_id)+'</td><td><span class="badge">'+esc(r.sede)+'</span></td><td style="color:#aaa">'+esc(r.equipo)+'</td><td style="font-weight:500">'+esc(r.descripcion)+'</td><td style="color:var(--muted2)">'+esc(r.area)+'</td><td>'+esc(r.marca)+'</td><td class="mono">'+esc(r.modelo)+'</td><td class="mono" style="color:var(--muted)">'+esc(r.serie)+'</td><td class="mono">'+esc(r.capacidad)+'</td><td>'+(MA.can('editar','inventario')?'<button class="btn btn-sm" onclick="editItem('+r.row+');event.stopPropagation()">✎</button> ':'')+(MA.can('borrar')?'<button class="btn btn-sm btn-d" onclick="delItem('+r.row+');event.stopPropagation()">✕</button>':'')+'</td>';
     tr.onclick=()=>togRow(r.row,!selected.has(r.row));
     tb.appendChild(tr);
   });
@@ -554,7 +555,7 @@ async function openNew(){
   editRow=null;
   document.getElementById('mtitle').textContent='Nuevo equipo';
   document.getElementById('sbtn').textContent='Guardar';
-  ['sede','equipo','desc','area','marca','modelo','serie'].forEach(f=>{
+  ['sede','equipo','desc','area','marca','modelo','serie','capacidad'].forEach(f=>{
     const el = document.getElementById('f_'+f);
     if(el) el.value='';
   });
@@ -562,7 +563,7 @@ async function openNew(){
   try { await cargarSedesMaestros(); } catch(e) { /* sedes ya pobladas en la carga inicial */ }
   document.getElementById('mov').classList.add('open');
 }
-function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('mov').classList.add('open');}
+function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('f_capacidad').value=r.capacidad||'';document.getElementById('mov').classList.add('open');}
 function cm(){document.getElementById('mov').classList.remove('open');}
 
 async function saveItem(){
@@ -592,7 +593,7 @@ async function saveItem(){
   // Auto-generate EQ_ID for new items
   const SEDE_MAP={'ATOCONGO':'ATO','CHORRILLOS':'CHO','COMAS':'COM','JOCKEY PLAZA':'JOC','LOS OLIVOS':'LOL','MAC PLAZA NORTE':'MAC','MIRAFLORES':'MIR','PLAZA NORTE':'PLN','PRIMAVERA':'PRI','SAN JUAN DE LURIGANCHO':'SJL','SAN MIGUEL':'SMI','SANTA ANITA':'SAN'};
   const TIPO_MAP={'CHILLER':'CHI','CORTINA DE AIRE':'CAI','ESCALERA':'ESC','EXTRACTOR':'EXT','FAN COIL':'FAN','INYECTOR':'INY','PAQUETE':'RFT','SPLIT CONSOLA':'SPL','SPLIT DUCTO':'SDU','SPLIT DECORATIVO':'SDC','TVR MINI PLUS':'TVR','UMA':'UMA','UNIDAD CONDENSADOR':'UCO','UNIDAD EVAPORADORA':'UEV'};
-  const row=['',sede,cliente_val,tipo,desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim()];
+  const row=['',sede,cliente_val,tipo,desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim(),document.getElementById('f_capacidad').value.trim()];
   try{
     if(editRow!==null){
       row[0]=data.find(x=>x.row===editRow)?.eq_id||'';
@@ -662,7 +663,7 @@ function drawLabel(ctx,r){
   ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
   const HH=36,DH=68,BH=108,SH=4,FH=H-HH-DH-BH-SH;
   const sede=(r.sede||'').toUpperCase(),desc=(r.descripcion||'').toUpperCase(),area=(r.area||'').toUpperCase();
-  const modelo=r.modelo||'-',serie=r.serie||'-',marca=(r.marca||'').toUpperCase()||'-',equipo=(r.equipo||'').toUpperCase();
+  const modelo=r.modelo||'-',serie=r.serie||'-',marca=(r.marca||'').toUpperCase()||'-',equipo=(r.equipo||'').toUpperCase(),capacidad=(r.capacidad||'').toUpperCase()||'-';
   ctx.fillStyle='#000';ctx.fillRect(0,0,W,HH);
   ctx.fillStyle='#fff';ctx.font='bold 22px Arial';ctx.textAlign='center';ctx.fillText((r.cliente||r.sede||'').toUpperCase(),W/2,HH-10);
   ctx.fillStyle='#000';ctx.textAlign='center';
@@ -674,9 +675,14 @@ function drawLabel(ctx,r){
   const aL=fitT(ctx,area,bw-14,28,true),aLH=30,aTH=aL.length*aLH+(aL.length-1)*8,aZH=bh-20;
   let ay=by+18+(aZH-aTH)/2+24;ctx.textAlign='center';aL.forEach(l=>{ctx.font='bold 28px Arial';ctx.fillText(l,W/2,ay);ay+=aLH+8;});
   const sY=HH+DH+BH+SH/2;ctx.strokeStyle='#aaa';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(MX,sY);ctx.lineTo(W-MX,sY);ctx.stroke();
-  const fY=HH+DH+BH+SH,rH=FH/2,c1=MX+3,c2=W/2+3,cW=W/2-MX-6;
-  function kv(l,v,x,y){ctx.font='9px Arial';ctx.fillStyle='#888';ctx.textAlign='left';ctx.fillText(l,x,y+10);ctx.fillStyle='#000';const vl=fitT(ctx,v,cW,14,true);let vy=y+22;vl.forEach(t=>{ctx.font='bold 14px Arial';ctx.fillText(t,x,vy);vy+=16;});}
-  kv('EQUIPO:',equipo,c1,fY+2);kv('MODELO:',modelo,c2,fY+2);kv('SERIE:',serie,c1,fY+rH+2);kv('MARCA:',marca,c2,fY+rH+2);
+  // Pie de la etiqueta: 3 filas × 2 columnas (antes 2×2; la 3ª entró al sumar CAPACIDAD,
+  // que el informe técnico pide por equipo). Con FH=138 cada fila queda en 46px y el par
+  // etiqueta+valor ocupa ~26px, así que sigue holgado.
+  const fY=HH+DH+BH+SH,rH=FH/3,c1=MX+3,c2=W/2+3,cW=W/2-MX-6;
+  function kv(l,v,x,y){ctx.font='9px Arial';ctx.fillStyle='#888';ctx.textAlign='left';ctx.fillText(l,x,y+9);ctx.fillStyle='#000';const vl=fitT(ctx,v,cW,13,true);let vy=y+21;vl.forEach(t=>{ctx.font='bold 13px Arial';ctx.fillText(t,x,vy);vy+=15;});}
+  kv('EQUIPO:',equipo,c1,fY+1);kv('MODELO:',modelo,c2,fY+1);
+  kv('SERIE:',serie,c1,fY+rH+1);kv('MARCA:',marca,c2,fY+rH+1);
+  kv('CAPACIDAD:',capacidad,c1,fY+2*rH+1);
 }
 function fitT(ctx,text,maxW,sz,bold){let s=sz;while(s>=8){ctx.font=(bold?'bold ':'')+s+'px Arial';if(ctx.measureText(text).width<=maxW)return[text];const ws=text.split(' ');for(let i=1;i<ws.length;i++){const l1=ws.slice(0,i).join(' '),l2=ws.slice(i).join(' ');if(ctx.measureText(l1).width<=maxW&&ctx.measureText(l2).width<=maxW)return[l1,l2];}s--;}return[text.substring(0,20)];}
 function rR(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();}
@@ -725,6 +731,7 @@ function exportPDF() {
         <td style="padding:7px 10px;font-size:11px">${esc(r.marca)}</td>
         <td style="padding:7px 10px;font-size:11px;font-family:monospace;color:#555">${esc(r.modelo)}</td>
         <td style="padding:7px 10px;font-size:11px;font-family:monospace;color:#888">${esc(r.serie)}</td>
+        <td style="padding:7px 10px;font-size:11px;font-family:monospace;color:#888">${esc(r.capacidad||'')}</td>
       </tr>`).join('');
 
     secHtml += `
@@ -742,6 +749,7 @@ function exportPDF() {
               <th style="padding:6px 10px;font-size:10px;text-align:left;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Marca</th>
               <th style="padding:6px 10px;font-size:10px;text-align:left;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Modelo</th>
               <th style="padding:6px 10px;font-size:10px;text-align:left;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Serie</th>
+              <th style="padding:6px 10px;font-size:10px;text-align:left;color:#666;font-weight:700;text-transform:uppercase;letter-spacing:.06em">Capacidad</th>
             </tr>
           </thead>
           <tbody>${rows_html}</tbody>
