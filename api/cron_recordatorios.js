@@ -41,6 +41,9 @@ function secretoValido(header) {
 // (falló y consta que NADIE recibió) · 'incierto' (falló con algún envío ambiguo: pudo haber
 // llegado, así que NO se reintenta nunca — reintentar es como se duplica).
 export const MAX_INTENTOS_DIA = 3;
+// Vencimiento del turno 'en_curso'. La función tiene maxDuration 30s, así que 10 min solo se
+// alcanzan si la ejecución murió sin cerrarlo.
+export const LEASE_MS = 10 * 60 * 1000;
 
 // Exportada (además de usarse acá) para poder testearla con un Firestore inyectado: es la
 // pieza que decide si se manda o no, y sus modos de fallo son el duplicado y el spam.
@@ -54,9 +57,30 @@ export async function tomarTurno(db, hoy, tipo, maxIntentos = MAX_INTENTOS_DIA) 
       return { ok: true, ref, intento: 1 };
     }
     const d = snap.data() || {};
+
+    // Doc del formato ANTERIOR (sin `estado`), creado por la versión que corría antes de este
+    // cambio. Nunca se reenvía —eso sería duplicar—, pero tampoco puede quedar en silencio:
+    // si no llegó a registrar un envío, se reporta como fallo.
+    if (!d.estado) {
+      const yaEnvio = (d.enviados || 0) > 0 || !!d.finTs;
+      return { ok: false, ref, motivo: yaEnvio ? 'enviado' : 'agotado', doc: d };
+    }
+
+    // 'en_curso' VENCIDO: la ejecución que lo tomó murió sin cerrarlo (la función tiene
+    // maxDuration 30s, así que 10 min es de sobra). Pudo haber alcanzado a enviar parte, así
+    // que NO se reenvía; pero se marca `incierto` para que el fallo se reporte en vez de que
+    // el turno quede bloqueado y callado el resto del día.
+    if (d.estado === 'en_curso') {
+      const venció = d.inicioTs && (Date.now() - Date.parse(d.inicioTs)) > LEASE_MS;
+      if (!venció) return { ok: false, ref, motivo: 'en_curso', doc: d };
+      const error = 'la ejecución que tomó el turno no lo cerró (quedó a mitad)';
+      tx.update(ref, { estado: 'incierto', error });
+      return { ok: false, ref, motivo: 'incierto', doc: { ...d, estado: 'incierto', error } };
+    }
+
     if (d.estado !== 'reintentable') {
-      // 'enviado' / 'incierto' / 'en_curso' → esta ejecución NO envía.
-      return { ok: false, ref, motivo: d.estado || 'desconocido', doc: d };
+      // 'enviado' / 'incierto' → esta ejecución NO envía.
+      return { ok: false, ref, motivo: d.estado, doc: d };
     }
     const intento = (d.intentos || 0) + 1;
     if (intento > maxIntentos) return { ok: false, ref, motivo: 'agotado', doc: d };
@@ -190,6 +214,10 @@ export default async function handler(req, res) {
           intentos: turno.doc?.intentos ?? null,
           reportadoAntes: yaReportado,
         };
+        // `reportado` es best-effort: se marca antes de saber si GitHub llegó a ver el 502
+        // (si la función muriera justo después, el fallo quedaría como "ya reportado" sin
+        // haber puesto ningún job en rojo). Se acepta a cambio de no repetir el rojo cada
+        // 30 min; el error igual queda visible en `resultados` de todos los ticks siguientes.
         if (!yaReportado) {
           huboError = true;
           await turno.ref.update({ reportado: true }).catch(() => {});
@@ -210,9 +238,12 @@ export default async function handler(req, res) {
       });
       n = r.enviados; ambiguos = r.ambiguos;
     } catch (e) {
-      // Excepción a mitad del envío: pudo haber mandado parte, así que el turno NO se libera
-      // (reintentar duplicaría). Se anota el error y el job va a fallar por el 502 de abajo.
-      await turno.update({ error: String(e?.message || e), finTs: new Date().toISOString() }).catch(() => {});
+      // Excepción a mitad del envío: pudo haber mandado parte, así que el turno queda
+      // INCIERTO (no se reintenta: reintentar duplicaría) y el job falla por el 502 de abajo.
+      await turno.ref.update({
+        estado: 'incierto', error: String(e?.message || e), enviados: n,
+        finTs: new Date().toISOString(), reportado: true,
+      }).catch(() => {});
       console.error(`[cron_recordatorios] ${tipo} · falló el envío:`, e?.message || e);
       resultados[tipo] = { error: String(e?.message || e), enviados: n, intentados: destinos.length };
       huboError = true;
