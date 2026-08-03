@@ -127,19 +127,26 @@ export async function manejarMensaje({
       await limpiarFotoPendiente(from).catch(() => {});   // la foto pendiente ya se escribió con la obs
       if (obs?.id) await guardarUltimaObs(from, obs.id, etiquetaEquipo(b)).catch(() => {});
       // Preguntamos la operatividad del equipo (opcional). La sesión sigue viva en fase OPERATIVIDAD.
+      // Del RESULTADO de la escritura, no de la intención: `foto` es lo que el técnico mandó,
+      // `obs.tieneFoto` es lo que quedó guardado. Hoy `guardarObservacion` lanza si la foto
+      // falla (así que no diverge), pero `guardar` es inyectable y un acuse que dice "📷"
+      // sobre una foto que no se escribió es peor que no decir nada.
+      const conFoto = obs?.tieneFoto === true;
       try {
         ses.fase = 'OPERATIVIDAD';
         ses.opObsId = obs?.id || null;
         ses.opEquipo = { eqId: b.eqId, sede: b.sede, cliente: b.cliente, tipo: b.tipo, nombre: b.equipo, area: b.area };
-        ses.opConFoto = !!foto;
+        ses.opConFoto = conFoto;
         ses.opIntentos = 0;
         await guardarSesion(from, ses);
-        return guardadoConPreguntaOp(b);
+        return guardadoConPreguntaOp(b, conFoto);
       } catch (e) {
-        // No se pudo abrir la fase OPERATIVIDAD: cerramos limpio (la obs está guardada; el % es opcional).
+        // No se pudo abrir la fase OPERATIVIDAD: cerramos limpio (la obs está guardada; el % es
+        // opcional). El acuse va IGUAL — si no, este camino deja al técnico sin saber que su
+        // observación se guardó, que es peor que quedarse sin preguntar la operatividad.
         console.error('[conversacion] no se pudo abrir OPERATIVIDAD:', e?.message);
         await limpiarSesion(from).catch(() => {});
-        return cierreTrasOperatividad(!!foto, '');
+        return acuseGuardado(b, conFoto) + '\n\n' + cierreTrasOperatividad(conFoto, '');
       }
     }
     if (t) ses.historial.push(t);             // corrección → reextraer con el texto nuevo
@@ -321,10 +328,17 @@ function resumenConfirmar(b, conFoto) {
 // Acuse tras guardar la observación + la pregunta de operatividad del equipo.
 // El equipo va SIEMPRE con su ubicación: el técnico piensa en "el extractor del comedor", no en el
 // número, y este es su último chance de notar que el bot registró el equipo equivocado.
-function guardadoConPreguntaOp(b) {
+// El `· 📷` confirma que la foto quedó adjunta. No es decorativo: sin él, la única señal de
+// que la foto llegó es que MÁS TARDE (al cerrar la operatividad) no aparezca el recordatorio
+// "¿olvidaste la foto?" — o sea una ausencia, dos mensajes después. El técnico que no la ve
+// confirmada la reenvía por las dudas, y termina duplicándola.
+function acuseGuardado(b, conFoto) {
   return '✅ *Observación registrada.* ' +
-    `(🏪 ${sinPrefijo(b.sede)} · ❄️ ${etiquetaEquipo(b)})\n\n` +
-    menuOperatividad(etiquetaEquipo(b));
+    `(🏪 ${sinPrefijo(b.sede)} · ❄️ ${etiquetaEquipo(b)}${conFoto ? ' · 📷' : ''})`;
+}
+
+function guardadoConPreguntaOp(b, conFoto) {
+  return acuseGuardado(b, conFoto) + '\n\n' + menuOperatividad(etiquetaEquipo(b));
 }
 
 // Cierre del flujo tras responder/omitir la operatividad (incluye el recordatorio de foto si no hubo).
