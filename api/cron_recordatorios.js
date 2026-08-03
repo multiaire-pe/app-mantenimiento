@@ -59,11 +59,15 @@ export async function tomarTurno(db, hoy, tipo, maxIntentos = MAX_INTENTOS_DIA) 
     const d = snap.data() || {};
 
     // Doc del formato ANTERIOR (sin `estado`), creado por la versión que corría antes de este
-    // cambio. Nunca se reenvía —eso sería duplicar—, pero tampoco puede quedar en silencio:
-    // si no llegó a registrar un envío, se reporta como fallo.
+    // cambio. Nunca se reenvía —eso sería duplicar—, pero tampoco puede quedar en silencio.
+    // El orden de las señales importa: la versión vieja escribía `finTs` TAMBIÉN al fallar,
+    // así que `finTs` no prueba envío; solo vale como éxito cuando no hay ninguna señal de
+    // fallo. Se mira: envíos reales → fallo (ambiguo o con error) → finTs limpio → nada.
     if (!d.estado) {
-      const yaEnvio = (d.enviados || 0) > 0 || !!d.finTs;
-      return { ok: false, ref, motivo: yaEnvio ? 'enviado' : 'agotado', doc: d };
+      if ((d.enviados || 0) > 0) return { ok: false, ref, motivo: 'enviado', doc: d };
+      if ((d.ambiguos || 0) > 0 || d.error) return { ok: false, ref, motivo: 'incierto', doc: d };
+      if (d.finTs) return { ok: false, ref, motivo: 'enviado', doc: d };
+      return { ok: false, ref, motivo: 'agotado', doc: d };
     }
 
     // 'en_curso' VENCIDO: la ejecución que lo tomó murió sin cerrarlo (la función tiene
@@ -214,14 +218,23 @@ export default async function handler(req, res) {
           intentos: turno.doc?.intentos ?? null,
           reportadoAntes: yaReportado,
         };
-        // `reportado` es best-effort: se marca antes de saber si GitHub llegó a ver el 502
-        // (si la función muriera justo después, el fallo quedaría como "ya reportado" sin
-        // haber puesto ningún job en rojo). Se acepta a cambio de no repetir el rojo cada
-        // 30 min; el error igual queda visible en `resultados` de todos los ticks siguientes.
+        // El reporte se RECLAMA en transacción: dos ejecuciones solapadas que vean el mismo
+        // fallo sin reportar pondrían dos jobs en rojo por el mismo problema.
+        // Sigue siendo best-effort respecto de GitHub: se marca antes de saber si llegó a ver
+        // el 502 (si la función muriera justo después, quedaría como "ya reportado" sin haber
+        // puesto ningún job en rojo). Se acepta a cambio de no repetir el rojo cada 30 min; el
+        // error igual queda visible en `resultados` de todos los ticks siguientes.
         if (!yaReportado) {
-          huboError = true;
-          await turno.ref.update({ reportado: true }).catch(() => {});
-          console.error(`[cron_recordatorios] ${tipo} · ${turno.motivo} — ${turno.doc?.error || 'sin entrega confirmada'}`);
+          const reclamado = await db.runTransaction(async (tx) => {
+            const s = await tx.get(turno.ref);
+            if (s.data()?.reportado === true) return false;
+            tx.update(turno.ref, { reportado: true });
+            return true;
+          }).catch(() => true);   // si la transacción falla, se reporta igual (mejor de más)
+          if (reclamado) {
+            huboError = true;
+            console.error(`[cron_recordatorios] ${tipo} · ${turno.motivo} — ${turno.doc?.error || 'sin entrega confirmada'}`);
+          }
         }
       } else {
         console.log(`[cron_recordatorios] ${tipo} · turno ${turno.motivo}, no se envía`);
