@@ -220,10 +220,12 @@ export default async function handler(req, res) {
         };
         // El reporte se RECLAMA en transacción: dos ejecuciones solapadas que vean el mismo
         // fallo sin reportar pondrían dos jobs en rojo por el mismo problema.
-        // Sigue siendo best-effort respecto de GitHub: se marca antes de saber si llegó a ver
-        // el 502 (si la función muriera justo después, quedaría como "ya reportado" sin haber
-        // puesto ningún job en rojo). Se acepta a cambio de no repetir el rojo cada 30 min; el
-        // error igual queda visible en `resultados` de todos los ticks siguientes.
+        //
+        // El 502 único es best-effort y no puede ser otra cosa: se marca `reportado` antes de
+        // saber si GitHub llegó a ver la respuesta, y si la función muriera en el medio, ese
+        // rojo se perdería. Por eso la alerta NO depende solo del rojo — el error se sigue
+        // devolviendo en `resultados` de todos los ticks siguientes y el workflow lo emite
+        // como `::warning::` en cada corrida. El rojo puede perderse; el aviso no.
         if (!yaReportado) {
           const reclamado = await db.runTransaction(async (tx) => {
             const s = await tx.get(turno.ref);
