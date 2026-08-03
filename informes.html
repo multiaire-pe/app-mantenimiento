@@ -407,7 +407,9 @@ const claveOrden = () => `informes_orden_${datos ? datos.cliente : ''}`;
 // inventario) se agregan al final en vez de perderse.
 function tiposOrdenados(tipos) {
   const hay = Object.keys(tipos);
-  const ordenados = ordenTipos.filter((t) => hay.includes(t));
+  // Dedupe: un localStorage con el mismo tipo repetido duplicaría su tarjeta y su sección
+  // entera en el .docx.
+  const ordenados = [...new Set(ordenTipos)].filter((t) => hay.includes(t));
   return [...ordenados, ...hay.filter((t) => !ordenados.includes(t)).sort()];
 }
 
