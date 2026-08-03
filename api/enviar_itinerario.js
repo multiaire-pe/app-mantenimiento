@@ -7,7 +7,7 @@
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 import { getDb } from './_lib/firestore.js';
-import { enviarTexto, enviarPlantilla } from './_lib/whatsapp.js';
+import { enviarTextoDetalle, enviarPlantillaDetalle } from './_lib/whatsapp.js';
 import { mensajesPorTecnico } from './_lib/itinerario_envio.js';
 
 const SUPER_ADMIN_EMAILS = ['marchenaangulojoseluis@gmail.com', 'plataforma@multiaire.com.pe'];
@@ -140,31 +140,49 @@ export default async function handler(req, res) {
     for (const m of msgs) {
       const to = prueba ? to_prueba : telById[m.tecnicoId];
       if (!to) { detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: 'sin_telefono', nTareas: m.nTareas, texto: (m.texto || '').slice(0, 4000) }); continue; }
-      let ok = false, canal = 'texto';
-      try { ok = await enviarTexto(to, m.texto); } catch { /* intenta plantilla abajo */ }
-      if (!ok && plantilla) {
+      let canal = 'texto';
+      // Un `false` del envío no dice si el mensaje NO salió o si NO SE SABE (ver whatsapp.js).
+      // La diferencia importa acá: el fallback a la plantilla existe para cuando el texto
+      // libre fue RECHAZADO (fuera de la ventana de 24h), pero si el texto quedó AMBIGUO
+      // —timeout, o 5xx de Meta— pudo haberse entregado igual, y mandar además la plantilla
+      // le llega DOS veces al mismo técnico: el itinerario completo y el aviso corto.
+      let r = { ok: false, estado: 'rechazado' };
+      try { r = await enviarTextoDetalle(to, m.texto); }
+      catch { r = { ok: false, estado: 'ambiguo' }; }
+
+      if (!r.ok && r.estado === 'ambiguo') {
+        // No se reintenta por otro canal: se registra como incierto y se avisa en la UI.
+        detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: 'incierto', nTareas: m.nTareas, texto: (m.texto || '').slice(0, 4000) });
+        continue;
+      }
+      if (!r.ok && plantilla) {
         const params = [m.nombre, fechaStr, String(m.nTareas), (m.sedes || []).join(', ') || '—']
           .map((x) => ({ type: 'text', text: (String(x || '').replace(/\s+/g, ' ').trim() || '—').slice(0, 600) }));
-        try { ok = await enviarPlantilla(to, plantilla, idioma, [{ type: 'body', parameters: params }]); canal = 'plantilla'; } catch { /* queda error */ }
+        try { r = await enviarPlantillaDetalle(to, plantilla, idioma, [{ type: 'body', parameters: params }]); canal = 'plantilla'; }
+        catch { r = { ok: false, estado: 'ambiguo' }; }
       }
-      detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: ok ? 'enviado' : 'error', nTareas: m.nTareas, texto: (m.texto || '').slice(0, 4000), ...(ok ? { canal } : {}) });
+      const estado = r.ok ? 'enviado' : (r.estado === 'ambiguo' ? 'incierto' : 'error');
+      detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado, nTareas: m.nTareas, texto: (m.texto || '').slice(0, 4000), ...(r.ok ? { canal } : {}) });
     }
     const enviados = detalle.filter((d) => d.estado === 'enviado').length;
     const sinTelefono = detalle.filter((d) => d.estado === 'sin_telefono').length;
     const errores = detalle.filter((d) => d.estado === 'error').length;
+    // `incierto` ≠ `error`: no consta que NO haya llegado. Se cuenta aparte para que nadie
+    // reenvíe por las dudas — reenviar es justamente como el técnico recibe dos itinerarios.
+    const inciertos = detalle.filter((d) => d.estado === 'incierto').length;
 
     // 8) Cerrar la auditoría con el resultado real (si esto falla, el doc 'en_progreso' queda como traza).
     try {
-      await envRef.update({ estado: 'completado', enviados, sinTelefono, errores, detalle, finTs: new Date().toISOString() });
+      await envRef.update({ estado: 'completado', enviados, sinTelefono, errores, inciertos, detalle, finTs: new Date().toISOString() });
     } catch (e) {
       console.error('[enviar_itinerario] cierre', e.message);
       // Reintento mínimo (sin detalle) para no dejar el registro colgado en 'en_progreso' — al menos
       // queda el resumen (el envío ya ocurrió; el detalle es secundario).
-      try { await envRef.update({ estado: 'completado_sin_detalle', enviados, sinTelefono, errores, finTs: new Date().toISOString() }); }
+      try { await envRef.update({ estado: 'completado_sin_detalle', enviados, sinTelefono, errores, inciertos, finTs: new Date().toISOString() }); }
       catch (e2) { console.error('[enviar_itinerario] cierre-min', e2.message); }
     }
 
-    return res.status(200).json({ enviados, total: msgs.length, actualizacion, prueba: !!prueba, sinTelefono, errores, detalle });
+    return res.status(200).json({ enviados, total: msgs.length, actualizacion, prueba: !!prueba, sinTelefono, errores, inciertos, detalle });
   } catch (e) {
     console.error('[enviar_itinerario]', e);
     return res.status(500).json({ error: e.message });
