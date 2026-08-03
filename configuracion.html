@@ -1202,20 +1202,25 @@ async function confirmImport() {
       .map(r => { const o = {}; headers.forEach((h, i) => o[h] = (r[i] || '').trim()); return o; });
   }
 
+  // Ejecuta una lista de operaciones de escritura: ATÓMICA si cabe en un batch (o todo o
+  // nada, como era antes) y troceada solo si excede el límite de 500 de Firestore. Chunkear
+  // siempre habría cambiado un fallo por límite —que no borra nada— por un riesgo peor:
+  // quedarse a mitad con la colección vacía. En `usuarios` eso deja a todos sin acceso.
+  // Los deletes van SIEMPRE antes que los sets, así un doc borrado y recreado queda bien.
+  async function _commitOps(ops) {
+    const { writeBatch: _w } = window.__fb;
+    const aplicar = (b, lista) => lista.forEach((o) => (o.tipo === 'del' ? b.delete(o.ref) : (o.opts ? b.set(o.ref, o.data, o.opts) : b.set(o.ref, o.data))));
+    if (ops.length <= 450) { const b = _w(window.__db); aplicar(b, ops); await b.commit(); return; }
+    for (let i = 0; i < ops.length; i += 400) { const b = _w(window.__db); aplicar(b, ops.slice(i, i + 400)); await b.commit(); }
+  }
+
   async function batchWrite(col, rows, mapFn, opts) {
     opts = opts || {};
     if(!MA.can('backup')) return;
     const {writeBatch:_wb,doc:_doc,collection:_col,getDocs:_dg}=window.__fb;
-    // Chunked: el límite de 500 ops por batch también aplica al borrado. Colecciones grandes
+    // El límite de 500 ops por batch también aplica al borrado: colecciones grandes
     // (inventario 557, asistencia, insumos) hacían fallar el "Reemplazar todo" entero.
-    if(mode==='replace'){
-      const _ex=await _dg(_col(window.__db,col));
-      for(let i=0;i<_ex.docs.length;i+=400){
-        const _b=_wb(window.__db);
-        _ex.docs.slice(i,i+400).forEach(d=>_b.delete(d.ref));
-        await _b.commit();
-      }
-    }
+    if(mode==='replace'){const _ex=await _dg(_col(window.__db,col));await _commitOps(_ex.docs.map(d=>({tipo:'del',ref:d.ref})));}
     let b=_wb(window.__db), n=0;
     for(const r of rows){
       const data=mapFn(r);
@@ -1344,15 +1349,7 @@ async function confirmImport() {
       addLog('📦 Importando inventario...', 'info');
       const rows = parseCSV(pendingImport.files['inventario.csv']);
       const {writeBatch:_wb2,doc:_doc2,collection:_col2,getDocs:_dg2}=window.__fb;
-      // Firestore corta en 500 operaciones por batch: con 557 equipos, meter todos los deletes
-      // y todos los sets en un solo batch excede el límite y el restore FALLA ENTERO.
-      const _enLotes = async (items, fn) => {
-        for (let i = 0; i < items.length; i += 400) {
-          const _b = _wb2(window.__db);
-          items.slice(i, i + 400).forEach((x) => fn(_b, x));
-          await _b.commit();
-        }
-      };
+
       // ¿El backup trae el estado vivo de operatividad? Se detecta desde el HEADER crudo del CSV
       // (no desde rows[0]): un backup nuevo con header pero 0 equipos debe seguir contando como "nuevo"
       // para que 'replace' borre fielmente. Los headers son identificadores simples (sin comas/comillas).
@@ -1368,9 +1365,10 @@ async function confirmImport() {
       // con set/merge SIN operatividad perdería el estado vivo actual (el delete-all lo aniquilaría antes
       // de que el merge por fila pueda preservarlo). En ese caso se hace upsert-merge (no elimina equipos
       // ausentes del backup viejo — tradeoff consciente para no perder operatividad).
-      if(mode==='replace' && _completo){const _ex=await _dg2(_col2(window.__db,'inventario'));await _enLotes(_ex.docs,(b,d)=>b.delete(d.ref));}
+      const _ops=[];
+      if(mode==='replace' && _completo){const _ex=await _dg2(_col2(window.__db,'inventario'));_ex.docs.forEach(d=>_ops.push({tipo:'del',ref:d.ref}));}
       if(mode==='replace' && !_completo){ addLog('ℹ️ Backup sin ' + (!_hasOp?'operatividad':'capacidad') + ': se preservó el estado vivo (sin borrado total del inventario).', 'info'); }
-      await _enLotes(rows.filter(r=>r.EQ_ID), (_b2, r) => {
+      rows.filter(r=>r.EQ_ID).forEach((r) => {
         // el cliente se importa tal cual (antes se inventaba 'RIPLEY'): es la llave que resuelve la
         // plantilla de actividades del equipo — asignarle otro cliente le cambiaría las actividades
         const p={eq_id:r.EQ_ID,sede:r.SEDE||'',cliente:r.CLIENTE||'',tipo:r.TIPO||'',nombre:r.NOMBRE||'',area:r.AREA||'',marca:r.MARCA||'',modelo:r.MODELO||'',serie:r.SERIE||''};
@@ -1380,9 +1378,9 @@ async function confirmImport() {
           p.operatividad=(r.OPERATIVIDAD!==''&&r.OPERATIVIDAD!=null)?+r.OPERATIVIDAD:null;
           p.operatividadFecha=r.OP_FECHA||null; p.operatividadPor=r.OP_POR||''; p.operatividadObsId=r.OP_OBSID||null; p.operatividadOrigen=r.OP_ORIGEN||'';
         }
-        const _ref=_doc2(window.__db,'inventario',r.EQ_ID);
-        if(_completo) _b2.set(_ref,p); else _b2.set(_ref,p,{merge:true});
+        _ops.push({tipo:'set',ref:_doc2(window.__db,'inventario',r.EQ_ID),data:p,opts:_completo?null:{merge:true}});
       });
+      await _commitOps(_ops);
       addLog('✓ Inventario importado (' + rows.length + ' equipos)', 'ok');
     }
 
@@ -1455,10 +1453,11 @@ async function confirmImport() {
         addLog('✓ Usuarios fusionados (' + newUsers.length + ' nuevos)', 'ok');
       } else {
         const {writeBatch:wb,doc:wd,collection:wc,getDocs:wg}=window.__fb;
-    // Troceado: deletes + sets en un único batch revientan el límite de 500 ops.
     const ex=await wg(wc(window.__db,'usuarios'));
-    for(let i=0;i<ex.docs.length;i+=400){const _b=wb(window.__db);ex.docs.slice(i,i+400).forEach(d=>_b.delete(d.ref));await _b.commit();}
-    for(let i=0;i<users.length;i+=400){const _b=wb(window.__db);users.slice(i,i+400).forEach(u=>_b.set(wd(window.__db,'usuarios',u.email.toLowerCase()),{email:u.email.toLowerCase(),rol:u.rol||'USUARIO',apps:u.apps||[]}));await _b.commit();}
+    await _commitOps([
+      ...ex.docs.map(d=>({tipo:'del',ref:d.ref})),
+      ...users.map(u=>({tipo:'set',ref:wd(window.__db,'usuarios',u.email.toLowerCase()),data:{email:u.email.toLowerCase(),rol:u.rol||'USUARIO',apps:u.apps||[]}})),
+    ]);
         addLog('✓ Usuarios reemplazados (' + users.length + ' usuarios)', 'ok');
       }
     }
@@ -1468,21 +1467,13 @@ async function confirmImport() {
       addLog('🔧 Importando mantenimiento...', 'info');
       const rows = parseCSV(pendingImport.files['mantenimiento.csv']);
       const {writeBatch:_wb5,doc:_doc5,collection:_col5,getDocs:_dg5}=window.__fb;
-      // Troceado (mismo motivo que en inventario): ni el delete-all ni los sets pueden ir en un
-      // único batch — Firestore corta en 500 operaciones.
-      if(mode==='replace'){
-        const _ex5=await _dg5(_col5(window.__db,'mantenimiento'));
-        for(let i=0;i<_ex5.docs.length;i+=400){const _b=_wb5(window.__db);_ex5.docs.slice(i,i+400).forEach(d=>_b.delete(d.ref));await _b.commit();}
-      }
+      const _ops5=[];
+      if(mode==='replace'){const _ex5=await _dg5(_col5(window.__db,'mantenimiento'));_ex5.docs.forEach(d=>_ops5.push({tipo:'del',ref:d.ref}));}
       // El CSV trae los mapas como TEXTO JSON: hay que parsearlos. Sin esto se escribía el string crudo
       // en Firestore y el checklist quedaba ilegible para la app (que espera un objeto).
       const _j5=(s)=>{try{const v=JSON.parse(s||'{}');return (v&&typeof v==='object'&&!Array.isArray(v))?v:{};}catch(e){return {};}};
-      const _filas5=rows.filter(r=>r.CLAVE);
-      for(let i=0;i<_filas5.length;i+=400){
-        const _b=_wb5(window.__db);
-        _filas5.slice(i,i+400).forEach(r=>_b.set(_doc5(window.__db,'mantenimiento',r.CLAVE),{clave:r.CLAVE,seleccionados:_j5(r.SELECCIONADOS),tareaStatus:_j5(r.TAREA_STATUS)}));
-        await _b.commit();
-      }
+      rows.filter(r=>r.CLAVE).forEach(r=>_ops5.push({tipo:'set',ref:_doc5(window.__db,'mantenimiento',r.CLAVE),data:{clave:r.CLAVE,seleccionados:_j5(r.SELECCIONADOS),tareaStatus:_j5(r.TAREA_STATUS)}}));
+      await _commitOps(_ops5);
       addLog('✓ Mantenimiento importado (' + rows.length + ' registros)', 'ok');
     }
 
