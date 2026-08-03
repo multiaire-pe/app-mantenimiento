@@ -1202,7 +1202,16 @@ async function confirmImport() {
     opts = opts || {};
     if(!MA.can('backup')) return;
     const {writeBatch:_wb,doc:_doc,collection:_col,getDocs:_dg}=window.__fb;
-    if(mode==='replace'){const _b=_wb(window.__db);const _ex=await _dg(_col(window.__db,col));_ex.docs.forEach(d=>_b.delete(d.ref));await _b.commit();}
+    // Chunked: el límite de 500 ops por batch también aplica al borrado. Colecciones grandes
+    // (inventario 557, asistencia, insumos) hacían fallar el "Reemplazar todo" entero.
+    if(mode==='replace'){
+      const _ex=await _dg(_col(window.__db,col));
+      for(let i=0;i<_ex.docs.length;i+=400){
+        const _b=_wb(window.__db);
+        _ex.docs.slice(i,i+400).forEach(d=>_b.delete(d.ref));
+        await _b.commit();
+      }
+    }
     let b=_wb(window.__db), n=0;
     for(const r of rows){
       const data=mapFn(r);
@@ -1331,38 +1340,45 @@ async function confirmImport() {
       addLog('📦 Importando inventario...', 'info');
       const rows = parseCSV(pendingImport.files['inventario.csv']);
       const {writeBatch:_wb2,doc:_doc2,collection:_col2,getDocs:_dg2}=window.__fb;
-      const _b2=_wb2(window.__db);
+      // Firestore corta en 500 operaciones por batch: con 557 equipos, meter todos los deletes
+      // y todos los sets en un solo batch excede el límite y el restore FALLA ENTERO.
+      const _enLotes = async (items, fn) => {
+        for (let i = 0; i < items.length; i += 400) {
+          const _b = _wb2(window.__db);
+          items.slice(i, i + 400).forEach((x) => fn(_b, x));
+          await _b.commit();
+        }
+      };
       // ¿El backup trae el estado vivo de operatividad? Se detecta desde el HEADER crudo del CSV
       // (no desde rows[0]): un backup nuevo con header pero 0 equipos debe seguir contando como "nuevo"
       // para que 'replace' borre fielmente. Los headers son identificadores simples (sin comas/comillas).
       const _hasOp = ((pendingImport.files['inventario.csv'].split(/\r?\n/)[0]||'').split(',').map(h=>h.trim()).indexOf('OPERATIVIDAD') !== -1);
-      // Ídem para CAPACIDAD: si el backup es previo al campo, NO se escribe la clave (un `set`
-      // sin merge la borraría) y el dato ya cargado sobrevive.
       const _hasCap = ((pendingImport.files['inventario.csv'].split(/\r?\n/)[0]||'').split(',').map(h=>h.trim()).indexOf('CAPACIDAD') !== -1);
+      // Un backup solo se restaura TAL CUAL (set sin merge + delete-all) si trae TODAS las
+      // columnas de estado vivo. Si le falta alguna, se hace upsert-merge: reescribir el doc
+      // entero desde un CSV incompleto borraría lo que ese CSV no conoce — con `capacidad` pasó
+      // exactamente eso (omitir la clave no alcanza: el `set` sin merge reemplaza el doc).
+      const _completo = _hasOp && _hasCap;
       // El delete-all de 'replace' solo aplica si el backup ES nuevo (trae operatividad): así el restore
       // es fiel. Con un backup VIEJO (sin la columna) NO borramos la colección, porque recrear los docs
       // con set/merge SIN operatividad perdería el estado vivo actual (el delete-all lo aniquilaría antes
       // de que el merge por fila pueda preservarlo). En ese caso se hace upsert-merge (no elimina equipos
       // ausentes del backup viejo — tradeoff consciente para no perder operatividad).
-      if(mode==='replace' && _hasOp){const _ex=await _dg2(_col2(window.__db,'inventario'));_ex.docs.forEach(d=>_b2.delete(d.ref));}
-      if(mode==='replace' && !_hasOp){ addLog('ℹ️ Backup previo a operatividad: se preservó el estado vivo (sin borrado total del inventario).', 'info'); }
-      rows.forEach(r=>{
-        if(!r.EQ_ID) return;
+      if(mode==='replace' && _completo){const _ex=await _dg2(_col2(window.__db,'inventario'));await _enLotes(_ex.docs,(b,d)=>b.delete(d.ref));}
+      if(mode==='replace' && !_completo){ addLog('ℹ️ Backup sin ' + (!_hasOp?'operatividad':'capacidad') + ': se preservó el estado vivo (sin borrado total del inventario).', 'info'); }
+      await _enLotes(rows.filter(r=>r.EQ_ID), (_b2, r) => {
         // el cliente se importa tal cual (antes se inventaba 'RIPLEY'): es la llave que resuelve la
         // plantilla de actividades del equipo — asignarle otro cliente le cambiaría las actividades
         const p={eq_id:r.EQ_ID,sede:r.SEDE||'',cliente:r.CLIENTE||'',tipo:r.TIPO||'',nombre:r.NOMBRE||'',area:r.AREA||'',marca:r.MARCA||'',modelo:r.MODELO||'',serie:r.SERIE||''};
         if(_hasCap) p.capacidad=r.CAPACIDAD||'';
         if(_hasOp){
-          // backup NUEVO (trae el estado vivo): restaurar tal cual. '' → null (nunca reportado); '0' se conserva.
+          // '' → null (nunca reportado); '0' (inoperativo) se conserva.
           p.operatividad=(r.OPERATIVIDAD!==''&&r.OPERATIVIDAD!=null)?+r.OPERATIVIDAD:null;
           p.operatividadFecha=r.OP_FECHA||null; p.operatividadPor=r.OP_POR||''; p.operatividadObsId=r.OP_OBSID||null; p.operatividadOrigen=r.OP_ORIGEN||'';
-          _b2.set(_doc2(window.__db,'inventario',r.EQ_ID),p);
-        } else {
-          // backup VIEJO (sin columnas operatividad*): merge para NO borrar el estado vivo actual.
-          _b2.set(_doc2(window.__db,'inventario',r.EQ_ID),p,{merge:true});
         }
+        const _ref=_doc2(window.__db,'inventario',r.EQ_ID);
+        if(_completo) _b2.set(_ref,p); else _b2.set(_ref,p,{merge:true});
       });
-      await _b2.commit();
       addLog('✓ Inventario importado (' + rows.length + ' equipos)', 'ok');
     }
 
