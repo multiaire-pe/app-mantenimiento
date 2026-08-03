@@ -1925,11 +1925,15 @@ async function _enviarItinerarioReal(prueba, telefonoPrueba) {
     if(!res.ok){ toast('Error: '+(j.error || ('HTTP '+res.status)), 'err'); return; }
     const sinTel = (j.detalle||[]).filter(d => d.estado==='sin_telefono').map(d => d.nombre);
     const errs   = (j.detalle||[]).filter(d => d.estado==='error').map(d => d.nombre);
+    // `incierto` = el envío no se pudo confirmar (timeout / 5xx de Meta). NO es lo mismo que
+    // error: pudo haber llegado, así que reenviarle sería duplicarle el itinerario.
+    const inc    = (j.detalle||[]).filter(d => d.estado==='incierto').map(d => d.nombre);
     let msg = (j.prueba?'🧪 Prueba · ':'')+'✅ '+j.enviados+'/'+j.total+' técnicos'+(j.actualizacion?' (actualización)':'');
     if(j.aviso) msg = j.aviso;
     if(sinTel.length) msg += ' · ⚠️ sin teléfono: '+sinTel.join(', ');
     if(errs.length)   msg += ' · ❌ error: '+errs.join(', ');
-    toast(msg, (sinTel.length||errs.length) ? 'err' : 'ok');
+    if(inc.length)    msg += ' · ❔ sin confirmar (NO reenviar, pudo haber llegado): '+inc.join(', ');
+    toast(msg, (sinTel.length||errs.length||inc.length) ? 'err' : 'ok');
     console.log('[enviar_itinerario]', j);
     if(!prueba) _pvCerrar(true);   // tras el envío real cierro el modal (force: aún está _pvSending); tras prueba lo dejo abierto
   } catch(e){ toast('No se pudo enviar: '+(e.message||e), 'err'); }
@@ -1973,6 +1977,7 @@ function _heCard(e){
   head.appendChild(_heChip('✅ '+(e.enviados!=null?e.enviados:0)+'/'+total, 'background:#e6f4ea;color:#1e7e34'));
   if(e.sinTelefono) head.appendChild(_heChip('⚠️ '+e.sinTelefono+' sin tel', 'background:#fff3cd;color:#8a6d00'));
   if(e.errores) head.appendChild(_heChip('❌ '+e.errores, 'background:#fde2e2;color:#c0392b'));
+  if(e.inciertos) head.appendChild(_heChip('❔ '+e.inciertos+' sin confirmar', 'background:#e8e4f3;color:#5b4b8a'));
   card.appendChild(head);
   const by = document.createElement('div'); by.style.cssText = 'padding:4px 12px;font-size:10px;color:var(--muted2)';
   by.textContent = 'por ' + (e.enviadoPor||'—') + (e.prueba && e.pruebaTarget ? (' · a '+e.pruebaTarget) : '');
@@ -1984,13 +1989,15 @@ function _heCard(e){
     sum.textContent = 'Ver mensajes (' + det.length + ' técnico(s))';
     dwrap.appendChild(sum);
     det.forEach(d => {
-      const ic = d.estado==='enviado' ? '✅' : d.estado==='sin_telefono' ? '⚠️' : '❌';
+      const ic = d.estado==='enviado' ? '✅' : d.estado==='sin_telefono' ? '⚠️' : d.estado==='incierto' ? '❔' : '❌';
       const t = document.createElement('details'); t.style.cssText = 'margin:4px 0;border:1px solid var(--border);border-radius:6px';
       const ts = document.createElement('summary'); ts.style.cssText = 'font-size:11px;padding:5px 8px;cursor:pointer';
       ts.textContent = ic + ' ' + (d.nombre||'—') + (d.estado!=='enviado' ? (' — ' + String(d.estado||'').replace('_',' ')) : '');
       t.appendChild(ts);
       const pre = document.createElement('pre'); pre.style.cssText = 'margin:0;padding:8px;font-size:10px;white-space:pre-wrap;word-break:break-word;font-family:var(--mono,monospace);background:var(--surface);color:var(--text);border-top:1px solid var(--border)';
-      const nota = d.estado !== 'enviado'
+      const nota = d.estado === 'incierto'
+        ? '❔ NO se pudo confirmar la entrega (la conexión con Meta falló después de mandarlo). Pudo haber llegado igual: si se lo reenvías, puede recibirlo DOS veces.\n\n'
+        : d.estado !== 'enviado'
         ? '⚠️ Mensaje preparado — NO recibido (' + String(d.estado||'').replace('_',' ') + ')\n\n'
         : (d.canal === 'plantilla'
             ? '📋 Recibió la PLANTILLA corta de aviso (estaba fuera de la ventana de 24 h). El texto de abajo es el que se preparó, no el literal que le llegó.\n\n'
