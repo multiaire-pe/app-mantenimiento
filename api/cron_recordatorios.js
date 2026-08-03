@@ -64,14 +64,25 @@ const TEXTO = {
 // o Meta caído devuelve 0 — y sin esta política el cron marcaba el día como enviado,
 // respondía 200 y el workflow quedaba verde: el recordatorio se perdía en silencio, que es
 // justo el modo de fallo que este endpoint vino a eliminar.
-//   · 0 enviados → NADIE recibió nada, así que reintentar no puede duplicar: se libera el
-//     turno (el próximo tick de 30 min reintenta) y se responde no-2xx para que el job falle.
+//   · 0 enviados y ningún fallo AMBIGUO → se sabe que nadie recibió nada, así que reintentar
+//     no puede duplicar: se libera el turno (el próximo tick de 30 min reintenta) y se
+//     responde no-2xx para que el job falle.
+//   · 0 enviados pero con algún fallo AMBIGUO (timeout, 5xx de Meta) → la petición pudo haber
+//     llegado y el mensaje pudo haberse entregado: el turno NO se libera, porque reintentar
+//     sobre un ambiguo es exactamente cómo se duplica. Igual responde no-2xx.
 //   · envío parcial → algunos SÍ recibieron: reintentar duplicaría, así que el día se marca
 //     igual; los fallidos se anotan y se avisan, pero no ponen el job en rojo (un técnico con
 //     el número muerto dejaría el cron rojo todos los días y la alerta se volvería ruido).
-export function politicaEnvio(enviados, intentados) {
+export function politicaEnvio(enviados, intentados, ambiguos = 0) {
   if (enviados === 0) {
-    return { liberarTurno: true, marcarDia: false, fallidos: intentados, error: `ningún envío salió (0/${intentados})` };
+    return {
+      liberarTurno: ambiguos === 0,
+      marcarDia: false,
+      fallidos: intentados,
+      error: ambiguos === 0
+        ? `ningún envío salió (0/${intentados})`
+        : `ningún envío confirmado (0/${intentados}) y ${ambiguos} con resultado incierto — no se reintenta para no duplicar`,
+    };
   }
   return { liberarTurno: false, marcarDia: true, fallidos: intentados - enviados, error: null };
 }
@@ -136,17 +147,25 @@ export default async function handler(req, res) {
     // atrapa los errores de cada envío por dentro, así que una excepción posterior puede
     // haber mandado parte de los mensajes — reintentar duplicaría.
     const destinos = await destinatariosAviso('recordatorio');
-    if (!destinos.length) { console.log(`[cron_recordatorios] ${tipo} · 0 destinatarios con avisos.recordatorio`); continue; }
+    if (!destinos.length) {
+      // Ya pasó la hora y no hay nadie marcado en 🔔 Alertas del bot: no es un error del
+      // cron, pero tampoco puede quedar en silencio — el workflow lo avisa como warning.
+      console.log(`[cron_recordatorios] ${tipo} · 0 destinatarios con avisos.recordatorio`);
+      resultados[tipo] = { sinDestinatarios: true, enviados: 0, intentados: 0 };
+      continue;
+    }
 
     const turno = await tomarTurno(db, hoy, tipo);
     if (!turno) { console.log(`[cron_recordatorios] ${tipo} · turno ya tomado hoy, no se envía`); continue; }
 
-    let n = 0;
+    let n = 0, ambiguos = 0;
     try {
-      n = await notificarPorTipo('recordatorio', TEXTO[tipo], '', {
+      const r = await notificarPorTipo('recordatorio', TEXTO[tipo], '', {
         destinos,
+        detalle: true,
         params: [tipo === 'entrada' ? 'Entrada' : 'Salida'],
       });
+      n = r.enviados; ambiguos = r.ambiguos;
     } catch (e) {
       // Excepción a mitad del envío: pudo haber mandado parte, así que el turno NO se libera
       // (reintentar duplicaría). Se anota el error y el job va a fallar por el 502 de abajo.
@@ -157,13 +176,13 @@ export default async function handler(req, res) {
       continue;
     }
 
-    const pol = politicaEnvio(n, destinos.length);
+    const pol = politicaEnvio(n, destinos.length, ambiguos);
     if (pol.liberarTurno) await turno.delete().catch(() => {});
-    else await turno.update({ enviados: n, fallidos: pol.fallidos, finTs: new Date().toISOString() }).catch(() => {});
+    else await turno.update({ enviados: n, fallidos: pol.fallidos, ambiguos, error: pol.error || null, finTs: new Date().toISOString() }).catch(() => {});
 
     if (pol.error) {
-      console.error(`[cron_recordatorios] ${tipo} · ${pol.error} — turno liberado, se reintenta en el próximo tick`);
-      resultados[tipo] = { error: pol.error, enviados: 0, intentados: destinos.length };
+      console.error(`[cron_recordatorios] ${tipo} · ${pol.error}${pol.liberarTurno ? ' — turno liberado, se reintenta en el próximo tick' : ''}`);
+      resultados[tipo] = { error: pol.error, enviados: 0, intentados: destinos.length, ambiguos };
       huboError = true;
       continue;
     }

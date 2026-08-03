@@ -4,7 +4,9 @@
 // porque el supervisor suele estar fuera de la ventana de 24h. Sin plantilla → texto libre
 // (sirve dentro de la ventana de 24h y para pruebas).
 import { getDb } from './firestore.js';
-import { enviarTexto, enviarPlantilla } from './whatsapp.js';
+// Los `*Detalle` distinguen "no se envió" de "no se sabe" (ver whatsapp.js); los otros dos
+// son el contrato boolean de siempre, que sigue usando notificarSupervisores.
+import { enviarTexto, enviarPlantilla, enviarTextoDetalle, enviarPlantillaDetalle } from './whatsapp.js';
 
 const ESTADO_LABEL = { PENDIENTE: 'Pendiente', EN_PROCESO: 'En proceso', OK: 'Resuelto (OK)' };
 const sinRipley = (t) => String(t || '').replace(/^RIPLEY\s+/i, '');
@@ -32,30 +34,46 @@ export async function destinatariosAviso(tipo = 'obs') {
 const TEMPLATE_ENV = { asistencia: 'WHATSAPP_TEMPLATE_ASISTENCIA', mtto: 'WHATSAPP_TEMPLATE_MTTO', recordatorio: 'WHATSAPP_TEMPLATE_RECORDATORIO' };
 const paramTexto = (x) => ({ type: 'text', text: (String(x || '').replace(/\s+/g, ' ').trim() || '—').slice(0, 600) });
 
+// Un sender puede devolver un boolean (contrato viejo, y lo que inyectan los tests) o
+// {ok, estado} (versiones "detalle" de whatsapp.js). Se normaliza a lo segundo; un `false`
+// pelado se toma como 'rechazado' porque el contrato viejo no distinguía.
+const normEnvio = (r) => (r && typeof r === 'object' ? r : { ok: !!r, estado: r ? 'ok' : 'rechazado' });
+
+// Devuelve cuántos se enviaron. Con `opts.detalle` devuelve además `intentados` y `ambiguos`
+// (los que fallaron SIN certeza de no haber llegado: timeout, 5xx de Meta) — lo necesita
+// quien decida reintentar, porque reintentar un ambiguo duplica el mensaje. Sin `detalle`
+// sigue devolviendo el número de siempre: no cambia nada para observaciones/asistencia/mtto.
 export async function notificarPorTipo(tipo, texto, excluirId = '', opts = {}) {
   const destinos = opts.destinos || await destinatariosAviso(tipo);
-  if (!destinos.length) { console.log(`[avisos] 0 destinatarios con avisos.${tipo}`); return 0; }
+  const resumen = (enviados, intentados, ambiguos) =>
+    (opts.detalle ? { enviados, intentados, ambiguos } : enviados);
+  if (!destinos.length) { console.log(`[avisos] 0 destinatarios con avisos.${tipo}`); return resumen(0, 0, 0); }
   const plantilla = opts.plantilla !== undefined ? opts.plantilla : (process.env[TEMPLATE_ENV[tipo]] || '');
   const idioma = process.env.WHATSAPP_TEMPLATE_IDIOMA || 'es';
-  const _enviarTexto = opts.enviarTexto || enviarTexto;
-  const _enviarPlantilla = opts.enviarPlantilla || enviarPlantilla;
-  let n = 0;
+  const _enviarTexto = opts.enviarTexto || enviarTextoDetalle;
+  const _enviarPlantilla = opts.enviarPlantilla || enviarPlantillaDetalle;
+  let n = 0, intentados = 0, ambiguos = 0;
   for (const p of destinos) {
     if (excluirId && p.id === excluirId) continue;   // no avisar a quien hizo la acción
     const to = String(p.telefono).replace(/\D/g, '');
-    let ok = false;
+    intentados++;
+    let r = { ok: false, estado: 'rechazado' };
+    let ambiguo = false;
     if (plantilla && Array.isArray(opts.params)) {
-      try { ok = await _enviarPlantilla(to, plantilla, idioma, [{ type: 'body', parameters: opts.params.map(paramTexto) }]); }
-      catch (e) { console.error('[avisos] plantilla', tipo, e.message); }
-      if (!ok) console.warn('[avisos] plantilla falló, intento texto libre ·', tipo, to);
+      try { r = normEnvio(await _enviarPlantilla(to, plantilla, idioma, [{ type: 'body', parameters: opts.params.map(paramTexto) }])); }
+      catch (e) { console.error('[avisos] plantilla', tipo, e.message); r = { ok: false, estado: 'ambiguo' }; }
+      if (r.estado === 'ambiguo') ambiguo = true;    // la plantilla pudo haber llegado igual
+      if (!r.ok) console.warn('[avisos] plantilla falló, intento texto libre ·', tipo, to);
     }
-    if (!ok) {
-      try { ok = await _enviarTexto(to, texto); }
-      catch (e) { console.error('[avisos]', tipo, p.id, e.message); }
+    if (!r.ok) {
+      try { r = normEnvio(await _enviarTexto(to, texto)); }
+      catch (e) { console.error('[avisos]', tipo, p.id, e.message); r = { ok: false, estado: 'ambiguo' }; }
+      if (r.estado === 'ambiguo') ambiguo = true;
     }
-    if (ok) n++;
+    if (r.ok) n++;
+    else if (ambiguo) ambiguos++;
   }
-  return n;
+  return resumen(n, intentados, ambiguos);
 }
 
 function textoAviso(obs, tecnico) {
