@@ -63,9 +63,18 @@ export async function notificarPorTipo(tipo, texto, excluirId = '', opts = {}) {
       try { r = normEnvio(await _enviarPlantilla(to, plantilla, idioma, [{ type: 'body', parameters: opts.params.map(paramTexto) }])); }
       catch (e) { console.error('[avisos] plantilla', tipo, e.message); r = { ok: false, estado: 'ambiguo' }; }
       if (r.estado === 'ambiguo') ambiguo = true;    // la plantilla pudo haber llegado igual
-      if (!r.ok) console.warn('[avisos] plantilla falló, intento texto libre ·', tipo, to);
+      if (!r.ok && !(ambiguo && opts.detalle)) console.warn('[avisos] plantilla falló, intento texto libre ·', tipo, to);
     }
-    if (!r.ok) {
+    // El fallback a texto libre existe porque una plantilla puede fallar por un typo, estar
+    // pausada o rechazada. Pero si su fallo fue AMBIGUO, la plantilla pudo haberse entregado
+    // igual: mandar además el texto le llega DOS veces a la misma persona. Quién prefiere qué
+    // depende del aviso, y por eso lo decide el llamador con `detalle`: el cron de
+    // recordatorios escribe a TODOS los técnicos a la vez y ahí duplicar es caro, así que se
+    // saltea; un aviso 1:1 al supervisor conserva el fallback de siempre, porque para ese caso
+    // que llegue dos veces es mejor que perderlo.
+    if (ambiguo && opts.detalle) {
+      console.warn('[avisos] plantilla con resultado incierto — NO se manda el texto libre para no duplicar ·', tipo, to);
+    } else if (!r.ok) {
       try { r = normEnvio(await _enviarTexto(to, texto)); }
       catch (e) { console.error('[avisos]', tipo, p.id, e.message); r = { ok: false, estado: 'ambiguo' }; }
       if (r.estado === 'ambiguo') ambiguo = true;
