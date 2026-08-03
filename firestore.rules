@@ -160,6 +160,10 @@ service cloud.firestore {
     match /wa_ultima_obs/{doc}     { allow read: if authorized(); allow write: if false; }
     match /wa_asistencia_sesiones/{doc} { allow read: if authorized(); allow write: if false; }
     match /wa_asistencia_fotos/{doc}    { allow read: if authorized(); allow write: if false; }
+    // recordatorio_envios: turno diario del cron de recordatorios (doc `YYYY-MM-DD_tipo`,
+    // creado con create() antes de enviar para que dos ejecuciones solapadas no dupliquen
+    // el WhatsApp). Mismo criterio que las wa_*: la escribe el Admin SDK, nunca el cliente.
+    match /recordatorio_envios/{doc}    { allow read: if authorized(); allow write: if false; }
 
     // ── Catch-all (FAIL-CLOSED) ────────────────────────────────────────────────────
     //  OJO: en Firestore los `match` se combinan con OR — un allow más amplio aquí
