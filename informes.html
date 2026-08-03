@@ -708,12 +708,6 @@ async function generar() {
       styles: { default: { document: { run: { font: 'Aptos', size: 19 } } } },
       sections: [{
         properties: { page: { margin: { top: 800, right: 700, bottom: 800, left: 700 } } },
-        headers: { default: new D.Header({ children: [new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, columnWidths: [2200, 9600],
-          rows: [new D.TableRow({ children: [
-            new D.TableCell({ borders: bordes(), margins: { top: 60, bottom: 60, left: 80, right: 80 }, children: [p('MultiAire', { bold: true, size: 20, color: '1B3F8B' })] }),
-            new D.TableCell({ borders: bordes(), shading: { type: D.ShadingType.CLEAR, fill: AZUL }, margins: { top: 60, bottom: 60, left: 80, right: 80 },
-              children: [p('MANTENIMIENTO PREVENTIVO DE EQUIPOS DE AIRE ACONDICIONADO', { bold: true, italics: true, color: 'FFFFFF', size: 17, align: D.AlignmentType.CENTER })] }),
-          ] })] })] }) },
         children: hijos,
       }],
     });
