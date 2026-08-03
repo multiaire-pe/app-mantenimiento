@@ -212,6 +212,28 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
   .wrap{padding:12px}
   .tb th:nth-child(2),.tb td:nth-child(2){display:none}
 }
+
+.mini{font-family:var(--mono);font-size:10px;padding:3px 8px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface);color:var(--blue);cursor:pointer;font-weight:600}
+.mini:hover{border-color:var(--blue);background:var(--blue-pale)}
+.modal-ov{display:none;position:fixed;inset:0;background:rgba(15,25,50,.55);z-index:500;align-items:center;justify-content:center;padding:20px}
+.modal-ov.open{display:flex}
+.modal{background:var(--surface);border-radius:14px;max-width:900px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg)}
+.modal-h{padding:16px 20px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.modal-t{font-size:15px;font-weight:700}
+.modal-s{font-size:12px;color:var(--muted2);margin-top:2px}
+.modal-c{font-family:var(--mono);font-size:11px;color:var(--blue);background:var(--blue-pale);padding:5px 10px;border-radius:20px;white-space:nowrap}
+.modal-b{padding:16px 20px;overflow-y:auto;flex:1}
+.modal-f{padding:12px 20px;border-top:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.act{margin-bottom:16px}
+.act-t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted2);margin-bottom:8px}
+.act-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.ph{position:relative;border:2.5px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;aspect-ratio:4/3;background:var(--surface3);transition:border-color .15s}
+.ph:hover{border-color:var(--blue-light)}
+.ph.on{border-color:var(--blue)}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .ord{position:absolute;top:5px;left:5px;width:20px;height:20px;border-radius:50%;background:var(--blue);color:#fff;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;font-family:var(--mono)}
+.ph.on .ord{display:flex}
+@media(max-width:768px){.modal{max-height:94vh}.act-g{grid-template-columns:repeat(auto-fill,minmax(90px,1fr))}}
 </style>
 </head>
 <body>
@@ -267,6 +289,24 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
   </div>
 </div>
 
+</div>
+
+
+<div class="modal-ov" id="sel-modal" onclick="if(event.target===this)cerrarSelector()">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <div class="modal-t">Fotos del informe</div>
+        <div class="modal-s" id="sel-tit"></div>
+      </div>
+      <div class="modal-c" id="sel-cont"></div>
+    </div>
+    <div class="modal-b" id="sel-body"></div>
+    <div class="modal-f">
+      <span class="mut" style="font-size:11px">El informe muestra 3 fotos por equipo. El número indica en qué posición sale cada una.</span>
+      <button class="btn btn-primary" onclick="cerrarSelector()">Listo</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -330,6 +370,34 @@ const MESES_PERIODO = { 'ENE-FEB': [1, 2], 'MAR-ABR': [3, 4], 'MAY-JUN': [5, 6],
 const TIPO_INFORME = { PAQUETE: 'ROOF TOP' };
 
 let inventario = [], ejecuciones = [], fotos = [], observaciones = [], datos = null;
+
+// Qué 3 fotos van al informe, por equipo: { eqId: [idFoto, idFoto, idFoto] }.
+// El informe muestra 3 fotos por equipo y la gracia es que sean de actividades DISTINTAS —
+// una actividad puede tener ocho fotos, y las tres primeras del montón serían todas de lo
+// mismo. Por eso se elige a mano; acá solo se propone un punto de partida razonable.
+let seleccion = {};
+const MAX_FOTOS = 3;
+const claveSel = () => `informes_fotos_${datos ? `${datos.cliente}|${datos.sede}|${datos.periodo}|${datos.anio}` : ''}`;
+
+// Propuesta inicial: la primera foto de cada actividad distinta, hasta 3. Si el equipo tiene
+// menos de 3 actividades con foto, se completa con las que sobren de las mismas.
+function preseleccionar(fotosEq) {
+  const porAct = {};
+  fotosEq.forEach((f) => { (porAct[f.tarea || '—'] = porAct[f.tarea || '—'] || []).push(f); });
+  const elegidas = Object.values(porAct).map((l) => l[0]).slice(0, MAX_FOTOS);
+  if (elegidas.length < MAX_FOTOS) {
+    const yaEsta = new Set(elegidas.map((f) => f.id));
+    for (const f of fotosEq) { if (elegidas.length >= MAX_FOTOS) break; if (!yaEsta.has(f.id)) elegidas.push(f); }
+  }
+  return elegidas.map((f) => f.id);
+}
+
+// Las fotos elegidas de un equipo, en el orden en que se eligieron.
+function fotosElegidas(eqId) {
+  const todas = (datos.fotosPorEq[eqId] || []);
+  const ids = seleccion[eqId] || [];
+  return ids.map((id) => todas.find((f) => f.id === id)).filter(Boolean);
+}
 
 function periodoActual() {
   const m = new Date().getMonth() + 1;
@@ -395,7 +463,7 @@ async function preparar() {
       db.collection('mantenimiento_fotos').where('clave', '==', `${sede}|${periodo}|${anio}`).get(),
     ]);
     ejecuciones = ejSnap.docs.map((d) => d.data());
-    fotos = foSnap.docs.map((d) => d.data());
+    fotos = foSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
     const equipos = inventario.filter((e) => e.cliente === cliente && e.sede === sede);
     const [m1, m2] = MESES_PERIODO[periodo];
@@ -412,6 +480,18 @@ async function preparar() {
     obsPeriodo.forEach((o) => { (obsPorEq[o.eqId] = obsPorEq[o.eqId] || []).push(o); });
 
     datos = { cliente, sede, periodo, anio, equipos, ejecPorEq, fotosPorEq, obsPorEq, obsPeriodo };
+
+    // La selección se recuerda por sede+período: rehacer un informe no obliga a volver a
+    // elegir. Se guarda en el navegador (no en Firestore): es una preferencia de armado del
+    // documento, no un dato del sistema.
+    let guardada = {};
+    try { guardada = JSON.parse(localStorage.getItem(claveSel()) || '{}'); } catch (e) { guardada = {}; }
+    seleccion = {};
+    Object.keys(fotosPorEq).forEach((eqId) => {
+      const previas = Array.isArray(guardada[eqId]) ? guardada[eqId] : [];   // el localStorage puede traer basura
+      const validas = previas.filter((id) => fotosPorEq[eqId].some((f) => f.id === id));
+      seleccion[eqId] = validas.length ? validas.slice(0, MAX_FOTOS) : preseleccionar(fotosPorEq[eqId]);
+    });
     render();
     document.getElementById('btn-gen').disabled = !equipos.length;
   } catch (e) {
@@ -459,12 +539,71 @@ function render() {
         <td class="${String(e.capacidad || '').trim() ? '' : 'falta'}">${esc(e.capacidad || '—')}</td>
         <td class="c">${ej ? '<b>' + ej + '</b>' : '<span class="mut">—</span>'}</td>
         <td class="c">${ob ? '<b>' + ob + '</b>' : '<span class="mut">—</span>'}</td>
-        <td class="c">${fo ? '<b>' + fo + '</b>' : '<span class="mut">—</span>'}</td></tr>`;
+        <td class="c">${fo ? `<button class="mini" data-eq="${esc(e.eq_id || e.id)}" title="Elegir las 3 fotos del informe">${(seleccion[e.eq_id || e.id] || []).length}/${Math.min(fo, 3)} de ${fo} 📷</button>` : '<span class="mut">—</span>'}</td></tr>`;
     }).join('');
     return `<div class="bloque"><div class="bt">${esc(nomTipo(t))} <span class="mut">· ${eqs.length}</span></div>
       <table class="tb"><thead><tr><th>Equipo</th><th>Ubicación</th><th>Capacidad</th><th class="c">Activ.</th><th class="c">Obs.</th><th class="c">Fotos</th></tr></thead>
       <tbody>${filas}</tbody></table></div>`;
   }).join('');
+}
+
+// Delegación en vez de handlers inline: el id del equipo y el de la foto son datos, y
+// meterlos dentro de un onclick="..." obliga a escaparlos como JS (esc() solo escapa HTML).
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('#detalle .mini[data-eq]');
+  if (b) { abrirSelector(b.dataset.eq); return; }
+  const ph = ev.target.closest('#sel-body .ph[data-id]');
+  if (ph) toggleFoto(ph.dataset.id);
+});
+
+// ── Selector de fotos por equipo ─────────────────────────────────────────────────────
+let _eqSel = null;
+
+function abrirSelector(eqId) {
+  _eqSel = eqId;
+  const eq = datos.equipos.find((e) => (e.eq_id || e.id) === eqId);
+  const todas = datos.fotosPorEq[eqId] || [];
+  const porAct = {};
+  todas.forEach((f) => { (porAct[f.tarea || 'Sin actividad'] = porAct[f.tarea || 'Sin actividad'] || []).push(f); });
+
+  document.getElementById('sel-tit').textContent = (eq?.nombre || eqId) + (eq?.area ? ' · ' + eq.area : '');
+  document.getElementById('sel-body').innerHTML = Object.keys(porAct).map((act) => `
+    <div class="act">
+      <div class="act-t">${esc(act)} <span class="mut">· ${porAct[act].length} foto(s)</span></div>
+      <div class="act-g">${porAct[act].map((f) => `
+        <div class="ph" data-id="${esc(f.id)}">
+          <img src="${esc(f.foto)}" alt="">
+          <div class="ord"></div>
+        </div>`).join('')}</div>
+    </div>`).join('');
+  pintarSeleccion();
+  document.getElementById('sel-modal').classList.add('open');
+}
+
+function toggleFoto(id) {
+  const sel = seleccion[_eqSel] || (seleccion[_eqSel] = []);
+  const i = sel.indexOf(id);
+  if (i >= 0) sel.splice(i, 1);
+  else if (sel.length >= MAX_FOTOS) { toast(`El informe muestra ${MAX_FOTOS} fotos por equipo: quita una antes de agregar otra`, 'err'); return; }
+  else sel.push(id);
+  pintarSeleccion();
+}
+
+// El número sobre cada foto es el ORDEN en que va a salir en el informe (Foto 1, 2 y 3).
+function pintarSeleccion() {
+  const sel = seleccion[_eqSel] || [];
+  document.querySelectorAll('#sel-body .ph').forEach((el) => {
+    const i = sel.indexOf(el.dataset.id);
+    el.classList.toggle('on', i >= 0);
+    el.querySelector('.ord').textContent = i >= 0 ? (i + 1) : '';
+  });
+  document.getElementById('sel-cont').textContent = `${sel.length} de ${MAX_FOTOS} elegidas`;
+}
+
+function cerrarSelector() {
+  try { localStorage.setItem(claveSel(), JSON.stringify(seleccion)); } catch (e) { /* sin localStorage: la selección vale para esta sesión */ }
+  document.getElementById('sel-modal').classList.remove('open');
+  render();
 }
 
 // ── Generación del .docx ─────────────────────────────────────────────────────────────
@@ -484,6 +623,9 @@ async function cargarDocx() {
 }
 
 const b64aBytes = (dataUrl) => {
+  // Si el dato no es una imagen en base64, se devuelve vacío: una foto corrupta no puede
+  // hacer fallar el informe completo.
+  if (!/^data:image\/[a-z+]+;base64,/i.test(String(dataUrl || ''))) return new Uint8Array();
   const b64 = String(dataUrl || '').split(',')[1] || '';
   const bin = atob(b64);
   const u = new Uint8Array(bin.length);
@@ -546,7 +688,7 @@ async function generar() {
       hijos.push(new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, columnWidths: [2800, 2300, 2300, 2300],
         rows: [new D.TableRow({ tableHeader: true, children: ['Nombre de activo', 'Foto 1', 'Foto 2', 'Foto 3'].map(th) }),
           ...eqs.map((e) => {
-            const fs = (d.fotosPorEq[e.eq_id || e.id] || []).slice(0, 3);
+            const fs = fotosElegidas(e.eq_id || e.id).filter((f) => /^data:image\/[a-z+]+;base64,/i.test(String(f.foto || '')));
             if (fs.length) algunaFoto = true;
             const celda = (f) => new D.TableCell({ borders: bordes(), margins: { top: 60, bottom: 60, left: 60, right: 60 },
               shading: f ? undefined : { type: D.ShadingType.CLEAR, fill: FALTA },
