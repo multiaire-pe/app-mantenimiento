@@ -1468,8 +1468,8 @@ async function confirmImport() {
       addLog('🔧 Importando mantenimiento...', 'info');
       const rows = parseCSV(pendingImport.files['mantenimiento.csv']);
       const {writeBatch:_wb5,doc:_doc5,collection:_col5,getDocs:_dg5}=window.__fb;
-      const _b5=_wb5(window.__db);
-      // Troceado (mismo motivo que en inventario): el delete-all no puede compartir batch con los sets.
+      // Troceado (mismo motivo que en inventario): ni el delete-all ni los sets pueden ir en un
+      // único batch — Firestore corta en 500 operaciones.
       if(mode==='replace'){
         const _ex5=await _dg5(_col5(window.__db,'mantenimiento'));
         for(let i=0;i<_ex5.docs.length;i+=400){const _b=_wb5(window.__db);_ex5.docs.slice(i,i+400).forEach(d=>_b.delete(d.ref));await _b.commit();}
@@ -1477,8 +1477,12 @@ async function confirmImport() {
       // El CSV trae los mapas como TEXTO JSON: hay que parsearlos. Sin esto se escribía el string crudo
       // en Firestore y el checklist quedaba ilegible para la app (que espera un objeto).
       const _j5=(s)=>{try{const v=JSON.parse(s||'{}');return (v&&typeof v==='object'&&!Array.isArray(v))?v:{};}catch(e){return {};}};
-      rows.forEach(r=>{if(r.CLAVE)_b5.set(_doc5(window.__db,'mantenimiento',r.CLAVE),{clave:r.CLAVE,seleccionados:_j5(r.SELECCIONADOS),tareaStatus:_j5(r.TAREA_STATUS)});});
-      await _b5.commit();
+      const _filas5=rows.filter(r=>r.CLAVE);
+      for(let i=0;i<_filas5.length;i+=400){
+        const _b=_wb5(window.__db);
+        _filas5.slice(i,i+400).forEach(r=>_b.set(_doc5(window.__db,'mantenimiento',r.CLAVE),{clave:r.CLAVE,seleccionados:_j5(r.SELECCIONADOS),tareaStatus:_j5(r.TAREA_STATUS)}));
+        await _b.commit();
+      }
       addLog('✓ Mantenimiento importado (' + rows.length + ' registros)', 'ok');
     }
 
