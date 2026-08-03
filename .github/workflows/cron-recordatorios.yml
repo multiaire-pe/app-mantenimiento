@@ -52,8 +52,9 @@ jobs:
               // ahí el 502 único es best-effort: si la función muriera justo después de marcar
               // `reportado`, nadie se enteraría nunca. Con esto, el rojo puede perderse pero
               // el aviso no: queda a la vista en cada corrida del día.
-              // OJO: comillas DOBLES. Todo este bloque va dentro de un node -e '...' del shell,
-              // así que un '' acá cerraría el quoting y Node recibiría JS inválido.
+              // OJO: comillas DOBLES en el fallback. Todo este bloque viaja dentro de un
+              // node -e entre comillas simples del shell, así que una comilla simple suelta
+              // acá cierra el quoting y Node recibe JS inválido.
               if (d && d.error) console.log(`::warning::${tipo}: sin entrega confirmada — ${d.error}${d.motivo ? ` (${d.motivo})` : ""}`);
             }
           '
