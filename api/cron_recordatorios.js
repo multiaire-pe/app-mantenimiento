@@ -45,6 +45,111 @@ export const MAX_INTENTOS_DIA = 3;
 // alcanzan si la ejecución murió sin cerrarlo.
 export const LEASE_MS = 10 * 60 * 1000;
 
+// VENTANA DE GRACIA — un recordatorio que llega muy tarde es peor que no llegar. El endpoint
+// solo sabe "¿ya pasó la hora y no se mandó hoy?", así que si el disparador se demora horas
+// (le pasó a GitHub Actions: su `schedule` perdía ticks y corría cada ~1.5 h en vez de cada 30
+// min) el técnico recibía "no olvides marcar tu entrada" a media mañana — inútil, y le resta
+// credibilidad al bot para cuando el aviso sí sea oportuno.
+//
+// Pasada la ventana el envío del día se SALTA y se reporta como fallo: el problema es del
+// disparador, y taparlo mandando el mensaje tarde solo lo esconde. Configurable desde
+// Personal → 🔔 Alertas del bot (`config_recordatorios.ventanaGraciaMin`).
+export const GRACIA_DEFAULT_MIN = 45;
+// Rango admitido. No es cosmético: `ventanaGraciaMin` ES la política de envío, y un valor
+// corrupto la cambia entera sin que nadie se entere — `0.1` saltaría prácticamente todos los
+// días, `1e9` volvería a permitir el recordatorio a cualquier hora (el bug que esto vino a
+// cerrar). El `min`/`max` del input de personal.html no alcanza: el doc de Firestore se puede
+// escribir desde otro lado, así que el backend valida por su cuenta.
+export const GRACIA_MIN_MIN = 1;
+export const GRACIA_MAX_MIN = 240;
+
+// Exportada para testear la normalización sola: su modo de fallo es aceptar basura en
+// silencio, no lanzar.
+export function normalizarGracia(valor) {
+  // `Number(valor)` a secas NO alcanza: `Number(true) === 1`, así que un booleano corrupto en
+  // Firestore pasaría como una tolerancia de 1 minuto —el caso peligroso que esto vino a
+  // evitar— y encima sin caer en el aviso, porque el valor "normalizado" coincidiría con el
+  // guardado. Lo mismo con `[]` (→ 0) y `['30']` (→ 30). Se aceptan solo un número de verdad
+  // o un string de dígitos (que es como puede quedar si se cargó a mano).
+  let n;
+  if (typeof valor === 'number') n = valor;
+  else if (typeof valor === 'string' && /^\d+$/.test(valor.trim())) n = Number(valor.trim());
+  else return GRACIA_DEFAULT_MIN;
+  if (!Number.isInteger(n) || n < GRACIA_MIN_MIN || n > GRACIA_MAX_MIN) return GRACIA_DEFAULT_MIN;
+  return n;
+}
+
+// Exportada para testear la aritmética sin montar el handler entero: las horas viajan en
+// DECIMAL (8.5 = 08:30) y la ventana en MINUTOS, así que un error de unidades acá apagaría
+// la protección (×60 de menos) o la dispararía siempre (×60 de más), en los dos casos sin
+// hacer ruido.
+export function evaluarAtraso(ahora, hora, graciaMin) {
+  const atrasoMin = (Number(ahora) - Number(hora)) * 60;
+  return { atrasoMin, vencido: atrasoMin > graciaMin };
+}
+
+// Docs del formato ANTERIOR (sin `estado`), que ya existen en producción. UNA sola definición
+// compartida por `tomarTurno` y `marcarVencido`: tener la regla duplicada es exactamente cómo
+// un camino se arregla y el otro se queda leyendo un fallo viejo como éxito.
+//
+// El orden de las señales importa: la versión vieja escribía `finTs` TAMBIÉN al fallar, así
+// que `finTs` no prueba envío; solo vale como éxito cuando no hay ninguna señal de fallo.
+export function clasificarLegacy(d) {
+  if ((d.enviados || 0) > 0) return 'enviado';
+  if ((d.ambiguos || 0) > 0 || d.error) return 'incierto';
+  if (d.finTs) return 'enviado';
+  return 'agotado';
+}
+
+// Exportada para testearla con un Firestore inyectado, igual que `tomarTurno`: decide si el día
+// se da por perdido, así que su modo de fallo es callarse (nadie se entera de que no salió) o
+// gritar en cada tick hasta medianoche (el ruido que enseña a ignorar las alertas).
+//
+// Solo ESCRIBE sobre un turno inexistente o 'reintentable' (falló dentro de la ventana y ahora
+// ya venció: no tiene sentido seguir reintentando) y sobre un 'en_curso' abandonado. El resto
+// de los estados ya dijeron lo suyo y no se pisan — pero el motivo NO es intercambiable:
+// clasificarlos a todos como fallo reportaba un falso "sin entrega confirmada" sobre un día que
+// SÍ se envió, y eso enseña a ignorar las alertas igual que el ruido.
+export async function marcarVencido(db, hoy, tipo, atrasoMin, graciaMin) {
+  const ref = db.collection('recordatorio_envios').doc(`${hoy}_${tipo}`);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const d = snap.exists ? (snap.data() || {}) : null;
+    const estado = d ? (d.estado || clasificarLegacy(d)) : null;
+
+    if (d && estado === 'enviado') return { reclamado: false, motivo: 'enviado', sinFallo: true, doc: d };
+
+    if (d && estado === 'en_curso') {
+      // Misma regla de lease que `tomarTurno`: uno recién tomado es una ejecución viva (no es
+      // un fallo); uno abandonado no puede quedar bloqueado y callado el resto del día.
+      const venció = d.inicioTs && (Date.now() - Date.parse(d.inicioTs)) > LEASE_MS;
+      if (!venció) return { reclamado: false, motivo: 'en_curso', sinFallo: true, doc: d };
+      const error = 'la ejecución que tomó el turno no lo cerró (quedó a mitad) y ya venció la tolerancia';
+      tx.update(ref, { estado: 'incierto', error, reportado: true });
+      return { reclamado: !d.reportado, motivo: 'incierto', error, doc: d };
+    }
+
+    // Fallos que ya son finales ('incierto' / 'agotado' / 'vencido', propios o derivados de un
+    // doc legacy): no se pisan, pero uno que NUNCA se reportó tiene que salir a la luz — y uno
+    // que ya se reportó no puede volver a poner el job en rojo por lo mismo.
+    if (d && estado !== 'reintentable') {
+      const reclamado = !d.reportado;
+      if (reclamado) tx.update(ref, { reportado: true });
+      return { reclamado, motivo: estado, doc: d };
+    }
+
+    const error = `el disparador llegó ${Math.round(atrasoMin)} min tarde (ventana ${graciaMin} min) — no se envía, un recordatorio a destiempo confunde más de lo que ayuda`;
+    const payload = {
+      fecha: hoy, tipo, estado: 'vencido', error, atrasoMin: Math.round(atrasoMin),
+      graciaMin, finTs: new Date().toISOString(), reportado: true,
+    };
+    if (d) tx.update(ref, payload); else tx.set(ref, { ...payload, intentos: 0 });
+    // Un 'reintentable' que YA se había reportado (falló dentro de la ventana) no vuelve a
+    // poner el job en rojo al vencer: es el mismo problema del mismo día.
+    return { reclamado: !d?.reportado, error };
+  });
+}
+
 // Exportada (además de usarse acá) para poder testearla con un Firestore inyectado: es la
 // pieza que decide si se manda o no, y sus modos de fallo son el duplicado y el spam.
 export async function tomarTurno(db, hoy, tipo, maxIntentos = MAX_INTENTOS_DIA) {
@@ -60,15 +165,8 @@ export async function tomarTurno(db, hoy, tipo, maxIntentos = MAX_INTENTOS_DIA) 
 
     // Doc del formato ANTERIOR (sin `estado`), creado por la versión que corría antes de este
     // cambio. Nunca se reenvía —eso sería duplicar—, pero tampoco puede quedar en silencio.
-    // El orden de las señales importa: la versión vieja escribía `finTs` TAMBIÉN al fallar,
-    // así que `finTs` no prueba envío; solo vale como éxito cuando no hay ninguna señal de
-    // fallo. Se mira: envíos reales → fallo (ambiguo o con error) → finTs limpio → nada.
-    if (!d.estado) {
-      if ((d.enviados || 0) > 0) return { ok: false, ref, motivo: 'enviado', doc: d };
-      if ((d.ambiguos || 0) > 0 || d.error) return { ok: false, ref, motivo: 'incierto', doc: d };
-      if (d.finTs) return { ok: false, ref, motivo: 'enviado', doc: d };
-      return { ok: false, ref, motivo: 'agotado', doc: d };
-    }
+    // La clasificación vive en `clasificarLegacy`, compartida con `marcarVencido`.
+    if (!d.estado) return { ok: false, ref, motivo: clasificarLegacy(d), doc: d };
 
     // 'en_curso' VENCIDO: la ejecución que lo tomó murió sin cerrarlo (la función tiene
     // maxDuration 30s, así que 10 min es de sobra). Pudo haber alcanzado a enviar parte, así
@@ -178,15 +276,63 @@ export default async function handler(req, res) {
   const hoy = hoyLima();
   const ahora = ahoraExactaLima();
   const ultimoEnvio = { ...(cfg.ultimoEnvio || {}) };
+  // Un valor basura en el config no puede desactivar la ventana en silencio: se cae al default.
+  const graciaMin = normalizarGracia(cfg.ventanaGraciaMin);
+  if (cfg.ventanaGraciaMin != null && graciaMin !== Number(cfg.ventanaGraciaMin)) {
+    console.warn(`[cron_recordatorios] ventanaGraciaMin inválida (${cfg.ventanaGraciaMin}) — se usa el default ${GRACIA_DEFAULT_MIN} min`);
+  }
   const resultados = {};
+  const configInvalida = {};  // advertencias de configuración, no cortan el envío
   let enviadoAhora = false;   // solo se reescribe el config si esta ejecución mandó algo
   let huboError = false;      // → responde 502 para que el workflow NO quede verde en falso
 
   for (const tipo of ['entrada', 'salida']) {
     const hora = cfg[tipo === 'entrada' ? 'horaEntrada' : 'horaSalida'];
     if (hora == null || !Number.isFinite(Number(hora))) continue; // sin hora configurada
-    if (ultimoEnvio[tipo] === hoy) continue;                      // ya se mandó hoy (atajo barato)
     if (ahora < Number(hora)) continue;                           // aún no llega la hora
+
+    // CONFIGURACIÓN QUE CRUZA MEDIANOCHE — la comparación es siempre contra la hora de HOY, así
+    // que el tramo de la ventana que cae después de las 00:00 ya no se alcanza (`ahora < hora`
+    // corta) y ahí el envío no saldría NI se marcaría vencido: silencio. `personal.html` rechaza
+    // la combinación al guardar, pero el doc de Firestore se puede escribir desde otro lado.
+    //
+    // Es una ADVERTENCIA, no un corte: entre la hora configurada y medianoche el envío es
+    // perfectamente válido y cortarlo acá dejaría sin recordatorio a un día que sí podía salir.
+    // El ORDEN de las tres líneas de acá es deliberado: después de `ahora < hora` (antes,
+    // avisaría en cada tick desde la madrugada) y ANTES del atajo de `ultimoEnvio` (después,
+    // la advertencia se apagaría justo cuando el recordatorio sale bien, que es cuando más
+    // falta hace enterarse de que la config tiene un tramo muerto).
+    // `> 24` y no `>=`: una ventana que termina JUSTO a las 24:00 no cruza nada.
+    if (Number(hora) + graciaMin / 60 > 24) {
+      console.warn(`[cron_recordatorios] ${tipo} · la tolerancia de ${graciaMin} min sobre ${decimalAHHMM(hora)} cruza la medianoche`);
+      configInvalida[tipo] = `la hora de ${tipo} (${decimalAHHMM(hora)}) más la tolerancia de ${graciaMin} min cruza la medianoche — corregilo en Personal → 🔔 Alertas del bot`;
+    }
+
+    if (ultimoEnvio[tipo] === hoy) continue;                      // ya se mandó hoy (atajo barato)
+
+    // VENTANA DE GRACIA — se evalúa antes de resolver destinatarios y antes de tomar el turno:
+    // si el día ya se perdió, no tiene sentido leer `maestros_personal` ni reservar nada.
+    const { atrasoMin, vencido } = evaluarAtraso(ahora, hora, graciaMin);
+    if (vencido) {
+      const v = await marcarVencido(db, hoy, tipo, atrasoMin, graciaMin);
+      // `sinFallo`: el día ya se envió, o hay una ejecución viva mandándolo ahora mismo. No es
+      // un fallo y no puede reportarse como tal — un falso "sin entrega confirmada" sobre un
+      // recordatorio que SÍ salió enseña a ignorar las alertas igual que el ruido.
+      if (v.sinFallo) continue;
+      const err = v.error || v.doc?.error || `vencido (${v.motivo})`;
+      resultados[tipo] = {
+        error: err, motivo: v.motivo || 'vencido', atrasoMin: Math.round(atrasoMin), graciaMin,
+        enviados: 0, intentados: 0, reportadoAntes: !v.reclamado,
+      };
+      // El 502 sale UNA vez (quien reclama el turno); después el error sigue viajando en
+      // `resultados` y el workflow lo emite como ::warning:: en cada corrida — el rojo puede
+      // perderse, el aviso no.
+      if (v.reclamado) {
+        huboError = true;
+        console.error(`[cron_recordatorios] ${tipo} · VENCIDO — ${err}`);
+      }
+      continue;
+    }
 
     // Los destinatarios se resuelven ANTES de tomar el turno, a propósito: si esa lectura
     // falla (o todavía no hay nadie marcado en 🔔 Alertas del bot), el turno queda libre y
@@ -298,6 +444,12 @@ export default async function handler(req, res) {
 
   if (enviadoAhora) {
     await ref.set({ ultimoEnvio }, { merge: true });
+  }
+  // Las advertencias de configuración viajan APARTE de `resultados`: no son un fallo de envío
+  // (el recordatorio del día pudo salir perfectamente) y meterlas ahí pondría el job en rojo
+  // por algo que se arregla en la app, no en el cron.
+  for (const [tipo, msg] of Object.entries(configInvalida)) {
+    resultados[tipo] = { ...(resultados[tipo] || {}), configInvalida: msg };
   }
   // no-2xx ante fallo real: es lo único que pone el job de GitHub Actions en rojo.
   const status = huboError ? 502 : 200;
