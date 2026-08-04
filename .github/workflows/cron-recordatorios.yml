@@ -1,15 +1,30 @@
 name: Cron recordatorios de asistencia
 
-# Dispara api/cron_recordatorios.js cada 30 min. GitHub Actions no soporta cron con secretos
-# de repo distintos por rama: el destino (develop o producción) y el secreto se leen de
-# secrets del repo (RECORDATORIOS_URL / CRON_SECRET) — cambiar de entorno es cambiar el
-# secret, sin tocar este archivo. IMPORTANTE: un trigger `schedule` solo se dispara desde
-# la copia de este workflow que vive en la rama POR DEFECTO del repo (GitHub lo exige) —
-# no alcanza con que exista en `develop` si la rama por defecto es otra.
+# Dispara api/cron_recordatorios.js. El disparador PRINCIPAL pasa a ser GOOGLE CLOUD SCHEDULER
+# (proyecto multiaire-fee43, el mismo de Firebase); este `schedule` queda como RESPALDO.
+#
+# POR QUÉ NO ALCANZA ESTE WORKFLOW SOLO (evidencia del 2026-08-03, no una preferencia): con
+# `cron: '*/30 * * * *'` GitHub NO corrió cada 30 min — corrió cada ~1.5 h, descartando la
+# mayoría de los ticks (18:52 → 20:27 → 21:43 → 23:03 UTC). El `schedule` de Actions es
+# best-effort y se degrada justo en las horas pico, que es cuando caen las 07:30 y 17:00 de
+# Lima. Consecuencia real: el recordatorio de salida salió 18:03 (una hora tarde) y el de
+# entrada, a media mañana. Para un aviso que tiene que llegar A UNA HORA, eso no sirve.
+#
+# POR QUÉ SE MANTIENE IGUAL (lo marcó el Council como Crítico): quitarlo ANTES de que el job
+# de Cloud Scheduler exista y esté verificado dejaría producción sin ningún disparador. Y
+# desde que el endpoint tiene VENTANA DE GRACIA, un tick tardío ya no puede mandar el
+# recordatorio a destiempo — a lo sumo no envía y reporta —, así que como respaldo es
+# inofensivo: si Cloud Scheduler se cae, hay chance de que un tick caiga dentro de la ventana
+# y salve el día. Además es el único canal que emite los ::warning:: de abajo.
+# Se revisa (bajar frecuencia o quitarlo) recién con el Scheduler andando y verificado.
+#
+# IMPORTANTE: un trigger `schedule` solo se dispara desde la copia de este workflow que vive
+# en la rama POR DEFECTO del repo. El destino y el secreto salen de secrets del repo
+# (RECORDATORIOS_URL / CRON_SECRET) — cambiar de entorno es cambiar el secret.
 on:
   schedule:
     - cron: '*/30 * * * *'
-  workflow_dispatch:        # permite disparar a mano para probar sin esperar el schedule
+  workflow_dispatch:        # disparo manual: probar el endpoint o forzar un envío
 
 jobs:
   disparar:
@@ -47,8 +62,11 @@ jobs:
             for (const [tipo, d] of Object.entries(res)) {
               if (d && d.fallidos > 0) console.log(`::warning::${tipo}: ${d.fallidos} de ${d.intentados} destinatario(s) NO recibieron el recordatorio`);
               if (d && d.sinDestinatarios) console.log(`::warning::${tipo}: ya pasó la hora configurada y NADIE está marcado en Personal → 🔔 Alertas del bot`);
+              // Config que cruza medianoche: no es un fallo de envío (el del día pudo salir
+              // bien), pero deja un tramo de la ventana inalcanzable. Se avisa, no se rompe.
+              if (d && d.configInvalida) console.log(`::warning::${tipo}: configuración a revisar — ${d.configInvalida}`);
               // Un fallo ya reportado con 502 vuelve en los ticks siguientes dentro de un 200,
-              // para no repetir el rojo cada 30 min. Sin este warning quedaría invisible — y
+              // para no repetir el rojo en cada tick. Sin este warning quedaría invisible — y
               // ahí el 502 único es best-effort: si la función muriera justo después de marcar
               // `reportado`, nadie se enteraría nunca. Con esto, el rojo puede perderse pero
               // el aviso no: queda a la vista en cada corrida del día.
