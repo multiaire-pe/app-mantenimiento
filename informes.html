@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>MultiAire – Informes</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+:root{
+  --bg:#f0f4fa;--surface:#fff;--surface2:#f5f8ff;--surface3:#e8eef8;
+  --border:#d0daf0;--border2:#b8cce8;
+  --accent:#1a2540;--muted:#8a9ab8;--muted2:#6a7a9a;
+  --blue:#1B3F8B;--blue-light:#2a52b0;--blue-pale:#e8eef8;
+  --orange:#F47920;--orange-dark:#d4621a;--orange-pale:#fff3eb;
+  --green:#1a9e5a;--green-bg:#f0faf5;--green-border:#b0e0c8;
+  --yellow:#d48a00;--yellow-bg:#fff8ee;--yellow-border:#f5d080;
+  --red:#d63344;--red-bg:#fdf0f2;--red-border:#f0c0c8;
+  --purple:#6b3fa0;--purple-bg:#f3eeff;--purple-border:#d0b0f0;
+  --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+  --shadow:0 2px 12px rgba(27,63,139,.10);--shadow-lg:0 8px 32px rgba(27,63,139,.14);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--accent);min-height:100vh;font-size:14px;display:flex;flex-direction:column}
+
+/* ── HEADER ─── */
+header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(27,63,139,.25)}
+.logo{font-weight:700;font-size:16px;letter-spacing:.03em;color:#fff;display:flex;align-items:center;gap:8px}
+.hpill{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
+.hpill.ok{color:#4ddd88;border-color:rgba(77,221,136,.4)}
+.hpill.loading{color:#ffd866;border-color:rgba(255,216,102,.4)}
+.hactions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.role-badge{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700}
+.role-SUPER_ADMIN{background:#fff3eb;color:var(--orange-dark)}
+.role-ADMIN{background:#e8eef8;color:var(--blue)}
+.role-SUPERVISOR{background:var(--purple-bg);color:var(--purple)}
+.role-TECNICO{background:#f0faf5;color:#1a9e5a}
+
+/* ── USER PILL ─── */
+.user-pill{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid rgba(255,255,255,.2);border-radius:20px;cursor:pointer;position:relative}
+.user-pill:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.1)}
+.user-avatar-init{width:26px;height:26px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.user-avatar-img{width:26px;height:26px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.user-pname{font-size:11px;color:rgba(255,255,255,.85);font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-menu{display:none;position:absolute;top:calc(100% + 8px);right:0;background:#fff;border:1.5px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);min-width:200px;overflow:hidden;z-index:999}
+.user-menu.open{display:block}
+.user-menu-head{padding:10px 14px 6px;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.user-menu-item{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:12px;color:var(--accent);cursor:pointer;background:none;border:none;width:100%;text-align:left;font-family:var(--font);transition:background .15s}
+.user-menu-item:hover{background:var(--bg)}
+.user-menu-item.danger{color:var(--red)}
+.user-menu-item.danger:hover{background:var(--red-bg)}
+.user-menu-div{height:1px;background:var(--border);margin:4px 0}
+.back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:8px;white-space:nowrap;transition:all .15s}
+.back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
+
+/* ── AUTH OVERLAY ─── */
+#auth-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-card{background:var(--surface);border:1.5px solid var(--border);border-radius:16px;padding:36px 32px;max-width:380px;width:100%;text-align:center;box-shadow:var(--shadow-lg)}
+.auth-logo{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:24px}
+.auth-logo-dot{width:10px;height:10px;border-radius:50%;background:var(--orange)}
+.auth-logo-text{font-weight:700;font-size:20px;color:var(--blue)}
+.auth-title{font-size:15px;font-weight:700;color:var(--accent);margin-bottom:6px}
+.auth-sub{font-size:12px;color:var(--muted2);margin-bottom:24px;line-height:1.5}
+.auth-err{margin-top:14px;padding:10px 14px;background:var(--red-bg);border:1px solid var(--red-border);border-radius:8px;font-size:12px;color:var(--red);display:none;line-height:1.5;text-align:left}
+.auth-err.show{display:block}
+.auth-loading{font-size:12px;color:var(--muted2);margin-top:10px;display:none}
+.auth-loading.show{display:block}
+
+/* ── TOAST ─── */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#1a2540;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:all .25s;z-index:9998;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.ok{background:#1a9e5a}.toast.err{background:#d63344}
+
+/* ── BUTTONS ─── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--accent);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--surface3);border-color:var(--border2)}
+.btn-primary{background:#1B3F8B;border-color:#1B3F8B;color:#fff;font-weight:600}.btn-primary:hover{opacity:.9}
+.btn-green{color:var(--green);border-color:var(--green-border)}.btn-green:hover{background:var(--green-bg)}
+.btn-red{color:var(--red);border-color:var(--red-border)}.btn-red:hover{background:var(--red-bg)}
+.btn-sm{padding:5px 10px;font-size:11px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── PAGE ─── */
+.page{flex:1;padding:24px;max-width:1100px;width:100%;margin:0 auto}
+.card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
+.card-title{font-size:13px;font-weight:700;color:var(--blue);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.form-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.form-group{display:flex;flex-direction:column;gap:4px;flex:1;min-width:180px}
+.form-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2)}
+.form-input,.form-select{background:var(--surface2);border:1px solid var(--border);color:var(--accent);font-family:var(--font);font-size:12px;padding:8px 10px;border-radius:6px;outline:none;width:100%}
+.form-input:focus,.form-select:focus{border-color:var(--blue);background:#fff}
+.form-input:disabled,.form-select:disabled{opacity:.7;cursor:not-allowed;background:var(--surface3)}
+
+/* ── TABS ─── */
+.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:2px solid var(--border);flex-wrap:wrap}
+.tab-btn{padding:9px 16px;border:none;background:none;font-family:var(--font);font-size:13px;font-weight:600;color:var(--muted2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.tab-btn:hover{color:var(--blue)}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-view{display:none}
+.tab-view.active{display:block}
+
+/* ── STAT TILES ─── */
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.stat-tile{background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow)}
+.stat-val{font-size:22px;font-weight:700;color:var(--blue);line-height:1}
+.stat-lbl{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-top:6px;font-weight:600}
+
+/* ── SEDE CARDS ─── */
+.sede-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.sede-card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:16px;box-shadow:var(--shadow);cursor:pointer;transition:all .15s;border-left:5px solid var(--muted)}
+.sede-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px)}
+.sede-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px}
+.sede-name{font-size:14px;font-weight:700;color:var(--accent);line-height:1.3}
+.sede-cliente{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px}
+.sede-pct{font-size:26px;font-weight:700;line-height:1;white-space:nowrap}
+.sede-meta{font-size:11px;color:var(--muted2);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.op-bar{height:7px;border-radius:4px;background:var(--surface3);overflow:hidden;margin:8px 0}
+.op-bar-fill{height:100%;border-radius:4px;transition:width .3s}
+.stale-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:1px 7px;border-radius:8px;background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
+
+/* ── EQUIPO ROWS (drill / por equipo) ─── */
+.eq-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)}
+.eq-row:last-child{border-bottom:none}
+.eq-dot{font-size:15px;flex-shrink:0}
+.eq-info{flex:1;min-width:0}
+.eq-name{font-size:12px;font-weight:600;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eq-sub{font-size:10px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eq-pct{font-family:var(--mono);font-size:13px;font-weight:700;white-space:nowrap}
+
+/* ── DETAIL / TIMELINE ─── */
+.det-box{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-top:14px}
+.det-hero{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.det-pct{font-size:34px;font-weight:700;line-height:1}
+.timeline{margin-top:8px}
+.tl-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed var(--border)}
+.tl-item:last-child{border-bottom:none}
+.tl-dot{font-size:14px;flex-shrink:0;width:20px;text-align:center}
+.tl-body{flex:1;min-width:0}
+.tl-top{font-size:12px;font-weight:600;color:var(--accent)}
+.tl-meta{font-size:10px;color:var(--muted2);font-family:var(--mono)}
+.empty-msg{text-align:center;color:var(--muted);padding:36px 20px;font-size:13px}
+
+/* ── % PICKER (modal) ─── */
+.pct-opts{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.pct-opt{display:flex;align-items:center;gap:10px;padding:11px 14px;border:1.5px solid var(--border);border-radius:9px;cursor:pointer;transition:all .12s;background:var(--surface2)}
+.pct-opt:hover{border-color:var(--blue-light);background:#fff}
+.pct-opt.sel{border-color:var(--blue);background:var(--blue-pale);box-shadow:0 0 0 2px rgba(27,63,139,.12)}
+.pct-opt-emoji{font-size:20px}
+.pct-opt-txt{font-size:13px;font-weight:600;color:var(--accent)}
+.pct-opt-sub{font-size:11px;color:var(--muted2)}
+
+/* ── MODAL ─── */
+.modal-overlay{position:fixed;inset:0;background:rgba(10,20,50,.45);backdrop-filter:blur(2px);z-index:500;display:none;align-items:center;justify-content:center;padding:16px;cursor:pointer}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border-radius:12px;box-shadow:var(--shadow-lg);width:520px;max-width:100%;max-height:90vh;overflow-y:auto;padding:22px;cursor:default}
+.modal h2{font-size:15px;font-weight:700;margin-bottom:4px;color:var(--blue)}
+.modal-sub{font-size:11px;color:var(--muted2);margin-bottom:16px;line-height:1.6;padding:8px 10px;background:var(--surface2);border-radius:6px;border-left:3px solid var(--blue)}
+.modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+.crit-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.crit-row:last-child{border-bottom:none}
+.crit-tipo{flex:1;font-size:12px;font-weight:600;color:var(--accent)}
+.crit-input{width:70px}
+
+@media(max-width:768px){
+  header{padding:0 12px;height:52px;gap:8px}
+  .logo{font-size:14px}.hpill{display:none}.hactions{gap:6px}
+  .user-pname{display:none}.user-pill{padding:2px;border-radius:50%}
+  .user-avatar-init,.user-avatar-img{width:32px;height:32px}
+  .back-link{border-radius:8px}
+  .page{padding:14px 12px}.card{padding:14px}
+  .form-row{flex-direction:column;align-items:stretch}
+  .sede-grid{grid-template-columns:1fr}
+}
+
+/* ── INFORMES ─── */
+.toolbar{background:var(--surface);border-bottom:1.5px solid var(--border);padding:12px 20px;position:sticky;top:56px;z-index:50}
+.tb-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;max-width:1200px;margin:0 auto}
+.tb-field{display:flex;flex-direction:column;gap:4px}
+.tb-field label{font-size:10px;color:var(--muted2);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.tb-field select{padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:var(--font);font-size:13px;background:var(--surface);color:var(--accent);min-width:150px}
+.tb-anio select{min-width:90px}
+.btn{padding:8px 14px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface);color:var(--accent);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn:hover:not(:disabled){border-color:var(--blue);color:var(--blue)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn-primary:hover:not(:disabled){background:var(--blue-light);border-color:var(--blue-light);color:#fff}
+.wrap{max-width:1200px;margin:0 auto;padding:20px;width:100%}
+.cargando{color:var(--muted);font-size:13px;padding:20px 0}
+.tit{font-size:17px;font-weight:700;margin-bottom:14px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:12px 14px}
+.stat.warn{background:var(--yellow-bg);border-color:var(--yellow-border)}
+.stat .sv{font-size:22px;font-weight:700;font-family:var(--mono)}
+.stat.warn .sv{color:var(--yellow)}
+.stat .sl{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+.aviso{background:var(--yellow-bg);border:1px solid var(--yellow-border);border-radius:8px;padding:10px 12px;font-size:12px;color:#7a5c00;margin-bottom:10px}
+.bloque{background:var(--surface);border:1.5px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden}
+.bt{padding:10px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);background:var(--surface2)}
+.tb{width:100%;border-collapse:collapse;font-size:12px}
+.tb th{text-align:left;padding:7px 14px;font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border)}
+.tb td{padding:7px 14px;border-bottom:1px solid var(--surface3)}
+.tb tr:last-child td{border-bottom:none}
+.tb .c{text-align:center}
+.mut{color:var(--muted)}
+.tb td.falta{background:var(--yellow-bg);color:var(--yellow);font-weight:600}
+@media(max-width:768px){
+  .toolbar{padding:10px 12px}
+  .tb-row{gap:8px}
+  .tb-field{flex:1 1 140px}
+  .tb-field select{width:100%;min-width:0}
+  .tb-row .btn{width:100%}
+  .wrap{padding:12px}
+  /* La tabla no entra en 390px: cada fila se vuelve tarjeta. Antes se ocultaba la columna
+     Ubicación y el nombre del equipo se partía en tres líneas dentro de una celda angosta. */
+  .tb thead{display:none}
+  .tb,.tb tbody,.tb tr,.tb td{display:block;width:auto}
+  .tb tr{padding:10px 14px;border-bottom:1px solid var(--surface3)}
+  .tb tr:last-child{border-bottom:none}
+  .tb td{padding:0;border:none}
+  .tb td.eq{font-weight:600;font-size:13px}
+  .tb td.ubi{font-size:11px;margin-bottom:6px}
+  .tb td[data-l]{display:inline-flex;align-items:center;gap:5px;margin:2px 8px 2px 0;font-size:11px}
+  .tb td[data-l]::before{content:attr(data-l);color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.05em}
+  .tb td[data-l].falta{background:none;color:var(--yellow)}
+  .tb td[data-l].falta::before{color:var(--yellow)}
+}
+
+.mini{font-family:var(--mono);font-size:10px;padding:3px 8px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface);color:var(--blue);cursor:pointer;font-weight:600}
+.mini:hover{border-color:var(--blue);background:var(--blue-pale)}
+.modal-ov{display:none;position:fixed;inset:0;background:rgba(15,25,50,.55);z-index:500;align-items:center;justify-content:center;padding:20px}
+.modal-ov.open{display:flex}
+.modal{background:var(--surface);border-radius:14px;max-width:900px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg)}
+.modal-h{padding:16px 20px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.modal-t{font-size:15px;font-weight:700}
+.modal-s{font-size:12px;color:var(--muted2);margin-top:2px}
+.modal-c{font-family:var(--mono);font-size:11px;color:var(--blue);background:var(--blue-pale);padding:5px 10px;border-radius:20px;white-space:nowrap}
+.modal-b{padding:16px 20px;overflow-y:auto;flex:1}
+.modal-f{padding:12px 20px;border-top:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.act{margin-bottom:16px}
+.act-t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted2);margin-bottom:8px}
+.act-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.ph{position:relative;border:2.5px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;aspect-ratio:4/3;background:var(--surface3);transition:border-color .15s}
+.ph:hover{border-color:var(--blue-light)}
+.ph.on{border-color:var(--blue)}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph .ord{position:absolute;top:5px;left:5px;width:20px;height:20px;border-radius:50%;background:var(--blue);color:#fff;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;font-family:var(--mono)}
+.ph.on .ord{display:flex}
+@media(max-width:768px){.modal{max-height:94vh}.act-g{grid-template-columns:repeat(auto-fill,minmax(90px,1fr))}}
+
+.bt{display:flex;align-items:center;gap:8px}
+.bt .pos{font-family:var(--mono);font-size:10px;background:var(--blue-pale);color:var(--blue);width:19px;height:19px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+.bt .mover{margin-left:auto;display:flex;gap:4px}
+.ord-btn{width:26px;height:26px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface);color:var(--blue);cursor:pointer;font-size:13px;line-height:1;padding:0}
+.ord-btn:hover:not(:disabled){border-color:var(--blue);background:var(--blue-pale)}
+.ord-btn:disabled{opacity:.3;cursor:not-allowed}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Informes</div>
+  <div class="hpill loading" id="conn-pill">⟳ Conectando...</div>
+  <div class="hactions">
+    <div id="user-pill" class="user-pill" style="display:none" onclick="toggleUserMenu()"></div>
+    <a href="index.html" class="back-link">← Inicio</a>
+  </div>
+</header>
+
+<div id="auth-overlay" style="display:none">
+  <div class="auth-card">
+    <div class="auth-logo"><div class="auth-logo-dot"></div><div class="auth-logo-text">MultiAire</div></div>
+    <div class="auth-title">Elaborador de informes</div>
+    <div class="auth-sub">Inicia sesión con tu cuenta Google autorizada.</div>
+    <div id="g-btn" style="display:flex;justify-content:center;margin-bottom:4px"></div>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="auth-loading" id="auth-loading"></div>
+  </div>
+</div>
+
+<div style="flex:1;display:flex;flex-direction:column">
+<div class="page" id="main-page" style="display:none">
+
+  <div class="toolbar">
+    <div class="tb-row">
+      <div class="tb-field">
+        <label>Cliente</label>
+        <select id="f-cliente" onchange="onCliente()"></select>
+      </div>
+      <div class="tb-field">
+        <label>Sede</label>
+        <select id="f-sede" onchange="preparar()"></select>
+      </div>
+      <div class="tb-field">
+        <label>Período</label>
+        <select id="f-periodo" onchange="preparar()"></select>
+      </div>
+      <div class="tb-field tb-anio">
+        <label>Año</label>
+        <select id="f-anio" onchange="preparar()"></select>
+      </div>
+      <button class="btn btn-primary" id="btn-gen" onclick="generar()" disabled>📄 Generar informe (.docx)</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div id="resumen"></div>
+    <div id="detalle"></div>
+  </div>
+</div>
+
+</div>
+
+
+<div class="modal-ov" id="sel-modal" onclick="if(event.target===this)cerrarSelector()">
+  <div class="modal">
+    <div class="modal-h">
+      <div>
+        <div class="modal-t">Fotos del informe</div>
+        <div class="modal-s" id="sel-tit"></div>
+      </div>
+      <div class="modal-c" id="sel-cont"></div>
+    </div>
+    <div class="modal-b" id="sel-body"></div>
+    <div class="modal-f">
+      <span class="mut" style="font-size:11px">El informe muestra 3 fotos por equipo. El número indica en qué posición sale cada una.</span>
+      <button class="btn btn-primary" onclick="cerrarSelector()">Listo</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="firebase-config.js"></script>
+<script src="auth-guard.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script>
+// ── FIREBASE / AUTH (scaffold idéntico a los demás módulos) ───────────────────
+const MA_ADM  = 'marchenaangulojoseluis@gmail.com';
+const _fbApp  = firebase.initializeApp(window.__firebaseConfig);
+const db      = firebase.firestore();
+window.__auth = firebase.auth();
+window.__prov = new firebase.auth.GoogleAuthProvider();
+window.__fb   = {
+  onAuthStateChanged: (auth, cb) => firebase.auth().onAuthStateChanged(cb),
+  signInWithPopup:    (auth, prov) => firebase.auth().signInWithPopup(prov),
+  signOut:            () => firebase.auth().signOut(),
+};
+let maUser = null;
+
+(function(){
+  function waitForFirebase(){
+    if(window.__auth && window.__fb){
+      window.__fb.onAuthStateChanged(window.__auth, function(user){
+        if(user && !window._maInitDone){ window._maInitDone = true; maVerify({email:user.email, name:user.displayName, picture:user.photoURL}, true); }
+        else if(!user && !window._maInitDone){ window._maInitDone = true; maShowLogin(); }
+      });
+    } else { setTimeout(waitForFirebase, 50); }
+  }
+  waitForFirebase();
+})();
+
+
+// ── UTILIDADES (mismas que el resto de los módulos) ───────────────────────────
+// `_toastT` se declara acá y no en el bloque de auth: la lógica va primero en el archivo
+// (ver la nota del reordenamiento) y toast() puede usarse antes de llegar a aquel bloque.
+let _toastT = null;
+function toast(msg, type){ const t=document.getElementById('toast'); t.textContent=msg; t.className='toast'+(type?' '+type:''); t.classList.add('show'); clearTimeout(_toastT); _toastT=setTimeout(()=>t.classList.remove('show'),3000); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;'); }
+
+// ── ELABORADOR DE INFORMES ────────────────────────────────────────────────────────────
+// Arma las secciones del informe técnico que se le entrega al cliente —Alcance,
+// Observaciones y recomendaciones, y Reporte fotográfico— con los datos del sistema, y las
+// exporta en .DOCX para que se completen en Word la carátula y el acta (OC, monto,
+// correlativo, contactos y firmas no viven en el sistema y no tiene sentido que vivan acá).
+//
+// Salida .docx y no PDF a propósito: el informe se termina de editar a mano.
+
+// Dos orígenes: si el primero no responde (CDN caído, red de la tienda con bloqueos) se
+// intenta el segundo antes de rendirse — sin la librería no hay informe.
+const DOCX_CDN = ['https://unpkg.com/docx@9.7.1/dist/index.umd.cjs',
+                  'https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.umd.cjs'];
+const PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
+const PERIODO_LARGO = { 'ENE-FEB': 'ENERO – FEBRERO', 'MAR-ABR': 'MARZO – ABRIL', 'MAY-JUN': 'MAYO – JUNIO', 'JUL-AGO': 'JULIO – AGOSTO', 'SEP-OCT': 'SETIEMBRE – OCTUBRE', 'NOV-DIC': 'NOVIEMBRE – DICIEMBRE' };
+// Rango de fechas del bimestre, para filtrar las observaciones (que se guardan por fecha).
+const MESES_PERIODO = { 'ENE-FEB': [1, 2], 'MAR-ABR': [3, 4], 'MAY-JUN': [5, 6], 'JUL-AGO': [7, 8], 'SEP-OCT': [9, 10], 'NOV-DIC': [11, 12] };
+// El tipo del inventario no siempre se llama igual que en el informe del cliente.
+const TIPO_INFORME = { PAQUETE: 'ROOF TOP' };
+
+let inventario = [], ejecuciones = [], fotos = [], observaciones = [], datos = null;
+
+// Qué 3 fotos van al informe, por equipo: { eqId: [idFoto, idFoto, idFoto] }.
+// El informe muestra 3 fotos por equipo y la gracia es que sean de actividades DISTINTAS —
+// una actividad puede tener ocho fotos, y las tres primeras del montón serían todas de lo
+// mismo. Por eso se elige a mano; acá solo se propone un punto de partida razonable.
+let seleccion = {};
+const MAX_FOTOS = 3;
+
+// Orden en que los tipos de equipo salen en el informe. Es una decisión de quien lo arma
+// —cada cliente tiene su convención—, así que se elige acá y se recuerda; alfabético solo
+// como punto de partida.
+let ordenTipos = [];
+const claveOrden = () => `informes_orden_${datos ? datos.cliente : ''}`;
+
+// Los tipos presentes, en el orden guardado; los que aparezcan después (un tipo nuevo en el
+// inventario) se agregan al final en vez de perderse.
+function tiposOrdenados(tipos) {
+  const hay = Object.keys(tipos);
+  // Dedupe: un localStorage con el mismo tipo repetido duplicaría su tarjeta y su sección
+  // entera en el .docx.
+  const ordenados = [...new Set(ordenTipos)].filter((t) => hay.includes(t));
+  return [...ordenados, ...hay.filter((t) => !ordenados.includes(t)).sort()];
+}
+
+function moverTipo(tipo, dir) {
+  const actual = tiposOrdenados(porTipo(datos.equipos));
+  const i = actual.indexOf(tipo), j = i + dir;
+  if (i < 0 || j < 0 || j >= actual.length) return;
+  actual.splice(j, 0, actual.splice(i, 1)[0]);
+  ordenTipos = actual;
+  try { localStorage.setItem(claveOrden(), JSON.stringify(ordenTipos)); } catch (e) { /* queda en memoria */ }
+  render();
+}
+const claveSel = () => `informes_fotos_${datos ? `${datos.cliente}|${datos.sede}|${datos.periodo}|${datos.anio}` : ''}`;
+
+// Propuesta inicial: la primera foto de cada actividad distinta, hasta 3. Si el equipo tiene
+// menos de 3 actividades con foto, se completa con las que sobren de las mismas.
+function preseleccionar(fotosEq) {
+  const porAct = {};
+  fotosEq.forEach((f) => { (porAct[f.tarea || '—'] = porAct[f.tarea || '—'] || []).push(f); });
+  const elegidas = Object.values(porAct).map((l) => l[0]).slice(0, MAX_FOTOS);
+  if (elegidas.length < MAX_FOTOS) {
+    const yaEsta = new Set(elegidas.map((f) => f.id));
+    for (const f of fotosEq) { if (elegidas.length >= MAX_FOTOS) break; if (!yaEsta.has(f.id)) elegidas.push(f); }
+  }
+  return elegidas.map((f) => f.id);
+}
+
+// Las fotos elegidas de un equipo, en el orden en que se eligieron.
+function fotosElegidas(eqId) {
+  const todas = (datos.fotosPorEq[eqId] || []);
+  const ids = seleccion[eqId] || [];
+  return ids.map((id) => todas.find((f) => f.id === id)).filter(Boolean);
+}
+
+function periodoActual() {
+  const m = new Date().getMonth() + 1;
+  return PERIODOS[Math.floor((m - 1) / 2)];
+}
+function nomTipo(t) { return TIPO_INFORME[String(t || '').toUpperCase()] || String(t || '—'); }
+function numDe(n) { const m = String(n || '').match(/(\d+)\s*$/); return m ? Number(m[1]) : 0; }
+
+function initApp() {
+  // Gate: el informe es de mantenimiento, así que usa su mismo permiso de exportación
+  // (no se crea una app nueva en el modelo de roles).
+  if (!MA.canEnter('mantenimiento')) { document.getElementById('conn-pill').style.display = 'none'; MA.showNoAccess('Informes'); return; }
+  const anio = new Date().getFullYear();
+  const selA = document.getElementById('f-anio');
+  for (let a = anio + 1; a >= anio - 3; a--) selA.innerHTML += `<option${a === anio ? ' selected' : ''}>${a}</option>`;
+  const selP = document.getElementById('f-periodo');
+  PERIODOS.forEach((p) => { selP.innerHTML += `<option${p === periodoActual() ? ' selected' : ''}>${p}</option>`; });
+  loadAll();
+}
+
+async function loadAll() {
+  const pill = document.getElementById('conn-pill');
+  try {
+    const [inv, obs] = await Promise.all([
+      db.collection('inventario').get(),
+      db.collection('manta_observaciones').get(),
+    ]);
+    inventario = inv.docs.map((d) => ({ id: d.id, ...d.data() }));
+    observaciones = obs.docs.map((d) => d.data());
+    pill.className = 'hpill ok'; pill.textContent = '✓ ' + inventario.length + ' equipos';
+    const clientes = [...new Set(inventario.map((e) => e.cliente).filter(Boolean))].sort();
+    document.getElementById('f-cliente').innerHTML = clientes.map((c) => `<option>${esc(c)}</option>`).join('');
+    onCliente();
+  } catch (e) {
+    pill.className = 'hpill'; pill.textContent = '✕ error';
+    toast('No se pudieron cargar los datos: ' + e.message, 'err');
+  }
+}
+
+function onCliente() {
+  const cli = document.getElementById('f-cliente').value;
+  const sedes = [...new Set(inventario.filter((e) => e.cliente === cli).map((e) => e.sede))].sort();
+  document.getElementById('f-sede').innerHTML = sedes.map((s) => `<option>${esc(s)}</option>`).join('');
+  preparar();
+}
+
+// Junta todo lo que va a salir en el informe y lo muestra en pantalla ANTES de generar:
+// el usuario ve qué tiene y qué le falta sin abrir Word.
+async function preparar() {
+  const cliente = document.getElementById('f-cliente').value;
+  const sede = document.getElementById('f-sede').value;
+  const periodo = document.getElementById('f-periodo').value;
+  const anio = Number(document.getElementById('f-anio').value);
+  if (!cliente || !sede) return;
+
+  document.getElementById('btn-gen').disabled = true;
+  document.getElementById('resumen').innerHTML = '<div class="cargando">Reuniendo datos…</div>';
+  document.getElementById('detalle').innerHTML = '';
+
+  try {
+    const [ejSnap, foSnap] = await Promise.all([
+      db.collection('mtto_ejecuciones').where('sede', '==', sede).where('periodo', '==', periodo).where('anio', '==', anio).get(),
+      db.collection('mantenimiento_fotos').where('clave', '==', `${sede}|${periodo}|${anio}`).get(),
+    ]);
+    ejecuciones = ejSnap.docs.map((d) => d.data());
+    fotos = foSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    const equipos = inventario.filter((e) => e.cliente === cliente && e.sede === sede);
+    const [m1, m2] = MESES_PERIODO[periodo];
+    const obsPeriodo = observaciones.filter((o) => {
+      if (o.sede !== sede) return false;
+      const f = String(o.fecha || '');
+      const mes = Number(f.slice(5, 7)), a = Number(f.slice(0, 4));
+      return a === anio && (mes === m1 || mes === m2);
+    });
+
+    const ejecPorEq = {}, fotosPorEq = {}, obsPorEq = {};
+    ejecuciones.forEach((e) => { (ejecPorEq[e.eq_id] = ejecPorEq[e.eq_id] || []).push(e); });
+    fotos.forEach((f) => { (fotosPorEq[f.eq_id] = fotosPorEq[f.eq_id] || []).push(f); });
+    obsPeriodo.forEach((o) => { (obsPorEq[o.eqId] = obsPorEq[o.eqId] || []).push(o); });
+
+    datos = { cliente, sede, periodo, anio, equipos, ejecPorEq, fotosPorEq, obsPorEq, obsPeriodo };
+
+    // La selección se recuerda por sede+período: rehacer un informe no obliga a volver a
+    // elegir. Se guarda en el navegador (no en Firestore): es una preferencia de armado del
+    // documento, no un dato del sistema.
+    try {
+      const o = JSON.parse(localStorage.getItem(`informes_orden_${cliente}`) || '[]');
+      ordenTipos = Array.isArray(o) ? o.filter((t) => typeof t === 'string') : [];
+    } catch (e) { ordenTipos = []; }
+
+    let guardada = {};
+    try { guardada = JSON.parse(localStorage.getItem(claveSel()) || '{}'); } catch (e) { guardada = {}; }
+    seleccion = {};
+    Object.keys(fotosPorEq).forEach((eqId) => {
+      const previas = Array.isArray(guardada[eqId]) ? guardada[eqId] : [];   // el localStorage puede traer basura
+      const validas = previas.filter((id) => fotosPorEq[eqId].some((f) => f.id === id));
+      seleccion[eqId] = validas.length ? validas.slice(0, MAX_FOTOS) : preseleccionar(fotosPorEq[eqId]);
+    });
+    render();
+    document.getElementById('btn-gen').disabled = !equipos.length;
+  } catch (e) {
+    document.getElementById('resumen').innerHTML = '';
+    toast('Error reuniendo datos: ' + e.message, 'err');
+  }
+}
+
+function porTipo(equipos) {
+  const g = {};
+  equipos.forEach((e) => { (g[e.tipo] = g[e.tipo] || []).push(e); });
+  Object.values(g).forEach((l) => l.sort((a, b) => numDe(a.nombre) - numDe(b.nombre)));
+  return g;
+}
+
+function render() {
+  const d = datos;
+  const conEjec = Object.keys(d.ejecPorEq).length;
+  const conFoto = Object.keys(d.fotosPorEq).length;
+  const sinCap = d.equipos.filter((e) => !String(e.capacidad || '').trim()).length;
+  const tipos = porTipo(d.equipos);
+
+  const stat = (v, l, warn) => `<div class="stat${warn ? ' warn' : ''}"><div class="sv">${v}</div><div class="sl">${l}</div></div>`;
+  document.getElementById('resumen').innerHTML = `
+    <div class="tit">${esc(d.cliente)} ${esc(d.sede)} · ${esc(PERIODO_LARGO[d.periodo])} ${d.anio}</div>
+    <div class="stats">
+      ${stat(d.equipos.length, 'equipos en el alcance')}
+      ${stat(Object.keys(tipos).length, 'tipos de equipo')}
+      ${stat(conEjec, 'con mantenimiento ejecutado', !conEjec)}
+      ${stat(d.obsPeriodo.length, 'observaciones', !d.obsPeriodo.length)}
+      ${stat(conFoto + '/' + (conEjec || 0), 'equipos con foto', conFoto < conEjec)}
+      ${stat(sinCap, 'sin capacidad cargada', sinCap > 0)}
+    </div>
+    ${sinCap ? `<div class="aviso">⚠️ ${sinCap} equipo(s) sin <b>capacidad</b>: en el informe esa celda sale vacía. Se carga en <b>Inventario</b>.</div>` : ''}
+    ${!d.obsPeriodo.length ? '<div class="aviso">⚠️ Sin observaciones en el período: la sección <b>Observaciones y recomendaciones</b> saldrá vacía. Se llenan desde el bot de WhatsApp o el módulo <b>Observaciones</b>.</div>' : ''}`;
+
+  const orden = tiposOrdenados(tipos);
+  document.getElementById('detalle').innerHTML = orden.map((t, iT) => {
+    const eqs = tipos[t];
+    const filas = eqs.map((e) => {
+      const ej = (d.ejecPorEq[e.eq_id || e.id] || []).length;
+      const fo = (d.fotosPorEq[e.eq_id || e.id] || []).length;
+      const ob = (d.obsPorEq[e.eq_id || e.id] || []).length;
+      return `<tr>
+        <td class="eq">${esc(e.nombre)}</td><td class="mut ubi">${esc(e.area || '—')}</td>
+        <td data-l="Capacidad" class="${String(e.capacidad || '').trim() ? '' : 'falta'}">${esc(e.capacidad || '—')}</td>
+        <td data-l="Activ." class="c">${ej ? '<b>' + ej + '</b>' : '<span class="mut">—</span>'}</td>
+        <td data-l="Obs." class="c">${ob ? '<b>' + ob + '</b>' : '<span class="mut">—</span>'}</td>
+        <td data-l="Fotos" class="c">${fo ? `<button class="mini" data-eq="${esc(e.eq_id || e.id)}" title="Elegir las 3 fotos del informe">${(seleccion[e.eq_id || e.id] || []).length}/${Math.min(fo, 3)} de ${fo} 📷</button>` : '<span class="mut">—</span>'}</td></tr>`;
+    }).join('');
+    return `<div class="bloque"><div class="bt">
+        <span class="pos">${iT + 1}</span> ${esc(nomTipo(t))} <span class="mut">· ${eqs.length}</span>
+        <span class="mover">
+          <button class="ord-btn" data-tipo="${esc(t)}" data-dir="-1"${iT === 0 ? ' disabled' : ''} title="Subir: sale antes en el informe">↑</button>
+          <button class="ord-btn" data-tipo="${esc(t)}" data-dir="1"${iT === orden.length - 1 ? ' disabled' : ''} title="Bajar: sale después en el informe">↓</button>
+        </span></div>
+      <table class="tb"><thead><tr><th>Equipo</th><th>Ubicación</th><th>Capacidad</th><th class="c">Activ.</th><th class="c">Obs.</th><th class="c">Fotos</th></tr></thead>
+      <tbody>${filas}</tbody></table></div>`;
+  }).join('');
+}
+
+// Delegación en vez de handlers inline: el id del equipo y el de la foto son datos, y
+// meterlos dentro de un onclick="..." obliga a escaparlos como JS (esc() solo escapa HTML).
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('#detalle .mini[data-eq]');
+  if (b) { abrirSelector(b.dataset.eq); return; }
+  const ph = ev.target.closest('#sel-body .ph[data-id]');
+  if (ph) { toggleFoto(ph.dataset.id); return; }
+  const om = ev.target.closest('#detalle .ord-btn[data-tipo]');
+  if (om && !om.disabled) moverTipo(om.dataset.tipo, Number(om.dataset.dir));
+});
+
+// ── Selector de fotos por equipo ─────────────────────────────────────────────────────
+let _eqSel = null;
+
+function abrirSelector(eqId) {
+  _eqSel = eqId;
+  const eq = datos.equipos.find((e) => (e.eq_id || e.id) === eqId);
+  const todas = datos.fotosPorEq[eqId] || [];
+  const porAct = {};
+  todas.forEach((f) => { (porAct[f.tarea || 'Sin actividad'] = porAct[f.tarea || 'Sin actividad'] || []).push(f); });
+
+  document.getElementById('sel-tit').textContent = (eq?.nombre || eqId) + (eq?.area ? ' · ' + eq.area : '');
+  document.getElementById('sel-body').innerHTML = Object.keys(porAct).map((act) => `
+    <div class="act">
+      <div class="act-t">${esc(act)} <span class="mut">· ${porAct[act].length} foto(s)</span></div>
+      <div class="act-g">${porAct[act].map((f) => `
+        <div class="ph" data-id="${esc(f.id)}">
+          <img src="${esc(f.foto)}" alt="">
+          <div class="ord"></div>
+        </div>`).join('')}</div>
+    </div>`).join('');
+  pintarSeleccion();
+  document.getElementById('sel-modal').classList.add('open');
+}
+
+function toggleFoto(id) {
+  const sel = seleccion[_eqSel] || (seleccion[_eqSel] = []);
+  const i = sel.indexOf(id);
+  if (i >= 0) sel.splice(i, 1);
+  else if (sel.length >= MAX_FOTOS) { toast(`El informe muestra ${MAX_FOTOS} fotos por equipo: quita una antes de agregar otra`, 'err'); return; }
+  else sel.push(id);
+  pintarSeleccion();
+}
+
+// El número sobre cada foto es el ORDEN en que va a salir en el informe (Foto 1, 2 y 3).
+function pintarSeleccion() {
+  const sel = seleccion[_eqSel] || [];
+  document.querySelectorAll('#sel-body .ph').forEach((el) => {
+    const i = sel.indexOf(el.dataset.id);
+    el.classList.toggle('on', i >= 0);
+    el.querySelector('.ord').textContent = i >= 0 ? (i + 1) : '';
+  });
+  document.getElementById('sel-cont').textContent = `${sel.length} de ${MAX_FOTOS} elegidas`;
+}
+
+function cerrarSelector() {
+  try { localStorage.setItem(claveSel(), JSON.stringify(seleccion)); } catch (e) { /* sin localStorage: la selección vale para esta sesión */ }
+  document.getElementById('sel-modal').classList.remove('open');
+  render();
+}
+
+// ── Generación del .docx ─────────────────────────────────────────────────────────────
+async function cargarDocx() {
+  if (window.docx) return window.docx;
+  for (const url of DOCX_CDN) {
+    try {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = url; s.onload = res; s.onerror = () => rej(new Error(url));
+        document.head.appendChild(s);
+      });
+      if (window.docx) return window.docx;
+    } catch (e) { /* se prueba el siguiente origen */ }
+  }
+  throw new Error('no se pudo cargar la librería de Word (sin conexión?)');
+}
+
+const b64aBytes = (dataUrl) => {
+  // Si el dato no es una imagen en base64, se devuelve vacío: una foto corrupta no puede
+  // hacer fallar el informe completo.
+  if (!/^data:image\/[a-z+]+;base64,/i.test(String(dataUrl || ''))) return new Uint8Array();
+  const b64 = String(dataUrl || '').split(',')[1] || '';
+  const bin = atob(b64);
+  const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+};
+
+async function generar() {
+  const btn = document.getElementById('btn-gen');
+  if (btn.disabled) return;
+  btn.disabled = true; const txt = btn.textContent; btn.textContent = '⏳ Generando…';
+  try {
+    const D = await cargarDocx();
+    const d = datos;
+    const AZUL = '2F5FB4', BORDE = 'B9C6DD', FALTA = 'FFF5E0', GRIS = 'EEF2FA';
+    const bordes = () => ({ top: { style: D.BorderStyle.SINGLE, size: 4, color: BORDE }, bottom: { style: D.BorderStyle.SINGLE, size: 4, color: BORDE }, left: { style: D.BorderStyle.SINGLE, size: 4, color: BORDE }, right: { style: D.BorderStyle.SINGLE, size: 4, color: BORDE } });
+    const p = (text, o = {}) => new D.Paragraph({ alignment: o.align, spacing: o.spacing, children: [new D.TextRun({ text: String(text == null ? '' : text), bold: o.bold, italics: o.italics, size: o.size || 19, color: o.color, font: 'Aptos' })] });
+    const th = (t) => new D.TableCell({ shading: { type: D.ShadingType.CLEAR, fill: AZUL }, borders: bordes(), margins: { top: 60, bottom: 60, left: 80, right: 80 }, children: [p(t, { bold: true, color: 'FFFFFF', size: 17, align: D.AlignmentType.CENTER })] });
+    const vacio = (v) => v == null || String(v).trim() === '' || String(v).trim() === '-';
+    const td = (t, o = {}) => {
+      const f = vacio(t);
+      return new D.TableCell({ shading: f ? { type: D.ShadingType.CLEAR, fill: FALTA } : (o.fill ? { type: D.ShadingType.CLEAR, fill: o.fill } : undefined), borders: bordes(), margins: { top: 50, bottom: 50, left: 80, right: 80 },
+        children: [p(f ? '—' : t, { size: 18, bold: o.bold, align: f ? D.AlignmentType.CENTER : o.align, color: f ? 'B07D1A' : undefined })] });
+    };
+    const h1 = (t, salto) => new D.Paragraph({ pageBreakBefore: !!salto, spacing: { before: 240, after: 100 }, children: [new D.TextRun({ text: t, bold: true, size: 26, font: 'Aptos' })] });
+    const hTipo = (t) => new D.Paragraph({ spacing: { before: 200, after: 60 }, children: [new D.TextRun({ text: t.toUpperCase(), bold: true, underline: {}, size: 21, font: 'Aptos' })] });
+
+    const tipos = porTipo(d.equipos);
+    const orden = tiposOrdenados(tipos);      // el que se eligió en pantalla
+    const hijos = [];
+
+    // ── 1. Alcance ──
+    hijos.push(h1('1. Alcance'));
+    hijos.push(p('Cuadro de equipos asignados para mantenimiento preventivo y data técnica.', { spacing: { after: 120 } }));
+    for (const t of orden) {
+      const eqs = tipos[t];
+      hijos.push(hTipo(nomTipo(t)));
+      hijos.push(new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, columnWidths: [2400, 2600, 1700, 2100, 1700, 1300],
+        rows: [new D.TableRow({ tableHeader: true, children: ['Nombre de activo', 'Ubicación', 'Marca', 'Modelo', 'Serie', 'Capacidad'].map(th) }),
+          ...eqs.map((e) => new D.TableRow({ children: [td(e.nombre, { bold: true }), td(e.area), td(e.marca), td(e.modelo), td(e.serie), td(e.capacidad, { align: D.AlignmentType.CENTER })] }))] }));
+
+      hijos.push(new D.Paragraph({ spacing: { before: 140, after: 60 }, children: [new D.TextRun({ text: 'Observaciones y recomendaciones', bold: true, italics: true, size: 20, font: 'Aptos' })] }));
+      const obsT = eqs.flatMap((e) => (d.obsPorEq[e.eq_id || e.id] || []).map((o) => ({ eq: e.nombre, o })));
+      if (obsT.length) {
+        obsT.forEach(({ eq, o }) => hijos.push(new D.Paragraph({ bullet: { level: 0 }, children: [
+          new D.TextRun({ text: eq + ': ', bold: true, size: 19, font: 'Aptos' }),
+          new D.TextRun({ text: String(o.observacion || ''), size: 19, font: 'Aptos' })] })));
+      } else {
+        hijos.push(p('Sin observaciones registradas para este tipo en el período.', { size: 18, italics: true, color: '888888' }));
+      }
+    }
+
+    // ── 2. Reporte fotográfico ──
+    hijos.push(h1('2. Reporte fotográfico', true));
+    let algunaFoto = false;
+    for (const t of orden) {
+      const eqs = tipos[t].filter((e) => (d.ejecPorEq[e.eq_id || e.id] || []).length);
+      if (!eqs.length) continue;
+      hijos.push(hTipo(nomTipo(t)));
+      hijos.push(new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, columnWidths: [2800, 2300, 2300, 2300],
+        rows: [new D.TableRow({ tableHeader: true, children: ['Nombre de activo', 'Foto 1', 'Foto 2', 'Foto 3'].map(th) }),
+          ...eqs.map((e) => {
+            const fs = fotosElegidas(e.eq_id || e.id).filter((f) => /^data:image\/[a-z+]+;base64,/i.test(String(f.foto || '')));
+            if (fs.length) algunaFoto = true;
+            const celda = (f) => new D.TableCell({ borders: bordes(), margins: { top: 60, bottom: 60, left: 60, right: 60 },
+              shading: f ? undefined : { type: D.ShadingType.CLEAR, fill: FALTA },
+              children: f ? [new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [new D.ImageRun({ data: b64aBytes(f.foto), transformation: { width: 135, height: 100 } })] }), p(f.tarea || '', { size: 14, color: '666666', align: D.AlignmentType.CENTER })]
+                          : [p('sin foto', { size: 16, color: 'B07D1A', align: D.AlignmentType.CENTER, spacing: { before: 300, after: 300 } })] });
+            return new D.TableRow({ children: [
+              new D.TableCell({ shading: { type: D.ShadingType.CLEAR, fill: GRIS }, borders: bordes(), margins: { top: 60, bottom: 60, left: 100, right: 60 },
+                children: [p(e.nombre, { bold: true, size: 19 }), p('(' + (e.area || '—') + ')', { size: 15, color: '555555' })] }),
+              celda(fs[0]), celda(fs[1]), celda(fs[2])] });
+          })] }));
+    }
+    if (!algunaFoto) hijos.push(p('No hay fotos de evidencia registradas en el período.', { size: 18, italics: true, color: '888888' }));
+
+    const doc = new D.Document({
+      creator: 'MultiAire Perú · app-mantenimiento',
+      title: `Informe técnico ${d.sede} ${d.periodo} ${d.anio}`,
+      styles: { default: { document: { run: { font: 'Aptos', size: 19 } } } },
+      sections: [{
+        properties: { page: { margin: { top: 800, right: 700, bottom: 800, left: 700 } } },
+        children: hijos,
+      }],
+    });
+
+    const blob = await D.Packer.toBlob(doc);
+    const nombre = `INFORME ${d.cliente} ${d.sede} ${d.periodo} ${d.anio}.docx`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = nombre; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Informe generado: ' + nombre, 'ok');
+  } catch (e) {
+    toast('No se pudo generar: ' + (e.message || e), 'err');
+  } finally {
+    btn.textContent = txt; btn.disabled = false;
+  }
+}
+
+
+function maShowLogin(){
+  var ov = document.getElementById('auth-overlay');
+  if(ov){ ov.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+  var btn = document.getElementById('g-btn');
+  if(btn){ btn.innerHTML = '<button onclick="maFirebaseSignIn()" style="display:flex;align-items:center;gap:10px;padding:10px 20px;border:1.5px solid #d0daf0;border-radius:8px;background:#fff;font-family:IBM Plex Sans,sans-serif;font-size:14px;cursor:pointer;font-weight:500"><img src=\'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg\' width=18>Continuar con Google</button>'; }
+}
+async function maFirebaseSignIn(){
+  try{
+    const result = await window.__fb.signInWithPopup(window.__auth, window.__prov);
+    maVerify({email:result.user.email, name:result.user.displayName, picture:result.user.photoURL}, true);
+  }catch(e){
+    var errEl = document.getElementById('auth-err');
+    if(errEl){ errEl.textContent = 'Error al iniciar sesión: ' + e.message; errEl.classList.add('show'); }
+  }
+}
+async function maVerify(payload, save){
+  var email = (payload.email || '').toLowerCase();
+  var errEl = document.getElementById('auth-err'), ldEl = document.getElementById('auth-loading');
+  if(ldEl){ ldEl.textContent = 'Verificando acceso...'; ldEl.classList.add('show'); }
+  if(errEl) errEl.classList.remove('show');
+  try{
+    const snap = await db.collection('usuarios').doc(email).get();
+    if(!snap.exists){
+      if(ldEl) ldEl.classList.remove('show');
+      if(errEl){ errEl.textContent = 'Acceso denegado para ' + email + '. Contacta al administrador.'; errEl.classList.add('show'); }
+      return;
+    }
+    const fsData = snap.data();
+    maUser = { email, name: payload.name || fsData.nombre || fsData.name || email, picture: payload.picture || fsData.picture || '', ...fsData, name: payload.name || fsData.nombre || fsData.name || email, apps: fsData.apps || [] };
+    if(maUser.email === MA_ADM) maUser.rol = 'SUPER_ADMIN';
+    MA.setUser(maUser);
+    if(save) sessionStorage.setItem('ma_user', JSON.stringify(maUser));
+    if(ldEl) ldEl.classList.remove('show');
+    document.getElementById('auth-overlay').style.display = 'none';
+    document.body.style.overflow = '';
+    document.getElementById('main-page').style.display = 'block';
+    document.getElementById('conn-pill').textContent = '✓ Conectado';
+    document.getElementById('conn-pill').className   = 'hpill ok';
+    renderUserPill();
+    // Diferido a propósito: maVerify() puede ejecutarse mientras este mismo <script> se está
+    // evaluando (sesión cacheada), y entonces initApp() vería las const de la lógica todavía
+    // en su zona muerta temporal → "Cannot access 'X' before initialization" y el módulo no
+    // arranca. Con el setTimeout, corre siempre con el script ya evaluado, sin depender del
+    // orden en que estén escritos los bloques.
+    setTimeout(initApp, 0);
+  }catch(e){
+    if(ldEl) ldEl.classList.remove('show');
+    if(errEl){ errEl.textContent = 'Error: ' + e.message; errEl.classList.add('show'); }
+  }
+}
+function renderUserPill(){
+  const pill = document.getElementById('user-pill');
+  if(!pill || !maUser) return;
+  const n = maUser.nombre || maUser.name || maUser.email;
+  const init = n.split(' ').map(x => x[0]).join('').substring(0, 2).toUpperCase();
+  const avatar = maUser.picture ? `<img class="user-avatar-img" src="${esc(maUser.picture)}">` : `<div class="user-avatar-init">${esc(init)}</div>`;
+  const rol = (maUser.rol || 'ADMIN').replace(/[^A-Z_]/g,'') || 'ADMIN';
+  const rolBadge = `<span class="role-badge role-${rol}">${esc(rol.replace('_',' '))}</span>`;
+  pill.innerHTML = avatar + `<span class="user-pname">${esc(n)}</span>`
+    + `<div class="user-menu" id="user-menu"><div class="user-menu-head">${esc(maUser.email)} ${rolBadge}</div>`
+    + `<div class="user-menu-div"></div>`
+    + `<button class="user-menu-item danger" onclick="maSignOut()">→ Cerrar sesión</button></div>`;
+  pill.style.display = 'flex';
+}
+function toggleUserMenu(){ const m=document.getElementById('user-menu'); if(m) m.classList.toggle('open'); }
+function maSignOut(){ firebase.auth().signOut().then(()=>{ sessionStorage.removeItem('ma_user'); sessionStorage.removeItem('ma_emails'); sessionStorage.removeItem('ma_emails_time'); location.href='index.html'; }); }
+document.addEventListener('click', e => { const pill=document.getElementById('user-pill'), menu=document.getElementById('user-menu'); if(menu && pill && !pill.contains(e.target)) menu.classList.remove('open'); });
+
+
+</script>
+</body>
+</html>
