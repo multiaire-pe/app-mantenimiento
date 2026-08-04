@@ -227,15 +227,18 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 
 .mini{font-family:var(--mono);font-size:10px;padding:3px 8px;border:1.5px solid var(--border);border-radius:6px;background:var(--surface);color:var(--blue);cursor:pointer;font-weight:600}
 .mini:hover{border-color:var(--blue);background:var(--blue-pale)}
-.modal-ov{display:none;position:fixed;inset:0;background:rgba(15,25,50,.55);z-index:500;align-items:center;justify-content:center;padding:20px}
-.modal-ov.open{display:flex}
-.modal{background:var(--surface);border-radius:14px;max-width:900px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg)}
-.modal-h{padding:16px 20px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
-.modal-t{font-size:15px;font-weight:700}
-.modal-s{font-size:12px;color:var(--muted2);margin-top:2px}
-.modal-c{font-family:var(--mono);font-size:11px;color:var(--blue);background:var(--blue-pale);padding:5px 10px;border-radius:20px;white-space:nowrap}
-.modal-b{padding:16px 20px;overflow-y:auto;flex:1}
-.modal-f{padding:12px 20px;border-top:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* Clases propias (fmodal-*): `.modal` ya existía en el CSS heredado del scaffold y la
+   definición dependía del orden de aparición. */
+.fmodal-ov{display:none;position:fixed;inset:0;background:rgba(15,25,50,.55);z-index:500;align-items:center;justify-content:center;padding:20px}
+.fmodal-ov.open{display:flex}
+.fmodal{background:var(--surface);border-radius:14px;max-width:900px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--shadow-lg)}
+.fmodal-h{padding:16px 20px;border-bottom:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.fmodal-t{font-size:15px;font-weight:700}
+.fmodal-s{font-size:12px;color:var(--muted2);margin-top:2px}
+.fmodal-c{font-family:var(--mono);font-size:11px;color:var(--blue);background:var(--blue-pale);padding:5px 10px;border-radius:20px;white-space:nowrap}
+.fmodal-b{padding:16px 20px;overflow-y:auto;flex:1}
+.fmodal-f{padding:12px 20px;border-top:1.5px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ph .rota{display:flex;align-items:center;justify-content:center;height:100%;font-size:10px;color:var(--yellow);background:var(--yellow-bg);text-align:center;padding:4px}
 .act{margin-bottom:16px}
 .act-t{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted2);margin-bottom:8px}
 .act-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
@@ -245,7 +248,7 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 .ph img{width:100%;height:100%;object-fit:cover;display:block}
 .ph .ord{position:absolute;top:5px;left:5px;width:20px;height:20px;border-radius:50%;background:var(--blue);color:#fff;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;font-family:var(--mono)}
 .ph.on .ord{display:flex}
-@media(max-width:768px){.modal{max-height:94vh}.act-g{grid-template-columns:repeat(auto-fill,minmax(90px,1fr))}}
+@media(max-width:768px){.fmodal{max-height:94vh}.act-g{grid-template-columns:repeat(auto-fill,minmax(90px,1fr))}}
 
 .bt{display:flex;align-items:center;gap:8px}
 .bt .pos{font-family:var(--mono);font-size:10px;background:var(--blue-pale);color:var(--blue);width:19px;height:19px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
@@ -311,17 +314,17 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 </div>
 
 
-<div class="modal-ov" id="sel-modal" onclick="if(event.target===this)cerrarSelector()">
-  <div class="modal">
-    <div class="modal-h">
+<div class="fmodal-ov" id="sel-modal" onclick="if(event.target===this)cerrarSelector()">
+  <div class="fmodal">
+    <div class="fmodal-h">
       <div>
-        <div class="modal-t">Fotos del informe</div>
-        <div class="modal-s" id="sel-tit"></div>
+        <div class="fmodal-t">Fotos del informe</div>
+        <div class="fmodal-s" id="sel-tit"></div>
       </div>
-      <div class="modal-c" id="sel-cont"></div>
+      <div class="fmodal-c" id="sel-cont"></div>
     </div>
-    <div class="modal-b" id="sel-body"></div>
-    <div class="modal-f">
+    <div class="fmodal-b" id="sel-body"></div>
+    <div class="fmodal-f">
       <span class="mut" style="font-size:11px">El informe muestra 3 fotos por equipo. El número indica en qué posición sale cada una.</span>
       <button class="btn btn-primary" onclick="cerrarSelector()">Listo</button>
     </div>
@@ -496,11 +499,17 @@ async function preparar() {
   const sede = document.getElementById('f-sede').value;
   const periodo = document.getElementById('f-periodo').value;
   const anio = Number(document.getElementById('f-anio').value);
-  if (!cliente || !sede) return;
-
+  // Limpiar ANTES del guard: si no hay cliente/sede, no puede quedar en pantalla el resumen
+  // de la consulta anterior como si fuera el de esta.
   document.getElementById('btn-gen').disabled = true;
-  document.getElementById('resumen').innerHTML = '<div class="cargando">Reuniendo datos…</div>';
   document.getElementById('detalle').innerHTML = '';
+  document.getElementById('sel-modal').classList.remove('open');
+  if (!cliente || !sede) {
+    datos = null;
+    document.getElementById('resumen').innerHTML = '<div class="cargando">Elige un cliente y una sede.</div>';
+    return;
+  }
+  document.getElementById('resumen').innerHTML = '<div class="cargando">Reuniendo datos…</div>';
 
   try {
     const [ejSnap, foSnap] = await Promise.all([
@@ -520,9 +529,12 @@ async function preparar() {
     });
 
     const ejecPorEq = {}, fotosPorEq = {}, obsPorEq = {};
-    ejecuciones.forEach((e) => { (ejecPorEq[e.eq_id] = ejecPorEq[e.eq_id] || []).push(e); });
-    fotos.forEach((f) => { (fotosPorEq[f.eq_id] = fotosPorEq[f.eq_id] || []).push(f); });
-    obsPeriodo.forEach((o) => { (obsPorEq[o.eqId] = obsPorEq[o.eqId] || []).push(o); });
+    // Sin la guarda, un documento sin eq_id agrupaba bajo la clave `undefined` y sumaba a
+    // contadores como "equipos con foto" sin corresponder a ningún equipo del alcance.
+    const acum = (mapa, clave, v) => { const k = String(clave || '').trim(); if (k) (mapa[k] = mapa[k] || []).push(v); };
+    ejecuciones.forEach((e) => acum(ejecPorEq, e.eq_id, e));
+    fotos.forEach((f) => acum(fotosPorEq, f.eq_id, f));
+    obsPeriodo.forEach((o) => acum(obsPorEq, o.eqId, o));
 
     datos = { cliente, sede, periodo, anio, equipos, ejecPorEq, fotosPorEq, obsPorEq, obsPeriodo };
 
@@ -552,7 +564,7 @@ async function preparar() {
 
 function porTipo(equipos) {
   const g = {};
-  equipos.forEach((e) => { (g[e.tipo] = g[e.tipo] || []).push(e); });
+  equipos.forEach((e) => { const t = String(e.tipo || '').trim() || 'SIN TIPO'; (g[t] = g[t] || []).push(e); });
   Object.values(g).forEach((l) => l.sort((a, b) => numDe(a.nombre) - numDe(b.nombre)));
   return g;
 }
@@ -630,7 +642,7 @@ function abrirSelector(eqId) {
       <div class="act-t">${esc(act)} <span class="mut">· ${porAct[act].length} foto(s)</span></div>
       <div class="act-g">${porAct[act].map((f) => `
         <div class="ph" data-id="${esc(f.id)}">
-          <img src="${esc(f.foto)}" alt="">
+          ${fotoValida(f.foto) ? `<img src="${esc(f.foto)}" alt="">` : '<div class="rota">foto ilegible</div>'}
           <div class="ord"></div>
         </div>`).join('')}</div>
     </div>`).join('');
@@ -680,15 +692,21 @@ async function cargarDocx() {
   throw new Error('no se pudo cargar la librería de Word (sin conexión?)');
 }
 
+// Solo formatos que Word inserta bien. Un `src` que no valide no se pinta ni se embebe:
+// si Firestore se ensucia, no queremos que el navegador salga a buscar una URL externa.
+const RE_FOTO = /^data:image\/(jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i;
+const fotoValida = (d) => RE_FOTO.test(String(d || ''));
+
+// Devuelve null —y no revienta— si el base64 está roto: `atob` LANZA con datos corruptos, y
+// una sola foto mala no puede tumbar la generación del informe entero.
 const b64aBytes = (dataUrl) => {
-  // Si el dato no es una imagen en base64, se devuelve vacío: una foto corrupta no puede
-  // hacer fallar el informe completo.
-  if (!/^data:image\/[a-z+]+;base64,/i.test(String(dataUrl || ''))) return new Uint8Array();
-  const b64 = String(dataUrl || '').split(',')[1] || '';
-  const bin = atob(b64);
-  const u = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-  return u;
+  if (!fotoValida(dataUrl)) return null;
+  try {
+    const bin = atob(String(dataUrl).split(',')[1] || '');
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u.length ? u : null;
+  } catch (e) { return null; }
 };
 
 async function generar() {
@@ -746,11 +764,11 @@ async function generar() {
       hijos.push(new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, columnWidths: [2800, 2300, 2300, 2300],
         rows: [new D.TableRow({ tableHeader: true, children: ['Nombre de activo', 'Foto 1', 'Foto 2', 'Foto 3'].map(th) }),
           ...eqs.map((e) => {
-            const fs = fotosElegidas(e.eq_id || e.id).filter((f) => /^data:image\/[a-z+]+;base64,/i.test(String(f.foto || '')));
+            const fs = fotosElegidas(e.eq_id || e.id).map((f) => ({ ...f, bytes: b64aBytes(f.foto) })).filter((f) => f.bytes);
             if (fs.length) algunaFoto = true;
             const celda = (f) => new D.TableCell({ borders: bordes(), margins: { top: 60, bottom: 60, left: 60, right: 60 },
               shading: f ? undefined : { type: D.ShadingType.CLEAR, fill: FALTA },
-              children: f ? [new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [new D.ImageRun({ data: b64aBytes(f.foto), transformation: { width: 135, height: 100 } })] }), p(f.tarea || '', { size: 14, color: '666666', align: D.AlignmentType.CENTER })]
+              children: f ? [new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [new D.ImageRun({ data: f.bytes, transformation: { width: 135, height: 100 } })] }), p(f.tarea || '', { size: 14, color: '666666', align: D.AlignmentType.CENTER })]
                           : [p('sin foto', { size: 16, color: 'B07D1A', align: D.AlignmentType.CENTER, spacing: { before: 300, after: 300 } })] });
             return new D.TableRow({ children: [
               new D.TableCell({ shading: { type: D.ShadingType.CLEAR, fill: GRIS }, borders: bordes(), margins: { top: 60, bottom: 60, left: 100, right: 60 },
@@ -771,7 +789,8 @@ async function generar() {
     });
 
     const blob = await D.Packer.toBlob(doc);
-    const nombre = `INFORME ${d.cliente} ${d.sede} ${d.periodo} ${d.anio}.docx`;
+    const limpio = (t) => String(t || '').replace(/[\/\\:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+    const nombre = `INFORME ${limpio(d.cliente)} ${limpio(d.sede)} ${d.periodo} ${d.anio}.docx`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = nombre; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
