@@ -391,6 +391,11 @@ const MESES_PERIODO = { 'ENE-FEB': [1, 2], 'MAR-ABR': [3, 4], 'MAY-JUN': [5, 6],
 // El tipo del inventario no siempre se llama igual que en el informe del cliente.
 const TIPO_INFORME = { PAQUETE: 'ROOF TOP' };
 
+// Solo formatos que Word inserta bien. Un `src` que no valide no se pinta ni se embebe:
+// si Firestore se ensucia, no queremos que el navegador salga a buscar una URL externa.
+const RE_FOTO = /^data:image\/(jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i;
+const fotoValida = (d) => RE_FOTO.test(String(d || ''));
+
 let inventario = [], ejecuciones = [], fotos = [], observaciones = [], datos = null;
 
 // Qué 3 fotos van al informe, por equipo: { eqId: [idFoto, idFoto, idFoto] }.
@@ -517,7 +522,10 @@ async function preparar() {
       db.collection('mantenimiento_fotos').where('clave', '==', `${sede}|${periodo}|${anio}`).get(),
     ]);
     ejecuciones = ejSnap.docs.map((d) => d.data());
-    fotos = foSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    // Se descartan acá las que no son una imagen usable: si entraran, ocuparían uno de los
+    // 3 cupos en el selector y recién se caerían al generar, dejando el informe con menos
+    // fotos de las que había disponibles.
+    fotos = foSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((f) => fotoValida(f.foto));
 
     const equipos = inventario.filter((e) => e.cliente === cliente && e.sede === sede);
     const [m1, m2] = MESES_PERIODO[periodo];
@@ -692,10 +700,6 @@ async function cargarDocx() {
   throw new Error('no se pudo cargar la librería de Word (sin conexión?)');
 }
 
-// Solo formatos que Word inserta bien. Un `src` que no valide no se pinta ni se embebe:
-// si Firestore se ensucia, no queremos que el navegador salga a buscar una URL externa.
-const RE_FOTO = /^data:image\/(jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i;
-const fotoValida = (d) => RE_FOTO.test(String(d || ''));
 
 // Devuelve null —y no revienta— si el base64 está roto: `atob` LANZA con datos corruptos, y
 // una sola foto mala no puede tumbar la generación del informe entero.
