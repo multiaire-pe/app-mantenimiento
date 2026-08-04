@@ -105,6 +105,15 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 .stat-val{font-size:22px;font-weight:700;color:var(--blue);line-height:1}
 .stat-lbl{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-top:6px;font-weight:600}
 
+/* ── BLOQUE POR CLIENTE (encabeza sus sedes con su % ponderado) ─── */
+.cli-block{margin-bottom:22px}
+.cli-block:last-child{margin-bottom:0}
+.cli-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 14px;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-left:5px solid var(--muted);border-radius:10px}
+.cli-id{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cli-name{font-size:15px;font-weight:800;color:var(--accent);letter-spacing:.02em}
+.cli-meta{font-size:11px;color:var(--muted2);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.cli-pct{font-size:22px;font-weight:700;line-height:1;white-space:nowrap}
+
 /* ── SEDE CARDS ─── */
 .sede-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
 .sede-card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:16px;box-shadow:var(--shadow);cursor:pointer;transition:all .15s;border-left:5px solid var(--muted)}
@@ -170,6 +179,7 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
   .page{padding:14px 12px}.card{padding:14px}
   .form-row{flex-direction:column;align-items:stretch}
   .sede-grid{grid-template-columns:1fr}
+  .cli-head{padding:10px 12px}.cli-name{font-size:14px}.cli-pct{font-size:19px}
 }
 </style>
 </head>
@@ -216,13 +226,15 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
   <!-- ── VISTA POR SEDE ── -->
   <div class="tab-view active" id="view-sede">
     <div class="stat-row" id="stat-row"></div>
-    <div class="sede-grid" id="sede-grid">
+    <div id="sede-grid">
       <div class="empty-msg">Cargando operatividad…</div>
     </div>
     <p style="font-size:10px;color:var(--muted2);margin-top:14px;line-height:1.6">
-      El % de cada sede es el <strong>promedio ponderado por criticidad</strong> de sus equipos (peso 1–5 por tipo).
-      Un equipo <strong>sin reporte</strong> se asume operativo (100%) pero se marca <span class="stale-badge">⚠️ a re-verificar</span>
-      si nunca se reportó o pasaron más de 60 días. Clic en una sede para ver sus equipos.
+      El % de cada sede <strong>y el de cada cliente</strong> es el <strong>promedio ponderado por criticidad</strong> de sus equipos
+      (peso 1–5 por tipo). El del cliente sale de <strong>sus equipos</strong>, no de promediar el de sus sedes: si no, una sede de
+      3 equipos pesaría igual que una de 96. Un equipo <strong>sin reporte</strong> se asume operativo (100%) pero se marca
+      <span class="stale-badge">⚠️ a re-verificar</span> si nunca se reportó o pasaron más de 60 días —⚫ inoperativo es solo el
+      reportado en 0. Clic en una sede para ver sus equipos.
     </p>
   </div>
 
@@ -428,6 +440,11 @@ function pesoTipo(tipo){ const w=criticidad[tipo]; return (w>=1 && w<=5) ? w : 3
 // % de un equipo para el rollup: su reporte, o 100 si nunca se reportó (sin reporte = operativo).
 function pctEquipo(eq){ return (eq.operatividad==null) ? 100 : Number(eq.operatividad); }
 function tieneReporte(eq){ return eq.operatividad != null; }
+// Inoperativo ⚫ = reportado explícitamente en 0. Sin reporte NO es inoperativo: es "a re-verificar".
+// UNA sola definición, porque la cuentan las stats, las sedes y los clientes — y cuando la regla
+// está duplicada, se arregla en un lado y el otro se queda roto (pasó: sin el tieneReporte(),
+// `Number(null) === 0` es true en JS, así que los 552 equipos sin reportar salían como ⚫).
+function esInoperativo(eq){ return tieneReporte(eq) && Number(eq.operatividad) === 0; }
 // Frescura: nunca reportado, o reporte de hace más de STALE_DIAS → "a re-verificar" (señal interna).
 function esStale(eq){
   if(!eq.operatividadFecha) return true;
@@ -496,8 +513,7 @@ function renderAll(){ renderStats(); renderSedes(); }
 function renderStats(){
   const fc = clienteFiltro();
   const eqs = inventario.filter(e=>!fc || e.cliente===fc);
-  const conReporte = eqs.filter(tieneReporte);
-  const inop = conReporte.filter(e=>Number(e.operatividad)===0).length;
+  const inop = eqs.filter(esInoperativo).length;
   const stale = eqs.filter(esStale).length;
   const global = rollup(eqs);
   const b = bandaAgregado(global);
@@ -513,35 +529,78 @@ function renderSedes(){
   const fc = clienteFiltro();
   const grid = document.getElementById('sede-grid');
   const eqs = inventario.filter(e=>!fc || e.cliente===fc);
-  // agrupar por cliente|sede
-  const groups = {};
-  for(const e of eqs){ const k=e.cliente+'|'+e.sede; (groups[k]=groups[k]||{cliente:e.cliente,sede:e.sede,eqs:[]}).eqs.push(e); }
-  const arr = Object.values(groups).map(g => ({ ...g, pct:rollup(g.eqs), stale:g.eqs.filter(esStale).length, inop:g.eqs.filter(e=>Number(e.operatividad)===0).length }));
-  const orden = (document.getElementById('f-orden')||{}).value || 'peor';
-  const azSede = (a,b)=> a.sede.localeCompare(b.sede,'es');
-  if(orden==='mejor')        arr.sort((a,b)=> b.pct-a.pct || azSede(a,b));
-  else if(orden==='alfa')    arr.sort(azSede);
-  else if(orden==='equipos') arr.sort((a,b)=> b.eqs.length-a.eqs.length || azSede(a,b));
-  else                       arr.sort((a,b)=> a.pct-b.pct || azSede(a,b));   // 'peor' = peores primero (predefinido)
+  // Agrupar por (cliente, sede). Map con clave estructurada, NO un objeto con `cliente+'|'+sede`:
+  // los nombres vienen de Firestore, así que un '|' en el dato colisionaría dos grupos distintos
+  // y una sede o cliente llamado "__proto__" devolvería Object.prototype en vez de crear el grupo.
+  const groups = new Map();
+  for(const e of eqs){
+    const k = JSON.stringify([e.cliente, e.sede]);
+    if(!groups.has(k)) groups.set(k, {cliente:e.cliente, sede:e.sede, eqs:[]});
+    groups.get(k).eqs.push(e);
+  }
+  const arr = [...groups.values()].map(g => ({ ...g, _nom:g.sede, pct:rollup(g.eqs), stale:g.eqs.filter(esStale).length, inop:g.eqs.filter(esInoperativo).length }));
   if(!arr.length){ grid.innerHTML='<div class="empty-msg">No hay equipos para este filtro.</div>'; return; }
+  // El criterio elegido ordena los CLIENTES entre sí y, dentro de cada uno, sus sedes.
+  const orden = (document.getElementById('f-orden')||{}).value || 'peor';
+  const az = (a,b)=> a._nom.localeCompare(b._nom,'es');
+  const ordenar = (list) => {
+    if(orden==='mejor')        list.sort((a,b)=> b.pct-a.pct || az(a,b));
+    else if(orden==='alfa')    list.sort(az);
+    else if(orden==='equipos') list.sort((a,b)=> b.eqs.length-a.eqs.length || az(a,b));
+    else                       list.sort((a,b)=> a.pct-b.pct || az(a,b));   // 'peor' = peores primero (predefinido)
+    return list;
+  };
+  ordenar(arr);
+  // Agrupar las sedes ya ordenadas por CLIENTE. Un equipo sin cliente cae en "SIN CLIENTE"
+  // en vez de encabezar un bloque con el nombre vacío (mismo criterio que "SIN TIPO" en informes).
+  // Se agrupa por el valor CRUDO de cliente y "SIN CLIENTE" es solo el rótulo: si se agrupara
+  // por el rótulo, un cliente que de verdad se llamara así se mezclaría con los que no tienen.
+  const cliGroups = new Map();
+  for(const g of arr){
+    if(!cliGroups.has(g.cliente)) cliGroups.set(g.cliente, { _nom:g.cliente || 'SIN CLIENTE', sedes:[], eqs:[] });
+    const c = cliGroups.get(g.cliente);
+    c.sedes.push(g);
+    c.eqs.push(...g.eqs);
+  }
+  // El % del cliente se recalcula desde SUS EQUIPOS, no promediando el % de sus sedes:
+  // promediar promedios haría pesar igual a una sede de 3 equipos que a una de 96.
+  const cls = ordenar([...cliGroups.values()].map(c => ({ ...c,
+    pct:rollup(c.eqs), stale:c.eqs.filter(esStale).length, inop:c.eqs.filter(esInoperativo).length })));
   // data-* + listener (NO interpolar cliente/sede en un onclick inline: esc() escapa
   // para HTML pero el parser decodifica &#39; antes de ejecutar el handler → un ' en
   // el nombre rompería el click / permitiría inyección. dataset devuelve el literal).
-  grid.innerHTML = arr.map(g => {
+  const cardHtml = (g) => {
     const b = bandaAgregado(g.pct);
     return `<div class="sede-card" style="border-left-color:${b.color}" data-cliente="${esc(g.cliente)}" data-sede="${esc(g.sede)}">
       <div class="sede-card-head">
-        <div><div class="sede-name">${esc(g.sede)}</div>${clientes.length>1?`<div class="sede-cliente">${esc(g.cliente)}</div>`:''}</div>
+        <div><div class="sede-name">${esc(g.sede)}</div></div>
         <div class="sede-pct" style="color:${b.color}">${g.pct}%</div>
       </div>
       <div class="op-bar"><div class="op-bar-fill" style="width:${g.pct}%;background:${b.color}"></div></div>
       <div class="sede-meta">
         <span>${b.emoji} ${esc(b.etiqueta)}</span>
-        <span>· ${g.eqs.length} equipos</span>
+        <span>· ${g.eqs.length} ${g.eqs.length===1?'equipo':'equipos'}</span>
         ${g.inop?`<span style="color:#dc2626">· ${g.inop} ⚫</span>`:''}
         ${g.stale?`<span class="stale-badge">⚠️ ${g.stale} s/verif.</span>`:''}
       </div>
     </div>`;
+  };
+  grid.innerHTML = cls.map(c => {
+    const cb = bandaAgregado(c.pct);
+    return `<section class="cli-block">
+      <div class="cli-head" style="border-left-color:${cb.color}">
+        <div class="cli-id">
+          <span class="cli-name">🏢 ${esc(c._nom)}</span>
+          <span class="cli-meta">
+            <span>${c.sedes.length} ${c.sedes.length===1?'sede':'sedes'} · ${c.eqs.length} ${c.eqs.length===1?'equipo':'equipos'}</span>
+            ${c.inop?`<span style="color:#dc2626;font-weight:700">· ${c.inop} ⚫</span>`:''}
+            ${c.stale?`<span class="stale-badge">⚠️ ${c.stale} s/verif.</span>`:''}
+          </span>
+        </div>
+        <div class="cli-pct" style="color:${cb.color}">${cb.emoji} ${c.pct}%</div>
+      </div>
+      <div class="sede-grid">${c.sedes.map(cardHtml).join('')}</div>
+    </section>`;
   }).join('');
   grid.querySelectorAll('.sede-card').forEach(el => { el.onclick = () => openSede(el.dataset.cliente, el.dataset.sede); });
 }
