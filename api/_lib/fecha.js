@@ -27,6 +27,13 @@ export function horaHHMMLima(base = Date.now()) {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 
+// Día de la semana en Lima: 0=domingo … 6=sábado (mismo criterio que `Date#getDay()`, el que
+// ya usa `asistencia_multiaire.html` — `calcHorasExtra`: dow===0 domingo, dow===6 sábado). El
+// bot corre en UTC y necesita su propia versión en hora de Lima, igual que `hoyLima`.
+export function diaSemanaLima(base = Date.now()) {
+  return ahoraLima(base).getUTCDay();
+}
+
 // Decimal (8.5) → "08:30".
 export function decimalAHHMM(dec) {
   if (dec == null || !Number.isFinite(Number(dec))) return '—';
