@@ -1399,7 +1399,7 @@ async function loadFechaForEdit(fecha, d) {
 }
 
 function newBloque() {
-  return { idTienda:'', tienda:'', cliente:'', idGrupo:'', grupo:'', horaInicio:'08:00', horaFin:'17:30', detalle:'', p1:'', p2:'', p3:'', p4:'', estado:'PROGRAMADO' };
+  return { idTienda:'', tienda:'', cliente:'', idGrupo:'', grupo:'', horaInicio:'08:30', horaFin:'18:00', detalle:'', p1:'', p2:'', p3:'', p4:'', estado:'PROGRAMADO' };
 }
 
 function renderModal(fecha, d, iti) {
@@ -1472,8 +1472,8 @@ function renderModal(fecha, d, iti) {
     const gOpts = '<option value="">' + (b.idGrupo ? '' : 'Seleccionar...') + '</option>'
       + maestros.grupos.map(g => '<option value="' + g.id + '"' + (g.id===b.idGrupo?' selected':'') + '>' + g.grupo + '</option>').join('');
     html += '<div class="form-group"><div class="form-label">Grupo / Tipo</div><select class="form-select" id="bf-grupo-' + i + '">' + gOpts + '</select></div>';
-    html += '<div class="form-group"><div class="form-label">Hora inicio</div><input type="time" class="form-input" id="bf-hi-' + i + '" value="' + (b.horaInicio||'08:00') + '"></div>';
-    html += '<div class="form-group"><div class="form-label">Hora fin</div><input type="time" class="form-input" id="bf-hf-' + i + '" value="' + (b.horaFin||'17:30') + '"></div>';
+    html += '<div class="form-group"><div class="form-label">Hora inicio</div><input type="time" class="form-input" id="bf-hi-' + i + '" value="' + (b.horaInicio||'08:30') + '"></div>';
+    html += '<div class="form-group"><div class="form-label">Hora fin</div><input type="time" class="form-input" id="bf-hf-' + i + '" value="' + (b.horaFin||'18:00') + '"></div>';
     html += '<div class="form-group"><div class="form-label">Estado</div><select class="form-select" id="bf-estado-' + i + '">';
     html += '<option value="PROGRAMADO"' + ((b.estado||'PROGRAMADO')==='PROGRAMADO'?' selected':'') + '>PROGRAMADO</option>';
     html += '<option value="EN CURSO"' + (b.estado==='EN CURSO'?' selected':'') + '>EN CURSO</option>';
@@ -1589,8 +1589,8 @@ async function saveItinerario() {
       tienda, cliente,
       idGrupo: grupoSel?.value || '',
       grupo,
-      horaInicio: horaToDecimal(document.getElementById(`bf-hi-${i}`)?.value || '08:00'),
-      horaFin: horaToDecimal(document.getElementById(`bf-hf-${i}`)?.value || '17:30'),
+      horaInicio: horaToDecimal(document.getElementById(`bf-hi-${i}`)?.value || '08:30'),
+      horaFin: horaToDecimal(document.getElementById(`bf-hf-${i}`)?.value || '18:00'),
       detalle: document.getElementById(`bf-detalle-${i}`)?.value || '',
       personal: personalArr,
       personal1: personalArr[0], personal2: personalArr[1],
