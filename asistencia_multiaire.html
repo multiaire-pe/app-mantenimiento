@@ -1251,13 +1251,15 @@ async function loadVistaTA() {
       html+=`<tr><td class="nombre-col">${escHtml(c.nombre)}<div style="font-size:9px;color:var(--muted2)">${escHtml(c.cargo)}</div></td>`;
       fechas.forEach(f=>{
         const isDom=new Date(f+'T12:00:00').getDay()===0;
-        const fer=isFeriado(f);
         if(isDom){html+=`<td class="ta-cell-DOM">—</td>`;return;}
-        if(fer){html+=`<td class="ta-cell-FER">FER</td>`;return;}
         // Fuera del período laboral (antes de ingresar / después de cesar): celda vacía,
         // sin marcar falta, aunque exista un registro suelto fuera de vigencia.
         if(fueraDeVigencia(c,f)){html+=`<td class="ta-cell-empty"></td>`;return;}
         const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
+        // Feriado SIN registro: celda decorativa "FER", sin marcar falta. Si el colaborador
+        // SÍ trabajó ese día (hay registro real), se muestra su asistencia normal más abajo —
+        // un feriado no debe tapar que alguien vino (Vista E/S ya hacía esto bien).
+        if(isFeriado(f)&&!reg){html+=`<td class="ta-cell-FER">FER</td>`;return;}
         if(!reg){
           // Fecha futura: vacía, sin marcar falta
           if(f>todayKey()){html+=`<td class="ta-cell-empty"></td>`;return;}
