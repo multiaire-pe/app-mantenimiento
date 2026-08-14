@@ -232,12 +232,16 @@ tr:hover td{background:var(--surface2)}
         <label class="form-label">⏰ Recordatorio salida</label>
         <input type="time" id="rec-hora-salida" class="form-input" onchange="markRecordatoriosDirty()">
       </div>
+      <div class="form-group" style="flex:0 0 150px">
+        <label class="form-label">🏖️ Salida sábado</label>
+        <input type="time" id="rec-hora-salida-sabado" class="form-input" placeholder="13:00" onchange="markRecordatoriosDirty()">
+      </div>
       <div class="form-group" style="flex:0 0 130px">
         <label class="form-label">⏳ Tolerancia (min)</label>
         <input type="number" id="rec-gracia" class="form-input" min="1" max="240" step="5" placeholder="45" onchange="markRecordatoriosDirty()">
       </div>
       <button class="btn btn-sm btn-primary" id="btn-save-recordatorios" onclick="saveRecordatoriosConfig()" style="display:none" disabled>💾 Guardar horarios</button>
-      <span style="font-size:10.5px;color:var(--muted2);flex:1 1 220px">A esta hora fija, el bot manda el recordatorio a los colaboradores marcados en la columna ⏰ Recordatorios (no revisa si ya marcaron asistencia). Si por una falla el aviso no pudo salir dentro de la <b>tolerancia</b>, ese día NO se manda: un recordatorio a destiempo confunde más de lo que ayuda.</span>
+      <span style="font-size:10.5px;color:var(--muted2);flex:1 1 220px">A esta hora fija, el bot manda el recordatorio a los colaboradores marcados en la columna ⏰ Recordatorios (no revisa si ya marcaron asistencia). Domingos y feriados no se manda nada; el sábado la <b>salida</b> usa su propia hora (vacío = 13:00). Si por una falla el aviso no pudo salir dentro de la <b>tolerancia</b>, ese día NO se manda: un recordatorio a destiempo confunde más de lo que ayuda.</span>
     </div>
     <div class="table-scroll">
       <table>
@@ -991,6 +995,10 @@ async function toggleAvisoTipo(id, tipo, checked){
 // formulario aceptaría una tolerancia que el cron después descarta, y el usuario creería que
 // guardó una política que no está vigente.
 const GRACIA_DEFAULT_MIN = 45, GRACIA_MIN_MIN = 1, GRACIA_MAX_MIN = 240;
+// Domingos y feriados (maestros_feriados) no reciben recordatorio — lo decide el backend, acá
+// no hay nada que validar. El sábado sí es laborable pero con jornada corta: vacío en
+// horaSalidaSabado cae al mismo default que usa `cron_recordatorios.js` (SALIDA_SABADO_DEFAULT).
+const SALIDA_SABADO_DEFAULT = 13;
 
 async function loadRecordatoriosConfig(){
   const btn = document.getElementById('btn-save-recordatorios');
@@ -1000,11 +1008,12 @@ async function loadRecordatoriosConfig(){
     const cfg = snap.exists ? snap.data() : {};
     document.getElementById('rec-hora-entrada').value = cfg.horaEntrada!=null ? decToHHMM(cfg.horaEntrada) : '';
     document.getElementById('rec-hora-salida').value  = cfg.horaSalida!=null  ? decToHHMM(cfg.horaSalida)  : '';
+    document.getElementById('rec-hora-salida-sabado').value = cfg.horaSalidaSabado!=null ? decToHHMM(cfg.horaSalidaSabado) : '';
     // Vacío = el default del backend (GRACIA_DEFAULT_MIN). El placeholder lo muestra.
     document.getElementById('rec-gracia').value = cfg.ventanaGraciaMin!=null ? cfg.ventanaGraciaMin : '';
   }catch(e){ console.error('[recordatorios] no se pudo cargar la config:', e.message); }
   if(btn) btn.disabled = true;
-  ['rec-hora-entrada','rec-hora-salida','rec-gracia'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = !isPersAdmin(); });
+  ['rec-hora-entrada','rec-hora-salida','rec-hora-salida-sabado','rec-gracia'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = !isPersAdmin(); });
 }
 function markRecordatoriosDirty(){
   const btn = document.getElementById('btn-save-recordatorios');
@@ -1014,6 +1023,11 @@ async function saveRecordatoriosConfig(){
   if(!isPersAdmin()){ toast('Sin permisos','err'); return; }
   const horaEntrada = hhmmToDec(val('rec-hora-entrada'));
   const horaSalida  = hhmmToDec(val('rec-hora-salida'));
+  // Vacío = el default del backend (SALIDA_SABADO_DEFAULT, 1pm) — se BORRA el campo en vez de
+  // dejarlo con el valor viejo (con merge, no escribirlo lo conservaría; misma trampa del
+  // merge profundo que ya mordió a este repo con tareaStatus/ultimoEnvio). `hhmmToDec('')`
+  // ya devuelve null (no matchea el regex), así que null = "usar el default" sin ambigüedad.
+  const horaSalidaSabado = hhmmToDec(val('rec-hora-salida-sabado'));
   // Tolerancia: vacío = usar el default del backend, así que se BORRA el campo en vez de
   // dejarlo con el valor viejo (con merge, no escribirlo lo conservaría). Un valor inválido se
   // rechaza en vez de guardarse: una tolerancia basura desactivaría la protección en silencio.
@@ -1032,7 +1046,7 @@ async function saveRecordatoriosConfig(){
   // saldría y tampoco se marcaría vencido. Se rechaza la combinación en vez de guardarla rota.
   // `> 24` y no `>=`: una ventana que termina JUSTO a las 24:00 no cruza nada y es válida.
   const gEfectiva = ventanaGraciaMin!=null ? ventanaGraciaMin : GRACIA_DEFAULT_MIN;
-  for(const [etiq, h] of [['entrada', horaEntrada], ['salida', horaSalida]]){
+  for(const [etiq, h] of [['entrada', horaEntrada], ['salida', horaSalida], ['salida sábado', horaSalidaSabado]]){
     if(h!=null && Number.isFinite(h) && h + gEfectiva/60 > 24){
       toast(`La hora de ${etiq} (${decToHHMM(h)}) más la tolerancia de ${gEfectiva} min cruza la medianoche: elegí una hora más temprana o menos tolerancia`,'err');
       return;
@@ -1043,6 +1057,7 @@ async function saveRecordatoriosConfig(){
   try{
     await db.collection('config_recordatorios').doc('default').set({
       horaEntrada, horaSalida,
+      horaSalidaSabado: horaSalidaSabado!=null ? horaSalidaSabado : firebase.firestore.FieldValue.delete(),
       ventanaGraciaMin: ventanaGraciaMin!=null ? ventanaGraciaMin : firebase.firestore.FieldValue.delete(),
       updatedAt: new Date().toISOString(), updatedBy: maUser?.email || ''
     }, { merge: true });

@@ -5,6 +5,11 @@
 // Incondicional a propósito: NO lee asistencia_registros ni regimenAsistencia (decisión
 // explícita del usuario) — el bot de marcaje sigue intacto, sin ninguna dependencia nueva.
 //
+// Días laborables únicamente: domingo y feriados (`maestros_feriados`) no reciben NADA. El
+// sábado sí es laborable, pero con jornada corta — la SALIDA usa `horaEfectiva` (default 1pm,
+// configurable en `config_recordatorios.horaSalidaSabado`) en vez de `horaSalida`. Mismo
+// criterio que ya usa el resto de asistencia (`calcHorasExtra`/`esDiaNoLaboral`).
+//
 // Disparado por un workflow de GitHub Actions (schedule) contra este endpoint, protegido
 // por CRON_SECRET (header x-cron-secret). No usamos Vercel Cron Jobs: el plan Hobby no
 // permite un horario editable sin redeploy y solo corre sobre deployments de Producción —
@@ -12,7 +17,7 @@
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 import { getDb } from './_lib/firestore.js';
-import { hoyLima, horaHHMMLima, decimalAHHMM } from './_lib/fecha.js';
+import { hoyLima, horaHHMMLima, decimalAHHMM, diaSemanaLima } from './_lib/fecha.js';
 import { notificarPorTipo, destinatariosAviso } from './_lib/avisos.js';
 
 function secretoValido(header) {
@@ -204,6 +209,35 @@ const TEXTO = {
   salida: '⏰ *Recordatorio* — no olvides marcar tu *salida* de hoy.',
 };
 
+// DÍA NO LABORABLE — domingo (dow===0) y feriados no reciben NINGÚN recordatorio (ni entrada
+// ni salida). Mismo criterio que ya usa el resto del sistema para asistencia
+// (`asistencia_multiaire.html`: `calcHorasExtra`/`esDiaNoLaboral` → `dow===0 || isFeriado(f)`).
+// El SÁBADO (dow===6) SÍ es laborable — no confundir con que tenga jornada corta, que se
+// resuelve aparte en `horaEfectiva`.
+export function esDiaLaborable(dow, feriado) {
+  return dow !== 0 && !feriado;
+}
+
+// Consulta por IGUALDAD de `fecha` (mismo campo YYYY-MM-DD de `maestros_feriados` que usa
+// `asistencia_multiaire.html`) — sin índice compuesto, trae como mucho 1 doc.
+export async function esFeriadoHoy(db, hoy) {
+  const snap = await db.collection('maestros_feriados').where('fecha', '==', hoy).limit(1).get();
+  return !snap.empty;
+}
+
+// SÁBADO tiene jornada corta (8:30–13:00, la misma convención que ya usa el resto de
+// asistencia — ver `calcHorasExtra`: base 4.5h los sábados vs 9.5h L-V). La hora de ENTRADA
+// no cambia (sigue siendo `horaEntrada` los 6 días); solo la de SALIDA. Configurable aparte
+// en `config_recordatorios.horaSalidaSabado`; sin configurar, cae a la 1pm.
+export const SALIDA_SABADO_DEFAULT = 13;
+export function horaEfectiva(tipo, dow, cfg) {
+  if (tipo === 'salida' && dow === 6) {
+    const h = cfg.horaSalidaSabado;
+    return (h != null && Number.isFinite(Number(h))) ? Number(h) : SALIDA_SABADO_DEFAULT;
+  }
+  return cfg[tipo === 'entrada' ? 'horaEntrada' : 'horaSalida'];
+}
+
 // QUÉ HACER DESPUÉS DE ENVIAR. `notificarPorTipo` NO lanza si WhatsApp falla: atrapa el
 // error de cada destinatario por dentro y devuelve cuántos salieron. Con el token vencido
 // o Meta caído devuelve 0 — y sin esta política el cron marcaba el día como enviado,
@@ -275,6 +309,18 @@ export default async function handler(req, res) {
   const cfg = snap.exists ? snap.data() : {};
   const hoy = hoyLima();
   const ahora = ahoraExactaLima();
+  const dow = diaSemanaLima();
+
+  // Domingo o feriado → ningún recordatorio hoy (ni entrada ni salida). Se corta ANTES de
+  // leer destinatarios/tomar turno: no hay nada que enviar, así que no vale la pena el resto
+  // del trabajo. No es un fallo — se responde 200 explicando por qué no se mandó nada.
+  const feriadoHoy = dow !== 0 ? await esFeriadoHoy(db, hoy) : false;
+  if (!esDiaLaborable(dow, feriadoHoy)) {
+    const motivo = dow === 0 ? 'domingo' : 'feriado';
+    console.log(`[cron_recordatorios] ${hoy} · ${motivo} — no se manda ningún recordatorio`);
+    return res.status(200).json({ ok: true, hoy, ahora: decimalAHHMM(ahora), diaNoLaborable: motivo, resultados: {} });
+  }
+
   const ultimoEnvio = { ...(cfg.ultimoEnvio || {}) };
   // Un valor basura en el config no puede desactivar la ventana en silencio: se cae al default.
   const graciaMin = normalizarGracia(cfg.ventanaGraciaMin);
@@ -287,7 +333,7 @@ export default async function handler(req, res) {
   let huboError = false;      // → responde 502 para que el workflow NO quede verde en falso
 
   for (const tipo of ['entrada', 'salida']) {
-    const hora = cfg[tipo === 'entrada' ? 'horaEntrada' : 'horaSalida'];
+    const hora = horaEfectiva(tipo, dow, cfg);
     if (hora == null || !Number.isFinite(Number(hora))) continue; // sin hora configurada
     if (ahora < Number(hora)) continue;                           // aún no llega la hora
 
