@@ -1250,16 +1250,17 @@ async function loadVistaTA() {
     activos.forEach(c=>{
       html+=`<tr><td class="nombre-col">${escHtml(c.nombre)}<div style="font-size:9px;color:var(--muted2)">${escHtml(c.cargo)}</div></td>`;
       fechas.forEach(f=>{
-        const isDom=new Date(f+'T12:00:00').getDay()===0;
-        if(isDom){html+=`<td class="ta-cell-DOM">—</td>`;return;}
         // Fuera del período laboral (antes de ingresar / después de cesar): celda vacía,
         // sin marcar falta, aunque exista un registro suelto fuera de vigencia.
         if(fueraDeVigencia(c,f)){html+=`<td class="ta-cell-empty"></td>`;return;}
+        const isDom=new Date(f+'T12:00:00').getDay()===0;
         const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
-        // Feriado SIN registro: celda decorativa "FER", sin marcar falta. Si el colaborador
-        // SÍ trabajó ese día (hay registro real), se muestra su asistencia normal más abajo —
-        // un feriado no debe tapar que alguien vino (Vista E/S ya hacía esto bien).
-        if(isFeriado(f)&&!reg){html+=`<td class="ta-cell-FER">FER</td>`;return;}
+        // Domingo o feriado SIN registro: celda decorativa (—/FER), pero CLICKEABLE —
+        // si el colaborador sí trabajó ese día, se registra manual igual que un día
+        // normal (calcHorasExtra ya cuenta esas horas como extra en su totalidad).
+        // CON registro se muestra la asistencia real más abajo (no se tapa con —/FER).
+        if(isDom&&!reg){html+=`<td class="ta-cell-DOM" onclick="openEditReg(null,'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">—</td>`;return;}
+        if(isFeriado(f)&&!reg){html+=`<td class="ta-cell-FER" onclick="openEditReg(null,'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">FER</td>`;return;}
         if(!reg){
           // Fecha futura: vacía, sin marcar falta
           if(f>todayKey()){html+=`<td class="ta-cell-empty"></td>`;return;}
@@ -1324,9 +1325,11 @@ async function loadVistaES() {
           </div>`;
           return;
         }
-        // Día no laboral sin registro: fila naranja decorativa, sin penalización
+        // Día no laboral sin registro: fila naranja decorativa, sin penalización —
+        // pero CLICKEABLE: si el colaborador sí trabajó ese día, se registra manual
+        // igual que un día normal (calcHorasExtra ya cuenta esas horas como extra).
         if(noLab&&!reg){
-          html+=`<div class="es-table-row" style="background:#FEF3E2;cursor:default">
+          html+=`<div class="es-table-row" style="background:#FEF3E2" onclick="openEditReg(null,'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">
             <div style="font-family:var(--mono);font-size:11px;color:#8a5a00">${fechaStr}</div>
             <div style="font-size:11px;color:#8a5a00">${diaStr}</div>
             <div><span style="font-size:10px;color:#8a5a00;font-weight:600">${dow===0?'Domingo':'Feriado'}</span></div>
