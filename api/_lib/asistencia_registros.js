@@ -10,28 +10,11 @@ import { fmtDistancia } from './geo.js';
 
 // Nota humana (columna Comentario de la app) SOLO cuando hay algo que revisar; si el marcaje
 // es limpio (en el radio y en el plan), queda vacía como un registro normal.
-//
-// Una sede SIN `idTienda` no es una sede real con coordenadas verificadas — es un LUGAR DECLARADO
-// por el técnico (2026-08-17: "Otro lugar" del bot, o una "zona de trabajo" libre del itinerario,
-// que ya se armaba igual sin idTienda). En esos casos se pone el lugar y las coordenadas que mandó
-// DIRECTO en el comentario (no solo en la evidencia del modal, que hay que abrir aparte) para que
-// un supervisor lo vea de un vistazo en la tabla. Una sede CON `idTienda` real que simplemente no
-// tiene lat/long cargadas en `maestros_tiendas` sigue con el mensaje genérico de antes — ese caso
-// es "sede conocida, falta configurar su geo", no "lugar inventado por el técnico".
-function notaMarca(sede, ubic, fueraDePlan) {
+function notaMarca(ubic, fueraDePlan) {
   const partes = [];
   if (fueraDePlan) partes.push('fuera de plan');
-  if (ubic && ubic.valida === false) {
-    if (sede && !sede.idTienda) {
-      const lugar = sede.sede || sede.tienda || 'lugar sin nombre';
-      const coords = (ubic.lat != null && ubic.lng != null) ? ` (${ubic.lat}, ${ubic.lng})` : '';
-      partes.push(`dice estar en "${lugar}"${coords}`);
-    } else {
-      partes.push('sede sin coordenadas');
-    }
-  } else if (ubic && ubic.dentro === false && ubic.distancia != null) {
-    partes.push(`fuera de radio (${fmtDistancia(ubic.distancia)})`);
-  }
+  if (ubic && ubic.valida === false) partes.push('sede sin coordenadas');
+  else if (ubic && ubic.dentro === false && ubic.distancia != null) partes.push(`fuera de radio (${fmtDistancia(ubic.distancia)})`);
   return partes.length ? `WhatsApp · ⚠️ ${partes.join(' · ')}` : '';
 }
 
@@ -58,7 +41,7 @@ function evidencia({ sede, ubic, fueraDePlan, horaExacta, ts }) {
 export function construirRegistro(existing, m) {
   const { tipo, tecnico, fecha, horaDecimal, horaExacta, ts, sede, ubic, fueraDePlan } = m;
   const ev = evidencia({ sede, ubic, fueraDePlan, horaExacta, ts });
-  const nota = notaMarca(sede, ubic, fueraDePlan);
+  const nota = notaMarca(ubic, fueraDePlan);
   const autor = `wa:${tecnico?.id || 'desconocido'}`;
 
   if (tipo === 'ENTRADA') {
