@@ -179,7 +179,8 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 
     <!-- ── SEDES INTERNAS (sin cliente) ── -->
     <div id="internas-card" style="display:none;margin-top:18px;background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)">
-      <div style="font-size:13px;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:8px;margin-bottom:6px">🏢 Sedes internas (sin cliente)</div>
+      <div style="font-size:13px;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:8px;margin-bottom:6px">🏢 Sedes internas (sin cliente)
+        <button class="btn btn-sm" id="btn-nueva-interna" onclick="openSedeInternaNueva()" style="margin-left:auto;display:none">+ Sede interna</button></div>
       <p style="font-size:11px;color:var(--muted2);margin:0 0 12px;line-height:1.55">
         Sedes de MultiAire que <strong>no pertenecen a un cliente</strong> (p.ej. la oficina). Viven en <code>maestros_tiendas</code> y el bot de asistencia las usa para el geolocalizado; <strong>no</strong> se cuentan como clientes. Editá sus coordenadas/radio aquí (super admin).
       </p>
@@ -632,9 +633,14 @@ function renderInternas(){
   const card = document.getElementById('internas-card'), body = document.getElementById('internas-body');
   if(!card || !body) return;
   const arr = sedes.filter(esInterna).sort((a,b)=>(a.sede||a.tienda||'').localeCompare(b.sede||b.tienda||'','es'));
-  if(!arr.length){ card.style.display='none'; return; }
-  card.style.display='';
   const sup = canSuper();
+  // La tarjeta se oculta si no hay nada que ver NI nada que crear (usuario sin permiso, 0 sedes).
+  // Para el super admin queda SIEMPRE visible — si no, el día que la última sede interna se borre
+  // no habría dónde hacer clic para dar de alta la próxima (el botón vive adentro de esta tarjeta).
+  if(!arr.length && !sup){ card.style.display='none'; return; }
+  card.style.display='';
+  document.getElementById('btn-nueva-interna').style.display = sup ? 'inline-flex' : 'none';
+  if(!arr.length){ body.innerHTML='<div class="empty-msg">Sin sedes internas todavía.</div>'; return; }
   body.innerHTML = arr.map(s=>{
     const act = s.activo!==false && s.activo!=='no' && (s.activo||'SI').toString().toUpperCase()!=='NO';
     const coords = (s.latitud!=null && s.longitud!=null) ? `📍 ${s.latitud}, ${s.longitud} · r=${s.radio??250}m` : '⚠️ sin coordenadas';
@@ -675,6 +681,17 @@ function openSedeInterna(id){
   _sedeCliente = s.cliente||'';   // preserva "-"/"" → NO la convierte en cliente
   document.getElementById('modal-sede-title').textContent = 'Editar sede interna';
   _fillSedeModal(s);
+}
+// Nueva sede SIN cliente (aeropuerto, domicilio de un cliente puntual, etc. — lugares que un
+// técnico frecuenta por una tarea fuera de toda sede del negocio). `_sedeCliente=''` es justamente
+// lo que `esClienteValido`/`esInterna` esperan para que la sede caiga en esta sección y NO en la
+// grilla de clientes ni en el backfill.
+function openSedeInternaNueva(){
+  if(!canSuper()){ toast('Solo el super admin crea sedes','err'); return; }
+  _sedeId = null;
+  _sedeCliente = '';
+  document.getElementById('modal-sede-title').textContent = 'Nueva sede interna';
+  _fillSedeModal(null);
 }
 async function saveSede(){
   if(!canSuper()) return;
