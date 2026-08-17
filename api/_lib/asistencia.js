@@ -4,8 +4,9 @@
 // datos (plan del día, tiendas, escritura y el almacén de sesiones) se inyectan por `deps`.
 //
 // Estados de la sesión (wa_asistencia_sesiones):
-//   RECOLECTA   → espera ubicación y/o selfie (en cualquier orden).
-//   ELIGE_SEDE  → su ubicación no cae dentro de ninguna sede: se pregunta en cuál está (tenga plan o no).
+//   RECOLECTA       → espera ubicación y/o selfie (en cualquier orden).
+//   ELIGE_SEDE      → su ubicación no cae dentro de ninguna sede: se pregunta en cuál está (tenga plan o no).
+//   ELIGE_SEDE_OTRO → eligió "Otro lugar" de la lista: se espera que describa dónde está (texto libre).
 import { evaluarSede, sedeQueContiene, fmtDistancia } from './geo.js';
 import { hoyLima, ahoraDecimalLima, horaHHMMLima, decimalAHHMM } from './fecha.js';
 import { sedesDelDia as _sedesDelDia } from './plan_dia.js';
@@ -16,6 +17,10 @@ import * as _ses from './asistencia_sesiones.js';
 const RE_CANCELA = /^\s*(cancel\w*|anul\w*|olv[ií]d\w*|d[eé]jal\w*|no\s+import\w*|ya\s+no)/i;
 const RE_ENTRADA = /\b(entrada|entr[eé]|ingres\w*|llegu[eé]|ya\s+llegu|inici\w*\s+jornada)\b/i;
 const RE_SALIDA  = /\b(salida|sal[ií]\b|me\s+voy|me\s+retir\w*|retir\w*|fin\s+de\s+jornada|termin[eé])\b/i;
+// Palabra suelta de control/saludo que NO es una descripción de lugar (mismo criterio que
+// `esControlSuelto` en mtto.js): sin este filtro, un "ya"/"listo"/"entrada" tipeado por reflejo
+// mientras se le pregunta DÓNDE está quedaría grabado tal cual como la sede del registro.
+const RE_CONTROL_SUELTO_LUGAR = /^\s*(ya|listo|dale|va|ok(ay)?|s[ií]|no|hola|buenas|buenos\s+d[ií]as|gracias|entrada|salida)\s*[.!¡]*\s*$/i;
 
 // Intención de asistencia para el ROUTER. Estricta a propósito para NO capturar un "salida"/"entrada"
 // dicho en medio de una observación ("salida de aire", "entrada principal") ni la marca comercial
@@ -37,6 +42,15 @@ export const RE_ASISTENCIA = new RegExp(
 );
 
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+// Opción "otro lugar" que se agrega SIEMPRE al final de la lista de sedes elegibles (ver
+// `sedesElegibles`). Necesaria para el caso real de Jesús marcando desde el aeropuerto: una tarea
+// puntual fuera de toda sede y fuera de su itinerario — la lista de sedes reales no tenía ninguna
+// opción para decir "estoy en otro lugar", así que quedaba forzado a elegir una sede donde NO estaba
+// o a repetir el mensaje de error sin salida. `idTienda` es un sentinel que sobrevive a `compactSede`
+// y nunca puede coincidir con una tienda real (los ids reales son `TIE…`).
+const OTRO_LUGAR_ID = '__OTRO_LUGAR__';
+const OTRO_LUGAR_LABEL = '✏️ Otro lugar (especifica dónde)';
 
 function parseTipo(texto) {
   const t = texto || '';
@@ -158,11 +172,36 @@ async function avanzar(ses, msg, d) {
       return `Hay varias que coinciden. ¿En cuál estás? Responde el número:\n${listaNumerada(ses.opciones)}`;
     }
 
+    // Eligió "Otro lugar": todavía no hay sede, hace falta que diga DÓNDE (texto libre). No se cae al
+    // camino normal de abajo (que la trataría como una sede real llamada "Otro lugar").
+    if (r.sede.idTienda === OTRO_LUGAR_ID) {
+      ses.fase = 'ELIGE_SEDE_OTRO';
+      ses.opciones = null;
+      await d.store.guardarSesion(from, ses);
+      return '📍 Cuéntame brevemente dónde estás (ej. "Aeropuerto Jorge Chávez").';
+    }
+
     ses.sede = compactSede(r.sede);
     // Si la sede que dijo SÍ estaba en su itinerario, no corresponde la bandera de fuera de plan
     // (antes se ponía en `true` a ciegas y le mentía al que estaba justo donde debía estar).
     ses.fueraDePlan = !estaEnLista(r.sede, plan);
     ses.opciones = null;
+    ses.fase = 'RECOLECTA';
+  }
+
+  // Terminó de elegir "Otro lugar": lo próximo que escriba ES la descripción de dónde está, sin
+  // más preguntas — salvo que sea una palabra suelta de control/saludo (RE_CONTROL_SUELTO_LUGAR),
+  // que se descarta y se vuelve a pedir el lugar. Sale con `fueraDePlan:true` y sin coordenadas —
+  // el registro queda `geovalidada:false`, que es exactamente lo que corresponde: el técnico lo
+  // declaró, nadie lo verificó. `msg.t` ya llega recortado y no-vacío (garantizado por el caller y
+  // el guard de este `if`), así que no hace falta volver a validarlo acá.
+  if (ses.fase === 'ELIGE_SEDE_OTRO' && !ses.sede && msg.t && !msg.ubicacion) {
+    if (RE_CONTROL_SUELTO_LUGAR.test(msg.t)) {
+      await d.store.guardarSesion(from, ses);
+      return '📍 Necesito el LUGAR donde estás (ej. "Aeropuerto Jorge Chávez"), no una respuesta corta.';
+    }
+    ses.sede = compactSede({ idTienda: '', sede: msg.t, tienda: '', cliente: '', latitud: null, longitud: null, radio: null });
+    ses.fueraDePlan = true;
     ses.fase = 'RECOLECTA';
   }
 
@@ -289,12 +328,19 @@ async function enriquecerPlan(planSedes, d) {
 // (si su itinerario lo mandó a una "zona de trabajo" libre, tiene que poder decirla; si no, quedaría
 // sin poder marcar). Una zona así no tiene coordenadas → el registro sale con `geovalidada:false`,
 // que es exactamente lo que corresponde: no se pudo verificar dónde estaba.
+//
+// SIEMPRE termina con la opción "Otro lugar" (2026-08-17, caso real de Jesús en el aeropuerto): una
+// tarea puntual fuera de toda sede y fuera del itinerario no tenía cómo declararse — ni el maestro
+// ni las zonas del plan la cubren. Va al final porque las sedes reales son la respuesta más probable
+// y deben verse primero; el número de esta opción varía según cuántas sedes haya, así que SIEMPRE se
+// arma dinámicamente acá (nunca hardcodeado en el mensaje).
 async function sedesElegibles(d, plan) {
   const tiendas = (await d.cargarTiendas()).filter((t) => t.activo);
   const delPlan = tiendas.filter((t) => estaEnLista(t, plan));
   const resto = tiendas.filter((t) => !estaEnLista(t, plan));
   const zonasLibres = (plan || []).filter((p) => !estaEnLista(p, tiendas));
-  return [...delPlan, ...zonasLibres, ...resto];
+  const otroLugar = { idTienda: OTRO_LUGAR_ID, sede: OTRO_LUGAR_LABEL, tienda: '', cliente: '', latitud: null, longitud: null, radio: null };
+  return [...delPlan, ...zonasLibres, ...resto, otroLugar];
 }
 
 // Elige la sede a partir de la ubicación compartida. LA UBICACIÓN REAL MANDA SOBRE EL PLAN:
