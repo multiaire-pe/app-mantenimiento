@@ -132,6 +132,13 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 .act-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
 .act-row .form-input{flex:1}
 .act-min{width:80px;flex:none!important}
+.act-drag{cursor:grab;user-select:none;color:var(--muted2);font-size:16px;line-height:1;padding:0 2px;flex:none}
+.act-drag:active{cursor:grabbing}
+.act-move{display:flex;flex-direction:column;flex:none}
+.act-move button{border:none;background:transparent;color:var(--muted2);cursor:pointer;font-size:10px;line-height:1;padding:2px 4px}
+.act-move button:disabled{opacity:.25;cursor:default}
+.act-move button:not(:disabled):hover{color:var(--blue)}
+.act-row.act-dragging{opacity:.4}
 
 @media(max-width:768px){
   header{padding:0 12px;height:52px;gap:8px}
@@ -753,6 +760,7 @@ function openActs(tipo){
         : '<strong>Sin configurar:</strong> sus equipos de este tipo no tienen ninguna actividad que registrar. Definilas acá (salen de su licitación) o copialas de otro cliente.');
   const ed = document.getElementById('acts-editor');
   ed.innerHTML = p.tareas.map((t,i)=>actRowHtml(t, p.minutos[i])).join('') || actRowHtml('', 5);
+  _actRefreshMoveBtns();
   // "Copiar de otro cliente": atajo para no re-tipear una lista que otro cliente ya tiene igual
   const otros = clientesConPlantilla(tipo, _cliCur);
   const btnCopiar = document.getElementById('btn-copiar');
@@ -773,16 +781,63 @@ function copiarDeOtro(){
   if(!src){ toast('Ese cliente no tiene plantilla para este tipo','err'); return; }
   document.getElementById('acts-editor').innerHTML =
     (src.tareas||[]).map((t,i)=>actRowHtml(t, (src.minutos||[])[i])).join('') || actRowHtml('', 5);
+  _actRefreshMoveBtns();
   toast(`Copiadas de ${de} — revisá y guardá`,'ok');
 }
 function actRowHtml(nombre, min){
-  return `<div class="act-row">
+  return `<div class="act-row" ondragstart="_actDragStart(event,this)" ondragover="_actDragOver(event,this)" ondrop="event.preventDefault()" ondragend="_actDragEnd(event,this)">
+    <span class="act-drag" title="Arrastrar para reordenar" onmousedown="this.parentElement.draggable=true" onmouseup="this.parentElement.draggable=false">⠿</span>
     <input class="form-input act-nombre" value="${esc(nombre)}" placeholder="Nombre de la actividad">
     <input class="form-input act-min" type="number" min="1" value="${(min!=null&&min!=='')?esc(min):5}" title="minutos">
-    <button class="btn btn-sm btn-red" onclick="this.parentElement.remove()">✕</button>
+    <span class="act-move">
+      <button type="button" class="act-up" title="Subir" onclick="_actMove(this,-1)">▲</button>
+      <button type="button" class="act-dn" title="Bajar" onclick="_actMove(this,1)">▼</button>
+    </span>
+    <button class="btn btn-sm btn-red" onclick="_actRemoveRow(this)">✕</button>
   </div>`;
 }
-function addActRow(){ document.getElementById('acts-editor').insertAdjacentHTML('beforeend', actRowHtml('', 5)); }
+// Arrastre real (desktop, agarrando el ⠿) + botones ↑/↓ (funcionan igual en cualquier dispositivo,
+// incluido celular: el drag-and-drop nativo no existe en Safari/iOS táctil — mismo criterio que Informes.
+let _actDragSrc = null;
+function _actDragStart(ev, row){
+  _actDragSrc = row;
+  row.classList.add('act-dragging');
+  ev.dataTransfer.effectAllowed = 'move';
+  try{ ev.dataTransfer.setData('text/plain',''); }catch(e){}
+}
+function _actDragOver(ev, row){
+  if(!_actDragSrc || _actDragSrc===row) return;
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+  const rows = [...document.getElementById('acts-editor').querySelectorAll('.act-row')];
+  if(rows.indexOf(_actDragSrc) < rows.indexOf(row)) row.after(_actDragSrc);
+  else row.before(_actDragSrc);
+}
+function _actDragEnd(ev, row){
+  row.classList.remove('act-dragging');
+  row.draggable = false;
+  _actDragSrc = null;
+  _actRefreshMoveBtns();
+}
+function _actMove(btn, dir){
+  const row = btn.closest('.act-row');
+  const ed = document.getElementById('acts-editor');
+  if(dir<0){ const prev = row.previousElementSibling; if(prev) ed.insertBefore(row, prev); }
+  else { const next = row.nextElementSibling; if(next) ed.insertBefore(next, row); }
+  _actRefreshMoveBtns();
+}
+function _actRemoveRow(btn){
+  btn.closest('.act-row').remove();
+  _actRefreshMoveBtns();
+}
+function _actRefreshMoveBtns(){
+  const rows = [...document.querySelectorAll('#acts-editor .act-row')];
+  rows.forEach((r,i)=>{
+    r.querySelector('.act-up').disabled = (i===0);
+    r.querySelector('.act-dn').disabled = (i===rows.length-1);
+  });
+}
+function addActRow(){ document.getElementById('acts-editor').insertAdjacentHTML('beforeend', actRowHtml('', 5)); _actRefreshMoveBtns(); }
 async function saveActs(){
   if(!canSuper() || !_actTipo) return;
   const rows=[...document.querySelectorAll('#acts-editor .act-row')];
