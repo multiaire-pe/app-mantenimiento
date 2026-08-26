@@ -57,6 +57,37 @@ export function periodoLima(base = Date.now()) {
   return { periodo: PERIODOS[Math.floor((mes - 1) / 2)], anio };
 }
 
+// Orden total de un período, para saber cuál va "más adelante" (incluye el año, así
+// NOV-DIC 2026 < ENE-FEB 2027 sin caso especial). Un `periodo` desconocido da -1: nunca
+// gana la comparación, así un dato corrupto en `mtto_periodo_activo` no puede colarse.
+const ordenPeriodo = (anio, periodo) => Number(anio) * 6 + PERIODOS.indexOf(periodo);
+
+// Período efectivo de una sede para el bot: por defecto el del calendario, salvo que la app
+// tenga marcado un adelanto en `mtto_periodo_activo/{sede}` (botón "Usar este período para
+// registros de WhatsApp" de mantenimiento_multiaire.html) — y ese adelanto SOLO vale mientras
+// siga por delante del calendario. En cuanto el calendario natural lo alcanza o lo pasa, quedó
+// obsoleto: se ignora y se borra, para que la app no siga mostrando un "adelanto" que ya es,
+// sencillamente, el período de hoy (nadie tiene que acordarse de apagarlo).
+export async function periodoEfectivo(sede) {
+  const base = periodoLima();
+  if (!sede) return base;
+  const ref = getDb().collection('mtto_periodo_activo').doc(sede);
+  const snap = await ref.get();
+  if (!snap.exists) return base;
+  const { periodo, anio } = snap.data() || {};
+  if (periodo && anio && ordenPeriodo(anio, periodo) > ordenPeriodo(base.anio, base.periodo)) {
+    return { periodo, anio };
+  }
+  await ref.delete().catch(() => {});
+  return base;
+}
+
+// Período ya resuelto y fijado en la sesión (una sola vez, al reconocer el equipo — ver
+// `intentarResolver`), para que la confirmación, el registro y las fotos de UNA misma
+// conversación nunca puedan quedar repartidos en dos períodos. Si faltara (sesión viva desde
+// antes de este cambio) cae al del calendario.
+const periodoDeSesion = (ses) => (ses && ses.periodo && ses.anio) ? { periodo: ses.periodo, anio: ses.anio } : periodoLima();
+
 // "1,3 y 5" / "todas" / "ninguna" → índices 0-based válidos (únicos, ordenados)
 export function parseSeleccion(texto, n) {
   const t = norm(texto);
@@ -156,7 +187,7 @@ const _cacheActs = new Map();
 // equipo con distinta sede/tipo/cliente —o una sin sede y otra con sede— resuelven capas distintas,
 // y con una clave incompleta la segunda se comería la caché de la primera.
 async function _resolverActs(eqId, tipo, cliente, sede, fresco) {
-  const { periodo, anio } = periodoLima();
+  const { periodo, anio } = await periodoEfectivo(sede);
   const ck = `${eqId}|${sede || ''}|${tipo || ''}|${cliente || ''}|${periodo}|${anio}`;
   const hit = _cacheActs.get(ck);
   if (!fresco && hit && Date.now() - hit.ts < 5 * 60 * 1000) return hit;
@@ -230,9 +261,13 @@ function pedirActividades(ses) {
   return `🔧 *${etiquetaEquipo(ses)}*\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\n\nActividades del equipo:\n${listaNumerada(ses.actividades)}\n\n¿Cuáles realizaste? Responde con los números (ej: *1, 3, 5*) o *todas*.\n_(si ese NO es el equipo, escribe *cancelar*)_`;
 }
 function resumenConfirma(ses) {
-  const { periodo, anio } = periodoLima();
+  const { periodo, anio } = periodoDeSesion(ses);
+  // Si el período de la sesión no es el del calendario es porque hay un adelanto activo — se
+  // lo decimos al técnico para que no le extrañe ver un período "futuro" en la confirmación.
+  const cal = periodoLima();
+  const adelantado = periodo !== cal.periodo || anio !== cal.anio;
   const hechas = ses.marcadas.map((i) => `✅ ${ses.actividades[i]}`).join('\n');
-  return `📋 *Confirma el registro*\n❄️ ${etiquetaEquipo(ses)}\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\nPeríodo: ${periodo} ${anio}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
+  return `📋 *Confirma el registro*\n❄️ ${etiquetaEquipo(ses)}\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\nPeríodo: ${periodo} ${anio}${adelantado ? ' (adelantado)' : ''}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
 }
 // En la fase FOTOS ya se registró: se recorren las actividades REGISTRADAS (`ses.hechas`, por nombre).
 function pedirFotos(ses) {
@@ -273,7 +308,7 @@ export function docEjecucion(ses, tarea, plan, tecnico, vigentes, minutos, perio
   };
 }
 async function guardarRegistro(ses, tecnico) {
-  const { periodo, anio } = periodoLima();
+  const { periodo, anio } = periodoDeSesion(ses);
   const clave = `${ses.sede}|${periodo}|${anio}`;
   const db = getDb();
   const ref = db.collection('mantenimiento').doc(clave);
@@ -414,7 +449,7 @@ async function guardarRegistro(ses, tecnico) {
 // carrera de mensajes concurrentes. Sin el corte por sesión, el resumen final sumaba las
 // fotos históricas del equipo en el período (12 en vez de 3 — reporte del usuario).
 async function contarFotos(ses, tarea) {
-  const { periodo, anio } = periodoLima();
+  const { periodo, anio } = periodoDeSesion(ses);
   let q = getDb().collection('mantenimiento_fotos')
     .where('clave', '==', `${ses.sede}|${periodo}|${anio}`)
     .where('eq_id', '==', ses.eqId);
@@ -428,7 +463,7 @@ async function contarFotos(ses, tarea) {
 }
 
 async function guardarFoto(ses, tecnico, imagenB64, mime) {
-  const { periodo, anio } = periodoLima();
+  const { periodo, anio } = periodoDeSesion(ses);
   await getDb().collection('mantenimiento_fotos').add({
     clave: `${ses.sede}|${periodo}|${anio}`,
     eq_id: ses.eqId,
@@ -696,6 +731,12 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
   ses.area = r.equipo.area || '';
   ses.nombreEq = r.equipo.nombre;
   ses.actividades = acts;
+  // Período fijado UNA vez para toda la conversación (confirmación, registro y fotos lo
+  // reusan vía `periodoDeSesion`) — así un adelanto activado a mitad de charla no puede
+  // partir un mismo registro entre dos períodos distintos.
+  const per = await periodoEfectivo(r.sede);
+  ses.periodo = per.periodo;
+  ses.anio = per.anio;
   // ¿El mensaje ya menciona actividades de la lista? → pre-marcarlas y saltar a confirmar
   const tOrig = norm(ses.textoOriginal || '');
   const pre = [];
