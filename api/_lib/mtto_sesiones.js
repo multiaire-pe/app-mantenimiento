@@ -18,6 +18,8 @@ export function nuevaSesion(from, tecnico) {
     sede: null,
     eqId: null,
     tipo: null,
+    periodo: null,         // fijado al resolver sede+equipo (ver periodoEfectivo en mtto.js)
+    anio: null,
     nombreEq: null,
     actividades: [],       // nombres (lista efectiva del equipo, congelada al iniciar)
     marcadas: [],          // índices (0-based) de actividades realizadas

@@ -75,6 +75,11 @@ service cloud.firestore {
     // "este bimestre, a las cortinas de Atocongo hay que hacerles además X". Vence con el período;
     // mismo criterio de permisos que el ajuste por equipo
     match /mtto_actividades_periodo/{doc} { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
+    // adelanto manual de período por sede para el BOT de WhatsApp (doc-id = sede; toggle "Usar
+    // este período para registros de WhatsApp" en Mantenimiento). El bot escribe/borra por Admin
+    // SDK (ignora reglas) cuando el calendario alcanza el adelanto; desde la app, mismo criterio
+    // de permisos que los demás ajustes de período.
+    match /mtto_periodo_activo/{doc} { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
     // fotos de evidencia por actividad (1 doc por foto); borrar una foto propia del
     // período es parte de la operación normal del módulo
     match /mantenimiento_fotos/{doc}     { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
