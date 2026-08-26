@@ -361,6 +361,13 @@ option{background:#fff}
       </div>
     </div>
 
+    <div class="sb-group mant-edit-btn" id="wspPeriodoGroup" style="display:none">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;margin:0">
+        <input type="checkbox" id="chkWspPeriodo" onchange="onToggleWspPeriodo(this.checked)">
+        <span>Usar este período para registros de WhatsApp</span>
+      </label>
+      <div id="wspPeriodoHint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+    </div>
 
     <div class="status-bar" id="statusBar" style="display:none">
       <div class="sb-label" style="margin-bottom:8px">Progreso del período</div>
@@ -1108,6 +1115,15 @@ let currentSede = '', currentPeriodo = '', currentAnio = '';
 let currentUpdatedAt = null, currentUpdatedBy = null;
 let saveTimeout = null;
 
+// ── Adelanto de período para WhatsApp (mismo esquema que periodoEfectivo en api/_lib/mtto.js) ──
+const PERIODOS = ['ENE-FEB','MAR-ABR','MAY-JUN','JUL-AGO','SEP-OCT','NOV-DIC'];
+function periodoCalendario(d = new Date()) { return { periodo: PERIODOS[Math.floor(d.getMonth()/2)], anio: d.getFullYear() }; }
+function periodoSiguiente(periodo, anio) {
+  const i = PERIODOS.indexOf(periodo);
+  return i === PERIODOS.length-1 ? { periodo: PERIODOS[0], anio: anio+1 } : { periodo: PERIODOS[i+1], anio };
+}
+function ordenPeriodo(anio, periodo) { return Number(anio)*6 + PERIODOS.indexOf(periodo); }
+
 // ── INIT ────────────────────────────────────────────────────────────────────
 window.onload = async () => {
   // Año selector
@@ -1232,6 +1248,63 @@ async function loadPeriodo() {
   renderMain();
   loadFotosCounts();  // badges 📷 del período (async, pinta al llegar)
   loadPlanBadges();   // badges 🗓 de actividades planificadas en el itinerario
+  renderWspToggle();  // toggle "usar este período para WhatsApp" (async, pinta al llegar)
+}
+
+// Toggle "Usar este período para registros de WhatsApp" — solo aparece en la pestaña del
+// período del CALENDARIO y la SIGUIENTE (adelantarse más de un bimestre no tiene caso de uso
+// real y aumenta el riesgo de tocar el período equivocado). El puntero vive en
+// `mtto_periodo_activo/{sede}` (mismo doc que lee `periodoEfectivo` en api/_lib/mtto.js):
+// solo puede haber UN período activo por sede, así que activarlo en uno desactiva cualquier
+// otro solo — no son dos banderas independientes que puedan quedar mal sincronizadas.
+async function renderWspToggle() {
+  const grp = document.getElementById('wspPeriodoGroup');
+  const chk = document.getElementById('chkWspPeriodo');
+  const hint = document.getElementById('wspPeriodoHint');
+  if(!currentSede || !currentPeriodo || !currentAnio){ grp.style.display='none'; return; }
+  const cal = periodoCalendario();
+  const sig = periodoSiguiente(cal.periodo, cal.anio);
+  const esActual = currentPeriodo === cal.periodo && Number(currentAnio) === cal.anio;
+  const esSiguiente = currentPeriodo === sig.periodo && Number(currentAnio) === sig.anio;
+  if(!esActual && !esSiguiente){ grp.style.display='none'; return; }
+  grp.style.display = '';
+
+  let d = null;
+  try {
+    const { getDoc, doc } = window.__fb;
+    const snap = await getDoc(doc(window.__db, 'mtto_periodo_activo', currentSede));
+    if(snap.exists) d = snap.data();
+  } catch(e) { /* si falla la lectura, se asume sin adelanto (default = calendario) */ }
+  // Vigente = existe Y sigue por delante del calendario — misma regla que el bot: en cuanto
+  // el calendario lo alcanza, el adelanto quedó obsoleto y el activo real vuelve a ser el de hoy.
+  const vigente = d && d.periodo && d.anio && ordenPeriodo(d.anio, d.periodo) > ordenPeriodo(cal.anio, cal.periodo);
+  const activo = vigente ? (currentPeriodo === d.periodo && Number(currentAnio) === Number(d.anio)) : esActual;
+
+  chk.checked = activo;
+  // El período del calendario no se "apaga" a mano — se corrige desde la pestaña adelantada
+  // (apagando el adelanto ahí). Mantener un solo lugar para desactivar evita el estado raro de
+  // "ninguno prendido".
+  chk.disabled = esActual || !MA.can('editar','mantenimiento');
+  hint.textContent = esActual
+    ? (vigente ? `📌 WhatsApp está guardando en ${d.periodo} ${d.anio} (adelantado) — desactivalo desde esa pestaña para volver acá.` : '')
+    : (activo ? '📌 Los registros de WhatsApp de esta sede se guardan aquí.' : 'Activalo para adelantar los registros de WhatsApp a este período.');
+}
+
+async function onToggleWspPeriodo(checked) {
+  if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); renderWspToggle(); return; }
+  const { setDoc, deleteDoc, doc } = window.__fb;
+  const ref = doc(window.__db, 'mtto_periodo_activo', currentSede);
+  let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
+  try {
+    if(checked){
+      await setDoc(ref, { periodo: currentPeriodo, anio: Number(currentAnio), actualizadoPor: _by, actualizadoAt: new Date().toISOString() });
+      toast('Registros de WhatsApp de ' + currentSede + ' → ' + currentPeriodo + ' ' + currentAnio, 'ok');
+    } else {
+      await deleteDoc(ref);
+      toast('Registros de WhatsApp de ' + currentSede + ' vuelven al período del calendario', 'ok');
+    }
+  } catch(e) { toast('No se pudo actualizar', 'err'); }
+  renderWspToggle();
 }
 
 // ── RENDER ───────────────────────────────────────────────────────────────────
@@ -2470,6 +2543,7 @@ function showEmpty() {
   document.getElementById('toolbar').style.display = 'none';
   document.getElementById('tabNav').style.display = 'none';
   document.getElementById('statusBar').style.display = 'none';
+  document.getElementById('wspPeriodoGroup').style.display = 'none';
   document.getElementById('btnSelEq').disabled = true;
   document.getElementById('content').innerHTML = `
     <div class="empty">
