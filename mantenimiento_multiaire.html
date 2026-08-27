@@ -542,8 +542,12 @@ function _safeObj(val){ if(!val) return {}; if(typeof val==='object') return val
 // solo data-URLs de imagen van a un src
 const _fotoSrc = v => /^data:image\/(jpeg|png|webp|gif);base64,/.test(String(v||'')) ? v : '';
 
-function openActsEditor(){
+async function openActsEditor(){
   if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); return; }
+  // Fresco SIEMPRE: este panel existe para revisar/ajustar la plantilla VIGENTE de un tipo/equipo —
+  // si se abre con lo que había en memoria desde el login, un cambio reciente en Clientes (u otro
+  // ajuste de período/equipo hecho por otra persona) no se vería hasta recargar la página entera.
+  await loadTareas(true);
   // Los tipos salen del INVENTARIO de la sede (la plantilla global ya no existe)
   const tipos = [...new Set((sedeEquipos||[]).map(e=>e.tipo).filter(Boolean))].sort();
   const selT = document.getElementById('act-tipo');
@@ -716,9 +720,10 @@ async function actsGuardar(){
   const sinDiferencias = !quitadas.length && !_acts.agregadas.length;
   const ajuste = sinDiferencias ? null : { agregadas: _acts.agregadas, quitadas };
 
-  // Las listas se leen FRESCAS (la caché de loadTareas dura 30 min) y se validan: el NOMBRE es la
-  // identidad de la actividad, así que dos homónimas serían indistinguibles — marcar una marcaría la
-  // otra. (Los caracteres raros del nombre NO son problema: `actKey` los escapa de forma inyectiva.)
+  // Las listas se leen FRESCAS (`fresco=true` saltea la caché de loadTareas, TAREAS_CACHE_MS) y se
+  // validan: el NOMBRE es la identidad de la actividad, así que dos homónimas serían indistinguibles
+  // — marcar una marcaría la otra. (Los caracteres raros del nombre NO son problema: `actKey` los
+  // escapa de forma inyectiva.)
   await loadTareas(true);
   const viejas = new Map(), nuevas = new Map();
   for(const e of afectados){
@@ -1039,19 +1044,33 @@ async function renderGlobal(){
 
 
 
+// TTL de la caché de plantillas — alineado al del bot (`_cacheActs` en api/_lib/mtto.js, 5 min),
+// para que un cambio de actividades hecho en Clientes (o el ajuste por período/equipo) tarde lo
+// mismo en reflejarse acá que en WhatsApp. Antes eran 30 min: un admin que agregaba una actividad
+// y volvía a Mantenimiento en la misma sesión (misma pestaña, sessionStorage sobrevive F5) seguía
+// viendo la lista vieja — "el bot sí, la app no" era exactamente este desfase de caché.
+const TAREAS_CACHE_MS = 5 * 60 * 1000;
+// Una vez que hubo una carga exitosa, un refresco fallido (offline, blip de red) NO debe vaciar lo
+// que ya se tenía en memoria — ver el catch más abajo.
+let _tareasCargadasOk = false;
+
 // `fresco` saltea la caché: obligatorio antes de guardar un ajuste de actividades (actsGuardar), que
-// necesita saber qué actividades tiene HOY cada equipo. Con una lista de hace 30 minutos —que es lo
-// que puede devolver la caché— el ajuste se calcularía contra un estado que ya no existe.
+// necesita saber qué actividades tiene HOY cada equipo — con una lista vieja el ajuste se calcularía
+// contra un estado que ya no existe. También se usa al ABRIR el editor "⚙️ Ajustar actividades por
+// equipo" (openActsEditor) y al cambiar de sede/período (loadPeriodo): son los dos momentos en que el
+// usuario está mirando justo esta lista, así que tiene que ser la vigente, no la que había en memoria
+// desde que se cargó la página.
 async function loadTareas(fresco) {
-  // Check cache first (valid for 30 minutes)
+  // Check cache first (valid for TAREAS_CACHE_MS)
   const cached = fresco ? null : sessionStorage.getItem('ma_tareas2');
   const cachedTime = sessionStorage.getItem('ma_tareas2_time');
-  if (cached && cachedTime && (Date.now() - parseInt(cachedTime)) < 30 * 60 * 1000) {
+  if (cached && cachedTime && (Date.now() - parseInt(cachedTime)) < TAREAS_CACHE_MS) {
     const d = JSON.parse(cached);
     TAREAS_CLI = d.tareasCli || {};
     MIN_CLI = d.minCli || {};
     ACT_PER = d.actPer || {};
     ACT_EQ = d.actEq || {};
+    _tareasCargadasOk = true;
     return;
   }
   try {
@@ -1077,15 +1096,24 @@ async function loadTareas(fresco) {
     const actEq = {};
     ovSnap.docs.forEach(d => { const o = d.data(); actEq[d.id] = { agregadas: o.agregadas||[], quitadas: o.quitadas||[] }; });
     TAREAS_CLI = tareasCli; MIN_CLI = minCli; ACT_PER = actPer; ACT_EQ = actEq;
+    _tareasCargadasOk = true;
     const _d = { tareasCli, minCli, actPer, actEq };
     sessionStorage.setItem('ma_tareas2', JSON.stringify(_d));
     sessionStorage.setItem('ma_tareas2_time', String(Date.now()));
   } catch(e) {
-    // Sin plantillas no se inventa una lista: los equipos aparecen sin actividades y el checklist
-    // lo dice. Antes había un fallback hardcodeado que se desactualizaba en silencio.
     console.warn('No se pudo cargar tareas_config:', e.message);
-    TAREAS_CLI = {}; MIN_CLI = {}; ACT_PER = {}; ACT_EQ = {};
-    toast('No se pudieron cargar las actividades. Recargá la página.','err');
+    if (_tareasCargadasOk) {
+      // Ya había una carga buena en memoria (p.ej. de la primera vez en esta sesión): un refresco
+      // fallido (offline, blip de red) no debe vaciarla — el usuario sigue viendo lo último conocido
+      // en vez de "sin actividades" de la nada.
+      toast('No se pudo actualizar la lista de actividades — mostrando la última conocida.','err');
+    } else {
+      // Sin ninguna carga previa, sin plantillas no se inventa una lista: los equipos aparecen sin
+      // actividades y el checklist lo dice. Antes había un fallback hardcodeado que se
+      // desactualizaba en silencio.
+      TAREAS_CLI = {}; MIN_CLI = {}; ACT_PER = {}; ACT_EQ = {};
+      toast('No se pudieron cargar las actividades. Recargá la página.','err');
+    }
   }
 }
 
@@ -1244,6 +1272,12 @@ async function loadPeriodo() {
     }
   }
 
+  // Igual que arriba con tareaStatus: las PLANTILLAS (tareas_config + ajustes de período/equipo)
+  // también pueden haber cambiado desde que se cargó la página (p.ej. un admin agregó una actividad
+  // en la app de Clientes) — sin esto, cambiar de sede/período seguía mostrando la lista de
+  // actividades que había en memoria desde el login. `loadTareas()` respeta su propia caché de
+  // TAREAS_CACHE_MS, así que navegar seguido entre sedes no dispara una lectura por cada clic.
+  await loadTareas();
   renderLastUpdated();
   renderMain();
   loadFotosCounts();  // badges 📷 del período (async, pinta al llegar)
