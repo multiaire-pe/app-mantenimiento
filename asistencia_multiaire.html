@@ -65,6 +65,16 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .btn-sm{padding:5px 10px;font-size:11px;border-radius:6px}
 .btn-full{width:100%}
 .btn:disabled{opacity:.45;cursor:not-allowed}
+/* TOGGLE SWITCH (ajuste sábado 8:30→08:45 en exports de Vista E/S) */
+.switch-wrap{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:0 2px}
+.switch-label{font-size:11px;color:var(--muted2);font-weight:600;white-space:nowrap}
+.switch{position:relative;display:inline-block;width:32px;height:18px;flex:none}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.switch-slider{position:absolute;inset:0;background:var(--border2);border-radius:20px;transition:background .15s}
+.switch-slider::before{content:'';position:absolute;width:14px;height:14px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.switch input:checked+.switch-slider{background:var(--blue)}
+.switch input:checked+.switch-slider::before{transform:translateX(14px)}
+.switch input:focus-visible+.switch-slider{outline:2px solid var(--blue);outline-offset:2px}
 /* SIDEBAR COLABS */
 .colabs-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;max-height:220px;overflow-y:auto}
 .colab-btn{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface2);cursor:pointer;transition:all .15s;text-align:left}
@@ -371,6 +381,10 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
         <button class="btn btn-primary" onclick="loadVistaES()">Generar</button>
         <button class="btn" onclick="exportESExcel()">⬇ Excel</button>
         <button class="btn" onclick="exportESPDF()">⬇ PDF</button>
+        <label class="switch-wrap" title="Sábados: muestra el ingreso 8:30 registrado como 08:45 en el PDF/Excel de este reporte — no modifica lo guardado en el sistema ni el cálculo de horas extra. Desactívalo para ver la hora tal cual está registrada.">
+          <span class="switch"><input type="checkbox" id="es-ajuste-sabado" checked><span class="switch-slider"></span></span>
+          <span class="switch-label">Sábado→08:45</span>
+        </label>
       </div>
       <div id="es-content"><div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Selecciona rango y presiona Generar</div></div></div>
     </div>
@@ -776,12 +790,6 @@ function entradaParaReporte(reg,dow,ajustarSabado){
   if(reg.horaEntrada==null)return'';
   if(ajustarSabado&&reg.horaEntrada===8.5&&dow===6)return'08:45';
   return decimalToHora(reg.horaEntrada);
-}
-
-// Texto del confirm() de ajuste de sábado, compartido por exportESPDF/exportESExcel
-// para que no queden dos redacciones divergentes del mismo aviso.
-function confirmarAjusteSabado(tipoExport){
-  return confirm(`Los sábados el ingreso real suele ser a las 8:45, pero el sistema solo registra en bloques de :00/:30 y queda guardado como 8:30.\n\n¿Mostrar en este ${tipoExport} los ingresos de sábado 8:30 como 08:45?\n\nEsto es solo un ajuste de visualización de este reporte: no modifica lo guardado en el sistema ni afecta el cálculo de horas extra.\n\nAceptar = mostrar 08:45 en sábados\nCancelar = mostrar tal cual está registrado (08:30)`);
 }
 
 function calcHorasExtra(entrada,salida,fecha) {
@@ -1462,8 +1470,8 @@ async function exportESPDF() {
   const colabFiltro=document.getElementById('es-colab').value;
   if(!desde||!hasta){toast('Genera la vista primero','err');return;}
   // Ajuste SOLO de este export (ver entradaParaReporte): no toca el sistema ni la
-  // vista en pantalla, ni el cálculo de H.E. — aceptar = mostrar 08:45 en sábados.
-  const ajustarSabado=confirmarAjusteSabado('PDF');
+  // vista en pantalla, ni el cálculo de H.E. — toggle activado = mostrar 08:45 en sábados.
+  const ajustarSabado=document.getElementById('es-ajuste-sabado').checked;
   const snap=await window.__db.collection('asistencia_registros').where('fecha','>=',desde).where('fecha','<=',hasta).get();
   const regs=snap.docs.map(d=>({id:d.id,...d.data()}));
   const colabs=colabFiltro?allColabs.filter(c=>c.id===colabFiltro):allColabs.filter(c=>c.activo);
@@ -1582,8 +1590,8 @@ async function exportESExcel() {
   const colabFiltro=document.getElementById('es-colab').value;
   if(!desde||!hasta){toast('Genera la vista primero','err');return;}
   // Ajuste SOLO de este export (ver entradaParaReporte): no toca el sistema ni la
-  // vista en pantalla, ni el cálculo de H.E. — aceptar = mostrar 08:45 en sábados.
-  const ajustarSabado=confirmarAjusteSabado('Excel');
+  // vista en pantalla, ni el cálculo de H.E. — toggle activado = mostrar 08:45 en sábados.
+  const ajustarSabado=document.getElementById('es-ajuste-sabado').checked;
   const snap=await window.__db.collection('asistencia_registros').where('fecha','>=',desde).where('fecha','<=',hasta).get();
   const regs=snap.docs.map(d=>({id:d.id,...d.data()}));
   const colabs=colabFiltro?allColabs.filter(c=>c.id===colabFiltro):allColabs.filter(c=>c.activo);
