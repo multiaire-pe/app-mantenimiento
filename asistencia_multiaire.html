@@ -65,6 +65,16 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .btn-sm{padding:5px 10px;font-size:11px;border-radius:6px}
 .btn-full{width:100%}
 .btn:disabled{opacity:.45;cursor:not-allowed}
+/* TOGGLE SWITCH (ajuste sábado 8:30→08:45 en exports de Vista E/S) */
+.switch-wrap{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:0 2px}
+.switch-label{font-size:11px;color:var(--muted2);font-weight:600;white-space:nowrap}
+.switch{position:relative;display:inline-block;width:32px;height:18px;flex:none}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.switch-slider{position:absolute;inset:0;background:var(--border2);border-radius:20px;transition:background .15s}
+.switch-slider::before{content:'';position:absolute;width:14px;height:14px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.switch input:checked+.switch-slider{background:var(--blue)}
+.switch input:checked+.switch-slider::before{transform:translateX(14px)}
+.switch input:focus-visible+.switch-slider{outline:2px solid var(--blue);outline-offset:2px}
 /* SIDEBAR COLABS */
 .colabs-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;max-height:220px;overflow-y:auto}
 .colab-btn{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;background:var(--surface2);cursor:pointer;transition:all .15s;text-align:left}
@@ -371,6 +381,10 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
         <button class="btn btn-primary" onclick="loadVistaES()">Generar</button>
         <button class="btn" onclick="exportESExcel()">⬇ Excel</button>
         <button class="btn" onclick="exportESPDF()">⬇ PDF</button>
+        <label class="switch-wrap" title="Sábados: muestra el ingreso 8:30 registrado como 08:45 en el PDF/Excel de este reporte — no modifica lo guardado en el sistema ni el cálculo de horas extra. Desactívalo para ver la hora tal cual está registrada.">
+          <span class="switch"><input type="checkbox" id="es-ajuste-sabado" checked><span class="switch-slider"></span></span>
+          <span class="switch-label">Sábado→08:45</span>
+        </label>
       </div>
       <div id="es-content"><div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">Selecciona rango y presiona Generar</div></div></div>
     </div>
@@ -763,6 +777,20 @@ function setDefaultRanges() {
 
 function horaToDecimal(s){if(!s||s==='—')return null;const[h,m]=s.split(':').map(Number);return h+m/60;}
 function decimalToHora(d){if(d===null||d===undefined)return'—';const h=Math.floor(d),m=Math.round((d-h)*60);return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');}
+
+// Ajuste de visualización SOLO para los exports PDF/Excel de Vista E/S: el sistema
+// redondea la hora a bloques de :00/:30, así que un ingreso real de sábado a las 8:45
+// queda guardado como 8.5 (08:30) — no es un error de marcado. Si el usuario lo acepta
+// en el confirm() de cada export, esos ingresos se MUESTRAN como 08:45 en ese reporte.
+// No toca el dato en Firestore (reg.horaEntrada sigue en 8.5) ni el cálculo de H.E.
+// (getHeValue/calcHorasExtra siempre leen reg.horaEntrada crudo) — cosmético y acotado
+// a sábado + exactamente 8.5. Recibe `dow` (día de semana de `f`, 6=sábado) en vez de
+// recalcularlo: el caller ya lo tiene calculado para esa misma fecha.
+function entradaParaReporte(reg,dow,ajustarSabado){
+  if(reg.horaEntrada==null)return'';
+  if(ajustarSabado&&reg.horaEntrada===8.5&&dow===6)return'08:45';
+  return decimalToHora(reg.horaEntrada);
+}
 
 function calcHorasExtra(entrada,salida,fecha) {
   if(entrada===null||salida===null||entrada===undefined||salida===undefined)return null;
@@ -1441,6 +1469,9 @@ async function exportESPDF() {
   const hasta=document.getElementById('es-hasta').value;
   const colabFiltro=document.getElementById('es-colab').value;
   if(!desde||!hasta){toast('Genera la vista primero','err');return;}
+  // Ajuste SOLO de este export (ver entradaParaReporte): no toca el sistema ni la
+  // vista en pantalla, ni el cálculo de H.E. — toggle activado = mostrar 08:45 en sábados.
+  const ajustarSabado=document.getElementById('es-ajuste-sabado').checked;
   const snap=await window.__db.collection('asistencia_registros').where('fecha','>=',desde).where('fecha','<=',hasta).get();
   const regs=snap.docs.map(d=>({id:d.id,...d.data()}));
   const colabs=colabFiltro?allColabs.filter(c=>c.id===colabFiltro):allColabs.filter(c=>c.activo);
@@ -1461,7 +1492,7 @@ async function exportESPDF() {
     // penalización ni H.E., aunque exista un registro suelto en esa fecha.
     if(fueraDeVigencia(c,f))return{noLaboral:true,cels:['','','',null]};
     const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
-    if(reg){const he=getHeValue(reg);return{noLaboral:noLab,cels:[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val]};}
+    if(reg){const he=getHeValue(reg);return{noLaboral:noLab,cels:[reg.estado||'A',entradaParaReporte(reg,dow,ajustarSabado),reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val]};}
     if(noLab)return{noLaboral:true,cels:['','','',null]};
     if(f<=hoy)return{ausente:true,cels:['X','','',heNoShow(f)]};
     return{cels:['','','',null]};
@@ -1558,6 +1589,9 @@ async function exportESExcel() {
   const hasta=document.getElementById('es-hasta').value;
   const colabFiltro=document.getElementById('es-colab').value;
   if(!desde||!hasta){toast('Genera la vista primero','err');return;}
+  // Ajuste SOLO de este export (ver entradaParaReporte): no toca el sistema ni la
+  // vista en pantalla, ni el cálculo de H.E. — toggle activado = mostrar 08:45 en sábados.
+  const ajustarSabado=document.getElementById('es-ajuste-sabado').checked;
   const snap=await window.__db.collection('asistencia_registros').where('fecha','>=',desde).where('fecha','<=',hasta).get();
   const regs=snap.docs.map(d=>({id:d.id,...d.data()}));
   const colabs=colabFiltro?allColabs.filter(c=>c.id===colabFiltro):allColabs.filter(c=>c.activo);
@@ -1574,7 +1608,7 @@ async function exportESExcel() {
     // penalización ni H.E., aunque exista un registro suelto en esa fecha.
     if(fueraDeVigencia(c,f))return{noLaboral:true,cels:['','','',null]};
     const reg=regs.find(r=>r.colabId===c.id&&r.fecha===f);
-    if(reg){const he=getHeValue(reg);return{noLaboral:noLab,cels:[reg.estado||'A',reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'',reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:'']};}
+    if(reg){const he=getHeValue(reg);return{noLaboral:noLab,cels:[reg.estado||'A',entradaParaReporte(reg,dow,ajustarSabado),reg.horaSalida!=null?decimalToHora(reg.horaSalida):'',he.val!=null?he.val:'']};}
     if(noLab)return{noLaboral:true,cels:['','','',null]};
     if(f<=hoy)return{ausente:true,cels:['X','','',heNoShow(f)]};
     return{cels:['','','',null]};
