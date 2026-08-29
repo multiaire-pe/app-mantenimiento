@@ -80,6 +80,17 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 .btn-sm{padding:5px 10px;font-size:11px}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 
+/* TOGGLE SWITCH (título de actividad debajo de cada foto del reporte fotográfico) */
+.switch-wrap{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:0 2px}
+.switch-label{font-size:11px;color:var(--muted2);font-weight:600;white-space:nowrap}
+.switch{position:relative;display:inline-block;width:32px;height:18px;flex:none}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.switch-slider{position:absolute;inset:0;background:var(--border2);border-radius:20px;transition:background .15s}
+.switch-slider::before{content:'';position:absolute;width:14px;height:14px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.switch input:checked+.switch-slider{background:var(--blue)}
+.switch input:checked+.switch-slider::before{transform:translateX(14px)}
+.switch input:focus-visible+.switch-slider{outline:2px solid var(--blue);outline-offset:2px}
+
 /* ── PAGE ─── */
 .page{flex:1;padding:24px;max-width:1100px;width:100%;margin:0 auto}
 .card{background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
@@ -302,6 +313,10 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
         <select id="f-anio" onchange="preparar()"></select>
       </div>
       <button class="btn btn-primary" id="btn-gen" onclick="generar()" disabled>📄 Generar informe (.docx)</button>
+      <label class="switch-wrap" title="Reporte fotográfico: por defecto las fotos ocupan toda la celda, sin texto debajo. Actívalo para volver a mostrar el nombre de la actividad debajo de cada foto (deja menos espacio a la imagen).">
+        <span class="switch"><input type="checkbox" id="f-titulos-fotos"><span class="switch-slider"></span></span>
+        <span class="switch-label">Títulos en fotos</span>
+      </label>
     </div>
   </div>
 
@@ -720,6 +735,12 @@ async function generar() {
   try {
     const D = await cargarDocx();
     const d = datos;
+    // Reporte fotográfico: por defecto la foto ocupa TODA la celda (márgenes mínimos + imagen
+    // grande) y sin el nombre de la actividad debajo. El toggle "Títulos en fotos" vuelve al
+    // tamaño/margen anteriores para dejarle espacio a esa línea de texto.
+    const conTitulosFotos = document.getElementById('f-titulos-fotos').checked;
+    const fotoMargen = conTitulosFotos ? 60 : 20;
+    const fotoTransform = conTitulosFotos ? { width: 135, height: 100 } : { width: 148, height: 150 };
     const AZUL = '2F5FB4', BORDE = 'B9C6DD', FALTA = 'FFF5E0', GRIS = 'EEF2FA';
     const bordes = () => ({ top: { style: D.BorderStyle.SINGLE, size: 4, color: BORDE }, bottom: { style: D.BorderStyle.SINGLE, size: 4, color: BORDE }, left: { style: D.BorderStyle.SINGLE, size: 4, color: BORDE }, right: { style: D.BorderStyle.SINGLE, size: 4, color: BORDE } });
     const p = (text, o = {}) => new D.Paragraph({ alignment: o.align, spacing: o.spacing, children: [new D.TextRun({ text: String(text == null ? '' : text), bold: o.bold, italics: o.italics, size: o.size || 19, color: o.color, font: 'Aptos' })] });
@@ -770,9 +791,10 @@ async function generar() {
           ...eqs.map((e) => {
             const fs = fotosElegidas(e.eq_id || e.id).map((f) => ({ ...f, bytes: b64aBytes(f.foto) })).filter((f) => f.bytes);
             if (fs.length) algunaFoto = true;
-            const celda = (f) => new D.TableCell({ borders: bordes(), margins: { top: 60, bottom: 60, left: 60, right: 60 },
+            const celda = (f) => new D.TableCell({ borders: bordes(), margins: { top: fotoMargen, bottom: fotoMargen, left: fotoMargen, right: fotoMargen },
               shading: f ? undefined : { type: D.ShadingType.CLEAR, fill: FALTA },
-              children: f ? [new D.Paragraph({ alignment: D.AlignmentType.CENTER, children: [new D.ImageRun({ data: f.bytes, transformation: { width: 135, height: 100 } })] }), p(f.tarea || '', { size: 14, color: '666666', align: D.AlignmentType.CENTER })]
+              children: f ? [new D.Paragraph({ alignment: D.AlignmentType.CENTER, spacing: { after: 0 }, children: [new D.ImageRun({ data: f.bytes, transformation: fotoTransform })] }),
+                             ...(conTitulosFotos ? [p(f.tarea || '', { size: 14, color: '666666', align: D.AlignmentType.CENTER })] : [])]
                           : [p('sin foto', { size: 16, color: 'B07D1A', align: D.AlignmentType.CENTER, spacing: { before: 300, after: 300 } })] });
             return new D.TableRow({ children: [
               new D.TableCell({ shading: { type: D.ShadingType.CLEAR, fill: GRIS }, borders: bordes(), margins: { top: 60, bottom: 60, left: 100, right: 60 },
