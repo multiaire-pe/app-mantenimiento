@@ -594,12 +594,13 @@ async function saveItem(){
   const SEDE_MAP={'ATOCONGO':'ATO','CHORRILLOS':'CHO','COMAS':'COM','JOCKEY PLAZA':'JOC','LOS OLIVOS':'LOL','MAC PLAZA NORTE':'MAC','MIRAFLORES':'MIR','PLAZA NORTE':'PLN','PRIMAVERA':'PRI','SAN JUAN DE LURIGANCHO':'SJL','SAN MIGUEL':'SMI','SANTA ANITA':'SAN'};
   const TIPO_MAP={'CHILLER':'CHI','CORTINA DE AIRE':'CAI','ESCALERA':'ESC','EXTRACTOR':'EXT','FAN COIL':'FAN','INYECTOR':'INY','PAQUETE':'RFT','SPLIT CONSOLA':'SPL','SPLIT DUCTO':'SDU','SPLIT DECORATIVO':'SDC','TVR MINI PLUS':'TVR','UMA':'UMA','UNIDAD CONDENSADOR':'UCO','UNIDAD EVAPORADORA':'UEV',
     // Tipos nuevos de TOTTUS (2026-08-31): sin esto el fallback substring(0,3) colisiona
-    // con tipos ya existentes de Ripley — 'SPLIT PORTATIL' caería en 'SPL' (=SPLIT CONSOLA) y
-    // los 4 subtipos de extractor caerían todos en 'EXT' (=EXTRACTOR genérico), mezclando su
-    // correlativo de eq_id con equipos de otro tipo. 'EXTRACTOR DE CO' (extractor de monóxido
-    // de carbono, típico de sótano/estacionamiento) se mantiene como tipo propio, distinto de
-    // CO2 — no se asume que sea un typo, son sistemas de extracción distintos.
-    'BOMBA DE AGUA HELADA PRIMARIA':'BAP','BOMBA DE AGUA HELADA SECUNDARIA':'BAS','SPLIT PORTATIL':'SPP','VRV':'VRV','EXTRACTOR DE GRASA':'EGR','EXTRACTOR DE HUMO':'EHU','EXTRACTOR DE CO2':'CO2','EXTRACTOR DE CO':'ECO',
+    // con tipos ya existentes de Ripley — 'SPLIT PORTATIL' caería en 'SPL' (=SPLIT CONSOLA).
+    // Decisión del cliente + confirmada con el técnico (2026-08-31): los extractores de
+    // grasa/humo/CO2/CO NO son un tipo propio — son 'EXTRACTOR' (VEX) a secas, con el subtipo
+    // anotado en el nombre del equipo (ej. "Extractor - Choripan (Grasa)"). Mismo criterio para
+    // las bombas: 'BOMBA DE AGUA HELADA' es una sola categoría para primaria y secundaria (el
+    // Excel ya distingue "primaria"/"secundaria" en el propio nombre del equipo).
+    'BOMBA DE AGUA HELADA':'BAH','SPLIT PORTATIL':'SPP','VRV':'VRV',
     // El variador de frecuencia es el tablero que gobierna una bomba (o un motor en general),
     // pero es un equipo aparte: falla por electrónica/parámetros, no por sello/rodamiento como
     // la bomba que controla — necesita su propia checklist, no la de la bomba.
