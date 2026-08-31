@@ -592,7 +592,19 @@ async function saveItem(){
   btn.disabled=true;btn.innerHTML='<span class="spin"></span> Guardando...';
   // Auto-generate EQ_ID for new items
   const SEDE_MAP={'ATOCONGO':'ATO','CHORRILLOS':'CHO','COMAS':'COM','JOCKEY PLAZA':'JOC','LOS OLIVOS':'LOL','MAC PLAZA NORTE':'MAC','MIRAFLORES':'MIR','PLAZA NORTE':'PLN','PRIMAVERA':'PRI','SAN JUAN DE LURIGANCHO':'SJL','SAN MIGUEL':'SMI','SANTA ANITA':'SAN'};
-  const TIPO_MAP={'CHILLER':'CHI','CORTINA DE AIRE':'CAI','ESCALERA':'ESC','EXTRACTOR':'EXT','FAN COIL':'FAN','INYECTOR':'INY','PAQUETE':'RFT','SPLIT CONSOLA':'SPL','SPLIT DUCTO':'SDU','SPLIT DECORATIVO':'SDC','TVR MINI PLUS':'TVR','UMA':'UMA','UNIDAD CONDENSADOR':'UCO','UNIDAD EVAPORADORA':'UEV'};
+  const TIPO_MAP={'CHILLER':'CHI','CORTINA DE AIRE':'CAI','ESCALERA':'ESC','EXTRACTOR':'EXT','FAN COIL':'FAN','INYECTOR':'INY','PAQUETE':'RFT','SPLIT CONSOLA':'SPL','SPLIT DUCTO':'SDU','SPLIT DECORATIVO':'SDC','TVR MINI PLUS':'TVR','UMA':'UMA','UNIDAD CONDENSADOR':'UCO','UNIDAD EVAPORADORA':'UEV',
+    // Tipos nuevos de TOTTUS (2026-08-31): sin esto el fallback substring(0,3) colisiona
+    // con tipos ya existentes de Ripley — 'SPLIT PORTATIL' caería en 'SPL' (=SPLIT CONSOLA).
+    // Decisión del cliente + confirmada con el técnico (2026-08-31): los extractores de
+    // grasa/humo/CO2/CO NO son un tipo propio — son 'EXTRACTOR' (VEX) a secas, con el subtipo
+    // anotado en el nombre del equipo (ej. "Extractor - Choripan (Grasa)"). Mismo criterio para
+    // las bombas: 'BOMBA DE AGUA HELADA' es una sola categoría para primaria y secundaria (el
+    // Excel ya distingue "primaria"/"secundaria" en el propio nombre del equipo).
+    'BOMBA DE AGUA HELADA':'BAH','SPLIT PORTATIL':'SPP','VRV':'VRV',
+    // El variador de frecuencia es el tablero que gobierna una bomba (o un motor en general),
+    // pero es un equipo aparte: falla por electrónica/parámetros, no por sello/rodamiento como
+    // la bomba que controla — necesita su propia checklist, no la de la bomba.
+    'VARIADOR DE FRECUENCIA':'VFR'};
   const row=['',sede,cliente_val,tipo,desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim(),document.getElementById('f_capacidad').value.trim()];
   try{
     if(editRow!==null){
