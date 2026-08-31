@@ -230,6 +230,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 <div class="app">
   <div class="sidebar">
     <div class="sec">Filtros</div>
+    <div class="fg"><div class="fl">Tienda</div><select id="fTienda" onchange="af()"><option value="">Todas las tiendas</option></select></div>
     <div class="fg"><div class="fl">Sede</div><div class="sdd-wrap"><input type="text" id="fSede" placeholder="Todas — escribe para buscar" autocomplete="off" oninput="af()"><div class="sdd" id="dd_fSede"></div></div></div>
     <div class="fg"><div class="fl">Tipo de equipo</div><select id="fEquipo" onchange="af()"><option value="">Todos los tipos</option></select></div>
     <div class="fg"><div class="fl">Área</div><select id="fArea" onchange="af()"><option value="">Todas las áreas</option></select></div>
@@ -313,6 +314,14 @@ let data=[], filtered=[], selected=new Set(), sortCol='sede', sortAsc=true, edit
 // sede canónica → cliente (maestros pisa a datos): al guardar, el cliente se
 // deriva de la sede elegida en vez de hardcodear RIPLEY (hallazgo del Council)
 const sedeCliente={};
+// 'cliente|sede' → etiqueta de tienda (maestros_tiendas.tienda). A diferencia de sedeCliente
+// (que solo guarda UN cliente por sede — se pisa si dos clientes comparten sede), esta va
+// llaveada por el par exacto: necesario para el filtro de Tienda del sidebar.
+const tiendaCliSede={};
+function tiendaDe(r){
+  const k=(r.cliente||'')+'|'+(r.sede||'');
+  return tiendaCliSede[k] || ((r.cliente||'')+' '+(r.sede||'')).trim();
+}
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function gasGet() {
@@ -435,6 +444,9 @@ function pf() {
   // el cliente se toma tal cual (antes se inventaba 'RIPLEY'): es la llave que resuelve la
   // plantilla de actividades del equipo — asignarle otro cliente le cambiaría las actividades
   data.forEach(r=>{ if(r.sede && !(r.sede in sedeCliente)) sedeCliente[r.sede]=r.cliente||''; });
+  // fallback de tienda hasta que carguen maestros (que sí traen la etiqueta real, ej. "RIPLEY X")
+  data.forEach(r=>{ const k=(r.cliente||'')+'|'+(r.sede||''); if(r.sede && !(k in tiendaCliSede)) tiendaCliSede[k]=((r.cliente||'')+' '+(r.sede||'')).trim(); });
+  fs('fTienda', [...new Set(data.map(tiendaDe).filter(Boolean))].sort(), 'Todas las tiendas');
 
   // Tipo — filtro + selector del formulario. Los tipos salen del INVENTARIO (es la fuente de
   // verdad de qué equipos hay); antes venían de las plantillas globales de `tareas_config`, que
@@ -450,7 +462,8 @@ function fs(id,arr,ph){const el=document.getElementById(id),cur=el.value;const a
 function dl(id,arr){document.getElementById(id).innerHTML=arr.map(v=>'<option value="'+esc(v)+'">').join('');}
 
 function af() {
-  const sede=document.getElementById('fSede').value.toLowerCase().trim(), equipo=document.getElementById('fEquipo').value,
+  const tienda=document.getElementById('fTienda').value,
+        sede=document.getElementById('fSede').value.toLowerCase().trim(), equipo=document.getElementById('fEquipo').value,
         area=document.getElementById('fArea').value, marca=document.getElementById('fMarca').value,
         q=document.getElementById('search').value.toLowerCase().trim();
   // Sede: si el texto coincide EXACTAMENTE con una sede existente (la elegiste del dropdown),
@@ -459,6 +472,7 @@ function af() {
   // skip = campo que se excluye, para calcular las opciones en cascada de ese campo.
   const sedeExacta = !!sede && data.some(r => (r.sede||'').toLowerCase()===sede);
   const pass=(r,skip)=>{
+    if(skip!=='tienda'&&tienda&&tiendaDe(r)!==tienda)return false;
     if(skip!=='sede'&&sede){const s=(r.sede||'').toLowerCase();if(sedeExacta?s!==sede:!s.includes(sede))return false;}
     if(skip!=='equipo'&&equipo&&r.equipo!==equipo)return false;
     if(skip!=='area'&&area&&r.area!==area)return false;
@@ -469,6 +483,7 @@ function af() {
   filtered=data.filter(r=>pass(r,null));
   // Filtros en cascada: cada control ofrece solo los valores coherentes con los DEMÁS filtros
   const opts=f=>[...new Set(data.filter(r=>pass(r,f)).map(r=>r[f]).filter(Boolean))].sort();
+  fs('fTienda',[...new Set(data.filter(r=>pass(r,'tienda')).map(tiendaDe).filter(Boolean))].sort(),'Todas las tiendas');
   fs('fEquipo',opts('equipo'),'Todos los tipos');
   fs('fArea',opts('area'),'Todas las áreas');
   fs('fMarca',opts('marca'),'Todas las marcas');
@@ -480,7 +495,7 @@ function af() {
 }
 
 function sb(col){if(sortCol===col)sortAsc=!sortAsc;else{sortCol=col;sortAsc=true;}af();}
-function rf(){['fSede','fEquipo','fArea','fMarca'].forEach(id=>document.getElementById(id).value='');document.getElementById('search').value='';af();}
+function rf(){['fTienda','fSede','fEquipo','fArea','fMarca'].forEach(id=>document.getElementById(id).value='');document.getElementById('search').value='';af();}
 
 // ── TABLE ─────────────────────────────────────────────────────────────────────
 function rt() {
@@ -516,7 +531,12 @@ async function cargarSedesMaestros(){
     const tiendas = mSnap.docs.map(d => d.data()).filter(t => String(t.activo).trim().toUpperCase() !== 'NO');
     sedesForm = [...new Set(tiendas.map(t => t.sede).filter(Boolean))].sort();
     if (sedesForm.length) sddGroups.f_sede = sddGrupos(tiendas.map(t=>({cliente:t.cliente, sede:t.sede})));
-    tiendas.forEach(t=>{ if(t.sede) sedeCliente[t.sede]=t.cliente||''; });  // maestros pisa a datos
+    tiendas.forEach(t=>{
+      if(!t.sede) return;
+      sedeCliente[t.sede]=t.cliente||'';  // maestros pisa a datos
+      if(t.cliente) tiendaCliSede[t.cliente+'|'+t.sede] = t.tienda || (t.cliente+' '+t.sede);
+    });
+    af();  // re-pinta el filtro de Tienda con la etiqueta real (ej. "RIPLEY X") en vez del fallback
   }catch(e){ /* fallback: el dropdown del form ya trae las sedes de los datos (pf) */ }
 }
 
