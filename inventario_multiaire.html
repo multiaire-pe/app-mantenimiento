@@ -599,7 +599,11 @@ async function saveItem(){
     // correlativo de eq_id con equipos de otro tipo. 'EXTRACTOR DE CO' (extractor de monóxido
     // de carbono, típico de sótano/estacionamiento) se mantiene como tipo propio, distinto de
     // CO2 — no se asume que sea un typo, son sistemas de extracción distintos.
-    'BOMBA DE AGUA HELADA PRIMARIA':'BAP','BOMBA DE AGUA HELADA SECUNDARIA':'BAS','SPLIT PORTATIL':'SPP','VRV':'VRV','EXTRACTOR DE GRASA':'EGR','EXTRACTOR DE HUMO':'EHU','EXTRACTOR DE CO2':'CO2','EXTRACTOR DE CO':'ECO'};
+    'BOMBA DE AGUA HELADA PRIMARIA':'BAP','BOMBA DE AGUA HELADA SECUNDARIA':'BAS','SPLIT PORTATIL':'SPP','VRV':'VRV','EXTRACTOR DE GRASA':'EGR','EXTRACTOR DE HUMO':'EHU','EXTRACTOR DE CO2':'CO2','EXTRACTOR DE CO':'ECO',
+    // El variador de frecuencia es el tablero que gobierna una bomba (o un motor en general),
+    // pero es un equipo aparte: falla por electrónica/parámetros, no por sello/rodamiento como
+    // la bomba que controla — necesita su propia checklist, no la de la bomba.
+    'VARIADOR DE FRECUENCIA':'VFR'};
   const row=['',sede,cliente_val,tipo,desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim(),document.getElementById('f_capacidad').value.trim()];
   try{
     if(editRow!==null){
