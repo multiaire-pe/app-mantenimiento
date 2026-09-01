@@ -503,7 +503,7 @@ function plantillaDeEq(eq){
 // Global recorre todas las sedes con el mismo período.
 function clavePeriodoDe(eq, periodo, anio){
   const p = periodo || currentPeriodo, a = anio || currentAnio;
-  return (eq.sede && eq.tipo) ? `${eq.sede}|${p}|${a}|${eq.tipo}` : '';
+  return (eq.sede && eq.tipo) ? `${sedeEfectiva(eq.sede, eq.cliente)}|${p}|${a}|${eq.tipo}` : '';
 }
 // Aplica un ajuste {agregadas, quitadas} sobre una lista base. Devuelve arrays paralelos.
 function componerActs(base, min, ajuste){
@@ -1139,6 +1139,38 @@ let seleccionados = {};  // eq_id → true (equipos seleccionados para este peri
 // Los datos anteriores a la migración usan claves numéricas; se siguen LEYENDO (ver tareaHecha) para
 // no perder el histórico, y se normalizan a nombre la primera vez que se escribe sobre ese equipo.
 let tareaStatus = {};
+
+// ── Sedes compartidas por NOMBRE entre clientes (JOCKEY PLAZA y MIRAFLORES existen para RIPLEY
+// Y TOTTUS) — fix parcial 2026-09-01. `sedeEfectiva` da la clave real de trabajo: para RIPLEY (o
+// cualquier sede no compartida) es la sede tal cual, SIN CAMBIOS — cero riesgo sobre su histórico,
+// no requiere migrar nada. Para un cliente NO-RIPLEY en una sede compartida, usa "SEDE (CLIENTE)"
+// — un nombre de sede propio y distinto, así que arranca con historial vacío en Firestore (correcto:
+// nunca tuvo uno). Se usa "SEDE (CLIENTE)" y NO "SEDE|CLIENTE": el "|" es el separador reservado de
+// TODA clave de este módulo (sede|periodo|año|tipo) — varios lugares hacen `.split('|')` asumiendo
+// que la sede no trae uno (ver `_mttoKey().split('|')` en loadPlanBadges); un "(...)" no lo rompe.
+// SOLO Miraflores por ahora: Jockey Plaza queda IGUAL que hoy A PROPÓSITO — hay técnicos ahí en vivo
+// por WhatsApp al momento de este cambio; se arregla después, coordinado, sin nadie conectado.
+const SEDES_COMPARTIDAS_PENDIENTES = new Set(['MIRAFLORES']);
+function sedeEfectiva(sede, cliente){
+  if(SEDES_COMPARTIDAS_PENDIENTES.has(sede) && cliente && cliente !== 'RIPLEY') return `${sede} (${cliente})`;
+  return sede;
+}
+// Inverso de sedeEfectiva: separa una clave de sede en {sede, cliente} (cliente='' si no era compuesta).
+function _parseClaveSede(clave){
+  const m = /^(.*) \(([^)]+)\)$/.exec(String(clave||''));
+  return m ? { sede: m[1], cliente: m[2] } : { sede: clave, cliente: '' };
+}
+// Equipos de una clave de sede (compuesta o plana) — reemplaza el filtro directo por e.sede
+// que mezclaba RIPLEY y TOTTUS en las sedes compartidas.
+function equiposDeClaveSede(clave){
+  const { sede, cliente } = _parseClaveSede(clave);
+  if(cliente) return allEquipos.filter(e => e.sede === sede && e.cliente === cliente);
+  // Clave PLANA en una sede compartida = la de RIPLEY específicamente (sedeEfectiva le deja su
+  // clave de siempre) — NO "cualquier cliente con ese nombre de sede", que era el bug original.
+  if(SEDES_COMPARTIDAS_PENDIENTES.has(sede)) return allEquipos.filter(e => e.sede === sede && e.cliente === 'RIPLEY');
+  return allEquipos.filter(e => e.sede === sede);
+}
+
 let currentSede = '', currentPeriodo = '', currentAnio = '';
 let currentUpdatedAt = null, currentUpdatedBy = null;
 let saveTimeout = null;
@@ -1203,7 +1235,10 @@ async function loadInventario() {
       grp.label = cliente;
       [...byCliente[cliente]].sort().forEach(s => {
         const o = document.createElement('option');
-        o.value = s; o.textContent = s;
+        // value = clave EFECTIVA (sedeEfectiva): para RIPLEY o sedes no compartidas, la sede tal
+        // cual (sin cambios); para un cliente no-RIPLEY en sede compartida (hoy solo MIRAFLORES),
+        // "SEDE (CLIENTE)" — clave propia, no colisiona con la de RIPLEY.
+        o.value = sedeEfectiva(s, cliente); o.textContent = s;
         grp.appendChild(o);
       });
       sel.appendChild(grp);
@@ -1220,7 +1255,7 @@ async function loadInventario() {
 function onSedeChange() {
   currentSede = document.getElementById('selSede').value;
   if(!currentSede){ showEmpty(); return; }
-  sedeEquipos = allEquipos.filter(e => e.sede === currentSede);
+  sedeEquipos = equiposDeClaveSede(currentSede);
   document.getElementById('btnSelEq').disabled = false;
   currentUpdatedAt = null; currentUpdatedBy = null;
   renderLastUpdated();

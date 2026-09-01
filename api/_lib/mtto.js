@@ -13,6 +13,20 @@ import { nuevaSesion, getSesion, guardarSesion, limpiarSesion } from './mtto_ses
 // ── Helpers puros (testeables) ────────────────────────────────────────────────
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+// Sedes compartidas por NOMBRE entre clientes (JOCKEY PLAZA y MIRAFLORES existen para RIPLEY Y
+// TOTTUS) — fix parcial 2026-09-01, MISMO criterio y MISMA clave que `mantenimiento_multiaire.html`
+// (`sedeEfectiva`), para que lo que la app escribe/lee y lo que el bot escribe/lee sea el mismo doc.
+// RIPLEY (o cualquier sede no compartida) → sede tal cual, SIN CAMBIOS, cero riesgo sobre su
+// histórico. Un cliente NO-RIPLEY en sede compartida → "SEDE (CLIENTE)" (NO "SEDE|CLIENTE": el "|"
+// es el separador reservado de toda clave sede|periodo|año|tipo de este módulo).
+// SOLO Miraflores por ahora: Jockey Plaza queda IGUAL que hoy A PROPÓSITO — hay técnicos ahí en
+// vivo por WhatsApp al momento de este cambio; se arregla después, coordinado, sin nadie conectado.
+const SEDES_COMPARTIDAS_PENDIENTES = new Set(['MIRAFLORES']);
+export function sedeEfectiva(sede, cliente) {
+  if (SEDES_COMPARTIDAS_PENDIENTES.has(sede) && cliente && cliente !== 'RIPLEY') return `${sede} (${cliente})`;
+  return sede;
+}
+
 // mantenimiento/mtto/preventivo — lookahead en vez de \b por las tildes del español
 export const RE_MTTO = /(mantenimientos?|mtto\.?|preventiv[oa]s?)(?![a-z])/i;
 
@@ -68,10 +82,10 @@ const ordenPeriodo = (anio, periodo) => Number(anio) * 6 + PERIODOS.indexOf(peri
 // siga por delante del calendario. En cuanto el calendario natural lo alcanza o lo pasa, quedó
 // obsoleto: se ignora y se borra, para que la app no siga mostrando un "adelanto" que ya es,
 // sencillamente, el período de hoy (nadie tiene que acordarse de apagarlo).
-export async function periodoEfectivo(sede) {
+export async function periodoEfectivo(sede, cliente) {
   const base = periodoLima();
   if (!sede) return base;
-  const ref = getDb().collection('mtto_periodo_activo').doc(sede);
+  const ref = getDb().collection('mtto_periodo_activo').doc(sedeEfectiva(sede, cliente));
   const snap = await ref.get();
   if (!snap.exists) return base;
   const { periodo, anio } = snap.data() || {};
@@ -187,7 +201,7 @@ const _cacheActs = new Map();
 // equipo con distinta sede/tipo/cliente —o una sin sede y otra con sede— resuelven capas distintas,
 // y con una clave incompleta la segunda se comería la caché de la primera.
 async function _resolverActs(eqId, tipo, cliente, sede, fresco) {
-  const { periodo, anio } = await periodoEfectivo(sede);
+  const { periodo, anio } = await periodoEfectivo(sede, cliente);
   const ck = `${eqId}|${sede || ''}|${tipo || ''}|${cliente || ''}|${periodo}|${anio}`;
   const hit = _cacheActs.get(ck);
   if (!fresco && hit && Date.now() - hit.ts < 5 * 60 * 1000) return hit;
@@ -197,7 +211,7 @@ async function _resolverActs(eqId, tipo, cliente, sede, fresco) {
   // configuraron el tipo, se queda SIN actividades y el caller lo dice explícito (mejor que
   // registrar contra una lista que no es la que el cliente contrató).
   const clavePl = cliente ? `${cliente}|${tipo}` : '';
-  const clavePer = (sede && tipo) ? `${sede}|${periodo}|${anio}|${tipo}` : '';
+  const clavePer = (sede && tipo) ? `${sedeEfectiva(sede, cliente)}|${periodo}|${anio}|${tipo}` : '';
   const [plSnap, perSnap, eqSnap] = await Promise.all([
     clavePl ? db.collection('tareas_config').doc(clavePl).get() : Promise.resolve(null),
     clavePer ? db.collection('mtto_actividades_periodo').doc(clavePer).get() : Promise.resolve(null),
@@ -309,7 +323,7 @@ export function docEjecucion(ses, tarea, plan, tecnico, vigentes, minutos, perio
 }
 async function guardarRegistro(ses, tecnico) {
   const { periodo, anio } = periodoDeSesion(ses);
-  const clave = `${ses.sede}|${periodo}|${anio}`;
+  const clave = `${sedeEfectiva(ses.sede, ses.cliente)}|${periodo}|${anio}`;
   const db = getDb();
   const ref = db.collection('mantenimiento').doc(clave);
 
@@ -319,7 +333,7 @@ async function guardarRegistro(ses, tecnico) {
   // transacción (las 3 capas, sin caché): si un admin toca una capa en el medio, Firestore ve el
   // cambio, reintenta, y se vuelve a resolver.
   const clavePl  = ses.cliente ? `${ses.cliente}|${ses.tipo}` : '';
-  const clavePer = (ses.sede && ses.tipo) ? `${ses.sede}|${periodo}|${anio}|${ses.tipo}` : '';
+  const clavePer = (ses.sede && ses.tipo) ? `${sedeEfectiva(ses.sede, ses.cliente)}|${periodo}|${anio}|${ses.tipo}` : '';
   let vigentes = [], minutos = [], hechas = [], perdidas = [], ambiguo = false;
 
   await db.runTransaction(async (tx) => {
@@ -451,7 +465,7 @@ async function guardarRegistro(ses, tecnico) {
 async function contarFotos(ses, tarea) {
   const { periodo, anio } = periodoDeSesion(ses);
   let q = getDb().collection('mantenimiento_fotos')
-    .where('clave', '==', `${ses.sede}|${periodo}|${anio}`)
+    .where('clave', '==', `${sedeEfectiva(ses.sede, ses.cliente)}|${periodo}|${anio}`)
     .where('eq_id', '==', ses.eqId);
   if (tarea != null) q = q.where('tarea', '==', tarea);
   const snap = await q.select('createdAt').get();   // solo headers, no baja los base64
@@ -465,7 +479,7 @@ async function contarFotos(ses, tarea) {
 async function guardarFoto(ses, tecnico, imagenB64, mime) {
   const { periodo, anio } = periodoDeSesion(ses);
   await getDb().collection('mantenimiento_fotos').add({
-    clave: `${ses.sede}|${periodo}|${anio}`,
+    clave: `${sedeEfectiva(ses.sede, ses.cliente)}|${periodo}|${anio}`,
     eq_id: ses.eqId,
     tarea: (ses.hechas || [])[ses.fotoPos] || '',
     foto: `data:${mime || 'image/jpeg'};base64,${imagenB64}`,
@@ -734,7 +748,7 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
   // Período fijado UNA vez para toda la conversación (confirmación, registro y fotos lo
   // reusan vía `periodoDeSesion`) — así un adelanto activado a mitad de charla no puede
   // partir un mismo registro entre dos períodos distintos.
-  const per = await periodoEfectivo(r.sede);
+  const per = await periodoEfectivo(r.sede, ses.cliente);
   ses.periodo = per.periodo;
   ses.anio = per.anio;
   // ¿El mensaje ya menciona actividades de la lista? → pre-marcarlas y saltar a confirmar
