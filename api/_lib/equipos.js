@@ -186,11 +186,21 @@ function tipoMencionado(equipoRaw, tiposSede) {
   for (const [ali, canon] of ALIAS_TIPO) {
     if (q.includes(' ' + norm(ali) + ' ') && tieneTipo(canon)) return tieneTipo(canon);
   }
-  // 2) por palabra clave del propio tipo (ej. CORTINA, EXTRACTOR, SPLIT, UMA, CHILLER…)
-  for (const t of tiposSede) {
+  // 2) por palabra clave del propio tipo (ej. CORTINA, EXTRACTOR, SPLIT, UMA, CHILLER…).
+  //    Si la palabra es keyword de MÁS DE UN tipo (ej. "split" → SPLIT DUCTO y SPLIT CONSOLA
+  //    comparten "SPLIT"), "matchea alguna keyword" no alcanza para decidir solo: antes se
+  //    quedaba con el primer tipo que aparecía en `tiposSede` (orden de carga del inventario,
+  //    no lo que el técnico quiso decir) y el pool quedaba tan angosto (a veces 1 solo equipo)
+  //    que resolvía sin preguntar. Ahora gana el tipo con MÁS keywords propias dentro de lo
+  //    dicho (especificidad: "split ducto" completo sí debe resolver directo, a diferencia de
+  //    "split" a secas); a igual cantidad de keywords calzadas, empate real → null y el pool
+  //    sigue sin filtrar por tipo (mismo criterio que usa `unicoMejor` para las sedes).
+  const porKw = unicoMejor(tiposSede, (t) => {
     const kws = norm(t).split(' ').filter((w) => w.length > 2 && !STOP.has(w));
-    if (kws.some((kw) => q.includes(' ' + kw))) return t;
-  }
+    const n = kws.filter((kw) => q.includes(' ' + kw)).length;
+    return n > 0 ? -n : null;
+  });
+  if (porKw) return porKw;
   // 3) con typo ("chiler", "extraktor", "cortna"): misma fonética + distancia de edición
   //    que las sedes. Solo resuelve si UN tipo queda más cerca que los demás; ante empate
   //    devuelve null y el pool queda sin filtrar por tipo (comportamiento de siempre).
