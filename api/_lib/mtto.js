@@ -14,14 +14,14 @@ import { nuevaSesion, getSesion, guardarSesion, limpiarSesion } from './mtto_ses
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
 // Sedes compartidas por NOMBRE entre clientes (JOCKEY PLAZA y MIRAFLORES existen para RIPLEY Y
-// TOTTUS) — fix parcial 2026-09-01, MISMO criterio y MISMA clave que `mantenimiento_multiaire.html`
+// TOTTUS) — fix 2026-09-01/02, MISMO criterio y MISMA clave que `mantenimiento_multiaire.html`
 // (`sedeEfectiva`), para que lo que la app escribe/lee y lo que el bot escribe/lee sea el mismo doc.
 // RIPLEY (o cualquier sede no compartida) → sede tal cual, SIN CAMBIOS, cero riesgo sobre su
 // histórico. Un cliente NO-RIPLEY en sede compartida → "SEDE (CLIENTE)" (NO "SEDE|CLIENTE": el "|"
 // es el separador reservado de toda clave sede|periodo|año|tipo de este módulo).
-// SOLO Miraflores por ahora: Jockey Plaza queda IGUAL que hoy A PROPÓSITO — hay técnicos ahí en
-// vivo por WhatsApp al momento de este cambio; se arregla después, coordinado, sin nadie conectado.
-const SEDES_COMPARTIDAS_PENDIENTES = new Set(['MIRAFLORES']);
+// Miraflores (2026-09-01) y Jockey Plaza (2026-09-02, orden explícita del usuario) — las 2 únicas
+// sedes que RIPLEY y TOTTUS comparten con el string exacto.
+const SEDES_COMPARTIDAS_PENDIENTES = new Set(['MIRAFLORES', 'JOCKEY PLAZA']);
 export function sedeEfectiva(sede, cliente) {
   if (SEDES_COMPARTIDAS_PENDIENTES.has(sede) && cliente && cliente !== 'RIPLEY') return `${sede} (${cliente})`;
   return sede;

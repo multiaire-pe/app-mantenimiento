@@ -1141,16 +1141,16 @@ let seleccionados = {};  // eq_id → true (equipos seleccionados para este peri
 let tareaStatus = {};
 
 // ── Sedes compartidas por NOMBRE entre clientes (JOCKEY PLAZA y MIRAFLORES existen para RIPLEY
-// Y TOTTUS) — fix parcial 2026-09-01. `sedeEfectiva` da la clave real de trabajo: para RIPLEY (o
+// Y TOTTUS) — fix 2026-09-01/02. `sedeEfectiva` da la clave real de trabajo: para RIPLEY (o
 // cualquier sede no compartida) es la sede tal cual, SIN CAMBIOS — cero riesgo sobre su histórico,
 // no requiere migrar nada. Para un cliente NO-RIPLEY en una sede compartida, usa "SEDE (CLIENTE)"
 // — un nombre de sede propio y distinto, así que arranca con historial vacío en Firestore (correcto:
 // nunca tuvo uno). Se usa "SEDE (CLIENTE)" y NO "SEDE|CLIENTE": el "|" es el separador reservado de
 // TODA clave de este módulo (sede|periodo|año|tipo) — varios lugares hacen `.split('|')` asumiendo
 // que la sede no trae uno (ver `_mttoKey().split('|')` en loadPlanBadges); un "(...)" no lo rompe.
-// SOLO Miraflores por ahora: Jockey Plaza queda IGUAL que hoy A PROPÓSITO — hay técnicos ahí en vivo
-// por WhatsApp al momento de este cambio; se arregla después, coordinado, sin nadie conectado.
-const SEDES_COMPARTIDAS_PENDIENTES = new Set(['MIRAFLORES']);
+// Miraflores (2026-09-01) y Jockey Plaza (2026-09-02, orden explícita del usuario) — las 2 únicas
+// sedes que RIPLEY y TOTTUS comparten con el string exacto.
+const SEDES_COMPARTIDAS_PENDIENTES = new Set(['MIRAFLORES', 'JOCKEY PLAZA']);
 function sedeEfectiva(sede, cliente){
   if(SEDES_COMPARTIDAS_PENDIENTES.has(sede) && cliente && cliente !== 'RIPLEY') return `${sede} (${cliente})`;
   return sede;
