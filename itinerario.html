@@ -808,7 +808,10 @@ document.addEventListener('click', (e) => {
   if (abrir) {
     const card = abrir.closest('.bloque-card');
     const tienda = (card?.querySelector('.bloque-tienda')?.textContent || '').trim();
-    abrirPanelActs(Number(abrir.dataset.abrirActs), tienda);
+    const nB = Number(abrir.dataset.abrirActs);
+    // cliente del bloque (no vive en el DOM del card, solo en el objeto — se busca por nBloque)
+    const bl = (window._bloquesDia || []).find(x => Number(x.nBloque) === nB);
+    abrirPanelActs(nB, tienda, bl?.cliente || '');
     return;
   }
   const del = e.target.closest('[data-plan-del]');
@@ -1010,6 +1013,14 @@ function _resolverSede(tiendaCruda, sedesInv){
   return '';
 }
 
+// Sedes compartidas por NOMBRE entre clientes (JOCKEY PLAZA y MIRAFLORES existen para RIPLEY Y
+// TOTTUS) — MISMO criterio y MISMA lista que `mantenimiento_multiaire.html`/`api/_lib/mtto.js`
+// (duplicada a propósito, como el resto de las constantes de este módulo: no hay import entre
+// los HTML). Sin esto, `pendientesDeSede` mezclaba equipos de RIPLEY y TOTTUS como candidatos a
+// planificar en las 2 sedes compartidas — el mismo bug de fondo que ese fix vino a resolver, pero
+// en el itinerario en vez del checklist (hallazgo del review 2026-09-02).
+const SEDES_COMPARTIDAS_PENDIENTES = new Set(['MIRAFLORES', 'JOCKEY PLAZA']);
+
 // Etapa 3b — al crear una versión NUEVA de un itinerario ya existente, ofrecer MOVER las
 // actividades de mtto asignadas en la versión anterior a la nueva, remapeando el bloque por
 // sede (decisión de José: "automática con confirmación"). Las que no encajen (su sede ya no
@@ -1072,8 +1083,13 @@ async function _migrarPlanAVersionNueva(idIti, vNueva, bloques){
   }catch(e){ toast('No se pudieron migrar las actividades: '+(e.message||e), 'err'); }
 }
 
-// Pendientes de la sede (efectivas − hechas − planificadas en el período)
-async function pendientesDeSede(sede, fecha){
+// Pendientes de la sede (efectivas − hechas − planificadas en el período). `cliente` viene del
+// bloque (maestros_tiendas ya lo trae) — en una sede COMPARTIDA (Miraflores/Jockey Plaza) filtra
+// los equipos candidatos a ESE cliente (RIPLEY si el bloque no trae cliente, mismo criterio que
+// `equiposDeClaveSede` de Mantenimiento: "clave plana en sede compartida = RIPLEY específicamente").
+// En cualquier otra sede, sin filtro (comportamiento idéntico al de siempre — cero riesgo de
+// regresión en bloques legacy sin `cliente`, ni en las ~10 sedes que no comparten nombre).
+async function pendientesDeSede(sede, fecha, cliente){
   const { periodo, anio } = periodoDe(fecha);
   const { getDocs, getDoc, doc, collection } = window.__fb;
   const [invS, tcS, ovS, perS] = await Promise.all([
@@ -1155,9 +1171,13 @@ async function pendientesDeSede(sede, fecha){
     }
     return Number(r.itiVersion ?? 1) === _vAct;
   }).map(d => _planKey(d.data())));
+  // Sede compartida (Miraflores/Jockey Plaza) → acota al cliente del bloque (RIPLEY si no lo trae,
+  // igual que la clave plana en `equiposDeClaveSede`). Cualquier otra sede: sin filtro, como siempre.
+  const clienteEfectivo = SEDES_COMPARTIDAS_PENDIENTES.has(target) ? (cliente || 'RIPLEY') : null;
   invS.docs.forEach(d => {
     const eq = d.data();
     if((eq.sede||'').toUpperCase() !== target || !eq.eq_id) return;
+    if(clienteEfectivo && eq.cliente !== clienteEfectivo) return;
     if(!sel[eq.eq_id]) return;   // no seleccionado para el período → no se planifica
     // Las 3 capas, en orden (mismo criterio que actividadesDe de mantenimiento; los minutos van en
     // arrays paralelos, default 5): plantilla del cliente → ajuste del período → ajuste del equipo.
@@ -1177,7 +1197,7 @@ async function pendientesDeSede(sede, fecha){
   return out.sort((a,b) => a.nombreEq.localeCompare(b.nombreEq) || a.idx - b.idx);
 }
 
-async function abrirPanelActs(nBloque, tienda){
+async function abrirPanelActs(nBloque, tienda, cliente){
   if(!MA.can('editar','itinerario')){ toast('Sin permisos','err'); return; }
   if(_versionSellada()){ _avisoSellada(); return; }
   _panelBloque = nBloque;
@@ -1189,7 +1209,7 @@ async function abrirPanelActs(nBloque, tienda){
   cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Buscando pendientes de ' + _pEsc(tienda) + '…</div>';
   document.getElementById('pa-overlay').style.display = 'flex';
   try{
-    const pend = await pendientesDeSede(tienda, fecha);
+    const pend = await pendientesDeSede(tienda, fecha, cliente);
     let eqPrev = null, html = '';
     pend.forEach(p => {
       if(p.nombreEq !== eqPrev){ eqPrev = p.nombreEq; html += '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 2px">'+_pEsc(p.nombreEq)+' <span style="font-weight:400">('+_pEsc(p.eq_id)+')</span>'+(p.area?' <span style="font-weight:400">· 📍 '+_pEsc(p.area)+'</span>':'')+'</div>'; }
