@@ -457,6 +457,7 @@ option{background:#fff}
 
     <div class="tab-view" id="tab-pendientes">
       <div id="pend-filtros" style="margin-bottom:14px"></div>
+      <div id="pend-acciones" style="margin-bottom:14px"></div>
       <div id="pend-list"></div>
     </div>
   </div>
@@ -2212,25 +2213,33 @@ function _pendEquipo(eq){
   return (sinMarcar.length || sinFoto.length) ? { eq, sinMarcar, sinFoto } : null;
 }
 
-function renderPendientes(){
-  const fCont = document.getElementById('pend-filtros'), list = document.getElementById('pend-list');
+// Cálculo compartido: el render del tab y los 2 exports (WhatsApp/PDF) parten de la MISMA fuente
+// y los MISMOS filtros activos — lo que se exporta es exactamente lo que se está viendo.
+function _pendCalcular(){
   const todos = sedeEquipos.filter(e => seleccionados[e.eq_id]);
-  if(!todos.length){
-    fCont.innerHTML = '';
-    list.innerHTML = `<div class="empty"><div class="empty-icon">📌</div><h3>Sin equipos seleccionados</h3><p>Selecciona equipos primero desde el Checklist.</p></div>`;
-    return;
-  }
-
   // Chips de TIPO: todos los tipos de lo seleccionado (siguen visibles aunque estén "off", para
   // poder reactivarlos).
   const tipos = [...new Set(todos.map(e=>e.tipo).filter(Boolean))].sort();
   const visibles = todos.filter(e => !_pendFiltros.tipos.has(e.tipo));
-
   // Chips de TAREA: solo las de los tipos VISIBLES (si ocultás Cortina de aire, sus tareas dejan de
   // listarse acá — pero una exclusión ya guardada por nombre se sigue respetando igual si reaparece).
   const tareasSet = new Set();
   visibles.forEach(eq => { const { tareas } = actividadesDe(eq); (tareas||[]).forEach(t=>tareasSet.add(t)); });
   const tareasOrd = [...tareasSet].sort((a,b)=>a.localeCompare(b));
+  const items = visibles.map(_pendEquipo).filter(Boolean);
+  const byTipo = {};
+  items.forEach(it => { if(!byTipo[it.eq.tipo]) byTipo[it.eq.tipo] = []; byTipo[it.eq.tipo].push(it); });
+  return { todos, tipos, visibles, tareasOrd, items, byTipo };
+}
+
+function renderPendientes(){
+  const fCont = document.getElementById('pend-filtros'), acc = document.getElementById('pend-acciones'), list = document.getElementById('pend-list');
+  const { todos, tipos, visibles, tareasOrd, items, byTipo } = _pendCalcular();
+  if(!todos.length){
+    fCont.innerHTML = ''; acc.innerHTML = '';
+    list.innerHTML = `<div class="empty"><div class="empty-icon">📌</div><h3>Sin equipos seleccionados</h3><p>Selecciona equipos primero desde el Checklist.</p></div>`;
+    return;
+  }
 
   fCont.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:10px">
@@ -2249,15 +2258,16 @@ function renderPendientes(){
       ${(_pendFiltros.tipos.size || _pendFiltros.tareas.size) ? `<button type="button" class="btn btn-sm" style="align-self:flex-start" onclick="pendResetFiltros()">↺ Restablecer filtros</button>` : ''}
     </div>`;
 
-  const items = visibles.map(_pendEquipo).filter(Boolean);
+  acc.innerHTML = MA.can('exportar','mantenimiento') ? `
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="btn btn-sm" onclick="exportPendWhatsApp()">📤 WhatsApp</button>
+      <button type="button" class="btn btn-sm" onclick="exportPendPDF()">📄 PDF</button>
+    </div>` : '';
 
   if(!items.length){
     list.innerHTML = `<div class="empty"><div class="empty-icon">🎉</div><h3>Sin pendientes</h3><p>Todo lo visible con estos filtros está al día.</p></div>`;
     return;
   }
-
-  const byTipo = {};
-  items.forEach(it => { if(!byTipo[it.eq.tipo]) byTipo[it.eq.tipo] = []; byTipo[it.eq.tipo].push(it); });
 
   list.innerHTML = `<div style="font-size:11px;color:var(--muted2);margin-bottom:10px">${items.length} de ${visibles.length} equipo(s) con pendientes</div>` +
     Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).map(([tipo, its]) => `
@@ -2280,6 +2290,129 @@ function renderPendientes(){
             ${sinFoto.length ? `<div style="margin:4px 36px 0;font-size:12px;color:var(--yellow)">📷 Sin foto: ${sinFoto.map(t => `<span style="cursor:pointer;text-decoration:underline" onclick="openFotosTarea(${_jsq(eq.eq_id)},${_jsq(t)})">${_actEsc(t)}</span>`).join(' · ')}</div>` : ''}
           </div>`).join('')}
       </div>`).join('');
+}
+
+// Texto WhatsApp de los Pendientes — misma fuente y mismos filtros activos que la vista
+// (_pendCalcular), copiado al portapapeles con el mismo patrón que exportWhatsApp().
+function exportPendWhatsApp(){
+  if(!MA.can('exportar','mantenimiento')){ toast('Sin permisos para exportar','err'); return; }
+  const { todos, visibles, items, byTipo } = _pendCalcular();
+  if(!todos.length){ toast('Sin equipos seleccionados','warn'); return; }
+
+  let msg = `*PENDIENTES DE MANTENIMIENTO – ${currentSede}*\n*${currentPeriodo} ${currentAnio}*\n`;
+  if(_pendFiltros.tipos.size) msg += `_Sin incluir: ${[..._pendFiltros.tipos].join(', ')}_\n`;
+  if(_pendFiltros.tareas.size) msg += `_Tareas ignoradas: ${[..._pendFiltros.tareas].join(', ')}_\n`;
+  msg += `\n`;
+
+  if(!items.length){
+    msg += `🎉 Todo al día (${visibles.length} equipo${visibles.length!==1?'s':''} revisado${visibles.length!==1?'s':''}).`;
+  }else{
+    Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([tipo, its]) => {
+      msg += `*${TIPO_ICON[tipo]||''} ${tipo}*\n`;
+      its.forEach(({eq,sinMarcar,sinFoto}) => {
+        msg += `• *${eq.nombre}*${eq.area?` (${eq.area})`:''}\n`;
+        if(sinMarcar.length) msg += `   ❌ ${sinMarcar.join(', ')}\n`;
+        if(sinFoto.length) msg += `   📷 Sin foto: ${sinFoto.join(', ')}\n`;
+      });
+      msg += `\n`;
+    });
+    msg += `_${items.length} de ${visibles.length} equipo(s) con pendientes._`;
+  }
+
+  navigator.clipboard.writeText(msg).then(() => {
+    toastClipboard();
+  }).catch(() => {
+    const w = window.open('', '_blank', 'width=600,height=700');
+    w.document.write('<html><body style="font-family:monospace;white-space:pre-wrap;padding:20px;background:#111;color:#eee;font-size:13px">' + msg.replace(/</g,'&lt;') + '</body></html>');
+    w.document.close();
+    toast('No se pudo copiar — texto abierto en nueva ventana', 'warn');
+  });
+}
+
+// PDF imprimible de los Pendientes — mismo patrón window.print() que exportPDF()/exportChecklist()
+// (esta app no usa jsPDF, todos sus "PDF" son ventana imprimible). Misma fuente/filtros que la vista.
+function exportPendPDF(){
+  if(!MA.can('exportar','mantenimiento')){ toast('Sin permisos para exportar','err'); return; }
+  const { todos, visibles, items, byTipo } = _pendCalcular();
+  if(!todos.length){ toast('Sin equipos seleccionados','warn'); return; }
+  toast('Generando PDF...','warn');
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+  const cliente = (todos.find(e=>e.cliente)||{}).cliente || '';
+
+  const filtrosHtml = (_pendFiltros.tipos.size || _pendFiltros.tareas.size) ? `
+    <div style="font-size:10px;color:#888;margin-top:4px">
+      ${_pendFiltros.tipos.size?`Sin incluir: ${[..._pendFiltros.tipos].map(_actEsc).join(', ')}. `:''}
+      ${_pendFiltros.tareas.size?`Tareas ignoradas: ${[..._pendFiltros.tareas].map(_actEsc).join(', ')}.`:''}
+    </div>` : '';
+
+  let bodyHtml;
+  if(!items.length){
+    bodyHtml = `<div style="padding:30px;text-align:center;color:#1a9e5a;font-size:15px;font-weight:700">🎉 Todo al día — sin pendientes con los filtros actuales.</div>`;
+  }else{
+    bodyHtml = Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).map(([tipo, its]) => `
+      <div style="margin-bottom:12px;break-inside:avoid">
+        <div style="background:#1e3a5f;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.04em">${TIPO_ICON[tipo]||''} ${_actEsc(tipo)} · ${its.length} equipo(s)</div>
+        <div style="border:1px solid #dde;border-top:none;border-radius:0 0 6px 6px">
+          ${its.map(({eq,sinMarcar,sinFoto}) => `
+            <div style="padding:8px 12px;border-bottom:1px solid #eee">
+              <div style="font-size:12px;font-weight:700">${_actEsc(eq.eq_id)} · ${_actEsc(eq.nombre)}${eq.area?` <span style="font-weight:400;color:#888">· 📍 ${_actEsc(eq.area)}</span>`:''}</div>
+              ${sinMarcar.length?`<div style="font-size:11px;color:#cc2233;margin-top:3px">❌ Sin marcar: ${sinMarcar.map(_actEsc).join(' · ')}</div>`:''}
+              ${sinFoto.length?`<div style="font-size:11px;color:#cc8800;margin-top:2px">📷 Sin foto: ${sinFoto.map(_actEsc).join(' · ')}</div>`:''}
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+  }
+
+  const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Pendientes ${_actEsc(currentSede)} ${_actEsc(currentPeriodo)} ${_actEsc(currentAnio)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #fff; color: #111; font-size: 13px; }
+  @media print { .no-print { display:none !important; } body { margin:0; } @page { margin:12mm; size:A4; } }
+</style>
+</head><body>
+
+<div class="no-print" style="background:#1e3a5f;color:#fff;padding:12px 20px;display:flex;align-items:center;gap:12px">
+  <span style="font-weight:700">📌 Pendientes de mantenimiento</span>
+  <button onclick="window.print()" style="background:#fff;color:#1e3a5f;border:none;padding:8px 18px;border-radius:5px;font-weight:700;cursor:pointer;font-size:13px">🖨️ Imprimir / Guardar PDF</button>
+  <button onclick="window.close()" style="background:transparent;color:#aaa;border:1px solid #aaa;padding:8px 14px;border-radius:5px;cursor:pointer;margin-left:auto">✕ Cerrar</button>
+</div>
+
+<div style="padding:18px 22px;max-width:900px;margin:0 auto">
+
+  <div style="border-bottom:3px solid #1e3a5f;padding-bottom:12px;margin-bottom:12px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:19px;font-weight:900;color:#1e3a5f;letter-spacing:.03em">MultiAire</div>
+        <div style="font-size:13px;color:#555;margin-top:2px">Pendientes de Mantenimiento</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:15px;font-weight:700">${_actEsc(currentSede)}${cliente?` <span style="font-size:11px;color:#777;font-weight:400">(${_actEsc(cliente)})</span>`:''}</div>
+        <div style="font-size:12px;color:#666">${_actEsc(currentPeriodo)} ${_actEsc(currentAnio)} · emitido ${dateStr}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">${items.length} de ${visibles.length} equipo(s) con pendientes</div>
+      </div>
+    </div>
+    ${filtrosHtml}
+  </div>
+
+  ${bodyHtml}
+
+  <div style="margin-top:14px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999;text-align:center">
+    MultiAire · ${_actEsc(currentSede)} · ${_actEsc(currentPeriodo)} ${_actEsc(currentAnio)}
+  </div>
+
+</div>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w){ toast('Habilitá los pop-ups para generar el PDF','err'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  w.onload = () => { w.focus(); w.print(); };
+  setTimeout(() => { try { w.focus(); w.print(); } catch(e) {} }, 800);
 }
 
 
