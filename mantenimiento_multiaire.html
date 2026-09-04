@@ -2204,13 +2204,16 @@ function _pendEquipo(eq){
   if(!tareas) return null;
   const statusMap = tareaStatus[eq.eq_id] || {};
   const sinMarcar = [], sinFoto = [];
+  let consideradas = 0;  // total de tareas del equipo tras el filtro de chips — usado solo por el
+                          // mensaje de WhatsApp para colapsar a "Todo" (ver _pendListaWsp)
   tareas.forEach((t,i) => {
     if(_pendFiltros.tareas.has(t)) return;
+    consideradas++;
     if(!tareaHecha(statusMap, t, i)){ sinMarcar.push(t); return; }
     const n = fotosCount[eq.eq_id+'|'+actKey(t)] || 0;
     if(!n) sinFoto.push(t);
   });
-  return (sinMarcar.length || sinFoto.length) ? { eq, sinMarcar, sinFoto } : null;
+  return (sinMarcar.length || sinFoto.length) ? { eq, sinMarcar, sinFoto, consideradas } : null;
 }
 
 // Cálculo compartido: el render del tab y los 2 exports (WhatsApp/PDF) parten de la MISMA fuente
@@ -2251,8 +2254,12 @@ function renderPendientes(){
       </div>
       <div>
         <div class="sb-label" style="margin-bottom:6px">Tareas a considerar</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">
-          ${tareasOrd.map(t => `<button type="button" class="pend-chip${_pendFiltros.tareas.has(t)?' off':''}" onclick="togglePendTarea(${_jsq(t)})">${_actEsc(t)}</button>`).join('') || '<span style="font-size:11px;color:var(--muted)">—</span>'}
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${tareasOrd.length ? _pendTareasPorCodigo(tareasOrd).map(([cod, ts]) => `
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+              <span style="font-size:11px;font-weight:600;color:var(--muted2)">${_actEsc(cod)}:</span>
+              ${ts.map(t => `<button type="button" class="pend-chip${_pendFiltros.tareas.has(t)?' off':''}" onclick="togglePendTarea(${_jsq(t)})">${_actEsc(t)}</button>`).join('')}
+            </div>`).join('') : '<span style="font-size:11px;color:var(--muted)">—</span>'}
         </div>
       </div>
       ${(_pendFiltros.tipos.size || _pendFiltros.tareas.size) ? `<button type="button" class="btn btn-sm" style="align-self:flex-start" onclick="pendResetFiltros()">↺ Restablecer filtros</button>` : ''}
@@ -2292,31 +2299,84 @@ function renderPendientes(){
       </div>`).join('');
 }
 
+// Catálogo de abreviaturas de "Tareas a considerar" — SOLO para el mensaje de WhatsApp de
+// Pendientes (no toca la vista en pantalla, el PDF ni los chips de filtro, que siguen con el
+// nombre completo). Gana el primer patrón que matchee sobre el nombre en minúsculas; una tarea
+// nueva que no calce ningún patrón se deja con su nombre completo — nunca se pierde información
+// en silencio por no estar en la tabla.
+// "Mantenimiento integral" solo existe en equipos con 2 tareas (mtto + toma de parámetros): ahí
+// abarca TODAS las fotos del mantenimiento preventivo, así que si falta, equivale a "Todo" — no se
+// abrevia como una tarea más.
+const TAREA_ABREV = [
+  [/integral/, 'Todo'],
+  [/condensador/, 'UC'],
+  [/evaporador/, 'UE'],
+  [/filtro/, 'Filtros'],
+  [/techo/, 'Techo'],
+  [/tablero el[ée]ctrico/, 'Tablero eléctrico'],
+  [/inyector|siroco|chumacera|correa/, 'Motor inyector'],
+  [/par[áa]metro/, 'Parámetros'],
+];
+function _pendAbrev(nombre){
+  const n = String(nombre||'').toLowerCase();
+  for(const [re, cod] of TAREA_ABREV) if(re.test(n)) return cod;
+  return nombre;
+}
+// Agrupa "Tareas a considerar" por código — para que el filtro en pantalla muestre a qué código
+// abrevia cada tarea (ej. "UC:" con las 2 tareas de condensador debajo). Mismo orden del catálogo;
+// las que no calzan ningún patrón quedan agrupadas bajo su propio nombre, al final.
+function _pendTareasPorCodigo(tareas){
+  const grupos = {};
+  tareas.forEach(t => { const c = _pendAbrev(t); (grupos[c] = grupos[c]||[]).push(t); });
+  const orden = [...new Set(TAREA_ABREV.map(([,c])=>c))];
+  return Object.entries(grupos).sort((a,b) => {
+    const ia = orden.indexOf(a[0]), ib = orden.indexOf(b[0]);
+    return (ia<0?999:ia) - (ib<0?999:ib) || a[0].localeCompare(b[0]);
+  });
+}
+// Lista de tareas → texto corto para WhatsApp: si son TODAS las tareas consideradas del equipo, o
+// si alguna ya abrevia a "Todo" (Mantenimiento integral), colapsa a "Todo"; si no, une los códigos
+// sin repetir (2 tareas de condensador → un solo "UC").
+function _pendListaWsp(lista, total){
+  if(!lista.length) return '';
+  const cods = [...new Set(lista.map(_pendAbrev))];
+  if(cods.includes('Todo') || (total && lista.length === total)) return 'Todo';
+  return cods.join(', ');
+}
+
 // Texto WhatsApp de los Pendientes — misma fuente y mismos filtros activos que la vista
-// (_pendCalcular), copiado al portapapeles con el mismo patrón que exportWhatsApp().
+// (_pendCalcular), copiado al portapapeles con el mismo patrón que exportWhatsApp(). Solo reporta
+// tareas NO HECHAS — el seguimiento de fotos (📷 Sin foto) es un dato aparte, no se mezcla acá
+// (sigue disponible en pantalla y en el PDF).
 function exportPendWhatsApp(){
   if(!MA.can('exportar','mantenimiento')){ toast('Sin permisos para exportar','err'); return; }
-  const { todos, visibles, items, byTipo } = _pendCalcular();
+  const { todos, visibles, byTipo } = _pendCalcular();
   if(!todos.length){ toast('Sin equipos seleccionados','warn'); return; }
+
+  const byTipoPend = {};
+  let nPend = 0;
+  Object.entries(byTipo).forEach(([tipo, its]) => {
+    const pend = its.filter(it => it.sinMarcar.length);
+    if(pend.length){ byTipoPend[tipo] = pend; nPend += pend.length; }
+  });
 
   let msg = `*PENDIENTES DE MANTENIMIENTO – ${currentSede}*\n*${currentPeriodo} ${currentAnio}*\n`;
   if(_pendFiltros.tipos.size) msg += `_Sin incluir: ${[..._pendFiltros.tipos].join(', ')}_\n`;
-  if(_pendFiltros.tareas.size) msg += `_Tareas ignoradas: ${[..._pendFiltros.tareas].join(', ')}_\n`;
+  if(_pendFiltros.tareas.size) msg += `_Tareas ignoradas: ${[...new Set([..._pendFiltros.tareas].map(_pendAbrev))].join(', ')}_\n`;
   msg += `\n`;
 
-  if(!items.length){
+  if(!nPend){
     msg += `🎉 Todo al día (${visibles.length} equipo${visibles.length!==1?'s':''} revisado${visibles.length!==1?'s':''}).`;
   }else{
-    Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([tipo, its]) => {
+    Object.entries(byTipoPend).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([tipo, its]) => {
       msg += `*${TIPO_ICON[tipo]||''} ${tipo}*\n`;
-      its.forEach(({eq,sinMarcar,sinFoto}) => {
+      its.forEach(({eq,sinMarcar,consideradas}) => {
         msg += `• *${eq.nombre}*${eq.area?` (${eq.area})`:''}\n`;
-        if(sinMarcar.length) msg += `   ❌ ${sinMarcar.join(', ')}\n`;
-        if(sinFoto.length) msg += `   📷 Sin foto: ${sinFoto.join(', ')}\n`;
+        msg += `   ❌ ${_pendListaWsp(sinMarcar, consideradas)}\n`;
       });
       msg += `\n`;
     });
-    msg += `_${items.length} de ${visibles.length} equipo(s) con pendientes._`;
+    msg += `_${nPend} de ${visibles.length} equipo(s) con pendientes._`;
   }
 
   navigator.clipboard.writeText(msg).then(() => {
