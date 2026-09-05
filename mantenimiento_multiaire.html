@@ -128,6 +128,11 @@ option{background:#fff}
 .legend-item{display:flex;align-items:center;gap:5px}
 .legend-dot{width:8px;height:8px;border-radius:50%}
 
+/* Chips de filtro del tab Pendientes: tildado = incluido en el cálculo, "off" = excluido */
+.pend-chip{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:14px;border:1px solid var(--border2);background:var(--surface2);color:var(--accent);font-family:var(--font);font-size:11px;font-weight:600;cursor:pointer;transition:all .12s;white-space:nowrap}
+.pend-chip:hover{border-color:var(--blue-light)}
+.pend-chip.off{background:var(--surface);color:var(--muted);border-color:var(--border);text-decoration:line-through;opacity:.65}
+
 
 /* EMPTY STATE */
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;color:var(--muted)}
@@ -398,6 +403,7 @@ option{background:#fff}
       <button class="tab-btn" onclick="switchTab('global')">🌐 Global</button>
       <button class="tab-btn" onclick="switchTab('historial')">🕘 Historial</button>
       <button class="tab-btn" onclick="switchTab('desempeno')">👷 Desempeño</button>
+      <button class="tab-btn" onclick="switchTab('pendientes')">📌 Pendientes</button>
     </div>
 
     <div class="tab-view active" id="tab-checklist">
@@ -447,6 +453,12 @@ option{background:#fff}
         <button class="btn btn-sm" onclick="renderDesempeno()" title="Recargar">↻</button>
       </div>
       <div id="dsp-content"></div>
+    </div>
+
+    <div class="tab-view" id="tab-pendientes">
+      <div id="pend-filtros" style="margin-bottom:14px"></div>
+      <div id="pend-acciones" style="margin-bottom:14px"></div>
+      <div id="pend-list"></div>
     </div>
   </div>
 </div>
@@ -917,7 +929,7 @@ async function ftAgregar(input){
       const k=_ftCtx.eqId+'|'+actKey(_ftCtx.tarea); fotosCount[k]=(fotosCount[k]||0)+1;
     }
     toast('Foto(s) guardada(s) ✓','ok');
-    refreshFotoBadges(); renderFotosTarea();
+    refreshFotoBadges(); renderFotosTarea(); refreshPendIfActive();
   }catch(e){ toast('Error: '+e.message,'err'); }
   input.value='';
 }
@@ -926,7 +938,7 @@ async function ftBorrar(id){
   try{
     await window.__db.collection('mantenimiento_fotos').doc(id).delete();
     const k=_ftCtx.eqId+'|'+actKey(_ftCtx.tarea); fotosCount[k]=Math.max(0,(fotosCount[k]||1)-1);
-    refreshFotoBadges(); renderFotosTarea();
+    refreshFotoBadges(); renderFotosTarea(); refreshPendIfActive();
   }catch(e){ toast('Error: '+e.message,'err'); }
 }
 function ftLightbox(src){
@@ -1451,6 +1463,7 @@ function renderMain() {
   if(typeof refreshPlanBadges==='function') refreshPlanBadges();
   // refresh dashboard if visible
   if(document.getElementById('tab-dashboard').classList.contains('active')) renderDashboard();
+  if(document.getElementById('tab-pendientes').classList.contains('active')) renderPendientes();
   updateStatusBar([stats.green, stats.yellow, stats.red]);
 }
 
@@ -2139,6 +2152,327 @@ function switchTab(tab) {
   if(tab==='global') renderGlobal();
   if(tab==='historial') renderHistorialLog();
   if(tab==='desempeno') renderDesempeno();
+  if(tab==='pendientes') renderPendientes();
+}
+function refreshPendIfActive(){
+  const el = document.getElementById('tab-pendientes');
+  if(el && el.classList.contains('active')) renderPendientes();
+}
+
+// ── TAB PENDIENTES (qué falta por equipo, filtrable por tipo/tarea — para recorrer con los
+// técnicos, "che, te falta esto") ─────────────────────────────────────────────────────────────
+// "Pendiente" tiene 2 sentidos, mostrados por separado: ❌ SIN MARCAR (el checkbox no está tildado)
+// y 📷 SIN FOTO (tildada pero fotosCount en 0 — se hizo pero no se subió evidencia). Los 2 filtros
+// son independientes: TIPO oculta el equipo entero de la lista (ej. dejar de ver cortinas un rato);
+// TAREA excluye esa actividad de ambos conteos en TODOS los tipos donde aparezca (ej. "Toma de
+// parámetros" se hace recién al final del período — verla en rojo todo el bimestre es puro ruido;
+// ya tiene su propio estilo visual en el checklist, ver `isParams` en renderEquipo). Se recuerdan
+// en localStorage (no sessionStorage, a propósito: es una preferencia de "cómo yo reviso pendientes"
+// que dura más que una pestaña — igual que casi siempre se excluye la misma tarea).
+function _pendCargarFiltros(){
+  try{
+    const d = JSON.parse(localStorage.getItem('ma_pend_filtros')||'{}');
+    return { tipos: new Set(d.tiposOff||[]), tareas: new Set(d.tareasOff||[]) };
+  }catch(e){ return { tipos: new Set(), tareas: new Set() }; }
+}
+let _pendFiltros = _pendCargarFiltros();
+function _pendGuardarFiltros(){
+  try{
+    localStorage.setItem('ma_pend_filtros', JSON.stringify({
+      tiposOff: [..._pendFiltros.tipos], tareasOff: [..._pendFiltros.tareas]
+    }));
+  }catch(e){}
+}
+function togglePendTipo(tipo){
+  if(_pendFiltros.tipos.has(tipo)) _pendFiltros.tipos.delete(tipo); else _pendFiltros.tipos.add(tipo);
+  _pendGuardarFiltros(); renderPendientes();
+}
+function togglePendTarea(tarea){
+  if(_pendFiltros.tareas.has(tarea)) _pendFiltros.tareas.delete(tarea); else _pendFiltros.tareas.add(tarea);
+  _pendGuardarFiltros(); renderPendientes();
+}
+function pendResetFiltros(){
+  _pendFiltros = { tipos: new Set(), tareas: new Set() };
+  _pendGuardarFiltros(); renderPendientes();
+}
+
+// Qué le falta a UN equipo (respeta el filtro de tareas). null si no tiene nada pendiente, o si no
+// tiene lista de actividades configurada (sin plantilla del cliente — eso es un problema de
+// configuración, no de trabajo pendiente; se resuelve en la app de Clientes, no acá).
+function _pendEquipo(eq){
+  const { tareas } = actividadesDe(eq);
+  if(!tareas) return null;
+  const statusMap = tareaStatus[eq.eq_id] || {};
+  const sinMarcar = [], sinFoto = [];
+  let consideradas = 0;  // total de tareas del equipo tras el filtro de chips — usado solo por el
+                          // mensaje de WhatsApp para colapsar a "Todo" (ver _pendListaWsp)
+  tareas.forEach((t,i) => {
+    if(_pendFiltros.tareas.has(t)) return;
+    consideradas++;
+    if(!tareaHecha(statusMap, t, i)){ sinMarcar.push(t); return; }
+    const n = fotosCount[eq.eq_id+'|'+actKey(t)] || 0;
+    if(!n) sinFoto.push(t);
+  });
+  return (sinMarcar.length || sinFoto.length) ? { eq, sinMarcar, sinFoto, consideradas } : null;
+}
+
+// Cálculo compartido: el render del tab y los 2 exports (WhatsApp/PDF) parten de la MISMA fuente
+// y los MISMOS filtros activos — lo que se exporta es exactamente lo que se está viendo.
+function _pendCalcular(){
+  const todos = sedeEquipos.filter(e => seleccionados[e.eq_id]);
+  // Chips de TIPO: todos los tipos de lo seleccionado (siguen visibles aunque estén "off", para
+  // poder reactivarlos).
+  const tipos = [...new Set(todos.map(e=>e.tipo).filter(Boolean))].sort();
+  const visibles = todos.filter(e => !_pendFiltros.tipos.has(e.tipo));
+  // Chips de TAREA: solo las de los tipos VISIBLES (si ocultás Cortina de aire, sus tareas dejan de
+  // listarse acá — pero una exclusión ya guardada por nombre se sigue respetando igual si reaparece).
+  const tareasSet = new Set();
+  visibles.forEach(eq => { const { tareas } = actividadesDe(eq); (tareas||[]).forEach(t=>tareasSet.add(t)); });
+  const tareasOrd = [...tareasSet].sort((a,b)=>a.localeCompare(b));
+  const items = visibles.map(_pendEquipo).filter(Boolean);
+  const byTipo = {};
+  items.forEach(it => { if(!byTipo[it.eq.tipo]) byTipo[it.eq.tipo] = []; byTipo[it.eq.tipo].push(it); });
+  return { todos, tipos, visibles, tareasOrd, items, byTipo };
+}
+
+function renderPendientes(){
+  const fCont = document.getElementById('pend-filtros'), acc = document.getElementById('pend-acciones'), list = document.getElementById('pend-list');
+  const { todos, tipos, visibles, tareasOrd, items, byTipo } = _pendCalcular();
+  if(!todos.length){
+    fCont.innerHTML = ''; acc.innerHTML = '';
+    list.innerHTML = `<div class="empty"><div class="empty-icon">📌</div><h3>Sin equipos seleccionados</h3><p>Selecciona equipos primero desde el Checklist.</p></div>`;
+    return;
+  }
+
+  fCont.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div>
+        <div class="sb-label" style="margin-bottom:6px">Tipo de equipo</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${tipos.map(t => `<button type="button" class="pend-chip${_pendFiltros.tipos.has(t)?' off':''}" onclick="togglePendTipo(${_jsq(t)})">${TIPO_ICON[t]||'🔧'} ${_actEsc(t)}</button>`).join('')}
+        </div>
+      </div>
+      <div>
+        <div class="sb-label" style="margin-bottom:6px">Tareas a considerar</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${tareasOrd.length ? _pendTareasPorCodigo(tareasOrd).map(([cod, ts]) => `
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+              <span style="font-size:11px;font-weight:600;color:var(--muted2)">${_actEsc(cod)}:</span>
+              ${ts.map(t => `<button type="button" class="pend-chip${_pendFiltros.tareas.has(t)?' off':''}" onclick="togglePendTarea(${_jsq(t)})">${_actEsc(t)}</button>`).join('')}
+            </div>`).join('') : '<span style="font-size:11px;color:var(--muted)">—</span>'}
+        </div>
+      </div>
+      ${(_pendFiltros.tipos.size || _pendFiltros.tareas.size) ? `<button type="button" class="btn btn-sm" style="align-self:flex-start" onclick="pendResetFiltros()">↺ Restablecer filtros</button>` : ''}
+    </div>`;
+
+  acc.innerHTML = MA.can('exportar','mantenimiento') ? `
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="btn btn-sm" onclick="exportPendWhatsApp()">📤 WhatsApp</button>
+      <button type="button" class="btn btn-sm" onclick="exportPendPDF()">📄 PDF</button>
+    </div>` : '';
+
+  if(!items.length){
+    list.innerHTML = `<div class="empty"><div class="empty-icon">🎉</div><h3>Sin pendientes</h3><p>Todo lo visible con estos filtros está al día.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = `<div style="font-size:11px;color:var(--muted2);margin-bottom:10px">${items.length} de ${visibles.length} equipo(s) con pendientes</div>` +
+    Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).map(([tipo, its]) => `
+      <div class="tipo-section">
+        <div class="tipo-header">
+          <span class="tipo-icon">${TIPO_ICON[tipo]||'🔧'}</span>
+          <span class="tipo-name">${_actEsc(tipo)}</span>
+          <span class="tipo-count">${its.length} equipo${its.length!==1?'s':''}</span>
+        </div>
+        ${its.map(({eq,sinMarcar,sinFoto}) => `
+          <div class="equipo-card">
+            <div class="equipo-row">
+              <span class="eq-id">${_actEsc(eq.eq_id)}</span>
+              <div style="flex:1">
+                <div class="eq-name">${_actEsc(eq.nombre)}</div>
+                <div class="eq-area">${_actEsc(eq.area||'')}</div>
+              </div>
+            </div>
+            ${sinMarcar.length ? `<div style="margin:6px 36px 0;font-size:12px;color:var(--red)">❌ Sin marcar: ${sinMarcar.map(_actEsc).join(' · ')}</div>` : ''}
+            ${sinFoto.length ? `<div style="margin:4px 36px 0;font-size:12px;color:var(--yellow)">📷 Sin foto: ${sinFoto.map(t => `<span style="cursor:pointer;text-decoration:underline" onclick="openFotosTarea(${_jsq(eq.eq_id)},${_jsq(t)})">${_actEsc(t)}</span>`).join(' · ')}</div>` : ''}
+          </div>`).join('')}
+      </div>`).join('');
+}
+
+// Catálogo de abreviaturas de "Tareas a considerar" — SOLO para el mensaje de WhatsApp de
+// Pendientes (no toca la vista en pantalla, el PDF ni los chips de filtro, que siguen con el
+// nombre completo). Gana el primer patrón que matchee sobre el nombre en minúsculas; una tarea
+// nueva que no calce ningún patrón se deja con su nombre completo — nunca se pierde información
+// en silencio por no estar en la tabla.
+const TAREA_ABREV = [
+  [/integral/, 'Mantenimiento integral'],
+  [/condensador/, 'UC'],
+  [/evaporador/, 'UE'],
+  [/filtro/, 'Filtros'],
+  [/techo/, 'Techo'],
+  [/tablero el[ée]ctrico/, 'Tablero eléctrico'],
+  [/inyector|siroco|chumacera|correa/, 'Motor inyector'],
+  [/par[áa]metro/, 'Parámetros'],
+];
+function _pendAbrev(nombre){
+  const n = String(nombre||'').toLowerCase();
+  for(const [re, cod] of TAREA_ABREV) if(re.test(n)) return cod;
+  return nombre;
+}
+// Agrupa "Tareas a considerar" por código — para que el filtro en pantalla muestre a qué código
+// abrevia cada tarea (ej. "UC:" con las 2 tareas de condensador debajo). Mismo orden del catálogo;
+// las que no calzan ningún patrón quedan agrupadas bajo su propio nombre, al final.
+function _pendTareasPorCodigo(tareas){
+  const grupos = {};
+  tareas.forEach(t => { const c = _pendAbrev(t); (grupos[c] = grupos[c]||[]).push(t); });
+  const orden = [...new Set(TAREA_ABREV.map(([,c])=>c))];
+  return Object.entries(grupos).sort((a,b) => {
+    const ia = orden.indexOf(a[0]), ib = orden.indexOf(b[0]);
+    return (ia<0?999:ia) - (ib<0?999:ib) || a[0].localeCompare(b[0]);
+  });
+}
+// Lista de tareas → texto corto para WhatsApp: si son TODAS las tareas consideradas del equipo Y
+// hay más de un código distinto, colapsa a "Todo" (ahorra espacio en equipos con varias tareas,
+// ej. un chiller con UC/UE/Filtros/Techo/Tablero eléctrico/Motor inyector/Parámetros pendientes).
+// Con UN solo código —el caso más común: equipos de mantenimiento simple que solo tienen
+// "Mantenimiento integral" como única tarea— mostrar "Todo" sería literalmente esconder el nombre
+// de la única tarea que existe, que es justo lo que el filtro dejó de hacer en 2026-09-05. Con
+// varios códigos pero no todos pendientes, se unen sin repetir (2 tareas de condensador → "UC").
+function _pendListaWsp(lista, total){
+  if(!lista.length) return '';
+  const cods = [...new Set(lista.map(_pendAbrev))];
+  if(total && lista.length === total && cods.length > 1) return 'Todo';
+  return cods.join(', ');
+}
+
+// Texto WhatsApp de los Pendientes — misma fuente y mismos filtros activos que la vista
+// (_pendCalcular), copiado al portapapeles con el mismo patrón que exportWhatsApp(). Solo reporta
+// tareas NO HECHAS — el seguimiento de fotos (📷 Sin foto) es un dato aparte, no se mezcla acá
+// (sigue disponible en pantalla y en el PDF).
+function exportPendWhatsApp(){
+  if(!MA.can('exportar','mantenimiento')){ toast('Sin permisos para exportar','err'); return; }
+  const { todos, visibles, byTipo } = _pendCalcular();
+  if(!todos.length){ toast('Sin equipos seleccionados','warn'); return; }
+
+  const byTipoPend = {};
+  let nPend = 0;
+  Object.entries(byTipo).forEach(([tipo, its]) => {
+    const pend = its.filter(it => it.sinMarcar.length);
+    if(pend.length){ byTipoPend[tipo] = pend; nPend += pend.length; }
+  });
+
+  let msg = `*PENDIENTES DE MANTENIMIENTO – ${currentSede}*\n*${currentPeriodo} ${currentAnio}*\n`;
+  if(_pendFiltros.tipos.size) msg += `_Sin incluir: ${[..._pendFiltros.tipos].join(', ')}_\n`;
+  msg += `\n`;
+
+  if(!nPend){
+    msg += `🎉 Todo al día (${visibles.length} equipo${visibles.length!==1?'s':''} revisado${visibles.length!==1?'s':''}).`;
+  }else{
+    Object.entries(byTipoPend).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([tipo, its]) => {
+      msg += `*${TIPO_ICON[tipo]||''} ${tipo}*\n`;
+      its.forEach(({eq,sinMarcar,consideradas}) => {
+        msg += `• *${eq.nombre}*${eq.area?` (${eq.area})`:''}\n`;
+        msg += `   ❌ ${_pendListaWsp(sinMarcar, consideradas)}\n`;
+      });
+      msg += `\n`;
+    });
+    msg += `_${nPend} de ${visibles.length} equipo(s) con pendientes._`;
+  }
+
+  navigator.clipboard.writeText(msg).then(() => {
+    toastClipboard();
+  }).catch(() => {
+    const w = window.open('', '_blank', 'width=600,height=700');
+    w.document.write('<html><body style="font-family:monospace;white-space:pre-wrap;padding:20px;background:#111;color:#eee;font-size:13px">' + msg.replace(/</g,'&lt;') + '</body></html>');
+    w.document.close();
+    toast('No se pudo copiar — texto abierto en nueva ventana', 'warn');
+  });
+}
+
+// PDF imprimible de los Pendientes — mismo patrón window.print() que exportPDF()/exportChecklist()
+// (esta app no usa jsPDF, todos sus "PDF" son ventana imprimible). Misma fuente/filtros que la vista.
+function exportPendPDF(){
+  if(!MA.can('exportar','mantenimiento')){ toast('Sin permisos para exportar','err'); return; }
+  const { todos, visibles, items, byTipo } = _pendCalcular();
+  if(!todos.length){ toast('Sin equipos seleccionados','warn'); return; }
+  toast('Generando PDF...','warn');
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + now.toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+  const cliente = (todos.find(e=>e.cliente)||{}).cliente || '';
+
+  const filtrosHtml = (_pendFiltros.tipos.size || _pendFiltros.tareas.size) ? `
+    <div style="font-size:10px;color:#888;margin-top:4px">
+      ${_pendFiltros.tipos.size?`Sin incluir: ${[..._pendFiltros.tipos].map(_actEsc).join(', ')}. `:''}
+      ${_pendFiltros.tareas.size?`Tareas ignoradas: ${[..._pendFiltros.tareas].map(_actEsc).join(', ')}.`:''}
+    </div>` : '';
+
+  let bodyHtml;
+  if(!items.length){
+    bodyHtml = `<div style="padding:30px;text-align:center;color:#1a9e5a;font-size:15px;font-weight:700">🎉 Todo al día — sin pendientes con los filtros actuales.</div>`;
+  }else{
+    bodyHtml = Object.entries(byTipo).sort((a,b)=>a[0].localeCompare(b[0])).map(([tipo, its]) => `
+      <div style="margin-bottom:12px;break-inside:avoid">
+        <div style="background:#1e3a5f;color:#fff;padding:6px 12px;border-radius:6px 6px 0 0;font-size:12px;font-weight:700;letter-spacing:.04em">${TIPO_ICON[tipo]||''} ${_actEsc(tipo)} · ${its.length} equipo(s)</div>
+        <div style="border:1px solid #dde;border-top:none;border-radius:0 0 6px 6px">
+          ${its.map(({eq,sinMarcar,sinFoto}) => `
+            <div style="padding:8px 12px;border-bottom:1px solid #eee">
+              <div style="font-size:12px;font-weight:700">${_actEsc(eq.eq_id)} · ${_actEsc(eq.nombre)}${eq.area?` <span style="font-weight:400;color:#888">· 📍 ${_actEsc(eq.area)}</span>`:''}</div>
+              ${sinMarcar.length?`<div style="font-size:11px;color:#cc2233;margin-top:3px">❌ Sin marcar: ${sinMarcar.map(_actEsc).join(' · ')}</div>`:''}
+              ${sinFoto.length?`<div style="font-size:11px;color:#cc8800;margin-top:2px">📷 Sin foto: ${sinFoto.map(_actEsc).join(' · ')}</div>`:''}
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+  }
+
+  const html = `<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>Pendientes ${_actEsc(currentSede)} ${_actEsc(currentPeriodo)} ${_actEsc(currentAnio)}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #fff; color: #111; font-size: 13px; }
+  @media print { .no-print { display:none !important; } body { margin:0; } @page { margin:12mm; size:A4; } }
+</style>
+</head><body>
+
+<div class="no-print" style="background:#1e3a5f;color:#fff;padding:12px 20px;display:flex;align-items:center;gap:12px">
+  <span style="font-weight:700">📌 Pendientes de mantenimiento</span>
+  <button onclick="window.print()" style="background:#fff;color:#1e3a5f;border:none;padding:8px 18px;border-radius:5px;font-weight:700;cursor:pointer;font-size:13px">🖨️ Imprimir / Guardar PDF</button>
+  <button onclick="window.close()" style="background:transparent;color:#aaa;border:1px solid #aaa;padding:8px 14px;border-radius:5px;cursor:pointer;margin-left:auto">✕ Cerrar</button>
+</div>
+
+<div style="padding:18px 22px;max-width:900px;margin:0 auto">
+
+  <div style="border-bottom:3px solid #1e3a5f;padding-bottom:12px;margin-bottom:12px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:19px;font-weight:900;color:#1e3a5f;letter-spacing:.03em">MultiAire</div>
+        <div style="font-size:13px;color:#555;margin-top:2px">Pendientes de Mantenimiento</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:15px;font-weight:700">${_actEsc(currentSede)}${cliente?` <span style="font-size:11px;color:#777;font-weight:400">(${_actEsc(cliente)})</span>`:''}</div>
+        <div style="font-size:12px;color:#666">${_actEsc(currentPeriodo)} ${_actEsc(currentAnio)} · emitido ${dateStr}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">${items.length} de ${visibles.length} equipo(s) con pendientes</div>
+      </div>
+    </div>
+    ${filtrosHtml}
+  </div>
+
+  ${bodyHtml}
+
+  <div style="margin-top:14px;padding-top:8px;border-top:1px solid #ccc;font-size:9px;color:#999;text-align:center">
+    MultiAire · ${_actEsc(currentSede)} · ${_actEsc(currentPeriodo)} ${_actEsc(currentAnio)}
+  </div>
+
+</div>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w){ toast('Habilitá los pop-ups para generar el PDF','err'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  w.onload = () => { w.focus(); w.print(); };
+  setTimeout(() => { try { w.focus(); w.print(); } catch(e) {} }, 800);
 }
 
 
