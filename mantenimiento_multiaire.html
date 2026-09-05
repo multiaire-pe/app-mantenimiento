@@ -2331,12 +2331,18 @@ function _pendTareasPorCodigo(tareas){
     return (ia<0?999:ia) - (ib<0?999:ib) || a[0].localeCompare(b[0]);
   });
 }
-// Lista de tareas → texto corto para WhatsApp: si son TODAS las tareas consideradas del equipo,
-// colapsa a "Todo"; si no, une los códigos sin repetir (2 tareas de condensador → un solo "UC").
+// Lista de tareas → texto corto para WhatsApp: si son TODAS las tareas consideradas del equipo Y
+// hay más de un código distinto, colapsa a "Todo" (ahorra espacio en equipos con varias tareas,
+// ej. un chiller con UC/UE/Filtros/Techo/Tablero eléctrico/Motor inyector/Parámetros pendientes).
+// Con UN solo código —el caso más común: equipos de mantenimiento simple que solo tienen
+// "Mantenimiento integral" como única tarea— mostrar "Todo" sería literalmente esconder el nombre
+// de la única tarea que existe, que es justo lo que el filtro dejó de hacer en 2026-09-05. Con
+// varios códigos pero no todos pendientes, se unen sin repetir (2 tareas de condensador → "UC").
 function _pendListaWsp(lista, total){
   if(!lista.length) return '';
-  if(total && lista.length === total) return 'Todo';
-  return [...new Set(lista.map(_pendAbrev))].join(', ');
+  const cods = [...new Set(lista.map(_pendAbrev))];
+  if(total && lista.length === total && cods.length > 1) return 'Todo';
+  return cods.join(', ');
 }
 
 // Texto WhatsApp de los Pendientes — misma fuente y mismos filtros activos que la vista
