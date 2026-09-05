@@ -2304,11 +2304,8 @@ function renderPendientes(){
 // nombre completo). Gana el primer patrón que matchee sobre el nombre en minúsculas; una tarea
 // nueva que no calce ningún patrón se deja con su nombre completo — nunca se pierde información
 // en silencio por no estar en la tabla.
-// "Mantenimiento integral" solo existe en equipos con 2 tareas (mtto + toma de parámetros): ahí
-// abarca TODAS las fotos del mantenimiento preventivo, así que si falta, equivale a "Todo" — no se
-// abrevia como una tarea más.
 const TAREA_ABREV = [
-  [/integral/, 'Todo'],
+  [/integral/, 'Mantenimiento integral'],
   [/condensador/, 'UC'],
   [/evaporador/, 'UE'],
   [/filtro/, 'Filtros'],
@@ -2334,14 +2331,12 @@ function _pendTareasPorCodigo(tareas){
     return (ia<0?999:ia) - (ib<0?999:ib) || a[0].localeCompare(b[0]);
   });
 }
-// Lista de tareas → texto corto para WhatsApp: si son TODAS las tareas consideradas del equipo, o
-// si alguna ya abrevia a "Todo" (Mantenimiento integral), colapsa a "Todo"; si no, une los códigos
-// sin repetir (2 tareas de condensador → un solo "UC").
+// Lista de tareas → texto corto para WhatsApp: si son TODAS las tareas consideradas del equipo,
+// colapsa a "Todo"; si no, une los códigos sin repetir (2 tareas de condensador → un solo "UC").
 function _pendListaWsp(lista, total){
   if(!lista.length) return '';
-  const cods = [...new Set(lista.map(_pendAbrev))];
-  if(cods.includes('Todo') || (total && lista.length === total)) return 'Todo';
-  return cods.join(', ');
+  if(total && lista.length === total) return 'Todo';
+  return [...new Set(lista.map(_pendAbrev))].join(', ');
 }
 
 // Texto WhatsApp de los Pendientes — misma fuente y mismos filtros activos que la vista
