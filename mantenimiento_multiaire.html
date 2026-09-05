@@ -2363,7 +2363,6 @@ function exportPendWhatsApp(){
 
   let msg = `*PENDIENTES DE MANTENIMIENTO – ${currentSede}*\n*${currentPeriodo} ${currentAnio}*\n`;
   if(_pendFiltros.tipos.size) msg += `_Sin incluir: ${[..._pendFiltros.tipos].join(', ')}_\n`;
-  if(_pendFiltros.tareas.size) msg += `_Tareas ignoradas: ${[...new Set([..._pendFiltros.tareas].map(_pendAbrev))].join(', ')}_\n`;
   msg += `\n`;
 
   if(!nPend){
