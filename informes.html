@@ -472,7 +472,30 @@ function periodoActual() {
   return PERIODOS[Math.floor((m - 1) / 2)];
 }
 function nomTipo(t) { return TIPO_INFORME[String(t || '').toUpperCase()] || String(t || '—'); }
-function numDe(n) { const m = String(n || '').match(/(\d+)\s*$/); return m ? Number(m[1]) : 0; }
+
+// ── ORDEN NATURAL DE NOMBRE ─────────────────────────────────────────────────
+// "Extractor 01 (Axial)"/"Extractor 05 (Centrífugo)": el número identifica al
+// equipo DENTRO de su variante, no globalmente — por eso agrupa primero por lo
+// que sigue al número (la variante) y recién ahí ordena por número. Sin esto
+// (la versión vieja de este helper solo miraba dígitos al FINAL del nombre, con
+// lo que cualquier nombre terminado en "(Axial)"/"(Centrífugo)" daba 0 para
+// TODOS y el orden salía tal cual llegó de Firestore) axial y centrífugo se
+// combinan en la tabla de Alcance del informe. El número se toma del ÚLTIMO
+// grupo de dígitos del nombre (regex greedy) para no confundirse con dígitos
+// previos. Misma lógica que `inventario_multiaire.html`/`mantenimiento_multiaire.html`
+// — si cambia acá, cambia en los 3.
+function _parseNombreOrden(nombre) {
+  const s = String(nombre || '').trim();
+  const m = s.match(/^(.*)(\d+)\s*(.*)$/);
+  if (!m) return { pre: s.toLowerCase(), num: -1, suf: '' };
+  return { pre: m[1].toLowerCase().trim(), num: Number(m[2]), suf: m[3].toLowerCase().trim() };
+}
+function _cmpNombreOrden(a, b) {
+  const pa = _parseNombreOrden(a), pb = _parseNombreOrden(b);
+  return pa.pre.localeCompare(pb.pre, 'es', { sensitivity: 'base', numeric: true })
+      || pa.suf.localeCompare(pb.suf, 'es', { sensitivity: 'base' })
+      || (pa.num - pb.num);
+}
 
 function initApp() {
   // Gate: el informe es de mantenimiento, así que usa su mismo permiso de exportación
@@ -588,7 +611,7 @@ async function preparar() {
 function porTipo(equipos) {
   const g = {};
   equipos.forEach((e) => { const t = String(e.tipo || '').trim() || 'SIN TIPO'; (g[t] = g[t] || []).push(e); });
-  Object.values(g).forEach((l) => l.sort((a, b) => numDe(a.nombre) - numDe(b.nombre)));
+  Object.values(g).forEach((l) => l.sort((a, b) => _cmpNombreOrden(a.nombre, b.nombre)));
   return g;
 }
 

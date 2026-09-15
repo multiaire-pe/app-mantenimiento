@@ -1136,6 +1136,29 @@ const TIPO_ICON = {
   'UMA':'🏭','UNIDAD CONDENSADOR':'🔩','UNIDAD EVAPORADORA':'💧',
 };
 
+// ── ORDEN NATURAL DE NOMBRE ─────────────────────────────────────────────────
+// "Extractor 01 (Axial)"/"Extractor 05 (Centrífugo)": el número identifica al
+// equipo DENTRO de su variante, no globalmente — por eso agrupa primero por lo
+// que sigue al número (la variante) y recién ahí ordena por número. Sin esto,
+// "Extractor 01 (Axial)" y "Extractor 01 (Centrífugo)" empatan y el checklist
+// (que arma sus listas por tipo directo de `allEquipos`, sin ordenar) los deja
+// en el orden que Firestore devolvió los documentos (no determinista): axial y
+// centrífugo se combinan. El número se toma del ÚLTIMO grupo de dígitos del
+// nombre (regex greedy) para no confundirse con dígitos previos.
+// Misma lógica que `inventario_multiaire.html`/`informes.html` — si cambia acá, cambia en los 3.
+function _parseNombreOrden(nombre) {
+  const s = String(nombre || '').trim();
+  const m = s.match(/^(.*)(\d+)\s*(.*)$/);
+  if (!m) return { pre: s.toLowerCase(), num: -1, suf: '' };
+  return { pre: m[1].toLowerCase().trim(), num: Number(m[2]), suf: m[3].toLowerCase().trim() };
+}
+function _cmpNombreOrden(a, b) {
+  const pa = _parseNombreOrden(a), pb = _parseNombreOrden(b);
+  return pa.pre.localeCompare(pb.pre, 'es', { sensitivity: 'base', numeric: true })
+      || pa.suf.localeCompare(pb.suf, 'es', { sensitivity: 'base' })
+      || (pa.num - pb.num);
+}
+
 // Estado global
 let allEquipos = [];     // todos los equipos del sheet
 let sedeEquipos = [];    // equipos de la sede actual
@@ -1232,6 +1255,11 @@ async function loadInventario() {
         eq_id: r[0], sede: r[1], cliente: r[2], tipo: r[3], nombre: r[4],
         area: r[5], marca: r[6], modelo: r[7], serie: r[8]
       }));
+    // Orden base por tipo + nombre natural (ver _cmpNombreOrden): el checklist, el
+    // dashboard, el selector de equipos y el resto de vistas agrupan por tipo
+    // directo de este array sin volver a ordenar — así salen ya agrupados por
+    // variante+número en vez del orden arbitrario en que llegó de Firestore.
+    allEquipos.sort((a,b) => a.tipo.localeCompare(b.tipo,'es',{sensitivity:'base'}) || _cmpNombreOrden(a.nombre,b.nombre));
 
     // Populate sedes grouped by cliente (clear first to avoid duplicates)
     const sel = document.getElementById('selSede');
@@ -2839,10 +2867,10 @@ function exportChecklist() {
   const now = new Date();
   const dateStr = now.toLocaleDateString('es-PE',{day:'2-digit',month:'2-digit',year:'numeric'});
 
-  // Agrupar por tipo → equipos (equipos ordenados por nombre)
+  // Agrupar por tipo → equipos (equipos en orden natural, ver _cmpNombreOrden)
   const byTipo = {};
   sel.forEach(e => { (byTipo[e.tipo] = byTipo[e.tipo] || []).push(e); });
-  Object.values(byTipo).forEach(arr => arr.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{numeric:true})));
+  Object.values(byTipo).forEach(arr => arr.sort((a,b)=>_cmpNombreOrden(a.nombre,b.nombre)));
 
   const box = '<span style="display:inline-block;width:13px;height:13px;border:1.6px solid #333;border-radius:2px;vertical-align:middle"></span>';
   let nEq = 0, nActs = 0;
