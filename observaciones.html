@@ -98,6 +98,17 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 .prov-search-wrap{flex:1;min-width:220px}
 .prov-toolbar-actions{display:flex;gap:8px;flex-wrap:wrap}
 
+/* TOGGLE SWITCH (incluir equipos sin observaciones en el Excel) */
+.switch-wrap{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:0 2px}
+.switch-label{font-size:11px;color:var(--muted2);font-weight:600;white-space:nowrap}
+.switch{position:relative;display:inline-block;width:32px;height:18px;flex:none}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.switch-slider{position:absolute;inset:0;background:var(--border2);border-radius:20px;transition:background .15s}
+.switch-slider::before{content:'';position:absolute;width:14px;height:14px;left:2px;top:2px;background:#fff;border-radius:50%;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.switch input:checked+.switch-slider{background:var(--blue)}
+.switch input:checked+.switch-slider::before{transform:translateX(14px)}
+.switch input:focus-visible+.switch-slider{outline:2px solid var(--blue);outline-offset:2px}
+
 /* ── TABLE ────────────────────────────────────────────────────────────────── */
 .results-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
 .results-header h3{font-size:13px;font-weight:700;color:var(--blue)}
@@ -207,6 +218,10 @@ tr:hover td{background:var(--surface2)}
         </select>
         <label class="form-input" style="display:inline-flex;align-items:center;gap:6px;width:auto;min-width:160px;cursor:pointer;color:var(--muted2)" title="Filtrar por fecha"><span style="font-size:14px">📅</span><span style="font-size:12px;white-space:nowrap">Fecha:</span><input type="date" id="obs-f-fecha" style="border:0;background:transparent;outline:0;font:inherit;color:var(--text,#1a2540);flex:1;min-width:0;padding:0" onchange="renderObsTable()"></label>
         <button class="btn btn-sm" onclick="clearObsFilters()" title="Limpiar filtros">✕ Limpiar</button>
+        <label class="switch-wrap" id="obs-f-sinobs-wrap" style="display:none" title="Excel: incluye una fila por cada equipo sin observaciones (relleno 'Sin observaciones.'). Desactívalo para exportar solo los equipos con hallazgos.">
+          <span class="switch"><input type="checkbox" id="obs-f-sinobs" checked><span class="switch-slider"></span></span>
+          <span class="switch-label">Sin obs. en Excel</span>
+        </label>
         <button class="btn btn-sm btn-green" id="btn-export-xls" onclick="exportObsExcel()" style="display:none">⬇ Excel</button>
         <button class="btn btn-sm btn-green" id="btn-export-pdf" onclick="exportObsPDF()" style="display:none">⬇ PDF</button>
         <button class="btn btn-sm btn-primary" id="btn-new-obs" onclick="openNewObs()" style="display:none">＋ Nueva observación</button>
@@ -623,6 +638,7 @@ function initApp(){
     ['btn-export-xls','btn-export-pdf'].forEach(id => {
       const el = document.getElementById(id); if(el) el.style.display = 'inline-flex';
     });
+    const sw = document.getElementById('obs-f-sinobs-wrap'); if(sw) sw.style.display = 'flex';
   }
   loadAll();
 }
@@ -1005,27 +1021,43 @@ async function deleteObs(){
   }catch(e){ toast('Error al eliminar: ' + e.message, 'err'); }
 }
 
-// ── EXPORT EXCEL (sábana completa, rellena "Sin observaciones.") ──────────────────
+// ── EXPORT EXCEL (sábana del alcance filtrado, rellena "Sin observaciones." salvo que se apague el switch) ──
 function tsFile(){ const d=new Date(); return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; }
 const sedeDe = (o) => o.sede || String(o.tienda||'').replace(/^RIPLEY\s+/i,'');
 const obsDeEquipo = (eq) => observaciones.filter(o => (o.eqId && o.eqId===eq.eqId)
   || (!o.eqId && o.equipo===eq.nombre && sedeDe(o)===eq.sede));
+// Tienda ("CLIENTE SEDE") de un equipo del inventario — misma fórmula que al guardar una
+// observación (ver openNewObs), para poder comparar contra el valor del filtro de sede
+// (obs-f-tienda), que se puebla con ese mismo formato.
+const tiendaDeEquipo = (eq) => (eq.cliente ? eq.cliente + ' ' : '') + (eq.sede || '');
+
 function exportObsExcel(){
   if(!MA.can('exportar','observaciones')){ toast('Sin permisos para exportar', 'err'); return; }
-  // Sábana completa del inventario (557 equipos): cada equipo con sus observaciones o "Sin observaciones.".
+  // Alcance = los filtros de Cliente/Sede de la barra (los mismos que ya restringen la tabla en
+  // pantalla): sede elegida → SOLO esa sede (el valor ya viene calificado por cliente, "RIPLEY
+  // ATOCONGO", así que alcanza solo con compararlo); cliente elegido sin sede → todas las sedes
+  // de ese cliente; ninguno → sábana completa, como antes.
+  const fc = document.getElementById('obs-f-cliente').value;
+  const ft = document.getElementById('obs-f-tienda').value;
+  const incluirSinObs = document.getElementById('obs-f-sinobs').checked;
+  const enAlcanceEq = (eq) => (ft ? tiendaDeEquipo(eq) === ft : (!fc || eq.cliente === fc));
+  const enAlcanceObs = (o) => (ft ? (o.tienda||'') === ft : (!fc || obsClienteDe(o) === fc));
+
+  // Sábana del alcance elegido: cada equipo con sus observaciones o, si el switch "Sin obs. en
+  // Excel" está activo (default), una fila de relleno "Sin observaciones.".
   // Fecha + hora real de registro (createdAt), en horario de Lima.
   const fmtReg = o => o.createdAt ? new Date(o.createdAt).toLocaleString('es-PE',{timeZone:'America/Lima',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
   const data = [['CLIENTE','SEDE','TIPO','EQUIPO','CÓDIGO','UBICACIÓN','OBSERVACIÓN','ESTADO','FECHA','REGISTRADA','ORIGEN']];
   const usados = new Set();
-  obsInventario.forEach(eq => {
+  obsInventario.filter(enAlcanceEq).forEach(eq => {
     const obs = obsDeEquipo(eq);
     if(obs.length){
       obs.forEach(o => { usados.add(o.id); data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, eq.area||'', o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', fmtReg(o), (o.origen||'APP')]); });
-    } else {
+    } else if(incluirSinObs) {
       data.push([eq.cliente, eq.sede, eq.tipo, eq.nombre, eq.eqId, eq.area||'', 'Sin observaciones.', '', '', '', '']);
     }
   });
-  observaciones.filter(o => !usados.has(o.id)).forEach(o => {
+  observaciones.filter(o => !usados.has(o.id) && enAlcanceObs(o)).forEach(o => {
     data.push([o.cliente||'', sedeDe(o), o.tipo||'', o.equipo||'', o.eqId||'', obsArea(o), o.observacion||'', (o.estado||'PENDIENTE').replace('_',' '), o.fecha||'', fmtReg(o), (o.origen||'APP')]);
   });
   const ws = XLSX.utils.aoa_to_sheet(data);
