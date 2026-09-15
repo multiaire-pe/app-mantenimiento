@@ -806,8 +806,12 @@ async function generar() {
     hijos.push(h1('2. Reporte fotográfico', true));
     let algunaFoto = false;
     for (const t of orden) {
-      const eqs = tipos[t].filter((e) => (d.ejecPorEq[e.eq_id || e.id] || []).length);
-      if (!eqs.length) continue;
+      // TODOS los equipos del alcance (mismo criterio que la sección 1), no solo los que
+      // tuvieron ejecución registrada este período — un equipo sin fotos igual dibuja su
+      // cuadro (celdas "sin foto" en el color de "falta dato", ver celda() más abajo). Antes
+      // se filtraba por `ejecPorEq`, así que un equipo del alcance sin ejecución/fotos
+      // simplemente no aparecía en el reporte fotográfico.
+      const eqs = tipos[t];
       hijos.push(hTipo(nomTipo(t)));
       hijos.push(new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE }, columnWidths: [2800, 2300, 2300, 2300],
         rows: [new D.TableRow({ tableHeader: true, children: ['Nombre de activo', 'Foto 1', 'Foto 2', 'Foto 3'].map(th) }),
