@@ -316,6 +316,27 @@ let data=[], filtered=[], selected=new Set(), sortCol='sede', sortAsc=true, edit
 // deriva de la sede elegida en vez de hardcodear RIPLEY (hallazgo del Council)
 const sedeCliente={};
 
+// ── ORDEN NATURAL DE NOMBRE ─────────────────────────────────────────────────
+// "Extractor 01 (Axial)"/"Extractor 05 (Centrífugo)": el número identifica al
+// equipo DENTRO de su variante, no globalmente — por eso agrupa primero por lo
+// que sigue al número (la variante) y recién ahí ordena por número. Sin esto,
+// "Extractor 01 (Axial)" y "Extractor 01 (Centrífugo)" empatan y el orden que
+// sale es el de Firestore (no determinista): axial y centrífugo se combinan.
+// El número se toma del ÚLTIMO grupo de dígitos del nombre (regex greedy) para
+// no confundirse con dígitos previos (ej. "UMA-P1-01" → número=01, no el 1 de P1).
+function _parseNombreOrden(nombre) {
+  const s = String(nombre || '').trim();
+  const m = s.match(/^(.*)(\d+)\s*(.*)$/);
+  if (!m) return { pre: s.toLowerCase(), num: -1, suf: '' };
+  return { pre: m[1].toLowerCase().trim(), num: Number(m[2]), suf: m[3].toLowerCase().trim() };
+}
+function _cmpNombreOrden(a, b) {
+  const pa = _parseNombreOrden(a), pb = _parseNombreOrden(b);
+  return pa.pre.localeCompare(pb.pre, 'es', { sensitivity: 'base', numeric: true })
+      || pa.suf.localeCompare(pb.suf, 'es', { sensitivity: 'base' })
+      || (pa.num - pb.num);
+}
+
 // ── API ───────────────────────────────────────────────────────────────────────
 async function gasGet() {
   const { getDocs, collection } = window.__fb;
@@ -380,6 +401,11 @@ async function sync() {
         row:i+2, eq_id:r[0]||'', sede:r[1]||'', cliente:r[2]||'', equipo:r[3]||'', descripcion:r[4]||'',
         area:r[5]||'', marca:r[6]||'', modelo:r[7]||'', serie:r[8]||'', capacidad:r[9]||'', codigoTienda:r[10]||''
       }));
+    // Orden base por tipo + nombre natural (ver _cmpNombreOrden): así, aunque el
+    // usuario no toque ninguna columna, dentro de una misma sede los equipos salen
+    // agrupados por tipo y, dentro de cada tipo, por variante+número (no por el
+    // orden arbitrario en que Firestore devolvió los documentos).
+    data.sort((a,b) => a.equipo.localeCompare(b.equipo,'es',{sensitivity:'base'}) || _cmpNombreOrden(a.descripcion,b.descripcion));
     setPill('ok', '✓ ' + data.length + ' equipos');
     pf(); af(); us();
     toast(data.length + ' equipos cargados','ok');
@@ -479,7 +505,13 @@ function af() {
   fs('fArea',opts('area'),'Todas las áreas');
   fs('fMarca',opts('marca'),'Todas las marcas');
   sddGroups.fSede = sddGrupos(data.filter(r=>pass(r,'sede')).map(r=>({cliente:r.cliente, sede:r.sede})));
-  filtered.sort((a,b)=>{const av=(a[sortCol]||'').toLowerCase(),bv=(b[sortCol]||'').toLowerCase();return sortAsc?av.localeCompare(bv):bv.localeCompare(av);});
+  filtered.sort((a,b)=>{
+    // DESCRIPCIÓN usa orden natural (número+variante, ver _cmpNombreOrden) en vez de
+    // comparar el texto tal cual — si no, "Extractor 01 (Axial)" y "01 (Centrífugo)"
+    // empatan y el resto queda en el orden en que llegó de Firestore.
+    const c = sortCol==='descripcion' ? _cmpNombreOrden(a.descripcion,b.descripcion) : (a[sortCol]||'').toLowerCase().localeCompare((b[sortCol]||'').toLowerCase());
+    return sortAsc?c:-c;
+  });
   rt(); document.getElementById('cnt').textContent=filtered.length+' equipos';
   document.getElementById('ec1').textContent=filtered.length;
   document.getElementById('ec3').textContent=data.length;
