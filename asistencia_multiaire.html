@@ -17,6 +17,7 @@
   --red:#d63344;--red-bg:#fdf0f2;--red-border:#f0c0c8;
   --yellow:#d48a00;--yellow-bg:#fff8ee;--yellow-border:#f5d080;
   --purple:#6b3fa0;--purple-bg:#f3eeff;--purple-border:#d0b8ef;
+  --teal:#0f8a6b;--teal-bg:#e6f7f2;--teal-border:#a8dfd0;
   --font:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
   --shadow:0 2px 12px rgba(27,63,139,.10);--shadow-lg:0 8px 32px rgba(27,63,139,.14);
 }
@@ -118,6 +119,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .badge-dm{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-border)}
 .badge-permiso{background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-border)}
 .badge-vacaciones{background:var(--blue-pale);color:var(--blue);border:1px solid #c0d0ef}
+.badge-descanso-comp{background:var(--teal-bg);color:var(--teal);border:1px solid var(--teal-border)}
 .supervisor-mode .sidebar{display:none}
 .supervisor-mode #modal-edit-reg .btn-danger,.supervisor-mode #modal-edit-reg .btn-primary{display:none}
 .no-delete #modal-edit-reg .btn-danger{display:none}
@@ -141,6 +143,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .ta-cell-DM{background:#fff8ee;color:#d48a00;font-weight:700}
 .ta-cell-P{background:#f3eeff;color:#6b3fa0;font-weight:700}
 .ta-cell-V{background:#eef4fc;color:#1B3F8B;font-weight:700}
+.ta-cell-DC{background:#e6f7f2;color:#0f8a6b;font-weight:700}
 .ta-cell-DOM{background:#f0f4fa;color:#8a9ab8}
 .ta-cell-FER{background:#e8eef8;color:#1B3F8B;font-weight:700}
 .ta-cell-empty{background:#fff;color:#ccc}
@@ -291,9 +294,10 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
       <div style="border-top:1px solid var(--border);padding-top:10px">
         <div class="sb-label">Estado especial</div>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+          <button class="btn btn-sm" onclick="registrarEstado('F')" style="font-size:10px">✗ Falta</button>
+          <button class="btn btn-sm" onclick="registrarEstado('DC')" style="font-size:10px">😴 Desc. compensatorio</button>
           <button class="btn btn-sm" onclick="registrarEstado('DM')" style="font-size:10px">🏥 Desc. médico</button>
           <button class="btn btn-sm" onclick="registrarEstado('P')" style="font-size:10px">⚠️ Permiso</button>
-          <button class="btn btn-sm" onclick="registrarEstado('F')" style="font-size:10px">✗ Falta</button>
           <button class="btn btn-sm" onclick="registrarEstado('V')" style="font-size:10px">🏖️ Vacaciones</button>
         </div>
       </div>
@@ -467,9 +471,10 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
         <div class="field-label">Estado</div>
         <select class="field-input" id="edit-reg-estado">
           <option value="A">A – Asistió</option>
+          <option value="F">F – Falta</option>
+          <option value="DC">DC – Descanso compensatorio</option>
           <option value="DM">DM – Descanso médico</option>
           <option value="P">P – Permiso</option>
-          <option value="F">F – Falta</option>
           <option value="V">V – Vacaciones</option>
         </select>
       </div>
@@ -831,11 +836,11 @@ function getHeValue(reg) {
   if(reg.heManual===true&&reg.horasExtra!==null&&reg.horasExtra!==undefined)return{val:reg.horasExtra,manual:true};
   // Falta injustificada = jornada completa no trabajada
   if(reg.estado==='F')return{val:-8,manual:false};
-  // Descanso médico / Permiso / Vacaciones: días NO laborados → nunca generan H.E. automática,
-  // aunque el registro conserve horaEntrada/Salida (p.ej. si se convirtió un registro con horas
-  // a uno de estos estados desde el modal de edición). Sin esto, un 'V'/'DM'/'P' con horas
-  // sumaría H.E. en Vista E/S y exports.
-  if(reg.estado==='DM'||reg.estado==='P'||reg.estado==='V')return{val:null,manual:false};
+  // Descanso médico / Permiso / Vacaciones / Descanso compensatorio: días NO laborados → nunca
+  // generan H.E. automática, aunque el registro conserve horaEntrada/Salida (p.ej. si se convirtió
+  // un registro con horas a uno de estos estados desde el modal de edición). Sin esto, un
+  // 'V'/'DM'/'P'/'DC' con horas sumaría H.E. en Vista E/S y exports.
+  if(reg.estado==='DM'||reg.estado==='P'||reg.estado==='V'||reg.estado==='DC')return{val:null,manual:false};
   const auto=calcHorasExtra(reg.horaEntrada,reg.horaSalida,reg.fecha);
   return{val:auto,manual:false};
 }
@@ -923,9 +928,10 @@ function selectColab(id) {
   if(fecha!==todayKey()){el.style.display='none';return;}
   const reg=todayRegs.find(r=>r.colabId===id);
   if(!reg){el.innerHTML='<span style="font-size:11px;color:var(--muted2)">Sin registro hoy</span>';}
+  else if(reg.estado==='F'){el.innerHTML='<span class="badge badge-ausente">✗ Falta</span>';}
+  else if(reg.estado==='DC'){el.innerHTML='<span class="badge badge-descanso-comp">😴 Desc. compensatorio</span>';}
   else if(reg.estado==='DM'){el.innerHTML='<span class="badge badge-dm">🏥 Desc. médico</span>';}
   else if(reg.estado==='P'){el.innerHTML='<span class="badge badge-permiso">⚠️ Permiso</span>';}
-  else if(reg.estado==='F'){el.innerHTML='<span class="badge badge-ausente">✗ Falta</span>';}
   else if(reg.estado==='V'){el.innerHTML='<span class="badge badge-vacaciones">🏖️ Vacaciones</span>';}
   else if(reg.horaEntrada!=null&&reg.horaSalida==null){el.innerHTML=`<span class="badge badge-dentro">▶ Entrada: ${decimalToHora(reg.horaEntrada)}</span>`;}
   else if(reg.horaEntrada!=null&&reg.horaSalida!=null){el.innerHTML=`<span class="badge badge-fuera">■ Salida: ${decimalToHora(reg.horaSalida)}</span>`;}
@@ -988,9 +994,10 @@ function renderTodayTable() {
       const he=getHeValue(reg);
       heStr=he.val!=null?he.val.toFixed(1)+'h':'—';
       heManual=he.manual;
-      if(reg.estado==='DM'){estado='DESC. MÉDICO';estadoClass='badge-dm';}
+      if(reg.estado==='F'){estado='FALTA';estadoClass='badge-ausente';}
+      else if(reg.estado==='DC'){estado='DESC. COMPENSATORIO';estadoClass='badge-descanso-comp';}
+      else if(reg.estado==='DM'){estado='DESC. MÉDICO';estadoClass='badge-dm';}
       else if(reg.estado==='P'){estado='PERMISO';estadoClass='badge-permiso';}
-      else if(reg.estado==='F'){estado='FALTA';estadoClass='badge-ausente';}
       else if(reg.estado==='V'){estado='VACACIONES';estadoClass='badge-vacaciones';}
       else if(reg.horaEntrada!=null&&reg.horaSalida==null){estado='EN TRABAJO';estadoClass='badge-dentro';dentro++;}
       else if(reg.horaEntrada!=null&&reg.horaSalida!=null){estado='SALIÓ';estadoClass='badge-fuera';salio++;}
@@ -1061,7 +1068,7 @@ async function registrarEstado(estado) {
   if(!colab)return;
   const fecha=document.getElementById('sidebar-fecha').value||todayKey();
   if(fecha>todayKey()){toast('No se puede registrar en fechas futuras','err');return;}
-  const labels={DM:'Descanso médico',P:'Permiso',F:'Falta',V:'Vacaciones'};
+  const labels={F:'Falta',DC:'Descanso compensatorio',DM:'Descanso médico',P:'Permiso',V:'Vacaciones'};
   if(!confirm(`¿Registrar "${labels[estado]}" para ${colab.nombre} el ${fecha}?`))return;
   const loading=document.getElementById('loading');
   loading.classList.add('show');
@@ -1069,7 +1076,7 @@ async function registrarEstado(estado) {
     const regsDelDia=await loadRegsByFecha(fecha);
     const existing=regsDelDia.find(r=>r.colabId===selectedColabId);
     const data={colabId:selectedColabId,nombre:colab.nombre,cargo:colab.cargo||'',fecha,horaEntrada:null,horaSalida:null,estado,observacion:labels[estado]||estado,heManual:false,horasExtra:null,registradoPor:maUser?.email||'',timestamp:new Date().toISOString()};
-    // DM/Permiso/Falta/Vacaciones ya no es asistencia → overwrite completo (descarta origen/evidencia del bot si la había), igual que saveEditReg al pasar a no-A.
+    // DM/Permiso/Falta/Vacaciones/Desc. compensatorio ya no es asistencia → overwrite completo (descarta origen/evidencia del bot si la había), igual que saveEditReg al pasar a no-A.
     if(existing){await window.__db.collection('asistencia_registros').doc(existing.id).set({...data,id:existing.id});}
     else{const _id='AST-'+selectedColabId+'-'+fecha;await window.__db.collection('asistencia_registros').doc(_id).set({...data,id:_id});}
     toast(`✓ ${colab.nombre} → ${labels[estado]}`,'ok');
@@ -1189,8 +1196,9 @@ async function saveEditReg() {
   try {
     const data={colabId,nombre:colab.nombre,cargo:colab.cargo||'',fecha,horaEntrada,horaSalida,estado,observacion:obs,heManual:heIsManual,horasExtra,registradoPor:maUser?.email||'',timestamp:new Date().toISOString()};
     // Si sigue siendo asistencia (estado A) → merge:true para PRESERVAR la evidencia del bot (origen,
-    // marcajeEntrada/Salida). Si el admin lo convierte a DM/Permiso/Falta/Vacaciones → overwrite completo: la
-    // evidencia geolocalizada ya no aplica y se descarta (evita badge/selfie de un día que ya no es asistencia).
+    // marcajeEntrada/Salida). Si el admin lo convierte a DM/Permiso/Falta/Vacaciones/Desc. compensatorio →
+    // overwrite completo: la evidencia geolocalizada ya no aplica y se descarta (evita badge/selfie de un
+    // día que ya no es asistencia).
     if(regId){const ref=window.__db.collection('asistencia_registros').doc(regId); if(estado==='A'){await ref.set({...data,id:regId},{merge:true});}else{await ref.set({...data,id:regId});}}
     else{const _id='AST-'+colabId+'-'+fecha;await window.__db.collection('asistencia_registros').doc(_id).set({...data,id:_id});}
     toast('✓ Registro guardado','ok');
@@ -1236,8 +1244,8 @@ async function loadHistorial() {
       const salStr=r.horaSalida!=null?decimalToHora(r.horaSalida):'—';
       const he=getHeValue(r);
       const heStr=he.val!=null?he.val.toFixed(1)+'h':'—';
-      const estadoLabel={A:'Asistió',DM:'Desc. médico',P:'Permiso',F:'Falta',V:'Vacaciones'}[r.estado]||r.estado;
-      const estadoClass={A:r.horaSalida?'badge-fuera':'badge-dentro',DM:'badge-dm',P:'badge-permiso',F:'badge-ausente',V:'badge-vacaciones'}[r.estado]||'';
+      const estadoLabel={A:'Asistió',F:'Falta',DC:'Desc. compensatorio',DM:'Desc. médico',P:'Permiso',V:'Vacaciones'}[r.estado]||r.estado;
+      const estadoClass={A:r.horaSalida?'badge-fuera':'badge-dentro',F:'badge-ausente',DC:'badge-descanso-comp',DM:'badge-dm',P:'badge-permiso',V:'badge-vacaciones'}[r.estado]||'';
       const heColor=he.val&&he.val>0?'color:var(--orange);font-weight:700':'';
       const manualBadge=he.manual?'<span class="he-manual-badge">M</span>':'';
       return`<div class="hist-table-row" onclick="openEditReg('${r.id}','${r.colabId}','${escHtml(r.nombre||'')}','${escHtml(r.cargo||'')}','${r.fecha}')">
@@ -1299,10 +1307,11 @@ async function loadVistaTA() {
           if(f>todayKey()){html+=`<td class="ta-cell-empty"></td>`;return;}
           html+=`<td class="ta-cell-X" onclick="openEditReg(null,'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">X</td>`;return;
         }
+        if(reg.estado==='F'){html+=`<td class="ta-cell-X">X</td>`;return;}
+        if(reg.estado==='DC'){html+=`<td class="ta-cell-DC">DC</td>`;return;}
         if(reg.estado==='DM'){html+=`<td class="ta-cell-DM">DM</td>`;return;}
         if(reg.estado==='P'){html+=`<td class="ta-cell-P">P</td>`;return;}
         if(reg.estado==='V'){html+=`<td class="ta-cell-V">V</td>`;return;}
-        if(reg.estado==='F'){html+=`<td class="ta-cell-X">X</td>`;return;}
         const ent=reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'?';
         html+=`<td class="ta-cell-A" onclick="openEditReg('${reg.id}','${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">${ent}</td>`;
       });
@@ -1388,7 +1397,7 @@ async function loadVistaES() {
         }
         const heColor=heVal==null?'':heVal<0?'color:var(--red);font-weight:700':heVal>0?'color:var(--orange);font-weight:700':'';
         const manualBadge=heManual?'<span class="he-manual-badge">M</span>':'';
-        const estadoBadge={X:'badge-ausente',F:'badge-ausente',A:'badge-fuera',DM:'badge-dm',P:'badge-permiso',V:'badge-vacaciones'}[estadoStr]||'';
+        const estadoBadge={X:'badge-ausente',A:'badge-fuera',F:'badge-ausente',DC:'badge-descanso-comp',DM:'badge-dm',P:'badge-permiso',V:'badge-vacaciones'}[estadoStr]||'';
         html+=`<div class="es-table-row" style="${rowBg}" onclick="openEditReg(${regIdParam},'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">
           <div style="font-family:var(--mono);font-size:11px">${fechaStr}</div>
           <div style="font-size:11px;color:var(--muted2)">${diaStr}</div>
@@ -1463,7 +1472,7 @@ function exportTAPDF() {
   if(!content||content.includes('empty-state')){toast('Genera la vista primero','err');return;}
   const w=window.open('','_blank');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Vista T/A</title>
-  <style>body{font-family:Arial,sans-serif;font-size:10px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 6px;text-align:center}th{background:#e8eef8;font-weight:700}.nombre-col{text-align:left}.ta-cell-A{background:#f0faf5;color:#1a9e5a;font-weight:700}.ta-cell-X{background:#fdf0f2;color:#d63344;font-weight:700}.ta-cell-DM{background:#fff8ee;color:#d48a00}.ta-cell-P{background:#f3eeff;color:#6b3fa0}.ta-cell-V{background:#eef4fc;color:#1B3F8B}.ta-cell-DOM,.ta-cell-FER{background:#e8eef8;color:#6a7a9a}</style>
+  <style>body{font-family:Arial,sans-serif;font-size:10px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:4px 6px;text-align:center}th{background:#e8eef8;font-weight:700}.nombre-col{text-align:left}.ta-cell-A{background:#f0faf5;color:#1a9e5a;font-weight:700}.ta-cell-X{background:#fdf0f2;color:#d63344;font-weight:700}.ta-cell-DM{background:#fff8ee;color:#d48a00}.ta-cell-P{background:#f3eeff;color:#6b3fa0}.ta-cell-V{background:#eef4fc;color:#1B3F8B}.ta-cell-DC{background:#e6f7f2;color:#0f8a6b}.ta-cell-DOM,.ta-cell-FER{background:#e8eef8;color:#6a7a9a}</style>
   </head><body>${content}<script>window.onload=()=>setTimeout(()=>window.print(),400)<\/script></body></html>`);
   w.document.close();
 }
