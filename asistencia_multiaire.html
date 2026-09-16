@@ -294,11 +294,11 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
       <div style="border-top:1px solid var(--border);padding-top:10px">
         <div class="sb-label">Estado especial</div>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+          <button class="btn btn-sm" onclick="registrarEstado('F')" style="font-size:10px">✗ Falta</button>
+          <button class="btn btn-sm" onclick="registrarEstado('DC')" style="font-size:10px">😴 Desc. compensatorio</button>
           <button class="btn btn-sm" onclick="registrarEstado('DM')" style="font-size:10px">🏥 Desc. médico</button>
           <button class="btn btn-sm" onclick="registrarEstado('P')" style="font-size:10px">⚠️ Permiso</button>
-          <button class="btn btn-sm" onclick="registrarEstado('F')" style="font-size:10px">✗ Falta</button>
           <button class="btn btn-sm" onclick="registrarEstado('V')" style="font-size:10px">🏖️ Vacaciones</button>
-          <button class="btn btn-sm" onclick="registrarEstado('DC')" style="font-size:10px;grid-column:span 2">😴 Desc. compensatorio</button>
         </div>
       </div>
     </div>
@@ -471,11 +471,11 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
         <div class="field-label">Estado</div>
         <select class="field-input" id="edit-reg-estado">
           <option value="A">A – Asistió</option>
+          <option value="F">F – Falta</option>
+          <option value="DC">DC – Descanso compensatorio</option>
           <option value="DM">DM – Descanso médico</option>
           <option value="P">P – Permiso</option>
-          <option value="F">F – Falta</option>
           <option value="V">V – Vacaciones</option>
-          <option value="DC">DC – Descanso compensatorio</option>
         </select>
       </div>
       <div class="field-group">
@@ -928,11 +928,11 @@ function selectColab(id) {
   if(fecha!==todayKey()){el.style.display='none';return;}
   const reg=todayRegs.find(r=>r.colabId===id);
   if(!reg){el.innerHTML='<span style="font-size:11px;color:var(--muted2)">Sin registro hoy</span>';}
+  else if(reg.estado==='F'){el.innerHTML='<span class="badge badge-ausente">✗ Falta</span>';}
+  else if(reg.estado==='DC'){el.innerHTML='<span class="badge badge-descanso-comp">😴 Desc. compensatorio</span>';}
   else if(reg.estado==='DM'){el.innerHTML='<span class="badge badge-dm">🏥 Desc. médico</span>';}
   else if(reg.estado==='P'){el.innerHTML='<span class="badge badge-permiso">⚠️ Permiso</span>';}
-  else if(reg.estado==='F'){el.innerHTML='<span class="badge badge-ausente">✗ Falta</span>';}
   else if(reg.estado==='V'){el.innerHTML='<span class="badge badge-vacaciones">🏖️ Vacaciones</span>';}
-  else if(reg.estado==='DC'){el.innerHTML='<span class="badge badge-descanso-comp">😴 Desc. compensatorio</span>';}
   else if(reg.horaEntrada!=null&&reg.horaSalida==null){el.innerHTML=`<span class="badge badge-dentro">▶ Entrada: ${decimalToHora(reg.horaEntrada)}</span>`;}
   else if(reg.horaEntrada!=null&&reg.horaSalida!=null){el.innerHTML=`<span class="badge badge-fuera">■ Salida: ${decimalToHora(reg.horaSalida)}</span>`;}
   el.style.display='block';
@@ -994,11 +994,11 @@ function renderTodayTable() {
       const he=getHeValue(reg);
       heStr=he.val!=null?he.val.toFixed(1)+'h':'—';
       heManual=he.manual;
-      if(reg.estado==='DM'){estado='DESC. MÉDICO';estadoClass='badge-dm';}
-      else if(reg.estado==='P'){estado='PERMISO';estadoClass='badge-permiso';}
-      else if(reg.estado==='F'){estado='FALTA';estadoClass='badge-ausente';}
-      else if(reg.estado==='V'){estado='VACACIONES';estadoClass='badge-vacaciones';}
+      if(reg.estado==='F'){estado='FALTA';estadoClass='badge-ausente';}
       else if(reg.estado==='DC'){estado='DESC. COMPENSATORIO';estadoClass='badge-descanso-comp';}
+      else if(reg.estado==='DM'){estado='DESC. MÉDICO';estadoClass='badge-dm';}
+      else if(reg.estado==='P'){estado='PERMISO';estadoClass='badge-permiso';}
+      else if(reg.estado==='V'){estado='VACACIONES';estadoClass='badge-vacaciones';}
       else if(reg.horaEntrada!=null&&reg.horaSalida==null){estado='EN TRABAJO';estadoClass='badge-dentro';dentro++;}
       else if(reg.horaEntrada!=null&&reg.horaSalida!=null){estado='SALIÓ';estadoClass='badge-fuera';salio++;}
       else sinReg++;
@@ -1068,7 +1068,7 @@ async function registrarEstado(estado) {
   if(!colab)return;
   const fecha=document.getElementById('sidebar-fecha').value||todayKey();
   if(fecha>todayKey()){toast('No se puede registrar en fechas futuras','err');return;}
-  const labels={DM:'Descanso médico',P:'Permiso',F:'Falta',V:'Vacaciones',DC:'Descanso compensatorio'};
+  const labels={F:'Falta',DC:'Descanso compensatorio',DM:'Descanso médico',P:'Permiso',V:'Vacaciones'};
   if(!confirm(`¿Registrar "${labels[estado]}" para ${colab.nombre} el ${fecha}?`))return;
   const loading=document.getElementById('loading');
   loading.classList.add('show');
@@ -1244,8 +1244,8 @@ async function loadHistorial() {
       const salStr=r.horaSalida!=null?decimalToHora(r.horaSalida):'—';
       const he=getHeValue(r);
       const heStr=he.val!=null?he.val.toFixed(1)+'h':'—';
-      const estadoLabel={A:'Asistió',DM:'Desc. médico',P:'Permiso',F:'Falta',V:'Vacaciones',DC:'Desc. compensatorio'}[r.estado]||r.estado;
-      const estadoClass={A:r.horaSalida?'badge-fuera':'badge-dentro',DM:'badge-dm',P:'badge-permiso',F:'badge-ausente',V:'badge-vacaciones',DC:'badge-descanso-comp'}[r.estado]||'';
+      const estadoLabel={A:'Asistió',F:'Falta',DC:'Desc. compensatorio',DM:'Desc. médico',P:'Permiso',V:'Vacaciones'}[r.estado]||r.estado;
+      const estadoClass={A:r.horaSalida?'badge-fuera':'badge-dentro',F:'badge-ausente',DC:'badge-descanso-comp',DM:'badge-dm',P:'badge-permiso',V:'badge-vacaciones'}[r.estado]||'';
       const heColor=he.val&&he.val>0?'color:var(--orange);font-weight:700':'';
       const manualBadge=he.manual?'<span class="he-manual-badge">M</span>':'';
       return`<div class="hist-table-row" onclick="openEditReg('${r.id}','${r.colabId}','${escHtml(r.nombre||'')}','${escHtml(r.cargo||'')}','${r.fecha}')">
@@ -1307,11 +1307,11 @@ async function loadVistaTA() {
           if(f>todayKey()){html+=`<td class="ta-cell-empty"></td>`;return;}
           html+=`<td class="ta-cell-X" onclick="openEditReg(null,'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">X</td>`;return;
         }
+        if(reg.estado==='F'){html+=`<td class="ta-cell-X">X</td>`;return;}
+        if(reg.estado==='DC'){html+=`<td class="ta-cell-DC">DC</td>`;return;}
         if(reg.estado==='DM'){html+=`<td class="ta-cell-DM">DM</td>`;return;}
         if(reg.estado==='P'){html+=`<td class="ta-cell-P">P</td>`;return;}
         if(reg.estado==='V'){html+=`<td class="ta-cell-V">V</td>`;return;}
-        if(reg.estado==='DC'){html+=`<td class="ta-cell-DC">DC</td>`;return;}
-        if(reg.estado==='F'){html+=`<td class="ta-cell-X">X</td>`;return;}
         const ent=reg.horaEntrada!=null?decimalToHora(reg.horaEntrada):'?';
         html+=`<td class="ta-cell-A" onclick="openEditReg('${reg.id}','${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">${ent}</td>`;
       });
@@ -1397,7 +1397,7 @@ async function loadVistaES() {
         }
         const heColor=heVal==null?'':heVal<0?'color:var(--red);font-weight:700':heVal>0?'color:var(--orange);font-weight:700':'';
         const manualBadge=heManual?'<span class="he-manual-badge">M</span>':'';
-        const estadoBadge={X:'badge-ausente',F:'badge-ausente',A:'badge-fuera',DM:'badge-dm',P:'badge-permiso',V:'badge-vacaciones',DC:'badge-descanso-comp'}[estadoStr]||'';
+        const estadoBadge={X:'badge-ausente',A:'badge-fuera',F:'badge-ausente',DC:'badge-descanso-comp',DM:'badge-dm',P:'badge-permiso',V:'badge-vacaciones'}[estadoStr]||'';
         html+=`<div class="es-table-row" style="${rowBg}" onclick="openEditReg(${regIdParam},'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo)}','${f}')">
           <div style="font-family:var(--mono);font-size:11px">${fechaStr}</div>
           <div style="font-size:11px;color:var(--muted2)">${diaStr}</div>
