@@ -208,7 +208,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .scan-item-info{background:var(--blue-pale);border:1px solid #c0d0ef;border-radius:8px;padding:12px;font-size:13px}
 .td-name{font-weight:500}
 .td-cat{font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;display:inline-block}
-.cat-insumo{background:#e8f4ff;color:#1B3F8B}.cat-herramienta{background:var(--orange-pale);color:var(--orange-dark)}
+.cat-insumo{background:#e8f4ff;color:#1B3F8B}.cat-herramienta{background:var(--orange-pale);color:var(--orange-dark)}.cat-activo{background:var(--purple-bg);color:var(--purple)}
 .stock-pill{font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 7px;border-radius:5px;display:inline-block}
 .stock-ok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-border)}
 .stock-uso{background:#e8f4ff;color:#1B3F8B;border:1px solid #b0ccf0}
@@ -363,6 +363,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <option value="">Todas</option>
         <option value="INSUMO">🔧 Insumos</option>
         <option value="HERRAMIENTA">🛠 Herramientas</option>
+        <option value="ACTIVO">🏷️ Activos</option>
       </select>
     </div>
     <div class="sb-group">
@@ -822,6 +823,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <select class="form-select" id="fi-cat">
           <option value="INSUMO">🔧 Insumo (consumible)</option>
           <option value="HERRAMIENTA">🛠 Herramienta (reutilizable)</option>
+          <option value="ACTIVO">🏷️ Activo (bien de uso)</option>
         </select>
       </div>
       <div class="form-group"><div class="form-label">Unidad *</div>
@@ -2032,8 +2034,8 @@ function renderCatalogo(){
   ${filteredCatalogo.map(item=>{
     const n=sNivel(item),t=totalS(item.id);
     const pC=n==='ok'?'stock-ok':n==='low'?'stock-low':'stock-out';
-    const cC=item.categoria==='INSUMO'?'cat-insumo':'cat-herramienta';
-    const cL=item.categoria==='INSUMO'?'🔧 Insumo':'🛠 Herramienta';
+    const cC=item.categoria==='INSUMO'?'cat-insumo':item.categoria==='ACTIVO'?'cat-activo':'cat-herramienta';
+    const cL=item.categoria==='INSUMO'?'🔧 Insumo':item.categoria==='ACTIVO'?'🏷️ Activo':'🛠 Herramienta';
     const stockDisplay=`<span class="stock-pill ${pC}">${t} ${escB(item.unidad||'UND')}</span>`;
     const acts=isEd?`<td><div class="td-actions">
       <button class="btn btn-sm" onclick="openModalInsumo('${escJ(item.id)}')">✏️</button>
@@ -2639,7 +2641,7 @@ async function exportQRLabel_OLD() {
   // Categoría
   ctx.fillStyle = '#8a9ab8';
   ctx.font = '18px sans-serif';
-  ctx.fillText(item.categoria === 'INSUMO' ? 'Insumo' : 'Herramienta', 400, 460);
+  ctx.fillText(item.categoria === 'INSUMO' ? 'Insumo' : item.categoria === 'ACTIVO' ? 'Activo' : 'Herramienta', 400, 460);
 
   // Línea footer
   ctx.fillStyle = '#d0daf0';
@@ -3606,7 +3608,7 @@ async function saveTransfLote() {
 // Catálogo: SIN columna ID (la llave es CODIGO). Instancias: la 1ª columna ID es interna del sistema y se OCULTA en el Excel.
 const CM_CAT_COLS = ['NOMBRE','CATEGORIA','UNIDAD','CODIGO','MARCA','MODELO','STOCK_MIN','TIPO_CANTIDAD'];
 const CM_INST_COLS = ['ID','ITEM_ID','NOMBRE','SEDE','ESTADO','RESPONSABLE','NOTAS','NIVEL'];
-const CM_CATEGORIAS = ['INSUMO','HERRAMIENTA'];
+const CM_CATEGORIAS = ['INSUMO','HERRAMIENTA','ACTIVO'];
 const CM_UNIDADES = ['UND','KG','LT','MT','ROLLO','CAJA','PAR','JGO'];
 const CM_TIPOCANT = ['UNIDAD','RANGO'];
 const CM_ESTADOS = ['DISPONIBLE','EN_USO','MANTENIMIENTO','DETERIORADO','BAJA'];
@@ -3628,7 +3630,7 @@ function openModalCargaMasiva() {
 // Texto guía de cada columna (reutilizado por la hoja Instrucciones y el manual PDF)
 const CM_GUIA_CAT = [
   ['NOMBRE', 'OBLIGATORIO', 'Nombre del ítem. Ej: FILTRO DE AIRE G4 24X24'],
-  ['CATEGORIA', 'OBLIGATORIO', 'INSUMO o HERRAMIENTA'],
+  ['CATEGORIA', 'OBLIGATORIO', 'INSUMO, HERRAMIENTA o ACTIVO'],
   ['UNIDAD', 'OBLIGATORIO', 'UND, KG, LT, MT, ROLLO, CAJA, PAR o JGO'],
   ['CODIGO', 'OBLIGATORIO', 'Código único del ítem (es la llave del upsert). Ej: FILT-G4'],
   ['MARCA', 'opcional', 'Ej: 3M'],
