@@ -1597,6 +1597,46 @@ async function exportESPDF() {
   w.document.close();
 }
 
+// ── MHT (Excel "página web de un solo archivo") ─────────────────────────────
+// El truco de poner varios <table> sueltos en un mismo <body>, con solo el
+// head declarando varios x:ExcelWorksheet, NO separa hojas de forma confiable
+// en Excel real (termina apilando todo en una sola hoja). El MHT multipart es
+// el formato que Excel genera de verdad al exportar varias hojas a un único
+// archivo: cada hoja va en su propia parte MIME, referenciada por HRef desde
+// el x:ExcelWorksheet de la parte raíz — así Excel sí las abre como pestañas
+// separadas, cada una con su propia tabla.
+function b64Utf8(str){
+  const bytes=new TextEncoder().encode(str);
+  let bin='';
+  for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+function wrap76(s){return s.replace(/(.{76})/g,'$1\r\n');}
+
+function mhtWorkbookBlob(hojas){
+  const CRLF='\r\n';
+  const boundary='----=_NextPart_'+Date.now().toString(36)+Math.random().toString(36).slice(2);
+  const rootHtml=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>${hojas.map((h,i)=>`<x:ExcelWorksheet><x:Name>${h.nombre}</x:Name><x:WorksheetSource HRef="sheet${i+1}.htm"/></x:ExcelWorksheet>`).join('')}</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+</head><body></body></html>`;
+  const partes=[{loc:'export.htm',html:rootHtml},...hojas.map((h,i)=>({loc:`sheet${i+1}.htm`,html:`<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></head><body>${h.tabla}</body></html>`}))];
+  let out=`MIME-Version: 1.0${CRLF}Content-Type: multipart/related; boundary="${boundary}"${CRLF}${CRLF}`;
+  partes.forEach(p=>{
+    out+=`--${boundary}${CRLF}Content-Location: file:///C:/${p.loc}${CRLF}Content-Transfer-Encoding: base64${CRLF}Content-Type: text/html; charset="utf-8"${CRLF}${CRLF}`;
+    out+=wrap76(b64Utf8(p.html))+CRLF+CRLF;
+  });
+  out+=`--${boundary}--${CRLF}`;
+  return new Blob([out],{type:'application/vnd.ms-excel'});
+}
+
+function descargarBlob(blob,nombre){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=nombre;a.click();
+  URL.revokeObjectURL(url);
+}
+
 async function exportESExcel() {
   if(!MA.can('exportar','asistencia')){toast('Sin permisos para exportar','err');return;}
   const desde=document.getElementById('es-desde').value;
@@ -1733,18 +1773,22 @@ async function exportESExcel() {
     if(!hojas.length){toast('No hay colaboradores para exportar','err');return;}
   }
 
-  const sheetNamesXml=hojas.map(h=>`<x:ExcelWorksheet><x:Name>${h.nombre}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>`).join('');
-  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+  // Una sola hoja: el HTML simple de siempre (ya probado, sin tocar). Con más
+  // de una, MHT multipart (ver mhtWorkbookBlob) — es lo que de verdad separa
+  // cada tabla en su propia pestaña de Excel.
+  let blob;
+  if(hojas.length===1){
+    const sheetNamesXml=`<x:ExcelWorksheet><x:Name>${hojas[0].nombre}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>`;
+    const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>${sheetNamesXml}</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
-<body>${hojas.map(h=>h.tabla).join('')}</body></html>`;
+<body>${hojas[0].tabla}</body></html>`;
+    blob=new Blob(['﻿',html],{type:'application/vnd.ms-excel;charset=utf-8'});
+  } else {
+    blob=mhtWorkbookBlob(hojas);
+  }
 
-  const blob=new Blob(['﻿',html],{type:'application/vnd.ms-excel;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=colabFiltro?`Vista_ES_${colabs[0].nombre.replace(/[^a-zA-Z0-9]/g,'_')}_${desde}_${hasta}.xls`:`Vista_ES_Consolidado_${desde}_${hasta}.xls`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const nombreArchivo=colabFiltro?`Vista_ES_${colabs[0].nombre.replace(/[^a-zA-Z0-9]/g,'_')}_${desde}_${hasta}.xls`:`Vista_ES_Consolidado_${desde}_${hasta}.xls`;
+  descargarBlob(blob,nombreArchivo);
   toast('✓ Excel descargado','ok');
 }
 
