@@ -1646,15 +1646,69 @@ async function exportESExcel() {
   function heStyle(v){return typeof v==='number'&&v<0?S.heNeg:typeof v==='number'&&v>0?S.hePos:'';}
   function fmtFecha(f){const[y,m,d]=f.split('-');return`${d}/${m}/${y}`;}
 
-  let html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Consolidado</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
-<body><table style="border-collapse:collapse;width:100%">`;
+  // Agrupación del consolidado por cargo, una hoja de Excel por grupo (orden fijo;
+  // se omite el grupo si no tiene colaboradores). "Otros" es red de seguridad para
+  // que un cargo no contemplado no desaparezca del export en silencio.
+  const GRUPOS_CARGO=[
+    {key:'OPERACIONES',nombre:'Operaciones'},
+    {key:'ADMINISTRACION',nombre:'Administración'},
+    {key:'PDR',nombre:'PDR'},
+    {key:'TECNICOS',nombre:'Técnicos'},
+    {key:'AYUDANTES',nombre:'Ayudantes'},
+    {key:'OTROS',nombre:'Otros'},
+  ];
+  function cargoCategoria(cargoRaw){
+    const c=(cargoRaw||'').trim().toUpperCase();
+    if(c.includes('ADMINISTRATIVO'))return'ADMINISTRACION'; // Asistente administrativo
+    if(c.includes('ADMINISTRADOR'))return'ADMINISTRACION';
+    if(c.includes('GERENTE')&&c.includes('OPERACION'))return'OPERACIONES';
+    if(c.includes('ASISTENTE'))return'OPERACIONES'; // Asistente (operaciones), sin "administrativo"
+    if(c.includes('PDR'))return'PDR';
+    if(c.includes('TECNICO')||c.includes('TÉCNICO'))return'TECNICOS';
+    if(c.includes('AYUDANTE'))return'AYUDANTES';
+    return'OTROS';
+  }
 
+  function pivotTableHtml(colabsSubset){
+    const totales=new Array(colabsSubset.length).fill(0);
+    let t=`<table style="border-collapse:collapse;width:100%">`;
+    t+=`<tr><th style="${S.hSub}">Fecha</th><th style="${S.hSub}">Día</th>`;
+    colabsSubset.forEach(c=>t+=`<th colspan="4" style="${S.hColab}">${escHtml(c.nombre)}</th>`);
+    t+=`</tr><tr><th style="${S.hSub}"></th><th style="${S.hSub}"></th>`;
+    colabsSubset.forEach(()=>t+=`<th style="${S.hSub}">Estado</th><th style="${S.hSub}">Ingreso</th><th style="${S.hSub}">Salida</th><th style="${S.hSub}">H. Extra</th>`);
+    t+=`</tr>`;
+    fechas.forEach(f=>{
+      const dow=new Date(f+'T12:00:00').getDay();
+      const noLab=dow===0||isFeriado(f);
+      const rowBg=noLab?'background:#FDE8C8;':'';
+      t+=`<tr><td style="${S.fecha}${rowBg}">${fmtFecha(f)}</td><td style="${S.dia}${rowBg}">${DIAS_ES[dow]}</td>`;
+      colabsSubset.forEach((c,i)=>{
+        const {cels,noLaboral,ausente}=celdasColab(c,f);
+        if(typeof cels[3]==='number')totales[i]+=cels[3];
+        if(noLaboral&&!cels[0]){t+=`<td colspan="4" style="${S.noLab}"></td>`;return;}
+        const rs=noLaboral?S.noLab:ausente?S.ausente:S.base;
+        const heS=noLaboral?S.noLab+heStyle(cels[3]):ausente?S.ausente:S.base+heStyle(cels[3]);
+        t+=`<td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td><td style="${heS}">${typeof cels[3]==='number'?cels[3].toFixed(1):''}</td>`;
+      });
+      t+=`</tr>`;
+    });
+    t+=`<tr><td colspan="2" style="${S.totalLbl}">TOTAL H.E.</td>`;
+    colabsSubset.forEach((_,i)=>{
+      const tt=totales[i];
+      t+=`<td colspan="3" style="${S.totalLbl}"></td><td style="${S.total}${heStyle(tt)}">${tt.toFixed(1)}</td>`;
+    });
+    t+=`</tr></table>`;
+    return t;
+  }
+
+  // hojas: [{nombre, tabla}] — una tabla HTML por hoja de Excel, en el mismo orden
+  // en que se declaran en x:ExcelWorksheets (Excel las empareja 1 a 1 por orden).
+  let hojas;
   if(colabFiltro){
     const c=colabs[0];
-    // Cabecera colaborador
-    html+=`<tr><th colspan="6" style="${S.hColab}">${escHtml(c.nombre)} — ${escHtml(c.cargo||'')}</th></tr>`;
-    html+=`<tr><th style="${S.hSub}">Fecha</th><th style="${S.hSub}">Día</th><th style="${S.hSub}">Estado</th><th style="${S.hSub}">Ingreso</th><th style="${S.hSub}">Salida</th><th style="${S.hSub}">H. Extra</th></tr>`;
+    let t=`<table style="border-collapse:collapse;width:100%">`;
+    t+=`<tr><th colspan="6" style="${S.hColab}">${escHtml(c.nombre)} — ${escHtml(c.cargo||'')}</th></tr>`;
+    t+=`<tr><th style="${S.hSub}">Fecha</th><th style="${S.hSub}">Día</th><th style="${S.hSub}">Estado</th><th style="${S.hSub}">Ingreso</th><th style="${S.hSub}">Salida</th><th style="${S.hSub}">H. Extra</th></tr>`;
     let total=0;
     fechas.forEach(f=>{
       const dow=new Date(f+'T12:00:00').getDay();
@@ -1663,44 +1717,26 @@ async function exportESExcel() {
       const fBg=noLaboral?'background:#FDE8C8;':ausente?'background:#fdf0f2;':'';
       const rs=noLaboral?S.noLab:ausente?S.ausente:S.base;
       const heS=noLaboral?S.noLab+heStyle(cels[3]):ausente?S.ausente:S.base+heStyle(cels[3]);
-      html+=`<tr>
+      t+=`<tr>
         <td style="${S.fecha}${fBg}">${fmtFecha(f)}</td>
         <td style="${S.dia}${fBg}">${DIAS_ES[dow]}</td>
         <td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td>
         <td style="${heS}">${typeof cels[3]==='number'?cels[3].toFixed(1):''}</td></tr>`;
     });
-    html+=`<tr><td colspan="4"></td><td style="${S.totalLbl}">TOTAL H.E.</td><td style="${S.total}${heStyle(total)}">${total.toFixed(1)}</td></tr>`;
+    t+=`<tr><td colspan="4"></td><td style="${S.totalLbl}">TOTAL H.E.</td><td style="${S.total}${heStyle(total)}">${total.toFixed(1)}</td></tr></table>`;
+    hojas=[{nombre:'Consolidado',tabla:t}];
   } else {
-    // Pivote horizontal
-    const totales=new Array(colabs.length).fill(0);
-    html+=`<tr><th style="${S.hSub}">Fecha</th><th style="${S.hSub}">Día</th>`;
-    colabs.forEach(c=>html+=`<th colspan="4" style="${S.hColab}">${escHtml(c.nombre)}</th>`);
-    html+=`</tr><tr><th style="${S.hSub}"></th><th style="${S.hSub}"></th>`;
-    colabs.forEach(()=>html+=`<th style="${S.hSub}">Estado</th><th style="${S.hSub}">Ingreso</th><th style="${S.hSub}">Salida</th><th style="${S.hSub}">H. Extra</th>`);
-    html+=`</tr>`;
-    fechas.forEach(f=>{
-      const dow=new Date(f+'T12:00:00').getDay();
-      const noLab=dow===0||isFeriado(f);
-      const rowBg=noLab?'background:#FDE8C8;':'';
-      html+=`<tr><td style="${S.fecha}${rowBg}">${fmtFecha(f)}</td><td style="${S.dia}${rowBg}">${DIAS_ES[dow]}</td>`;
-      colabs.forEach((c,i)=>{
-        const {cels,noLaboral,ausente}=celdasColab(c,f);
-        if(typeof cels[3]==='number')totales[i]+=cels[3];
-        if(noLaboral&&!cels[0]){html+=`<td colspan="4" style="${S.noLab}"></td>`;return;}
-        const rs=noLaboral?S.noLab:ausente?S.ausente:S.base;
-        const heS=noLaboral?S.noLab+heStyle(cels[3]):ausente?S.ausente:S.base+heStyle(cels[3]);
-        html+=`<td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td><td style="${heS}">${typeof cels[3]==='number'?cels[3].toFixed(1):''}</td>`;
-      });
-      html+=`</tr>`;
-    });
-    html+=`<tr><td colspan="2" style="${S.totalLbl}">TOTAL H.E.</td>`;
-    colabs.forEach((_,i)=>{
-      const t=totales[i];
-      html+=`<td colspan="3" style="${S.totalLbl}"></td><td style="${S.total}${heStyle(t)}">${t.toFixed(1)}</td>`;
-    });
-    html+=`</tr>`;
+    hojas=GRUPOS_CARGO
+      .map(g=>({nombre:g.nombre,colabsSubset:colabs.filter(c=>cargoCategoria(c.cargo)===g.key)}))
+      .filter(g=>g.colabsSubset.length)
+      .map(g=>({nombre:g.nombre,tabla:pivotTableHtml(g.colabsSubset)}));
+    if(!hojas.length){toast('No hay colaboradores para exportar','err');return;}
   }
-  html+=`</table></body></html>`;
+
+  const sheetNamesXml=hojas.map(h=>`<x:ExcelWorksheet><x:Name>${h.nombre}</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>`).join('');
+  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>${sheetNamesXml}</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
+<body>${hojas.map(h=>h.tabla).join('')}</body></html>`;
 
   const blob=new Blob(['﻿',html],{type:'application/vnd.ms-excel;charset=utf-8'});
   const url=URL.createObjectURL(blob);
