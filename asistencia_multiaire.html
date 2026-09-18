@@ -1815,11 +1815,14 @@ async function exportESExcel() {
   if(colabFiltro){
     writeSingleColabSheet(wb.addWorksheet('Consolidado'),colabs[0]);
   } else {
-    const grupos=GRUPOS_CARGO
-      .map(g=>({nombre:g.nombre,colabsSubset:colabs.filter(c=>cargoCategoria(c.cargo)===g.key)}))
-      .filter(g=>g.colabsSubset.length);
-    if(!grupos.length){toast('No hay colaboradores para exportar','err');return;}
-    grupos.forEach(g=>writeGroupSheet(wb.addWorksheet(g.nombre.slice(0,31)),g.colabsSubset));
+    // Una sola hoja, un solo cuadro con TODOS los colaboradores — ordenados por
+    // grupo de cargo (Operaciones → Administración → PDR → Técnicos → Ayudantes →
+    // Otros), no una hoja por grupo. "Otros" sigue al final como red de seguridad
+    // para que un cargo no contemplado no desaparezca del export en silencio.
+    const colabsOrdenados=GRUPOS_CARGO
+      .flatMap(g=>colabs.filter(c=>cargoCategoria(c.cargo)===g.key));
+    if(!colabsOrdenados.length){toast('No hay colaboradores para exportar','err');return;}
+    writeGroupSheet(wb.addWorksheet('Consolidado'),colabsOrdenados);
   }
 
   const buf=await wb.xlsx.writeBuffer();
