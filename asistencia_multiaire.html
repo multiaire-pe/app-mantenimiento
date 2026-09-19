@@ -233,6 +233,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script>
   const _fbApp = firebase.initializeApp(window.__firebaseConfig);
   window.__db = firebase.firestore();
@@ -1597,8 +1598,34 @@ async function exportESPDF() {
   w.document.close();
 }
 
+// ── Excel real (ExcelJS) ─────────────────────────────────────────────────────
+// El truco de armar el .xls como HTML (con o sin MHT) resultó frágil: Excel
+// terminaba mostrando las hojas en blanco. ExcelJS arma un .xlsx real (OOXML
+// válido) con hojas y estilos de celda genuinos — nada de adivinar cómo Excel
+// interpreta HTML/MIME.
+const XL={
+  NAVY:'FF1B3F8B', WHITE:'FFFFFFFF', LIGHTBLUE:'FFD0DAF0', TEXT_NAVY:'FF1A2540',
+  FECHA_BG:'FFF5F8FF', TEXT_GRAY:'FF4A5A7A',
+  ORANGE_BG:'FFFDE8C8', ORANGE_TEXT:'FF8A5A00',
+  RED_BG:'FFFDF0F2', RED_TEXT:'FFC02030',
+  HE_POS:'FFB86000', HE_NEG:'FFC02030',
+};
+function xlFill(argb){return{type:'pattern',pattern:'solid',fgColor:{argb}};}
+function xlHeColor(v){return typeof v==='number'&&v<0?XL.HE_NEG:typeof v==='number'&&v>0?XL.HE_POS:null;}
+
+function descargarBlob(blob,nombre){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=nombre;a.click();
+  URL.revokeObjectURL(url);
+}
+
 async function exportESExcel() {
   if(!MA.can('exportar','asistencia')){toast('Sin permisos para exportar','err');return;}
+  // ExcelJS se carga por CDN (a diferencia del .xls anterior, armado 100% en el
+  // cliente sin dependencias externas) — si el script no cargó (red bloqueada,
+  // CDN caído), avisar en vez de fallar en silencio con un ReferenceError.
+  if(typeof ExcelJS==='undefined'){toast('No se pudo cargar el generador de Excel — revisa tu conexión y recarga la página','err');return;}
   const desde=document.getElementById('es-desde').value;
   const hasta=document.getElementById('es-hasta').value;
   const colabFiltro=document.getElementById('es-colab').value;
@@ -1628,87 +1655,180 @@ async function exportESExcel() {
     return{cels:['','','',null]};
   }
 
-  // Estilos inline para el HTML→XLS
-  const S={
-    base:'font-family:Arial,sans-serif;font-size:10px;border:1px solid #c0cce0;padding:4px 6px;text-align:center;vertical-align:middle;',
-    hColab:'background:#1B3F8B;color:#fff;font-weight:bold;font-size:11px;text-align:center;border:1px solid #0f2860;padding:5px 8px;',
-    hSub:'background:#d0daf0;color:#1a2540;font-weight:bold;font-size:9px;text-align:center;border:1px solid #b0bcd8;padding:4px 6px;text-transform:uppercase;letter-spacing:.05em;',
-    fecha:'background:#f5f8ff;font-weight:600;text-align:left;border:1px solid #c0cce0;padding:4px 8px;white-space:nowrap;',
-    dia:'background:#f5f8ff;color:#4a5a7a;text-align:left;border:1px solid #c0cce0;padding:4px 8px;',
-    noLab:'background:#FDE8C8;color:#8a5a00;font-weight:600;text-align:center;border:1px solid #e8c898;padding:4px 6px;',
-    ausente:'background:#fdf0f2;color:#c02030;font-weight:700;border:1px solid #e8b0b8;padding:4px 6px;text-align:center;',
-    hePos:'color:#b86000;font-weight:700;',
-    heNeg:'color:#c02030;font-weight:700;',
-    total:'background:#1B3F8B;color:#fff;font-weight:bold;border:1px solid #0f2860;padding:5px 6px;text-align:center;',
-    totalLbl:'background:#1B3F8B;color:#fff;font-weight:bold;border:1px solid #0f2860;padding:5px 8px;text-align:right;',
-  };
-
-  function heStyle(v){return typeof v==='number'&&v<0?S.heNeg:typeof v==='number'&&v>0?S.hePos:'';}
   function fmtFecha(f){const[y,m,d]=f.split('-');return`${d}/${m}/${y}`;}
 
-  let html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Consolidado</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
-<body><table style="border-collapse:collapse;width:100%">`;
+  // Agrupación del consolidado por cargo, una hoja de Excel por grupo (orden fijo;
+  // se omite el grupo si no tiene colaboradores). "Otros" es red de seguridad para
+  // que un cargo no contemplado no desaparezca del export en silencio.
+  const GRUPOS_CARGO=[
+    {key:'OPERACIONES',nombre:'Operaciones'},
+    {key:'ADMINISTRACION',nombre:'Administración'},
+    {key:'PDR',nombre:'PDR'},
+    {key:'TECNICOS',nombre:'Técnicos'},
+    {key:'AYUDANTES',nombre:'Ayudantes'},
+    {key:'OTROS',nombre:'Otros'},
+  ];
+  function cargoCategoria(cargoRaw){
+    const c=(cargoRaw||'').trim().toUpperCase();
+    if(c.includes('ADMINISTRATIVO'))return'ADMINISTRACION'; // Asistente administrativo
+    if(c.includes('ADMINISTRADOR'))return'ADMINISTRACION';
+    if(c.includes('GERENTE')&&c.includes('OPERACION'))return'OPERACIONES';
+    if(c.includes('ASISTENTE'))return'OPERACIONES'; // Asistente (operaciones), sin "administrativo"
+    if(c.includes('PDR'))return'PDR';
+    if(c.includes('TECNICO')||c.includes('TÉCNICO'))return'TECNICOS';
+    if(c.includes('AYUDANTE'))return'AYUDANTES';
+    return'OTROS';
+  }
 
-  if(colabFiltro){
-    const c=colabs[0];
-    // Cabecera colaborador
-    html+=`<tr><th colspan="6" style="${S.hColab}">${escHtml(c.nombre)} — ${escHtml(c.cargo||'')}</th></tr>`;
-    html+=`<tr><th style="${S.hSub}">Fecha</th><th style="${S.hSub}">Día</th><th style="${S.hSub}">Estado</th><th style="${S.hSub}">Ingreso</th><th style="${S.hSub}">Salida</th><th style="${S.hSub}">H. Extra</th></tr>`;
-    let total=0;
+  // Hoja de UN colaborador: título con nombre+cargo, un solo bloque de columnas.
+  function writeSingleColabSheet(ws,c){
+    ws.getColumn(1).width=12; ws.getColumn(2).width=10;
+    for(let k=3;k<=6;k++)ws.getColumn(k).width=10;
+    ws.mergeCells(1,1,1,6);
+    const title=ws.getCell(1,1);
+    title.value=`${c.nombre} — ${c.cargo||''}`;
+    title.fill=xlFill(XL.NAVY); title.font={bold:true,color:{argb:XL.WHITE}};
+    title.alignment={horizontal:'center',vertical:'middle'};
+    const headRow=ws.getRow(2);
+    ['Fecha','Día','Estado','Ingreso','Salida','H. Extra'].forEach((t,i)=>{
+      const cell=headRow.getCell(i+1);
+      cell.value=t; cell.fill=xlFill(XL.LIGHTBLUE); cell.font={bold:true,color:{argb:XL.TEXT_NAVY}};
+      cell.alignment={horizontal:'center'};
+    });
+    let r=3,total=0;
     fechas.forEach(f=>{
       const dow=new Date(f+'T12:00:00').getDay();
       const {cels,noLaboral,ausente}=celdasColab(c,f);
       if(typeof cels[3]==='number')total+=cels[3];
-      const fBg=noLaboral?'background:#FDE8C8;':ausente?'background:#fdf0f2;':'';
-      const rs=noLaboral?S.noLab:ausente?S.ausente:S.base;
-      const heS=noLaboral?S.noLab+heStyle(cels[3]):ausente?S.ausente:S.base+heStyle(cels[3]);
-      html+=`<tr>
-        <td style="${S.fecha}${fBg}">${fmtFecha(f)}</td>
-        <td style="${S.dia}${fBg}">${DIAS_ES[dow]}</td>
-        <td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td>
-        <td style="${heS}">${typeof cels[3]==='number'?cels[3].toFixed(1):''}</td></tr>`;
+      const row=ws.getRow(r);
+      const fCell=row.getCell(1),dCell=row.getCell(2);
+      fCell.value=fmtFecha(f); dCell.value=DIAS_ES[dow];
+      const bg=noLaboral?XL.ORANGE_BG:ausente?XL.RED_BG:null;
+      const txtColor=noLaboral?XL.ORANGE_TEXT:ausente?XL.RED_TEXT:null;
+      if(bg){fCell.fill=xlFill(bg);dCell.fill=xlFill(bg);}
+      fCell.font={bold:true,color:{argb:txtColor||XL.TEXT_NAVY}};
+      dCell.font={color:{argb:txtColor||XL.TEXT_GRAY}};
+      const cEstado=row.getCell(3),cIn=row.getCell(4),cOut=row.getCell(5),cHe=row.getCell(6);
+      [cEstado,cIn,cOut].forEach((cc,ci)=>{
+        cc.value=cels[ci]; cc.alignment={horizontal:'center'};
+        if(bg)cc.fill=xlFill(bg);
+        if(txtColor)cc.font={bold:true,color:{argb:txtColor}};
+      });
+      cHe.value=typeof cels[3]==='number'?Number(cels[3].toFixed(1)):null;
+      cHe.alignment={horizontal:'center'};
+      if(bg)cHe.fill=xlFill(bg);
+      const heArgb=xlHeColor(cels[3]);
+      cHe.font={bold:true,color:{argb:txtColor||heArgb||XL.TEXT_NAVY}};
+      r++;
     });
-    html+=`<tr><td colspan="4"></td><td style="${S.totalLbl}">TOTAL H.E.</td><td style="${S.total}${heStyle(total)}">${total.toFixed(1)}</td></tr>`;
-  } else {
-    // Pivote horizontal
-    const totales=new Array(colabs.length).fill(0);
-    html+=`<tr><th style="${S.hSub}">Fecha</th><th style="${S.hSub}">Día</th>`;
-    colabs.forEach(c=>html+=`<th colspan="4" style="${S.hColab}">${escHtml(c.nombre)}</th>`);
-    html+=`</tr><tr><th style="${S.hSub}"></th><th style="${S.hSub}"></th>`;
-    colabs.forEach(()=>html+=`<th style="${S.hSub}">Estado</th><th style="${S.hSub}">Ingreso</th><th style="${S.hSub}">Salida</th><th style="${S.hSub}">H. Extra</th>`);
-    html+=`</tr>`;
+    const totRow=ws.getRow(r);
+    ws.mergeCells(r,1,r,4); // sin estilo, igual que el <td colspan="4"></td> original
+    const lbl=totRow.getCell(5);
+    lbl.value='TOTAL H.E.'; lbl.fill=xlFill(XL.NAVY); lbl.font={bold:true,color:{argb:XL.WHITE}};
+    lbl.alignment={horizontal:'right'};
+    const tCell=totRow.getCell(6);
+    tCell.value=Number(total.toFixed(1));
+    tCell.fill=xlFill(XL.NAVY);
+    const heArgb=xlHeColor(total);
+    tCell.font={bold:true,color:{argb:heArgb||XL.WHITE}};
+    tCell.alignment={horizontal:'center'};
+  }
+
+  // Hoja de un GRUPO de colaboradores: pivote horizontal, 4 columnas por persona.
+  function writeGroupSheet(ws,colabsSubset){
+    const n=colabsSubset.length;
+    ws.getColumn(1).width=12; ws.getColumn(2).width=10;
+    for(let i=0;i<n;i++)for(let k=0;k<4;k++)ws.getColumn(3+i*4+k).width=9;
+    const row1=ws.getRow(1);
+    [1,2].forEach(c=>{row1.getCell(c).fill=xlFill(XL.LIGHTBLUE);});
+    colabsSubset.forEach((c,i)=>{
+      const startCol=3+i*4;
+      ws.mergeCells(1,startCol,1,startCol+3);
+      const cell=row1.getCell(startCol);
+      cell.value=c.nombre;
+      cell.fill=xlFill(XL.NAVY); cell.font={bold:true,color:{argb:XL.WHITE}};
+      cell.alignment={horizontal:'center',vertical:'middle'};
+    });
+    const row2=ws.getRow(2);
+    const subs=['Fecha','Día'];
+    colabsSubset.forEach(()=>subs.push('Estado','Ingreso','Salida','H. Extra'));
+    subs.forEach((txt,idx)=>{
+      const cell=row2.getCell(idx+1);
+      cell.value=txt; cell.fill=xlFill(XL.LIGHTBLUE); cell.font={bold:true,color:{argb:XL.TEXT_NAVY}};
+      cell.alignment={horizontal:'center'};
+    });
+    let r=3;
+    const totales=new Array(n).fill(0);
     fechas.forEach(f=>{
       const dow=new Date(f+'T12:00:00').getDay();
       const noLab=dow===0||isFeriado(f);
-      const rowBg=noLab?'background:#FDE8C8;':'';
-      html+=`<tr><td style="${S.fecha}${rowBg}">${fmtFecha(f)}</td><td style="${S.dia}${rowBg}">${DIAS_ES[dow]}</td>`;
-      colabs.forEach((c,i)=>{
+      const row=ws.getRow(r);
+      const fCell=row.getCell(1),dCell=row.getCell(2);
+      fCell.value=fmtFecha(f); dCell.value=DIAS_ES[dow];
+      const dateBg=noLab?XL.ORANGE_BG:XL.FECHA_BG;
+      fCell.fill=xlFill(dateBg); fCell.font={bold:true,color:{argb:XL.TEXT_NAVY}};
+      dCell.fill=xlFill(dateBg); dCell.font={color:{argb:noLab?XL.ORANGE_TEXT:XL.TEXT_GRAY}};
+      colabsSubset.forEach((c,i)=>{
         const {cels,noLaboral,ausente}=celdasColab(c,f);
         if(typeof cels[3]==='number')totales[i]+=cels[3];
-        if(noLaboral&&!cels[0]){html+=`<td colspan="4" style="${S.noLab}"></td>`;return;}
-        const rs=noLaboral?S.noLab:ausente?S.ausente:S.base;
-        const heS=noLaboral?S.noLab+heStyle(cels[3]):ausente?S.ausente:S.base+heStyle(cels[3]);
-        html+=`<td style="${rs}">${cels[0]}</td><td style="${rs}">${cels[1]}</td><td style="${rs}">${cels[2]}</td><td style="${heS}">${typeof cels[3]==='number'?cels[3].toFixed(1):''}</td>`;
+        const base=3+i*4;
+        const cEstado=row.getCell(base),cIn=row.getCell(base+1),cOut=row.getCell(base+2),cHe=row.getCell(base+3);
+        if(noLaboral&&!cels[0]){
+          [cEstado,cIn,cOut,cHe].forEach(cc=>{cc.fill=xlFill(XL.ORANGE_BG);});
+          return;
+        }
+        const bg=noLaboral?XL.ORANGE_BG:ausente?XL.RED_BG:null;
+        const txtColor=noLaboral?XL.ORANGE_TEXT:ausente?XL.RED_TEXT:null;
+        [cEstado,cIn,cOut].forEach((cc,ci)=>{
+          cc.value=cels[ci]; cc.alignment={horizontal:'center'};
+          if(bg)cc.fill=xlFill(bg);
+          if(txtColor)cc.font={bold:true,color:{argb:txtColor}};
+        });
+        cHe.value=typeof cels[3]==='number'?Number(cels[3].toFixed(1)):null;
+        cHe.alignment={horizontal:'center'};
+        if(bg)cHe.fill=xlFill(bg);
+        const heArgb=xlHeColor(cels[3]);
+        if(bg&&txtColor)cHe.font={bold:true,color:{argb:txtColor}};
+        else if(heArgb)cHe.font={bold:true,color:{argb:heArgb}};
       });
-      html+=`</tr>`;
+      r++;
     });
-    html+=`<tr><td colspan="2" style="${S.totalLbl}">TOTAL H.E.</td>`;
-    colabs.forEach((_,i)=>{
+    const totRow=ws.getRow(r);
+    ws.mergeCells(r,1,r,2);
+    const lbl=totRow.getCell(1);
+    lbl.value='TOTAL H.E.'; lbl.fill=xlFill(XL.NAVY); lbl.font={bold:true,color:{argb:XL.WHITE}};
+    lbl.alignment={horizontal:'right'};
+    colabsSubset.forEach((_,i)=>{
+      const base=3+i*4;
+      for(let k=0;k<3;k++)totRow.getCell(base+k).fill=xlFill(XL.NAVY);
+      const tCell=totRow.getCell(base+3);
       const t=totales[i];
-      html+=`<td colspan="3" style="${S.totalLbl}"></td><td style="${S.total}${heStyle(t)}">${t.toFixed(1)}</td>`;
+      tCell.value=Number(t.toFixed(1));
+      tCell.fill=xlFill(XL.NAVY);
+      const heArgb=xlHeColor(t);
+      tCell.font={bold:true,color:{argb:heArgb||XL.WHITE}};
+      tCell.alignment={horizontal:'center'};
     });
-    html+=`</tr>`;
   }
-  html+=`</table></body></html>`;
 
-  const blob=new Blob(['﻿',html],{type:'application/vnd.ms-excel;charset=utf-8'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');
-  a.href=url;
-  a.download=colabFiltro?`Vista_ES_${colabs[0].nombre.replace(/[^a-zA-Z0-9]/g,'_')}_${desde}_${hasta}.xls`:`Vista_ES_Consolidado_${desde}_${hasta}.xls`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const wb=new ExcelJS.Workbook();
+  if(colabFiltro){
+    writeSingleColabSheet(wb.addWorksheet('Consolidado'),colabs[0]);
+  } else {
+    // Una sola hoja, un solo cuadro con TODOS los colaboradores — ordenados por
+    // grupo de cargo (Operaciones → Administración → PDR → Técnicos → Ayudantes →
+    // Otros), no una hoja por grupo. "Otros" sigue al final como red de seguridad
+    // para que un cargo no contemplado no desaparezca del export en silencio.
+    const colabsOrdenados=GRUPOS_CARGO
+      .flatMap(g=>colabs.filter(c=>cargoCategoria(c.cargo)===g.key));
+    if(!colabsOrdenados.length){toast('No hay colaboradores para exportar','err');return;}
+    writeGroupSheet(wb.addWorksheet('Consolidado'),colabsOrdenados);
+  }
+
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const nombreArchivo=colabFiltro?`Vista_ES_${colabs[0].nombre.replace(/[^a-zA-Z0-9]/g,'_')}_${desde}_${hasta}.xlsx`:`Vista_ES_Consolidado_${desde}_${hasta}.xlsx`;
+  descargarBlob(blob,nombreArchivo);
   toast('✓ Excel descargado','ok');
 }
 
