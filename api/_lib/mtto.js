@@ -268,11 +268,17 @@ export async function minutosDeEquipo(eqId, tipo, cliente, sede) {
 }
 
 // ── Textos ────────────────────────────────────────────────────────────────────
+// `etiquetaEquipo` (equipos.js, compartida con observaciones) espera {nombre, area} — la sesión
+// de mtto guarda el nombre del equipo en `nombreEq` (no `nombre`: ese campo ya es el nombre del
+// TÉCNICO — `ses.nombre`, usado como respaldo de `registradoPor`). Llamar `etiquetaSes(ses)`
+// directo devolvía la descripción vacía (mostraba solo "· 📍 Área") porque no encontraba ni
+// `ses.nombre` como equipo ni `ses.equipo`. Este wrapper arma el objeto con la forma correcta.
+const etiquetaSes = (ses) => etiquetaEquipo({ nombre: ses.nombreEq, area: ses.area });
 function listaNumerada(acts) {
   return acts.map((t, i) => `${i + 1}. ${t}`).join('\n');
 }
 function pedirActividades(ses) {
-  return `🔧 *${etiquetaEquipo(ses)}*\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\n\nActividades del equipo:\n${listaNumerada(ses.actividades)}\n\n¿Cuáles realizaste? Responde con los números (ej: *1, 3, 5*) o *todas*.\n_(si ese NO es el equipo, escribe *cancelar*)_`;
+  return `🔧 *${etiquetaSes(ses)}*\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\n\nActividades del equipo:\n${listaNumerada(ses.actividades)}\n\n¿Cuáles realizaste? Responde con los números (ej: *1, 3, 5*) o *todas*.\n_(si ese NO es el equipo, escribe *cancelar*)_`;
 }
 function resumenConfirma(ses) {
   const { periodo, anio } = periodoDeSesion(ses);
@@ -281,7 +287,7 @@ function resumenConfirma(ses) {
   const cal = periodoLima();
   const adelantado = periodo !== cal.periodo || anio !== cal.anio;
   const hechas = ses.marcadas.map((i) => `✅ ${ses.actividades[i]}`).join('\n');
-  return `📋 *Confirma el registro*\n❄️ ${etiquetaEquipo(ses)}\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\nPeríodo: ${periodo} ${anio}${adelantado ? ' (adelantado)' : ''}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
+  return `📋 *Confirma el registro*\n❄️ ${etiquetaSes(ses)}\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\nPeríodo: ${periodo} ${anio}${adelantado ? ' (adelantado)' : ''}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
 }
 // En la fase FOTOS ya se registró: se recorren las actividades REGISTRADAS (`ses.hechas`, por nombre).
 function pedirFotos(ses) {
@@ -449,7 +455,7 @@ async function guardarRegistro(ses, tecnico) {
     const acts = hechas;
     await notificarPorTipo('mtto',
       `🔧 *Registro de mantenimiento* — ${autor}\n` +
-      `❄️ ${etiquetaEquipo(ses)} · 🏪 ${ses.sede} · 📅 ${periodo} ${anio}\n` +
+      `❄️ ${etiquetaSes(ses)} · 🏪 ${ses.sede} · 📅 ${periodo} ${anio}\n` +
       acts.map((a) => `✅ ${a}`).join('\n'),
       tecnico?.id || '',
       // En los params de la PLANTILLA de Meta el equipo va con su ubicación pero SIN emoji: un
@@ -621,16 +627,16 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     if (texto && esSaludo(texto)) {
       const n = await contarFotos(ses, null);
       await limpiarSesion(from);
-      return `🏁 Cerré el registro de *${etiquetaEquipo(ses)}* (${n} foto(s)).\n\n${MENU_TEXTO}`;
+      return `🏁 Cerré el registro de *${etiquetaSes(ses)}* (${n} foto(s)).\n\n${MENU_TEXTO}`;
     }
     if (texto && await esRegistroActividad(texto)) {
       const n = await contarFotos(ses, null);
-      const cierre = `🏁 Cerré el registro de *${etiquetaEquipo(ses)}* (${n} foto(s)).`;
+      const cierre = `🏁 Cerré el registro de *${etiquetaSes(ses)}* (${n} foto(s)).`;
       await limpiarSesion(from);
       const resp = await manejarMtto({ tecnico, from, texto, imagenB64: null, mime: null, onWriteStart });
       return `${cierre}\n\n${resp || ''}`;
     }
-    return `Envía una foto, *SIGUIENTE* para pasar de actividad o *FIN* para terminar. (Registro en curso: *${etiquetaEquipo(ses)}*)`;
+    return `Envía una foto, *SIGUIENTE* para pasar de actividad o *FIN* para terminar. (Registro en curso: *${etiquetaSes(ses)}*)`;
   }
 
   await limpiarSesion(from);   // fase desconocida: reset defensivo
