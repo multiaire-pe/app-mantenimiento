@@ -383,6 +383,8 @@ export function elegirRescate(r, rg) {
 const MAX_LISTA = 30;
 // Cuándo conviene agrupar bajo el encabezado de la ubicación en vez de repetirla en cada línea.
 const MIN_POR_AREA = 3;
+// Límite de WhatsApp para una lista interactiva (botones de un toque): máximo 10 filas.
+const MAX_FILAS_LISTA = 10;
 
 const SIN_UBICACION = '(sin ubicación)';
 
@@ -427,7 +429,16 @@ export function opcionesEquipo(cands) {
   lista.forEach((e) => { const t = e.tipo || 'OTRO'; cuenta[t] = (cuenta[t] || 0) + 1; });
   const tipos = Object.entries(cuenta).sort((a, b) => b[1] - a[1]);
   if (tipos.length > 1) {
-    return { modo: 'tipos', total: lista.length, texto: tipos.map(([t, n]) => `• ${t.toLowerCase()} (${n})`).join('\n') };
+    // Botones de WhatsApp (lista) solo si entran en su límite de 10 filas — con más, se
+    // queda en el texto de siempre (el técnico escribe el tipo, como hoy).
+    const botones = tipos.length <= MAX_FILAS_LISTA
+      ? tipos.map(([t, n]) => ({ id: t, title: t.length > 24 ? t.slice(0, 24) : t, description: `${n} equipo(s)` }))
+      : null;
+    return {
+      modo: 'tipos', total: lista.length,
+      texto: tipos.map(([t, n]) => `• ${t.toLowerCase()} (${n})`).join('\n'),
+      ...(botones ? { lista: botones } : {}),
+    };
   }
 
   if (areas.length > 1) {
@@ -443,6 +454,15 @@ export function opcionesEquipo(cands) {
     modo: 'equipos', total: lista.length, truncado: lista.length - MAX_LISTA,
     texto: lista.slice(0, MAX_LISTA).map((e) => `• ${etiquetaEquipo(e)}`).join('\n'),
   };
+}
+
+// Arma el mensaje "¿de qué tipo es?" a partir de un `opcionesEquipo(...)` con `modo:'tipos'`.
+// Compartido por mtto y observaciones (cada flujo redacta su propia frase inicial en `prefijo`)
+// para que la decisión de "lista de un toque vs texto de siempre" viva en un solo lugar.
+export function mensajeTipos(o, prefijo) {
+  const pie = '\n\n_(o dime la *ubicación* o el *código* MA-...)_';
+  if (o.lista) return { texto: `${prefijo}${pie}`, lista: o.lista, boton: 'Elegir tipo' };
+  return `${prefijo}\n${o.texto}${pie}`;
 }
 
 // `mensajeNuevo` (opcional) = solo lo ÚLTIMO que dijo el técnico, cuando `equipoRaw`/`textoCompleto`
