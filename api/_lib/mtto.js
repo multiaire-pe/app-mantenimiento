@@ -4,7 +4,7 @@
 // (1 doc por foto). La lista de actividades es la EFECTIVA del equipo:
 // (plantilla tareas_config del tipo − quitadas) + agregadas de mtto_actividades_equipo.
 import { getDb } from './firestore.js';
-import { resolverEquipo, etiquetaEquipo, opcionesEquipo, mensajeTipos, elegirRescate } from './equipos.js';
+import { resolverEquipo, etiquetaEquipo, opcionesEquipo, mensajeTipos, elegirRescate, sinPistaDeEquipo } from './equipos.js';
 import { corregirSedeEquipo } from './gemini.js';
 import { contextoInventario } from './inventario.js';
 import { hoyLima } from './fecha.js';
@@ -704,7 +704,9 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
   // técnico, que es el único que sabe.
   if (!r.ok && r.motivo === 'sede' && r.sedeAmbigua) return pideSede(r);
 
-  if (!r.ok) {
+  // Sede ya resuelta y NINGUNA pista de equipo: no hay nada que Gemini pueda "corregir" — ver
+  // `sinPistaDeEquipo` en equipos.js (compartida con observaciones a propósito).
+  if (!r.ok && !sinPistaDeEquipo(r)) {
     // Rescate: el texto trae algo que el matcher no reconoce (typo fuerte, jerga). Si Gemini
     // falla (rate limit, key rotada, red), nos quedamos con lo que ya teníamos — no se pierde
     // nada respecto de no haberlo llamado.

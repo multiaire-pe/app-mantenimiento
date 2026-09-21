@@ -227,7 +227,14 @@ function matchEquipo(equipoRaw, sede, equipos, cliente, mensajeNuevo) {
   if (!delSede.length) delSede = equipos.filter((e) => e.sede === sede);
   if (!delSede.length) return { ok: false, candidatos: [] };
   const q = norm(equipoRaw);
-  if (!q) return { ok: false, candidatos: delSede };
+  // `sinInfo: true` = el técnico no dio NINGUNA pista de equipo (ni tipo, ni ubicación, ni
+  // nombre) — a diferencia de una ambigüedad real (varios equipos calzan igual de bien). El
+  // caller lo usa para no dejar que Gemini "corrija" un equipo que no tiene nada que corregir:
+  // sin esto, ante un mensaje vago Gemini terminaba inventando un tipo de equipo concreto, y
+  // `elegirRescate` lo aceptaba solo por dar una lista más corta (bug real, Mall del Sur/TOTTUS,
+  // 2026-09-21: "solo aparece inyector y extractor" con la sede sola, sin importar qué se
+  // escribiera después).
+  if (!q) return { ok: false, candidatos: delSede, sinInfo: true };
 
   // 1) eq_id exacto (ej. "MA-ATO-CAI-001" o "maatocai001")
   const qId = q.replace(/[^A-Z0-9]/g, '');
@@ -322,8 +329,29 @@ function matchEquipo(equipoRaw, sede, equipos, cliente, mensajeNuevo) {
     const top = scored.filter((x) => x.s === scored[0].s).map((x) => x.e);     // empate
     return { ok: false, candidatos: top };
   }
-  // mencionó un tipo pero sin pista de número/ubicación → ofrecer los de ese tipo como candidatos
-  return { ok: false, candidatos: pool };
+  // mencionó un tipo pero sin pista de número/ubicación → ofrecer los de ese tipo como candidatos.
+  //
+  // `sinInfo` acá NO es "no hubo match" (un typo real como "resepcion" tampoco matchea nada y SÍ
+  // vale la pena que Gemini lo corrija) — es específicamente "lo que sobra de `equipoRaw` después
+  // de sacarle las palabras de la SEDE (y del CLIENTE, ej. "Tottus Mall del sur" en una sede
+  // compartida) es nada": el caso del bug (equipoRaw llega siendo la MISMA frase que ya se usó
+  // para resolver sede/cliente, repetida como si fuera también la descripción del equipo). Con
+  // contenido real de por medio (aunque no matchee, aunque sea typo), la resta deja algo — y ahí
+  // Gemini sigue teniendo margen para ayudar.
+  // Un número (aunque sea de 1 sola cifra, ej. "3") SIEMPRE cuenta como pista real — es la misma
+  // señal que el scoring de arriba prioriza por su cuenta vía regex, no vía `tokens()` (que
+  // descarta tokens de 1 char, pensado para palabras sueltas, no para dígitos).
+  const sedeWords = new Set([...norm(sede).split(' '), ...(cliente ? norm(cliente).split(' ') : [])]);
+  const sinInfo = !/\d/.test(equipoRaw) && !tokens(equipoRaw).some((tk) => !sedeWords.has(tk));
+  return { ok: false, candidatos: pool, sinInfo };
+}
+
+// Único lugar que decide "¿vale la pena pedirle a Gemini que corrija el equipo?" a partir de lo
+// que devolvió `resolverEquipo`. Compartida por mtto y observaciones a propósito — la duplicación
+// de esta regla es justo cómo se corrige un flujo y el otro se queda con el bug (mismo criterio
+// que `elegirRescate`, y la misma lección: ver el fix de `etiquetaSes` del changelog de este repo).
+export function sinPistaDeEquipo(r) {
+  return !r.ok && r.motivo === 'equipo' && !!r.sinInfoEquipo;
 }
 
 // Resuelve {sede, equipo} contra `inventario`. `equipo` = objeto {eqId, sede, cliente, tipo, nombre, area}.
@@ -485,6 +513,6 @@ export async function resolverEquipo(sedeRaw, equipoRaw, textoCompleto, mensajeN
     return { ok: false, motivo: 'cliente', sede: t.sede, candidatosCliente: clientesSede };
   }
   const e = matchEquipo(equipoRaw, t.sede, equipos, cliente, mensajeNuevo);
-  if (!e.ok) return { ok: false, motivo: 'equipo', sede: t.sede, candidatosEquipo: e.candidatos };
+  if (!e.ok) return { ok: false, motivo: 'equipo', sede: t.sede, candidatosEquipo: e.candidatos, sinInfoEquipo: !!e.sinInfo };
   return { ok: true, sede: t.sede, equipo: e.equipo };
 }
