@@ -4,7 +4,7 @@
 // (1 doc por foto). La lista de actividades es la EFECTIVA del equipo:
 // (plantilla tareas_config del tipo − quitadas) + agregadas de mtto_actividades_equipo.
 import { getDb } from './firestore.js';
-import { resolverEquipo, etiquetaEquipo, opcionesEquipo, elegirRescate } from './equipos.js';
+import { resolverEquipo, etiquetaEquipo, opcionesEquipo, mensajeTipos, elegirRescate } from './equipos.js';
 import { corregirSedeEquipo } from './gemini.js';
 import { contextoInventario } from './inventario.js';
 import { hoyLima } from './fecha.js';
@@ -63,6 +63,26 @@ export const MENU_TEXTO =
   '2️⃣ *Reportar una observación* de un equipo\n' +
   '3️⃣ *Marcar asistencia* (entrada/salida)\n\n' +
   'Responde con el número, o escríbeme directo (ej: "mantenimiento preventivo del chiller 1 de atocongo").';
+
+// Botones de un toque para los menús/confirmaciones de este flujo. El `id` de cada uno es
+// EXACTAMENTE el texto que el parser de turno ya reconoce (los regex de más abajo) — así,
+// tocar el botón produce lo mismo que escribirlo a mano, y ningún flujo necesita enterarse
+// de que la respuesta vino de un botón en vez de tecleada.
+export const MENU_BOTONES = [
+  { id: '1', title: 'Mantenimiento' },
+  { id: '2', title: 'Observación' },
+  { id: '3', title: 'Asistencia' },
+];
+const CONFIRMA_BOTONES = [
+  { id: 'si', title: '✅ Sí, guardar' },
+  { id: 'no', title: '✏️ Corregir' },
+  { id: 'cancelar', title: '❌ Cancelar' },
+];
+const FOTOS_BOTONES = [
+  { id: 'siguiente', title: '➡️ Siguiente' },
+  { id: 'fin', title: '🏁 Fin' },
+  { id: 'cancelar', title: '❌ Cancelar' },
+];
 
 // Período bimestral vigente en Lima (mismo esquema de la app de mantenimiento).
 const PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
@@ -287,12 +307,14 @@ function resumenConfirma(ses) {
   const cal = periodoLima();
   const adelantado = periodo !== cal.periodo || anio !== cal.anio;
   const hechas = ses.marcadas.map((i) => `✅ ${ses.actividades[i]}`).join('\n');
-  return `📋 *Confirma el registro*\n❄️ ${etiquetaSes(ses)}\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\nPeríodo: ${periodo} ${anio}${adelantado ? ' (adelantado)' : ''}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
+  const texto = `📋 *Confirma el registro*\n❄️ ${etiquetaSes(ses)}\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\nPeríodo: ${periodo} ${anio}${adelantado ? ' (adelantado)' : ''}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
+  return { texto, botones: CONFIRMA_BOTONES };
 }
 // En la fase FOTOS ya se registró: se recorren las actividades REGISTRADAS (`ses.hechas`, por nombre).
 function pedirFotos(ses) {
   const tarea = (ses.hechas || [])[ses.fotoPos];
-  return `📷 Fotos de *${tarea}* (${ses.fotoPos + 1}/${(ses.hechas || []).length}): envía una o varias.\n· *SIGUIENTE* para pasar a la otra actividad\n· *FIN* para terminar`;
+  const texto = `📷 Fotos de *${tarea}* (${ses.fotoPos + 1}/${(ses.hechas || []).length}): envía una o varias.\n· *SIGUIENTE* para pasar a la otra actividad\n· *FIN* para terminar`;
+  return { texto, botones: FOTOS_BOTONES };
 }
 
 // ── Escritura ─────────────────────────────────────────────────────────────────
@@ -531,7 +553,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     // un número falso) y dejar al técnico atrapado repreguntando. "cancelar"/"salir" ya salieron arriba.
     if (esSaludo(texto) || esControlSuelto(texto) || t === '1' || t === '2' || t === '3') {
       await limpiarSesion(from);
-      return MENU_TEXTO;
+      return { texto: MENU_TEXTO, botones: MENU_BOTONES };
     }
     // Si le acabamos de preguntar la SEDE (porque lo que dijo era ambiguo entre dos sedes
     // reales), su respuesta ES la sede y va aparte — NO se acumula. Acumularla volvería a meter
@@ -585,7 +607,8 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       const aviso = (res.perdidas && res.perdidas.length)
         ? `\n⚠️ No registré ${res.perdidas.map((p) => `"${p}"`).join(', ')}: ya no está(n) en la lista de este equipo.`
         : '';
-      return `✅ *Registro guardado.*${aviso}\n\n${pedirFotos(ses)}`;
+      const pf = pedirFotos(ses);
+      return { ...pf, texto: `✅ *Registro guardado.*${aviso}\n\n${pf.texto}` };
     }
     if (/^(no|n)[\s!.]*$/.test(t)) {
       ses.fase = 'ACTIVIDADES';
@@ -593,7 +616,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       await guardarSesion(from, ses);
       return `Ok, corrijamos.\n\n${pedirActividades(ses)}`;
     }
-    return 'Responde *SÍ* para guardar, *NO* para corregir la selección o *CANCELAR* para salir.';
+    return { texto: 'Responde *SÍ* para guardar, *NO* para corregir la selección o *CANCELAR* para salir.', botones: CONFIRMA_BOTONES };
   }
 
   if (ses.fase === 'FOTOS') {
@@ -605,7 +628,7 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       await guardarFoto(ses, tecnico, imagenB64, mime);
       const tarea = (ses.hechas || [])[ses.fotoPos];
       const n = await contarFotos(ses, tarea);
-      return `📷 Foto ${n} guardada para *${tarea}*. Envía otra, *SIGUIENTE* o *FIN*.`;
+      return { texto: `📷 Foto ${n} guardada para *${tarea}*. Envía otra, *SIGUIENTE* o *FIN*.`, botones: FOTOS_BOTONES };
     }
     if (/(^|\s)(siguiente|listo|next)(\s|$)/.test(t)) {
       ses.fotoPos += 1;
@@ -627,20 +650,21 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     if (texto && esSaludo(texto)) {
       const n = await contarFotos(ses, null);
       await limpiarSesion(from);
-      return `🏁 Cerré el registro de *${etiquetaSes(ses)}* (${n} foto(s)).\n\n${MENU_TEXTO}`;
+      return { texto: `🏁 Cerré el registro de *${etiquetaSes(ses)}* (${n} foto(s)).\n\n${MENU_TEXTO}`, botones: MENU_BOTONES };
     }
     if (texto && await esRegistroActividad(texto)) {
       const n = await contarFotos(ses, null);
       const cierre = `🏁 Cerré el registro de *${etiquetaSes(ses)}* (${n} foto(s)).`;
       await limpiarSesion(from);
       const resp = await manejarMtto({ tecnico, from, texto, imagenB64: null, mime: null, onWriteStart });
+      if (resp && typeof resp === 'object') return { ...resp, texto: `${cierre}\n\n${resp.texto || ''}` };
       return `${cierre}\n\n${resp || ''}`;
     }
-    return `Envía una foto, *SIGUIENTE* para pasar de actividad o *FIN* para terminar. (Registro en curso: *${etiquetaSes(ses)}*)`;
+    return { texto: `Envía una foto, *SIGUIENTE* para pasar de actividad o *FIN* para terminar. (Registro en curso: *${etiquetaSes(ses)}*)`, botones: FOTOS_BOTONES };
   }
 
   await limpiarSesion(from);   // fase desconocida: reset defensivo
-  return MENU_TEXTO;
+  return { texto: MENU_TEXTO, botones: MENU_BOTONES };
 }
 
 // Aplica la corrección de Gemini sobre el texto crudo: si identificó sede/equipo, se usan
@@ -733,7 +757,12 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
     // "el extractor del comedor", no "extractor 04" — sin el área no tiene con qué elegir.
     const o = opcionesEquipo(r.candidatosEquipo);
     if (!o) return '¿Qué *equipo* es? Dime el nombre como figura en el inventario.';
-    if (o.modo === 'tipos') return `Hay ${o.total} equipos. ¿De qué *tipo* es?\n${o.texto}\n\n_(o dime la *ubicación* o el *código* MA-...)_`;
+    if (o.modo === 'tipos') {
+      // Con ≤10 tipos entra en una lista de un toque de WhatsApp; si son más, sigue el texto
+      // de siempre (el técnico escribe el tipo) — el límite de WhatsApp es 10 filas.
+      if (o.lista) return { texto: `Hay ${o.total} equipos. ¿De qué *tipo* es?\n\n_(o dime la *ubicación* o el *código* MA-...)_`, lista: o.lista, boton: 'Elegir tipo' };
+      return `Hay ${o.total} equipos. ¿De qué *tipo* es?\n${o.texto}\n\n_(o dime la *ubicación* o el *código* MA-...)_`;
+    }
     if (o.modo === 'areas') return `Hay ${o.total} ${o.tipo.toLowerCase()}(s). ¿En qué *ubicación* está el tuyo?\n${o.texto}\n\n_(o dame el *código* MA-...)_`;
     const mas = o.truncado ? `\n_(…y ${o.truncado} más — si no está, dame el código MA-...)_` : '';
     return `¿Qué *equipo* es?\n${o.texto}${mas}\n\n_(dime la *ubicación*, el nombre o el código MA-...)_`;
@@ -768,7 +797,8 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
     ses.marcadas = pre;
     ses.fase = 'CONFIRMA';
     await guardarSesion(ses.from, ses);
-    return `🔎 Detecté ${pre.length} actividad(es) en tu mensaje.\n\n${resumenConfirma(ses)}`;
+    const rc = resumenConfirma(ses);
+    return { ...rc, texto: `🔎 Detecté ${pre.length} actividad(es) en tu mensaje.\n\n${rc.texto}` };
   }
   ses.fase = 'ACTIVIDADES';
   await guardarSesion(ses.from, ses);

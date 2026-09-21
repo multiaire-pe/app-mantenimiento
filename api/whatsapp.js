@@ -14,15 +14,26 @@
 import crypto from 'node:crypto';
 import { yaProcesado, liberarMensaje } from './_lib/idempotencia.js';
 import { identificarTecnico } from './_lib/identidad.js';
-import { enviarTexto } from './_lib/whatsapp.js';
+import { enviarTexto, enviarBotones, enviarLista } from './_lib/whatsapp.js';
 import { manejarMensaje } from './_lib/conversacion.js';
 import { guardarObservacion } from './_lib/escritura.js';
 import { descargarMedia } from './_lib/media.js';
 import { notificarSupervisores } from './_lib/avisos.js';
 import { decidirFlujo } from './_lib/router.js';
 import { manejarAsistencia } from './_lib/asistencia.js';
-import { manejarMtto, MENU_TEXTO } from './_lib/mtto.js';
+import { manejarMtto, MENU_TEXTO, MENU_BOTONES } from './_lib/mtto.js';
 import { getSesion as getSesionMtto } from './_lib/mtto_sesiones.js';
+
+// Los flujos devuelven un texto simple de siempre, o —en los puntos donde agregamos botones/
+// listas de un toque— {texto, botones} o {texto, lista, boton}. Un solo lugar decide cómo
+// mandarlo, así los flujos no necesitan saber nada de la API de mensajes interactivos.
+async function enviarRespuesta(to, resp) {
+  if (!resp) return;
+  if (typeof resp === 'string') { await enviarTexto(to, resp); return; }
+  if (resp.botones) { await enviarBotones(to, resp.texto, resp.botones); return; }
+  if (resp.lista) { await enviarLista(to, resp.texto, resp.boton || 'Elegir', resp.lista); return; }
+  await enviarTexto(to, resp.texto || '');
+}
 
 // Necesitamos el body CRUDO (bytes exactos) para validar la firma HMAC → desactivamos
 // el parser automático de Vercel.
@@ -116,8 +127,10 @@ async function procesarMensaje(msg) {
       return;
     }
 
-    // Texto del mensaje (o pie de la foto).
-    const texto = msg.text?.body || msg.image?.caption || '';
+    // Texto del mensaje (o pie de la foto, o el `id` de un botón/lista tocado — ese id es
+    // siempre el mismo texto que el flujo ya reconoce escrito a mano, ver whatsapp.js).
+    const texto = msg.text?.body || msg.image?.caption
+      || msg.interactive?.button_reply?.id || msg.interactive?.list_reply?.id || '';
 
     // Ubicación compartida (marcaje de asistencia): WhatsApp la entrega en msg.location.
     let ubicacion = null;
@@ -154,7 +167,7 @@ async function procesarMensaje(msg) {
         if (sesM) {
           // otras fases: la guía de la propia fase (Council) — texto vacío dispara el fallback
           const resp = await manejarMtto({ tecnico, from: msg.from, texto: '', imagenB64: null, mime: null });
-          if (resp) await enviarTexto(msg.from, resp);
+          await enviarRespuesta(msg.from, resp);
           return;
         }
         return;
@@ -172,7 +185,7 @@ async function procesarMensaje(msg) {
     // ¿Este mensaje es de asistencia (marcaje) o de observaciones?
     const flujo = await decidirFlujo({ from: msg.from, tipo: msg.type, texto });
     if (flujo === 'menu') {
-      await enviarTexto(msg.from, MENU_TEXTO);
+      await enviarBotones(msg.from, MENU_TEXTO, MENU_BOTONES);
       return;
     }
     if (flujo === 'hint-obs') {
@@ -186,12 +199,12 @@ async function procesarMensaje(msg) {
     if (flujo === 'mtto') {
       const resp = await manejarMtto({ tecnico, from: msg.from, texto, imagenB64, mime,
         onWriteStart: () => { escrituraIniciada = true; } });
-      if (resp) await enviarTexto(msg.from, resp);
+      await enviarRespuesta(msg.from, resp);
       return;
     }
     if (flujo === 'asistencia') {
       const resp = await manejarAsistencia({ tecnico, from: msg.from, texto, ubicacion, imagenB64, mime });
-      if (resp) await enviarTexto(msg.from, resp);
+      await enviarRespuesta(msg.from, resp);
       return;
     }
 
@@ -210,7 +223,7 @@ async function procesarMensaje(msg) {
         return obs;
       },
     });
-    if (respuesta) await enviarTexto(msg.from, respuesta);
+    await enviarRespuesta(msg.from, respuesta);
   } catch (e) {
     // Si el fallo ocurrió ANTES de cualquier escritura, liberamos la marca de idempotencia para que
     // el reintento de Meta reprocese el mensaje (no perderlo). Si ya empezó a escribir, NO la liberamos:

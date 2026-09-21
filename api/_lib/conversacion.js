@@ -26,6 +26,24 @@ const MAX_REPREGUNTAS = 2;
 
 const ESTADO_LABEL = { PENDIENTE: 'Pendiente', EN_PROCESO: 'En proceso', OK: 'Resuelto (OK)' };
 
+// Botones de la confirmación de observación. Solo SÍ/CANCELAR (no "NO" como en mtto): acá
+// corregir es escribir la corrección directo, no un tercer botón — sigue funcionando igual
+// si el técnico prefiere escribir en vez de tocar. `id` = el mismo texto que ya reconocen
+// RE_CONFIRMA/RE_CANCELA, así el botón no necesita ningún parseo nuevo.
+const CONFIRMA_OBS_BOTONES = [
+  { id: 'si', title: '✅ Sí, guardar' },
+  { id: 'cancelar', title: '❌ Cancelar' },
+];
+
+// Antepone un texto (ej. un aviso) a una respuesta que puede ser un string de siempre o un
+// {texto, botones/lista} — sin esto, `aviso + resp` rompería mostrando "[object Object]"
+// cuando `resp` ya viene con botones.
+function conPrefijo(prefijo, resp) {
+  if (!prefijo) return resp;
+  if (resp && typeof resp === 'object') return { ...resp, texto: prefijo + resp.texto };
+  return prefijo + (resp || '');
+}
+
 // ── Detección de intención (respuestas cortas del técnico) ──────────────────────
 const RE_CONFIRMA  = /^\s*(s[ií]+|sip|ok\b|okey|oka|dale|ya\b|listo|correcto|confirm\w*|guard\w*|de acuerdo|👍|✅)/i;
 const RE_CANCELA   = /^\s*(cancel\w*|anul\w*|olv[ií]d\w*|descart\w*|borr\w*)/i;
@@ -107,7 +125,7 @@ export async function manejarMensaje({
     ses.fase = 'CONFIRMANDO';
     ses.faltante = null;
     await guardarSesion(from, ses);
-    return avisoFoto + resumenConfirmar(ses.borrador, await tieneFotoPendiente(from));
+    return conPrefijo(avisoFoto, resumenConfirmar(ses.borrador, await tieneFotoPendiente(from)));
   }
 
   // En confirmación: "SÍ" guarda; cualquier otra cosa se trata como corrección.
@@ -150,7 +168,7 @@ export async function manejarMensaje({
       }
     }
     if (t) ses.historial.push(t);             // corrección → reextraer con el texto nuevo
-    return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t });
+    return conPrefijo(avisoFoto, await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t }));
   }
 
   // Nuevo mensaje o sesión en RECOLECTANDO.
@@ -160,7 +178,7 @@ export async function manejarMensaje({
     await guardarSesion(from, ses);
     return 'Cuéntame la observación: en qué *sede* y *equipo*, y qué encontraste. 🛠️';
   }
-  return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t });
+  return conPrefijo(avisoFoto, await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t }));
 }
 
 // ── Resolver sede/equipo: EL MATCHER PRIMERO, GEMINI ES EL RESCATE ──────────────────
@@ -304,6 +322,9 @@ function preguntarEquipo(sede, cands) {
   if (!o) return `Dame el *código* del equipo de *${sinPrefijo(sede)}* (ej. MA-...).`;
   const s = sinPrefijo(sede);
   if (o.modo === 'tipos') {
+    // Con ≤10 tipos entra en una lista de un toque de WhatsApp; con más, sigue el texto de
+    // siempre (el límite de WhatsApp es 10 filas).
+    if (o.lista) return { texto: `*${s}* tiene ${o.total} equipos. ¿De qué *tipo* es?\n\n_(o dime la *ubicación* o el *código* MA-...)_`, lista: o.lista, boton: 'Elegir tipo' };
     return `*${s}* tiene ${o.total} equipos. ¿De qué *tipo* es?\n${o.texto}\n\n_(o dime la *ubicación* o el *código* MA-...)_`;
   }
   if (o.modo === 'areas') {
@@ -314,7 +335,7 @@ function preguntarEquipo(sede, cands) {
 }
 
 function resumenConfirmar(b, conFoto) {
-  return '📝 *Confirma la observación:*\n\n' +
+  const texto = '📝 *Confirma la observación:*\n\n' +
     `🏪 Sede: *${sinPrefijo(b.sede)}*\n` +
     `❄️ Equipo: *${b.equipo}*${b.tipo ? ` (${String(b.tipo).toLowerCase()})` : ''}\n` +
     (b.area ? `📍 Ubicación: ${b.area}\n` : '') +
@@ -323,6 +344,7 @@ function resumenConfirmar(b, conFoto) {
     `📌 Estado: *${ESTADO_LABEL[b.estado] || b.estado}*\n` +
     (conFoto ? '📷 Con foto adjunta\n' : '') +
     '\nResponde *SÍ* para guardar. Si algo está mal, dime la corrección (o el estado correcto), o escribe *cancelar*.';
+  return { texto, botones: CONFIRMA_OBS_BOTONES };
 }
 
 // Acuse tras guardar la observación + la pregunta de operatividad del equipo.
