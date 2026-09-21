@@ -8,7 +8,7 @@
 // Diseño desacoplado/testeable: `analizar` (Gemini) y `guardar` (escritura) se inyectan;
 // por defecto usan los módulos reales, pero en pruebas se pasan stubs.
 import { estructurarObservacion } from './gemini.js';
-import { resolverEquipo, etiquetaEquipo, opcionesEquipo, mensajeTipos, elegirRescate } from './equipos.js';
+import { resolverEquipo, etiquetaEquipo, opcionesEquipo, mensajeTipos, elegirRescate, sinPistaDeEquipo } from './equipos.js';
 import { contextoInventario } from './inventario.js';
 import { textoGuia } from './guia.js';
 import { getSesion, guardarSesion, limpiarSesion, nuevaSesion, guardarUltimaObs, getUltimaObs, limpiarUltimaObs } from './sesiones.js';
@@ -204,6 +204,9 @@ async function resolverSedeEquipo(ses, b, { textoAcum, mensajeNuevo, g }) {
   // técnico, que es el único que sabe.
   if (!r.ok && r.motivo === 'sede' && r.sedeAmbigua) return r;
   if (r.ok || !(g.sede || g.equipo)) return r;
+  // Sede ya resuelta y NINGUNA pista de equipo: no hay nada que Gemini pueda corregir — ver
+  // `sinPistaDeEquipo` en equipos.js (compartida con mtto a propósito).
+  if (sinPistaDeEquipo(r)) return r;
 
   // Rescate: el matcher no reconoció algo (typo fuerte, jerga). Se prueba con lo que entendió
   // Gemini — y `elegirRescate` (compartida con mtto) decide si esa corrección probabilística puede
