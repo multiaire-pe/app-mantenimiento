@@ -524,6 +524,8 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     // matching (el "1" mete un número falso → falso empate de equipo, p.ej. Roof Top 01 vs 03)
     // y no aportan datos. El primer mensaje REAL pasa a ser el textoOriginal en la fase EQUIPO.
     ses.textoOriginal = (t === '1' || esSaludo(texto)) ? '' : (texto || '');
+    // Lo que va al matcher del EQUIPO: el 1er mensaje sin su vocabulario de intención (`sinIntencion`).
+    ses.textoEquipo = sinIntencion(ses.textoOriginal);
     ses.fase = 'EQUIPO';
     if (texto && t !== '1' && !esSaludo(texto)) {
       const r = await intentarResolver(ses, texto, corregir);
@@ -554,7 +556,20 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
     // Acumula lo que el técnico va diciendo: la 1ª frase suele traer la sede y la respuesta a
     // la repregunta el equipo (o al revés). Sin acumular, responder de a poco perdía lo ya
     // dicho (la sede desaparecía al contestar el equipo) → el bot repreguntaba en bucle.
+    // El PRIMER mensaje real (la sesión pudo nacer con el botón "1", sin texto) es el que trae la
+    // intención ("mantenimiento preventivo en…") y se recorta SIEMPRE (si era solo la intención, no
+    // aporta nada al equipo). En los siguientes se recorta el arranque de intención ("quiero
+    // registrar mantenimiento preventivo del extractor" → "extractor"; Council, ronda 2); si no queda
+    // nada, el mensaje era SOLO vocabulario: con un MARCADOR de intención ("quiero registrar
+    // mantenimiento preventivo") no aporta nada, y sin él ("mantenimiento", "de mantenimiento") es una
+    // respuesta de ubicación y va tal cual (Council, ronda 3). Sesiones anteriores a `textoEquipo`
+    // (TTL 30 min) caen al acumulado recortado, como transición.
+    const primero = !(ses.textoOriginal || '').trim();
+    const textoEqPrev = ses.textoEquipo ?? sinIntencion(ses.textoOriginal || '');
+    const limpio = sinIntencion(texto);
+    const aporte = primero ? limpio : (limpio || (esFraseDeIntencion(texto) ? '' : texto));
     ses.textoOriginal = `${ses.textoOriginal || ''} ${texto}`.trim();
+    ses.textoEquipo = `${textoEqPrev} ${aporte}`.trim();
     const r = await intentarResolver(ses, ses.textoOriginal, corregir, null, texto);
     if (r) return r;
     return null;
@@ -652,6 +667,36 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
   return MENU_TEXTO;
 }
 
+// Vocabulario de INTENCIÓN con que el técnico ABRE el pedido ("mantenimiento preventivo en…",
+// "quiero registrar actividades en…", "realizado…"), más saludos y conectores, al inicio del
+// PRIMER mensaje. No son pistas del equipo, pero `textoOriginal` los conserva a propósito (el
+// pre-marcado de actividades los necesita: "Mantenimiento integral…"), así que se descartan solo en
+// `ses.textoEquipo`, que es lo que va al matcher del EQUIPO. La SEDE se sigue buscando en el texto
+// tal cual: una sede puede empezar con un conector ("los olivos") y recortárselo la perdería.
+// Bug real (TOTTUS Mall del Sur, 2026-09-21): "mantenimiento preventivo en mall del sur"
+// auto-seleccionaba "Extractor 26 · 📍 MANTENIMIENTO" —la palabra de la intención calzaba con el
+// área de ese equipo— y saltaba directo a las actividades sin que el técnico dijera ni código ni
+// ubicación. Solo el PRIMER mensaje, no el acumulado: si después contesta "mantenimiento" a
+// "¿en qué ubicación?", ESA sí es la ubicación y tiene que puntuar (hallazgo del Council: recortar
+// el acumulado se comía también esa respuesta cuando el 1er mensaje era solo la intención → bucle).
+// Lookahead en vez de \b por las tildes ("realicé").
+const RE_INTENCION_INICIAL = /^(?:\s*(?:hola|buenas|buenos|d[ií]as|tardes|noches|quiero|deseo|necesito|voy|a|registrar|registro|marcar|hacer|hice|realic[eé]|realizad[oa]s?|complet[eé]|termin[eé]|mantenimientos?|mtto\.?|preventiv[oa]s?|actividad(?:es)?|el|la|los|las|de|del|en|un|una|para|por|favor)(?![\p{L}\p{N}])[\s,.:;!¡-]*)+/iu;
+export function sinIntencion(texto) {
+  return String(texto || '').replace(RE_INTENCION_INICIAL, '').trim();
+}
+// MARCADORES de intención (verbos y sustantivos del pedido, en cualquier posición). Distinguen
+// "quiero registrar mantenimiento preventivo" —intención, se recorta aunque no quede nada— de
+// "mantenimiento" a secas —una ubicación real: el área MANTENIMIENTO existe— (Council, ronda 3: que
+// el recorte quede vacío no demuestra que sea una ubicación). Solo se consultan cuando el mensaje
+// posterior queda vacío tras `sinIntencion`: un área completa ("SALA DE ACTIVIDADES", "ZONA DE
+// REGISTRO") sobrevive entera; lo que se pierde, a propósito, es la respuesta ABREVIADA a una de
+// esas áreas ("registro", "actividades" a secas) — hoy ninguna área del inventario se llama así, y
+// el técnico siempre puede dar el área completa o el código.
+const RE_MARCA_INTENCION = /(?<![\p{L}\p{N}])(?:quiero|deseo|necesito|voy|registrar|registro|marcar|hacer|hice|realic[eé]|realizad[oa]s?|complet[eé]|termin[eé]|actividad(?:es)?|preventiv[oa]s?)(?![\p{L}\p{N}])/iu;
+export function esFraseDeIntencion(texto) {
+  return RE_MARCA_INTENCION.test(String(texto || ''));
+}
+
 // Aplica la corrección de Gemini sobre el texto crudo: si identificó sede/equipo, se usan
 // (ya corregidos); si no (no los detectó, o Gemini falló y `g` llega null), cae al texto tal
 // cual — mismo comportamiento que antes de este fix, cero regresión. Pura/testeable.
@@ -669,6 +714,10 @@ export function aplicarCorreccion(texto, g) {
 // volvería a disparar la misma repregunta, dejándolo en bucle.
 // `mensajeNuevo` = solo lo último que dijo el técnico (`texto` es todo lo acumulado del turno).
 async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mensajeNuevo = null) {
+  // `texto` (todo lo dicho) resuelve la SEDE y el cliente; `textoEq` resuelve el EQUIPO: lo mismo
+  // sin la intención del 1er mensaje (ver `sinIntencion` y `manejarMtto`). `ses.textoOriginal`
+  // queda intacto para el pre-marcado de actividades, más abajo.
+  const textoEq = ses.textoEquipo ?? sinIntencion(texto);
   const pideSede = async (r) => {
     ses.pidiendoSede = true;                 // ← el próximo mensaje es LA SEDE, no más contexto
     await guardarSesion(ses.from, ses);
@@ -697,7 +746,10 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
   // entraría al matcher como sede canónica y le ganaría por coincidencia exacta a lo que el
   // matcher ya había resuelto bien. Ante "chiller 1 de mac plaza norte", que Gemini conteste
   // "Plaza Norte" mandaría el registro a la sede equivocada (son dos sedes distintas y reales).
-  let r = await resolverEquipo(sedeCruda, texto, `${sedeCruda} ${texto}`, mensajeNuevo);
+  // La sede ya venía resuelta de un turno anterior (y este mensaje no la cambió): las palabras de
+  // la sede que diga AHORA son pistas del equipo, no la mención de la sede — ver `matchEquipo`.
+  const sedePrevia = !sedeRespuesta && !!ses.sedeFijada && sedeCruda === ses.sedeFijada;
+  let r = await resolverEquipo(sedeCruda, textoEq, `${sedeCruda} ${texto}`, mensajeNuevo, { sedePrevia });
 
   // Y ante una ambigüedad GENUINA entre dos sedes reales ("m plaza norte" = ¿PLAZA NORTE o MAC
   // PLAZA NORTE?), Gemini tampoco desempata: elegiría una con total aplomo. Se le pregunta al
@@ -724,8 +776,11 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
       console.error('[mtto] corrección Gemini falló, sigo con el texto tal cual:', e?.message);
     }
     if (g && (g.sede || g.equipo)) {
-      const { sedeTxt, equipoTxt } = aplicarCorreccion(texto, g);
-      const rg = await resolverEquipo(sedeFijada || sedeRespuesta || sedeTxt, equipoTxt, texto, mensajeNuevo);
+      // Sin corrección de Gemini para el equipo, se cae a `textoEq` (no a `texto`: si no, la
+      // intención del 1er mensaje volvería a entrar al matcher por la puerta del rescate).
+      const sedeTxt = g.sede || texto;
+      const { equipoTxt } = aplicarCorreccion(textoEq, g);
+      const rg = await resolverEquipo(sedeFijada || sedeRespuesta || sedeTxt, equipoTxt, texto, mensajeNuevo, { sedePrevia });
       r = elegirRescate(r, rg);
       if (!r.ok && r.motivo === 'sede' && r.sedeAmbigua) return pideSede(r);
     }

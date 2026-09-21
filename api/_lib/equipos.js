@@ -221,7 +221,7 @@ function tipoMencionado(equipoRaw, tiposSede) {
   });
 }
 
-function matchEquipo(equipoRaw, sede, equipos, cliente, mensajeNuevo) {
+function matchEquipo(equipoRaw, sede, equipos, cliente, mensajeNuevo, sedePrevia = false) {
   // Filtra por sede y, si se nombró un cliente, por ese cliente (desambigua sedes compartidas).
   let delSede = equipos.filter((e) => e.sede === sede && (!cliente || e.cliente === cliente));
   if (!delSede.length) delSede = equipos.filter((e) => e.sede === sede);
@@ -279,7 +279,27 @@ function matchEquipo(equipoRaw, sede, equipos, cliente, mensajeNuevo) {
   //    en el nombre — mezclarlos generaba empates falsos entre dos equipos del mismo
   //    tipo, ej. "Cortina de aire 04" contra el eq_id de "Cortina de aire 02").
   const qNum = conNumeros(equipoRaw);                    // "extractor uno" → "extractor 1"
-  const qToks = tokens(qNum);
+  // Las palabras de la SEDE (y del CLIENTE, si lo nombró) NO son pistas del equipo: `equipoRaw`
+  // suele ser la frase completa del técnico ("Mall del Sur", "tottus mall del sur extractor…"),
+  // repetida tal cual como descripción del equipo, y esas palabras entraban al scoring como si
+  // fueran ubicación. Bug real (TOTTUS Mall del Sur, 2026-09-21): con la sede sola, "SUR" calzaba
+  // por substring dentro de "CUARTO DE BA-SUR-A" → +2 a los 2 equipos de ese cuarto → el bot
+  // ofrecía solo "Extractor 21" e "Inyector 6" en vez de los 92 equipos / 10 tipos de la sede.
+  // (El #179 lo atribuyó a Gemini, pero el matcher solo ya lo producía: 2 candidatos empatados no
+  // son `sinInfo`, así que ni se salteaba el rescate ni Gemini tenía permitido desempatarlos.)
+  // Excepción (Council): si la sede ya estaba resuelta ANTES de este mensaje (`sedePrevia`), lo que
+  // el técnico dice AHORA no es la mención de la sede sino una pista más ("sur" para el ala sur,
+  // "norte"…) y se conserva — salvo que el mensaje REPITA la sede (o el cliente) completa ("el
+  // extractor de mall del sur"): eso sí es una mención, y sus palabras se descartan igual. Solo se
+  // descarta, entonces, lo que arrastran los turnos anteriores y las menciones enteras.
+  const sedeWords = new Set([...norm(sede).split(' '), ...(cliente ? norm(cliente).split(' ') : [])]);
+  let enElNuevo = null;
+  if (sedePrevia && mensajeNuevo) {
+    let n = ' ' + norm(mensajeNuevo) + ' ';
+    for (const m of [sede, cliente]) { const mn = norm(m); if (mn) n = n.split(' ' + mn + ' ').join(' '); }
+    enElNuevo = new Set(tokens(conNumeros(n)));
+  }
+  const qToks = tokens(qNum).filter((t) => !sedeWords.has(t) || (enElNuevo && enElNuevo.has(t)));
   // El NÚMERO del equipo prioriza el ÚLTIMO mensaje del técnico sobre el resto de la conversación
   // acumulada (`equipoRaw` puede traer varios turnos juntos — así resuelve un equipo descrito de a
   // poco, ej. "el extractor" + "del comedor"). Pero un dígito dicho ANTES en la charla ("quiero
@@ -304,14 +324,21 @@ function matchEquipo(equipoRaw, sede, equipos, cliente, mensajeNuevo) {
     .replace(/\b\d+[A-Z]{0,3}\s+(PISO|NIVEL)\b/g, ' ')         // "2do piso", "1 nivel" (de "1° nivel")
     .match(/\d+/g) || [])
     .map((n) => parseInt(n, 10));
+  // La palabra del técnico tiene que calzar como PREFIJO de una palabra del área/nombre: ' COMEDOR'
+  // calza "COMEDORES" y "BANO" calza "BANOS" (plurales y abreviaturas siguen andando), pero "SUR"
+  // ya no calza "BASURA" ni "MP" "EMPLEADOS". Mismo criterio que `tipoMencionado` usa con las
+  // keywords del tipo. Un substring suelto de 2-4 letras cae adentro de casi cualquier palabra, y
+  // ahí una coincidencia por azar valía +2 — más que una palabra del nombre dicha a propósito.
+  // Lo que se pierde, a propósito: fragmentos INTERIORES ("hh" ya no calza "SSHH" pegado; sí "SS HH").
+  const enPalabra = (txt, t) => (' ' + txt).includes(' ' + t);
   const scored = pool.map((e) => {
     const nombreTxt = norm(e.nombre);
     const areaTxt = norm(e.area);
     let s = 0;
     for (const t of qToks) {
       if (/^\d+$/.test(t)) continue;                       // los números se puntúan aparte
-      if (areaTxt.includes(t)) s += 2;                     // palabra de UBICACIÓN: distintiva e intencional
-      else if (nombreTxt.includes(t)) s += 1;              // palabra del nombre: poco distintiva
+      if (enPalabra(areaTxt, t)) s += 2;                   // palabra de UBICACIÓN: distintiva e intencional
+      else if (enPalabra(nombreTxt, t)) s += 1;            // palabra del nombre: poco distintiva
     }
     if (qNumsTodos.length) {
       // Número canónico: SOLO del propio NOMBRE ("Extractor 02"); el de la ubicación
@@ -333,16 +360,14 @@ function matchEquipo(equipoRaw, sede, equipos, cliente, mensajeNuevo) {
   //
   // `sinInfo` acá NO es "no hubo match" (un typo real como "resepcion" tampoco matchea nada y SÍ
   // vale la pena que Gemini lo corrija) — es específicamente "lo que sobra de `equipoRaw` después
-  // de sacarle las palabras de la SEDE (y del CLIENTE, ej. "Tottus Mall del sur" en una sede
-  // compartida) es nada": el caso del bug (equipoRaw llega siendo la MISMA frase que ya se usó
-  // para resolver sede/cliente, repetida como si fuera también la descripción del equipo). Con
-  // contenido real de por medio (aunque no matchee, aunque sea typo), la resta deja algo — y ahí
-  // Gemini sigue teniendo margen para ayudar.
-  // Un número (aunque sea de 1 sola cifra, ej. "3") SIEMPRE cuenta como pista real — es la misma
-  // señal que el scoring de arriba prioriza por su cuenta vía regex, no vía `tokens()` (que
-  // descarta tokens de 1 char, pensado para palabras sueltas, no para dígitos).
-  const sedeWords = new Set([...norm(sede).split(' '), ...(cliente ? norm(cliente).split(' ') : [])]);
-  const sinInfo = !/\d/.test(equipoRaw) && !tokens(equipoRaw).some((tk) => !sedeWords.has(tk));
+  // de sacarle las palabras de la SEDE (y del CLIENTE) es nada": `qToks` ya viene filtrado así
+  // (ver arriba), y `qNum` ya convirtió "uno" → "1", de modo que un número —aunque sea de 1 sola
+  // cifra, que `tokens()` descarta— SIEMPRE cuenta como pista real. Con contenido real de por
+  // medio (aunque no matchee, aunque sea typo), queda algo — y ahí Gemini sigue teniendo margen.
+  // Las palabras de la sede que `sedePrevia` conservó tampoco cuentan como pista si no puntuaron
+  // (llegar acá es que no lo hicieron): repetir "mall del sur" en un turno posterior no habilita el
+  // rescate de Gemini — y ahí Gemini volvía a "acortar" la lista con un tipo inventado (Council, ronda 2).
+  const sinInfo = !/\d/.test(qNum) && !qToks.some((t) => !sedeWords.has(t));
   return { ok: false, candidatos: pool, sinInfo };
 }
 
@@ -497,7 +522,8 @@ export function mensajeTipos(o, prefijo) {
 // traen varios turnos acumulados — ver el comentario en `matchEquipo` sobre por qué el número
 // prioriza el último mensaje. Los llamadores existentes que no lo pasan (`undefined`) se comportan
 // exactamente igual que antes (usan el texto completo para todo, incluidos los números).
-export async function resolverEquipo(sedeRaw, equipoRaw, textoCompleto, mensajeNuevo) {
+// `opts.sedePrevia` = la sede ya estaba resuelta ANTES de `mensajeNuevo` (ver `matchEquipo`).
+export async function resolverEquipo(sedeRaw, equipoRaw, textoCompleto, mensajeNuevo, opts = {}) {
   const { equipos, sedes, clientes } = await cargarInventario();
   const cliente = clienteMencionado(textoCompleto || `${sedeRaw || ''} ${equipoRaw || ''}`, clientes);
   const t = matchSede(sedeRaw, sedes, clientes);
@@ -512,7 +538,7 @@ export async function resolverEquipo(sedeRaw, equipoRaw, textoCompleto, mensajeN
   if (clientesSede.length > 1 && !cliente) {
     return { ok: false, motivo: 'cliente', sede: t.sede, candidatosCliente: clientesSede };
   }
-  const e = matchEquipo(equipoRaw, t.sede, equipos, cliente, mensajeNuevo);
+  const e = matchEquipo(equipoRaw, t.sede, equipos, cliente, mensajeNuevo, !!opts.sedePrevia);
   if (!e.ok) return { ok: false, motivo: 'equipo', sede: t.sede, candidatosEquipo: e.candidatos, sinInfoEquipo: !!e.sinInfo };
   return { ok: true, sede: t.sede, equipo: e.equipo };
 }
