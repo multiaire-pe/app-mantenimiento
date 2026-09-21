@@ -61,3 +61,47 @@ export const enviarPlantillaDetalle = (to, nombre, idioma, componentes) =>
 export async function enviarPlantilla(to, nombre, idioma, componentes) {
   return (await enviarPlantillaDetalle(to, nombre, idioma, componentes)).ok;
 }
+
+// Mensaje interactivo de BOTONES (hasta 3, título ≤20 caracteres — límite de WhatsApp). El
+// técnico puede seguir respondiendo con texto libre igual que siempre: el botón es un atajo,
+// no un reemplazo — por eso `id` es siempre el mismo texto que ya reconocen los parsers
+// existentes ("1"/"si"/"cancelar"...), así ningún flujo necesita saber que vino de un botón.
+export function cuerpoBotones(to, body, botones) {
+  return {
+    messaging_product: 'whatsapp', to, type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: body },
+      action: { buttons: (botones || []).slice(0, 3).map((b) => ({
+        type: 'reply', reply: { id: String(b.id), title: String(b.title).slice(0, 20) },
+      })) },
+    },
+  };
+}
+export const enviarBotonesDetalle = (to, body, botones) => enviarDetalle(cuerpoBotones(to, body, botones), 'los botones');
+export async function enviarBotones(to, body, botones) {
+  return (await enviarBotonesDetalle(to, body, botones)).ok;
+}
+
+// Mensaje interactivo de LISTA (hasta 10 filas en total — límite de WhatsApp). Mismo criterio
+// que los botones: `id` de cada fila = el texto que el flujo ya sabe interpretar.
+export function cuerpoLista(to, body, textoBoton, filas) {
+  return {
+    messaging_product: 'whatsapp', to, type: 'interactive',
+    interactive: {
+      type: 'list',
+      body: { text: body },
+      action: {
+        button: String(textoBoton || 'Elegir').slice(0, 20),
+        sections: [{ rows: (filas || []).slice(0, 10).map((f) => ({
+          id: String(f.id), title: String(f.title).slice(0, 24),
+          ...(f.description ? { description: String(f.description).slice(0, 72) } : {}),
+        })) }],
+      },
+    },
+  };
+}
+export const enviarListaDetalle = (to, body, textoBoton, filas) => enviarDetalle(cuerpoLista(to, body, textoBoton, filas), 'la lista');
+export async function enviarLista(to, body, textoBoton, filas) {
+  return (await enviarListaDetalle(to, body, textoBoton, filas)).ok;
+}
