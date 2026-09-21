@@ -61,3 +61,24 @@ export const enviarPlantillaDetalle = (to, nombre, idioma, componentes) =>
 export async function enviarPlantilla(to, nombre, idioma, componentes) {
   return (await enviarPlantillaDetalle(to, nombre, idioma, componentes)).ok;
 }
+
+// Mensaje interactivo de BOTONES (hasta 3, título ≤20 caracteres — límite de WhatsApp). El
+// técnico puede seguir respondiendo con texto libre igual que siempre: el botón es un atajo,
+// no un reemplazo — por eso `id` es siempre el mismo texto que ya reconocen los parsers
+// existentes ("1"/"si"/"cancelar"...), así ningún flujo necesita saber que vino de un botón.
+export function cuerpoBotones(to, body, botones) {
+  return {
+    messaging_product: 'whatsapp', to, type: 'interactive',
+    interactive: {
+      type: 'button',
+      body: { text: body },
+      action: { buttons: (botones || []).slice(0, 3).map((b) => ({
+        type: 'reply', reply: { id: String(b.id), title: String(b.title).slice(0, 20) },
+      })) },
+    },
+  };
+}
+export const enviarBotonesDetalle = (to, body, botones) => enviarDetalle(cuerpoBotones(to, body, botones), 'los botones');
+export async function enviarBotones(to, body, botones) {
+  return (await enviarBotonesDetalle(to, body, botones)).ok;
+}

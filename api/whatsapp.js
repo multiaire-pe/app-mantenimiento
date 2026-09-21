@@ -14,14 +14,14 @@
 import crypto from 'node:crypto';
 import { yaProcesado, liberarMensaje } from './_lib/idempotencia.js';
 import { identificarTecnico } from './_lib/identidad.js';
-import { enviarTexto } from './_lib/whatsapp.js';
+import { enviarTexto, enviarBotones } from './_lib/whatsapp.js';
 import { manejarMensaje } from './_lib/conversacion.js';
 import { guardarObservacion } from './_lib/escritura.js';
 import { descargarMedia } from './_lib/media.js';
 import { notificarSupervisores } from './_lib/avisos.js';
 import { decidirFlujo } from './_lib/router.js';
 import { manejarAsistencia } from './_lib/asistencia.js';
-import { manejarMtto, MENU_TEXTO } from './_lib/mtto.js';
+import { manejarMtto, MENU_TEXTO, MENU_BOTONES } from './_lib/mtto.js';
 import { getSesion as getSesionMtto } from './_lib/mtto_sesiones.js';
 
 // Necesitamos el body CRUDO (bytes exactos) para validar la firma HMAC → desactivamos
@@ -116,8 +116,9 @@ async function procesarMensaje(msg) {
       return;
     }
 
-    // Texto del mensaje (o pie de la foto).
-    const texto = msg.text?.body || msg.image?.caption || '';
+    // Texto del mensaje (o pie de la foto, o el `id` de un botón tocado — ese id es siempre
+    // el mismo texto que el flujo ya reconoce escrito a mano, ver whatsapp.js).
+    const texto = msg.text?.body || msg.image?.caption || msg.interactive?.button_reply?.id || '';
 
     // Ubicación compartida (marcaje de asistencia): WhatsApp la entrega en msg.location.
     let ubicacion = null;
@@ -172,7 +173,7 @@ async function procesarMensaje(msg) {
     // ¿Este mensaje es de asistencia (marcaje) o de observaciones?
     const flujo = await decidirFlujo({ from: msg.from, tipo: msg.type, texto });
     if (flujo === 'menu') {
-      await enviarTexto(msg.from, MENU_TEXTO);
+      await enviarBotones(msg.from, MENU_TEXTO, MENU_BOTONES);
       return;
     }
     if (flujo === 'hint-obs') {

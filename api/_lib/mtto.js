@@ -64,6 +64,15 @@ export const MENU_TEXTO =
   '3️⃣ *Marcar asistencia* (entrada/salida)\n\n' +
   'Responde con el número, o escríbeme directo (ej: "mantenimiento preventivo del chiller 1 de atocongo").';
 
+// Botones de un toque para el menú inicial. El `id` de cada uno es EXACTAMENTE el texto que
+// el parser de turno ya reconoce ("1"/"2"/"3") — así, tocar el botón produce lo mismo que
+// escribirlo a mano, y ningún flujo necesita enterarse de que la respuesta vino de un botón.
+export const MENU_BOTONES = [
+  { id: '1', title: 'Mantenimiento' },
+  { id: '2', title: 'Observación' },
+  { id: '3', title: 'Asistencia' },
+];
+
 // Período bimestral vigente en Lima (mismo esquema de la app de mantenimiento).
 const PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
 export function periodoLima(base = Date.now()) {
