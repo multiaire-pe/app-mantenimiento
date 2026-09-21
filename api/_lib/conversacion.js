@@ -8,7 +8,7 @@
 // Diseño desacoplado/testeable: `analizar` (Gemini) y `guardar` (escritura) se inyectan;
 // por defecto usan los módulos reales, pero en pruebas se pasan stubs.
 import { estructurarObservacion } from './gemini.js';
-import { resolverEquipo, etiquetaEquipo, opcionesEquipo, elegirRescate } from './equipos.js';
+import { resolverEquipo, etiquetaEquipo, opcionesEquipo, mensajeTipos, elegirRescate } from './equipos.js';
 import { contextoInventario } from './inventario.js';
 import { textoGuia } from './guia.js';
 import { getSesion, guardarSesion, limpiarSesion, nuevaSesion, guardarUltimaObs, getUltimaObs, limpiarUltimaObs } from './sesiones.js';
@@ -25,6 +25,15 @@ async function limpiarTodo(from) {
 const MAX_REPREGUNTAS = 2;
 
 const ESTADO_LABEL = { PENDIENTE: 'Pendiente', EN_PROCESO: 'En proceso', OK: 'Resuelto (OK)' };
+
+// Antepone un texto (ej. un aviso) a una respuesta que puede ser un string de siempre o un
+// {texto, lista} — sin esto, `aviso + resp` rompería mostrando "[object Object]" cuando
+// `resp` ya viene con una lista de botones.
+function conPrefijo(prefijo, resp) {
+  if (!prefijo) return resp;
+  if (resp && typeof resp === 'object') return { ...resp, texto: prefijo + resp.texto };
+  return prefijo + (resp || '');
+}
 
 // ── Detección de intención (respuestas cortas del técnico) ──────────────────────
 const RE_CONFIRMA  = /^\s*(s[ií]+|sip|ok\b|okey|oka|dale|ya\b|listo|correcto|confirm\w*|guard\w*|de acuerdo|👍|✅)/i;
@@ -107,7 +116,7 @@ export async function manejarMensaje({
     ses.fase = 'CONFIRMANDO';
     ses.faltante = null;
     await guardarSesion(from, ses);
-    return avisoFoto + resumenConfirmar(ses.borrador, await tieneFotoPendiente(from));
+    return conPrefijo(avisoFoto, resumenConfirmar(ses.borrador, await tieneFotoPendiente(from)));
   }
 
   // En confirmación: "SÍ" guarda; cualquier otra cosa se trata como corrección.
@@ -150,7 +159,7 @@ export async function manejarMensaje({
       }
     }
     if (t) ses.historial.push(t);             // corrección → reextraer con el texto nuevo
-    return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t });
+    return conPrefijo(avisoFoto, await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t }));
   }
 
   // Nuevo mensaje o sesión en RECOLECTANDO.
@@ -160,7 +169,7 @@ export async function manejarMensaje({
     await guardarSesion(from, ses);
     return 'Cuéntame la observación: en qué *sede* y *equipo*, y qué encontraste. 🛠️';
   }
-  return avisoFoto + await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t });
+  return conPrefijo(avisoFoto, await procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar, mensajeNuevo: t }));
 }
 
 // ── Resolver sede/equipo: EL MATCHER PRIMERO, GEMINI ES EL RESCATE ──────────────────
@@ -304,7 +313,7 @@ function preguntarEquipo(sede, cands) {
   if (!o) return `Dame el *código* del equipo de *${sinPrefijo(sede)}* (ej. MA-...).`;
   const s = sinPrefijo(sede);
   if (o.modo === 'tipos') {
-    return `*${s}* tiene ${o.total} equipos. ¿De qué *tipo* es?\n${o.texto}\n\n_(o dime la *ubicación* o el *código* MA-...)_`;
+    return mensajeTipos(o, `*${s}* tiene ${o.total} equipos. ¿De qué *tipo* es?`);
   }
   if (o.modo === 'areas') {
     return `*${s}* tiene ${o.total} ${o.tipo.toLowerCase()}(s). ¿En qué *ubicación* está el tuyo?\n${o.texto}\n\n_(o dame el *código* MA-...)_`;

@@ -14,7 +14,7 @@
 import crypto from 'node:crypto';
 import { yaProcesado, liberarMensaje } from './_lib/idempotencia.js';
 import { identificarTecnico } from './_lib/identidad.js';
-import { enviarTexto, enviarBotones } from './_lib/whatsapp.js';
+import { enviarTexto, enviarBotones, enviarLista } from './_lib/whatsapp.js';
 import { manejarMensaje } from './_lib/conversacion.js';
 import { guardarObservacion } from './_lib/escritura.js';
 import { descargarMedia } from './_lib/media.js';
@@ -23,6 +23,26 @@ import { decidirFlujo } from './_lib/router.js';
 import { manejarAsistencia } from './_lib/asistencia.js';
 import { manejarMtto, MENU_TEXTO, MENU_BOTONES } from './_lib/mtto.js';
 import { getSesion as getSesionMtto } from './_lib/mtto_sesiones.js';
+
+// Botones de un toque para el hint de asistencia (elección "3" del menú, sin marcaje en curso).
+// Mismo criterio que MENU_BOTONES: el `id` es el texto que el parser de asistencia.js ya
+// reconoce ("entrada"/"salida") o el control suelto que vuelve al menú ("cancelar").
+const ASISTENCIA_BOTONES = [
+  { id: 'entrada', title: '🟢 Entrada' },
+  { id: 'salida', title: '🔴 Salida' },
+  { id: 'cancelar', title: '❌ Cancelar' },
+];
+
+// Los flujos devuelven un texto simple de siempre, o —en los puntos con botones/listas—
+// {texto, botones} o {texto, lista, boton}. Un solo lugar decide cómo mandarlo, así los
+// flujos no necesitan saber nada de la API de mensajes interactivos.
+async function enviarRespuesta(to, resp) {
+  if (!resp) return;
+  if (typeof resp === 'string') { await enviarTexto(to, resp); return; }
+  if (resp.botones) { await enviarBotones(to, resp.texto, resp.botones); return; }
+  if (resp.lista) { await enviarLista(to, resp.texto, resp.boton || 'Elegir', resp.lista); return; }
+  await enviarTexto(to, resp.texto || '');
+}
 
 // Necesitamos el body CRUDO (bytes exactos) para validar la firma HMAC → desactivamos
 // el parser automático de Vercel.
@@ -116,9 +136,10 @@ async function procesarMensaje(msg) {
       return;
     }
 
-    // Texto del mensaje (o pie de la foto, o el `id` de un botón tocado — ese id es siempre
-    // el mismo texto que el flujo ya reconoce escrito a mano, ver whatsapp.js).
-    const texto = msg.text?.body || msg.image?.caption || msg.interactive?.button_reply?.id || '';
+    // Texto del mensaje (o pie de la foto, o el `id` de un botón/fila de lista tocado — ese id
+    // es siempre el mismo texto que el flujo ya reconoce escrito a mano, ver whatsapp.js).
+    const texto = msg.text?.body || msg.image?.caption
+      || msg.interactive?.button_reply?.id || msg.interactive?.list_reply?.id || '';
 
     // Ubicación compartida (marcaje de asistencia): WhatsApp la entrega en msg.location.
     let ubicacion = null;
@@ -155,7 +176,7 @@ async function procesarMensaje(msg) {
         if (sesM) {
           // otras fases: la guía de la propia fase (Council) — texto vacío dispara el fallback
           const resp = await manejarMtto({ tecnico, from: msg.from, texto: '', imagenB64: null, mime: null });
-          if (resp) await enviarTexto(msg.from, resp);
+          await enviarRespuesta(msg.from, resp);
           return;
         }
         return;
@@ -181,13 +202,13 @@ async function procesarMensaje(msg) {
       return;
     }
     if (flujo === 'hint-asistencia') {
-      await enviarTexto(msg.from, '🕐 Para marcar, escribe *entrada* o *salida* y comparte tu *ubicación* 📍 (y tu selfie si te la pido).');
+      await enviarBotones(msg.from, '🕐 Para marcar, escribe *entrada* o *salida* y comparte tu *ubicación* 📍 (y tu selfie si te la pido).', ASISTENCIA_BOTONES);
       return;
     }
     if (flujo === 'mtto') {
       const resp = await manejarMtto({ tecnico, from: msg.from, texto, imagenB64, mime,
         onWriteStart: () => { escrituraIniciada = true; } });
-      if (resp) await enviarTexto(msg.from, resp);
+      await enviarRespuesta(msg.from, resp);
       return;
     }
     if (flujo === 'asistencia') {
@@ -211,7 +232,7 @@ async function procesarMensaje(msg) {
         return obs;
       },
     });
-    if (respuesta) await enviarTexto(msg.from, respuesta);
+    await enviarRespuesta(msg.from, respuesta);
   } catch (e) {
     // Si el fallo ocurrió ANTES de cualquier escritura, liberamos la marca de idempotencia para que
     // el reintento de Meta reprocese el mensaje (no perderlo). Si ya empezó a escribir, NO la liberamos:

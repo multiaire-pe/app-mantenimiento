@@ -4,7 +4,7 @@
 // (1 doc por foto). La lista de actividades es la EFECTIVA del equipo:
 // (plantilla tareas_config del tipo − quitadas) + agregadas de mtto_actividades_equipo.
 import { getDb } from './firestore.js';
-import { resolverEquipo, etiquetaEquipo, opcionesEquipo, elegirRescate } from './equipos.js';
+import { resolverEquipo, etiquetaEquipo, opcionesEquipo, mensajeTipos, elegirRescate } from './equipos.js';
 import { corregirSedeEquipo } from './gemini.js';
 import { contextoInventario } from './inventario.js';
 import { hoyLima } from './fecha.js';
@@ -742,7 +742,7 @@ async function intentarResolver(ses, texto, corregir, sedeRespuesta = null, mens
     // "el extractor del comedor", no "extractor 04" — sin el área no tiene con qué elegir.
     const o = opcionesEquipo(r.candidatosEquipo);
     if (!o) return '¿Qué *equipo* es? Dime el nombre como figura en el inventario.';
-    if (o.modo === 'tipos') return `Hay ${o.total} equipos. ¿De qué *tipo* es?\n${o.texto}\n\n_(o dime la *ubicación* o el *código* MA-...)_`;
+    if (o.modo === 'tipos') return mensajeTipos(o, `Hay ${o.total} equipos. ¿De qué *tipo* es?`);
     if (o.modo === 'areas') return `Hay ${o.total} ${o.tipo.toLowerCase()}(s). ¿En qué *ubicación* está el tuyo?\n${o.texto}\n\n_(o dame el *código* MA-...)_`;
     const mas = o.truncado ? `\n_(…y ${o.truncado} más — si no está, dame el código MA-...)_` : '';
     return `¿Qué *equipo* es?\n${o.texto}${mas}\n\n_(dime la *ubicación*, el nombre o el código MA-...)_`;

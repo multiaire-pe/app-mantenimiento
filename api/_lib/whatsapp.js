@@ -82,3 +82,26 @@ export const enviarBotonesDetalle = (to, body, botones) => enviarDetalle(cuerpoB
 export async function enviarBotones(to, body, botones) {
   return (await enviarBotonesDetalle(to, body, botones)).ok;
 }
+
+// Mensaje interactivo de LISTA (hasta 10 filas en total — límite de WhatsApp). Mismo criterio
+// que los botones: `id` de cada fila = el texto que el flujo ya sabe interpretar.
+export function cuerpoLista(to, body, textoBoton, filas) {
+  return {
+    messaging_product: 'whatsapp', to, type: 'interactive',
+    interactive: {
+      type: 'list',
+      body: { text: body },
+      action: {
+        button: String(textoBoton || 'Elegir').slice(0, 20),
+        sections: [{ rows: (filas || []).slice(0, 10).map((f) => ({
+          id: String(f.id), title: String(f.title).slice(0, 24),
+          ...(f.description ? { description: String(f.description).slice(0, 72) } : {}),
+        })) }],
+      },
+    },
+  };
+}
+export const enviarListaDetalle = (to, body, textoBoton, filas) => enviarDetalle(cuerpoLista(to, body, textoBoton, filas), 'la lista');
+export async function enviarLista(to, body, textoBoton, filas) {
+  return (await enviarListaDetalle(to, body, textoBoton, filas)).ok;
+}
