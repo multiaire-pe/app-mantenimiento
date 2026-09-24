@@ -322,13 +322,28 @@ const sedeCliente={};
 // que sigue al número (la variante) y recién ahí ordena por número. Sin esto,
 // "Extractor 01 (Axial)" y "Extractor 01 (Centrífugo)" empatan y el orden que
 // sale es el de Firestore (no determinista): axial y centrífugo se combinan.
-// El número se toma del ÚLTIMO grupo de dígitos del nombre (regex greedy) para
-// no confundirse con dígitos previos (ej. "UMA-P1-01" → número=01, no el 1 de P1).
+// El número se toma del ÚLTIMO grupo de dígitos ANTES del primer paréntesis
+// (la convención real es "<Tipo> <número> (<variante>)"): así un dígito que
+// venga DENTRO de la variante (ej. una ubicación "(Piso 2)") no se confunde
+// con el número del equipo. Si no hay paréntesis, se busca en el string
+// completo (ej. "UMA-P1-01" → número=01, no el 1 de P1). Antes se usaba la
+// regex greedy /^(.*)(\d+).../, que por cómo backtrackea solo agarraba el
+// ÚLTIMO DÍGITO SUELTO del número —"Extractor 19" salía num=9 con "1" pegado
+// al prefijo, así que 19 se colaba entre el 13 y el 14: bug real detectado
+// en Mall del Sur.
 function _parseNombreOrden(nombre) {
   const s = String(nombre || '').trim();
-  const m = s.match(/^(.*)(\d+)\s*(.*)$/);
-  if (!m) return { pre: s.toLowerCase(), num: -1, suf: '' };
-  return { pre: m[1].toLowerCase().trim(), num: Number(m[2]), suf: m[3].toLowerCase().trim() };
+  const parenIdx = s.indexOf('(');
+  const base = parenIdx >= 0 ? s.slice(0, parenIdx) : s;
+  let digitos = [...base.matchAll(/\d+/g)];
+  if (!digitos.length) digitos = [...s.matchAll(/\d+/g)];
+  if (!digitos.length) return { pre: s.toLowerCase(), num: -1, suf: '' };
+  const m = digitos[digitos.length - 1];
+  return {
+    pre: s.slice(0, m.index).toLowerCase().trim(),
+    num: Number(m[0]),
+    suf: s.slice(m.index + m[0].length).toLowerCase().trim()
+  };
 }
 function _cmpNombreOrden(a, b) {
   const pa = _parseNombreOrden(a), pb = _parseNombreOrden(b);
