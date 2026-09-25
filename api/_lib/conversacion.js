@@ -26,9 +26,18 @@ const MAX_REPREGUNTAS = 2;
 
 const ESTADO_LABEL = { PENDIENTE: 'Pendiente', EN_PROCESO: 'En proceso', OK: 'Resuelto (OK)' };
 
+// Botones de la confirmación de observación. Solo SÍ/CANCELAR (no "NO" como en mtto): acá
+// corregir es escribir la corrección directo, no un tercer botón — sigue funcionando igual
+// si el técnico prefiere escribir en vez de tocar. `id` = el mismo texto que ya reconocen
+// RE_CONFIRMA/RE_CANCELA, así el botón no necesita ningún parseo nuevo.
+const CONFIRMA_OBS_BOTONES = [
+  { id: 'si', title: '✅ Sí, guardar' },
+  { id: 'cancelar', title: '❌ Cancelar' },
+];
+
 // Antepone un texto (ej. un aviso) a una respuesta que puede ser un string de siempre o un
-// {texto, lista} — sin esto, `aviso + resp` rompería mostrando "[object Object]" cuando
-// `resp` ya viene con una lista de botones.
+// {texto, botones/lista} — sin esto, `aviso + resp` rompería mostrando "[object Object]"
+// cuando `resp` ya viene con botones.
 function conPrefijo(prefijo, resp) {
   if (!prefijo) return resp;
   if (resp && typeof resp === 'object') return { ...resp, texto: prefijo + resp.texto };
@@ -325,7 +334,7 @@ function preguntarEquipo(sede, cands) {
 }
 
 function resumenConfirmar(b, conFoto) {
-  return '📝 *Confirma la observación:*\n\n' +
+  const texto = '📝 *Confirma la observación:*\n\n' +
     `🏪 Sede: *${sinPrefijo(b.sede)}*\n` +
     `❄️ Equipo: *${b.equipo}*${b.tipo ? ` (${String(b.tipo).toLowerCase()})` : ''}\n` +
     (b.area ? `📍 Ubicación: ${b.area}\n` : '') +
@@ -334,6 +343,7 @@ function resumenConfirmar(b, conFoto) {
     `📌 Estado: *${ESTADO_LABEL[b.estado] || b.estado}*\n` +
     (conFoto ? '📷 Con foto adjunta\n' : '') +
     '\nResponde *SÍ* para guardar. Si algo está mal, dime la corrección (o el estado correcto), o escribe *cancelar*.';
+  return { texto, botones: CONFIRMA_OBS_BOTONES };
 }
 
 // Acuse tras guardar la observación + la pregunta de operatividad del equipo.
