@@ -462,50 +462,39 @@ function porArea(lista) {
 //     agrupan bajo ella y el técnico elige el número dentro de su sitio; si cada equipo tiene la
 //     suya (los extractores, ~1 por área), repetir el encabezado sería ruido → una línea por equipo.
 //   - modo 'tipos'   → son muchos y variados (96 en ATOCONGO): primero acotamos por tipo.
-//   - modo 'areas'   → muchos y TODOS del mismo tipo: pedirle "el tipo" sería pedirle lo que ya
-//     dijo; acotamos por ubicación y en la vuelta siguiente ya caen en 'equipos'. Hoy no dispara
-//     (el grupo mayor son 28) — es la red para cuando entre un cliente más grande.
+//   - modo 'equipos' (ya sabido el tipo) → se muestran TODOS agrupados por ubicación, sea cual sea
+//     el tamaño del grupo. Antes, pasado MAX_LISTA, se caía a un resumen de solo nombres de área
+//     ("modo 'areas'") pensado como paso intermedio para "cuando entre un cliente más grande" — y
+//     TOTTUS ya lo dispara (grupos (sede,tipo) de más de 28, a diferencia de RIPLEY): el técnico
+//     veía una lista en bruto sin viñetas ni equipos, distinta de la de RIPLEY. WhatsApp aguanta de
+//     sobra un texto más largo, así que ya no hace falta el paso intermedio: se muestra todo de una,
+//     igual para cualquier cliente.
 export function opcionesEquipo(cands) {
   const lista = cands || [];
   if (!lista.length) return null;
 
   const areas = porArea(lista);
+  const cuenta = {};
+  lista.forEach((e) => { const t = e.tipo || 'OTRO'; cuenta[t] = (cuenta[t] || 0) + 1; });
+  const tipos = Object.entries(cuenta).sort((a, b) => b[1] - a[1]);
 
-  if (lista.length <= MAX_LISTA) {
+  if (lista.length <= MAX_LISTA || tipos.length <= 1) {
     const texto = lista.length >= areas.length * MIN_POR_AREA
       ? areas.map(([a, eqs]) => `📍 *${a}*\n${eqs.map((e) => `   • ${e.nombre || e.equipo || ''}`).join('\n')}`).join('\n')
       : lista.map((e) => `• ${etiquetaEquipo(e)}`).join('\n');
     return { modo: 'equipos', total: lista.length, texto };
   }
 
-  const cuenta = {};
-  lista.forEach((e) => { const t = e.tipo || 'OTRO'; cuenta[t] = (cuenta[t] || 0) + 1; });
-  const tipos = Object.entries(cuenta).sort((a, b) => b[1] - a[1]);
-  if (tipos.length > 1) {
-    // Botones de WhatsApp (lista) solo si entran en su límite de 10 filas — con más, se
-    // queda en el texto de siempre (el técnico escribe el tipo, como hoy).
-    const botones = tipos.length <= MAX_FILAS_LISTA
-      ? tipos.map(([t, n]) => ({ id: t, title: t.length > 24 ? t.slice(0, 24) : t, description: `${n} equipo(s)` }))
-      : null;
-    return {
-      modo: 'tipos', total: lista.length,
-      texto: tipos.map(([t, n]) => `• ${t.toLowerCase()} (${n})`).join('\n'),
-      ...(botones ? { lista: botones } : {}),
-    };
-  }
-
-  if (areas.length > 1) {
-    return {
-      modo: 'areas', total: lista.length, tipo: tipos[0][0],
-      texto: areas.map(([a, eqs]) => `• ${a} (${eqs.length})`).join('\n'),
-    };
-  }
-
-  // Ni el tipo ni la ubicación los separan (todos iguales, mismo sitio): se muestran los primeros y
-  // el mensaje siempre deja la salida del código MA-... — el técnico nunca queda sin forma de elegir.
+  // Varios tipos y demasiados para mostrar todos de una: primero acotamos por tipo.
+  // Botones de WhatsApp (lista) solo si entran en su límite de 10 filas — con más, se
+  // queda en el texto de siempre (el técnico escribe el tipo, como hoy).
+  const botones = tipos.length <= MAX_FILAS_LISTA
+    ? tipos.map(([t, n]) => ({ id: t, title: t.length > 24 ? t.slice(0, 24) : t, description: `${n} equipo(s)` }))
+    : null;
   return {
-    modo: 'equipos', total: lista.length, truncado: lista.length - MAX_LISTA,
-    texto: lista.slice(0, MAX_LISTA).map((e) => `• ${etiquetaEquipo(e)}`).join('\n'),
+    modo: 'tipos', total: lista.length,
+    texto: tipos.map(([t, n]) => `• ${t.toLowerCase()} (${n})`).join('\n'),
+    ...(botones ? { lista: botones } : {}),
   };
 }
 
