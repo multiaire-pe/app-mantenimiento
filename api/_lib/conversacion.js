@@ -321,11 +321,7 @@ function preguntarEquipo(sede, cands) {
   if (o.modo === 'tipos') {
     return mensajeTipos(o, `*${s}* tiene ${o.total} equipos. ¿De qué *tipo* es?`);
   }
-  if (o.modo === 'areas') {
-    return `*${s}* tiene ${o.total} ${o.tipo.toLowerCase()}(s). ¿En qué *ubicación* está el tuyo?\n${o.texto}\n\n_(o dame el *código* MA-...)_`;
-  }
-  const mas = o.truncado ? `\n_(…y ${o.truncado} más — si no está, dame el código MA-...)_` : '';
-  return `¿Cuál equipo de *${s}*?\n${o.texto}${mas}\n\n_(dime la *ubicación*, el nombre, el número o el código MA-...)_`;
+  return `¿Cuál equipo de *${s}*?\n${o.texto}\n\n_(dime la *ubicación*, el nombre, el número o el código MA-...)_`;
 }
 
 function resumenConfirmar(b, conFoto) {
