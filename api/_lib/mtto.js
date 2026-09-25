@@ -75,14 +75,27 @@ export const MENU_BOTONES = [
 ];
 const CONFIRMA_BOTONES = [
   { id: 'si', title: '✅ Sí, guardar' },
-  { id: 'no', title: '✏️ Corregir' },
+  { id: 'no', title: '✏️ No, corregir' },
   { id: 'cancelar', title: '❌ Cancelar' },
 ];
+// SIGUIENTE solo tiene sentido si queda OTRA actividad después de la actual — con una sola
+// actividad marcada (o ya parado en la última) no hay a dónde "pasar", y el botón confundía
+// más de lo que ayudaba (pedido del usuario tras probarlo en vivo).
 const FOTOS_BOTONES = [
   { id: 'siguiente', title: '➡️ Siguiente' },
   { id: 'fin', title: '🏁 Fin' },
   { id: 'cancelar', title: '❌ Cancelar' },
 ];
+const FOTOS_BOTONES_SIN_SIGUIENTE = [
+  { id: 'fin', title: '🏁 Fin' },
+  { id: 'cancelar', title: '❌ Cancelar' },
+];
+function hayMasActividades(ses) {
+  return ses.fotoPos < (ses.hechas || []).length - 1;
+}
+function botonesFotos(ses) {
+  return hayMasActividades(ses) ? FOTOS_BOTONES : FOTOS_BOTONES_SIN_SIGUIENTE;
+}
 
 // Período bimestral vigente en Lima (mismo esquema de la app de mantenimiento).
 const PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
@@ -313,8 +326,9 @@ function resumenConfirma(ses) {
 // En la fase FOTOS ya se registró: se recorren las actividades REGISTRADAS (`ses.hechas`, por nombre).
 function pedirFotos(ses) {
   const tarea = (ses.hechas || [])[ses.fotoPos];
-  const texto = `📷 Fotos de *${tarea}* (${ses.fotoPos + 1}/${(ses.hechas || []).length}): envía una o varias.\n· *SIGUIENTE* para pasar a la otra actividad\n· *FIN* para terminar`;
-  return { texto, botones: FOTOS_BOTONES };
+  const siguiente = hayMasActividades(ses) ? '\n· *SIGUIENTE* para pasar a la otra actividad' : '';
+  const texto = `📷 Fotos de *${tarea}* (${ses.fotoPos + 1}/${(ses.hechas || []).length}): envía una o varias.${siguiente}\n· *FIN* para terminar`;
+  return { texto, botones: botonesFotos(ses) };
 }
 
 // ── Escritura ─────────────────────────────────────────────────────────────────
@@ -643,7 +657,8 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       await guardarFoto(ses, tecnico, imagenB64, mime);
       const tarea = (ses.hechas || [])[ses.fotoPos];
       const n = await contarFotos(ses, tarea);
-      return { texto: `📷 Foto ${n} guardada para *${tarea}*. Envía otra, *SIGUIENTE* o *FIN*.`, botones: FOTOS_BOTONES };
+      const siguiente = hayMasActividades(ses) ? ', *SIGUIENTE*' : '';
+      return { texto: `📷 Foto ${n} guardada para *${tarea}*. Envía otra${siguiente} o *FIN*.`, botones: botonesFotos(ses) };
     }
     if (/(^|\s)(siguiente|listo|next)(\s|$)/.test(t)) {
       ses.fotoPos += 1;
@@ -675,7 +690,8 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       if (resp && typeof resp === 'object') return { ...resp, texto: `${cierre}\n\n${resp.texto || ''}` };
       return `${cierre}\n\n${resp || ''}`;
     }
-    return { texto: `Envía una foto, *SIGUIENTE* para pasar de actividad o *FIN* para terminar. (Registro en curso: *${etiquetaSes(ses)}*)`, botones: FOTOS_BOTONES };
+    const opciones = hayMasActividades(ses) ? '*SIGUIENTE* para pasar de actividad o *FIN* para terminar' : '*FIN* para terminar';
+    return { texto: `Envía una foto, ${opciones}. (Registro en curso: *${etiquetaSes(ses)}*)`, botones: botonesFotos(ses) };
   }
 
   await limpiarSesion(from);   // fase desconocida: reset defensivo

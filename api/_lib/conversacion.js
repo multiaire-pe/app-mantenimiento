@@ -35,6 +35,25 @@ const CONFIRMA_OBS_BOTONES = [
   { id: 'cancelar', title: '❌ Cancelar' },
 ];
 
+// Botones de la repregunta de detalle que sugiere Gemini (`g.pregunta`). El técnico responde
+// con el dato (texto libre) o toca "guardar así" para saltarla — el `id` tiene que traer el
+// espacio: RE_GUARDA_ASI exige `guard\w*\s+as[ií]` (todas sus variantes son de 2 palabras), un
+// id de una sola palabra nunca la matchearía.
+const GUARDA_ASI_BOTONES = [
+  { id: 'guardar asi', title: '💾 Guardar así' },
+  { id: 'cancelar', title: '❌ Cancelar' },
+];
+
+// Botones para cuando llega una foto suelta justo después de guardar una observación (posible
+// olvido) y se le pregunta si es de la última. "Es otro equipo" no cierra nada por sí solo — al
+// tocarlo, el flujo cae al mismo camino que si el técnico hubiera escrito cualquier otra cosa:
+// arranca una observación NUEVA (la foto pendiente se adjunta a esa, al confirmarla).
+const ADJUNTAR_FOTO_BOTONES = [
+  { id: 'si', title: '✅ Sí, adjuntar' },
+  { id: 'otro', title: '🆕 Es otro equipo' },
+  { id: 'cancelar', title: '❌ Cancelar' },
+];
+
 // Antepone un texto (ej. un aviso) a una respuesta que puede ser un string de siempre o un
 // {texto, botones/lista} — sin esto, `aviso + resp` rompería mostrando "[object Object]"
 // cuando `resp` ya viene con botones.
@@ -91,7 +110,7 @@ export async function manejarMensaje({
         const s = nuevaSesion(from, tecnico);
         s.fase = 'ADJUNTAR_FOTO'; s.ultimaObs = ult;
         await guardarSesion(from, s);
-        return `📷 ¿Adjunto esta foto a tu última observación (*${ult.etiqueta}*)? Responde *SÍ*.\n_(o si es de un equipo nuevo, descríbela)_`;
+        return { texto: `📷 ¿Adjunto esta foto a tu última observación (*${ult.etiqueta}*)? Responde *SÍ*.\n_(o si es de un equipo nuevo, descríbela)_`, botones: ADJUNTAR_FOTO_BOTONES };
       }
       // Pidió "agregar foto a la última" (aún sin mandarla).
       if (!imagenB64 && RE_AGREGAR_FOTO.test(t)) {
@@ -281,7 +300,7 @@ async function procesarBorrador(ses, tecnico, from, { imagenB64, mime, analizar,
   // ¿Gemini sugiere una repregunta útil y aún no la hicimos?
   if (g.faltaDetalle && g.pregunta && !ses.preguntoDetalle && ses.intentos < MAX_REPREGUNTAS) {
     ses.preguntoDetalle = true;
-    return repreguntar(ses, from, 'detalle', `${g.pregunta}\n\n_(o responde *guardar así* si no aplica)_`);
+    return repreguntar(ses, from, 'detalle', { texto: `${g.pregunta}\n\n_(o responde *guardar así* si no aplica)_`, botones: GUARDA_ASI_BOTONES });
   }
 
   // Borrador completo → confirmar.
