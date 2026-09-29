@@ -242,6 +242,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>mtto_actividades_equipo.csv</div>
             <div class="backup-file"><span></span>mtto_actividades_periodo.csv</div>
             <div class="backup-file"><span></span>mantenimiento_fotos.csv</div>
+            <div class="backup-file"><span></span>inventario_fotos.csv</div>
             <div class="backup-file"><span></span>mtto_log.csv</div>
             <div class="backup-file"><span></span>mtto_plan.csv</div>
             <div class="backup-file"><span></span>mtto_ejecuciones.csv</div>
@@ -655,7 +656,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoActPerSnap, mttoFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap, cliCliSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoActPerSnap, mttoFotoSnap, invFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap, cliCliSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
@@ -687,6 +688,7 @@ async function exportBackup() {
       window.__db.collection('mtto_actividades_equipo').get(),
       window.__db.collection('mtto_actividades_periodo').get(),
       window.__db.collection('mantenimiento_fotos').get(),
+      window.__db.collection('inventario_fotos').get(),
       window.__db.collection('mtto_log').get(),
       window.__db.collection('mtto_plan').get(),
       window.__db.collection('mtto_ejecuciones').get(),
@@ -931,6 +933,14 @@ async function exportBackup() {
     });
     zip.file('mantenimiento_fotos.csv', [mttoFotoHeaders.join(','), ...mttoFotoRows].join('\n'));
 
+    // 14d2. Inventario — fotos de placa por equipo (base64, 1 doc por foto)
+    const invFotoHeaders = ['ID','EQ_ID','FOTO','CREATED_AT','CREATED_BY'];
+    const invFotoRows = invFotoSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.eq_id||'', r.foto||'', r.createdAt||'', r.createdBy||''].map(escapeCSV).join(',');
+    });
+    zip.file('inventario_fotos.csv', [invFotoHeaders.join(','), ...invFotoRows].join('\n'));
+
     // 14e. Mantenimiento — bitácora de registros (tab Historial; actividades[] variable → JSON)
     const mttoLogHeaders = ['ID','TS','DATA'];
     const mttoLogRows = mttoLogSnap.docs.map(d => {
@@ -1108,7 +1118,7 @@ async function processZip(file) {
     
     pendingImport = { files: {} };
     
-    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mtto_actividades_periodo.csv','mantenimiento_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv','operatividad_eventos.csv','maestros_criticidad.csv','maestros_clientes.csv'];
+    const expected = ['asistencia.csv','maestros_personal.csv','personal_confidencial.csv','personal_eventos.csv','personal_documentos.csv','maestros_tiendas.csv','maestros_grupos.csv','maestros_feriados.csv','bd_itinerarios.csv','bd_bloques.csv','inventario.csv','mantenimiento.csv','usuarios.csv','tareas_config.csv','mtto_actividades_equipo.csv','mtto_actividades_periodo.csv','mantenimiento_fotos.csv','inventario_fotos.csv','mtto_log.csv','mtto_plan.csv','mtto_ejecuciones.csv','itinerario_envios.csv','insumos_catalogo.csv','insumos_instancias.csv','insumos_paquetes.csv','insumos_movimientos.csv','insumos_instancias_fotos.csv','insumos_movimientos_fotos.csv','insumos_catalogo_fotos.csv','proveedores.csv','compras.csv','manta_equipos.csv','manta_observaciones.csv','manta_observaciones_fotos.csv','manta_guia.csv','asistencia_registros_fotos.csv','comprobantes.csv','comprobantes_fotos.csv','operatividad_eventos.csv','maestros_criticidad.csv','maestros_clientes.csv'];
     for (const fname of expected) {
       if (zip.files[fname]) {
         pendingImport.files[fname] = await zip.files[fname].async('string');
@@ -1149,7 +1159,7 @@ async function confirmImport() {
   // el archivo, así que elegir un ZIP viejo con "Reemplazar todo" marcado ya borraba datos
   // aunque después se cancelara. Ahora ocurre recién tras el confirm().
   if (mode === 'replace') {
-    const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mtto_actividades_periodo', 'mantenimiento_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad', 'maestros_clientes'];
+    const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mtto_actividades_periodo', 'mantenimiento_fotos', 'inventario_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad', 'maestros_clientes'];
     for (const colN of NUEVAS) {
       if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
       const _exN = await window.__db.collection(colN).get();
@@ -1570,6 +1580,13 @@ async function confirmImport() {
         return d;
       });
       addLog('✓ Fotos de mantenimiento importadas (' + rows.length + ' registros)', 'ok');
+    }
+
+    if (pendingImport.files['inventario_fotos.csv']) {
+      addLog('📷 Importando fotos de placa...', 'info');
+      const rows = parseCSV(pendingImport.files['inventario_fotos.csv']);
+      await batchWrite('inventario_fotos', rows.filter(r=>r.FOTO), r => ({_docId:r.ID, eq_id:r.EQ_ID, foto:r.FOTO, createdAt:r.CREATED_AT||'', createdBy:r.CREATED_BY||''}));
+      addLog('✓ Fotos de placa importadas (' + rows.filter(r=>r.FOTO).length + ' registros)', 'ok');
     }
 
     if (pendingImport.files['mtto_log.csv']) {
