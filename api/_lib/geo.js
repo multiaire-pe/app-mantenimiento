@@ -82,6 +82,25 @@ export function sedesQueContienen(punto, sedes) {
   return out.sort((a, b) => a.distancia - b.distancia);
 }
 
+// Dos tiendas de CLIENTES DISTINTOS cuyos centros están a menos de esta distancia comparten mall
+// (Atocongo/Mall del Sur 158 m, Jockey Ripley/Tottus 391 m, Megaplaza/Los Olivos 101 m). Mide
+// centro contra centro, así que no depende de en qué borde del radio de cada una caiga el técnico:
+// estar dentro de una basta para que la otra cuente como candidata.
+export const VECINDAD_MALL_M = 500;
+
+// Sedes de OTRO cliente que comparten mall con `sede` (ordenadas por cercanía al `punto`).
+export function sedesVecinasDeOtroCliente(sede, todas, punto, maxM = VECINDAD_MALL_M) {
+  const cli = String(sede?.cliente || '').trim().toLowerCase();
+  const out = [];
+  for (const t of todas || []) {
+    if (String(t.cliente || '').trim().toLowerCase() === cli) continue;
+    if (!coordValida(t.latitud, t.longitud) || !coordValida(sede.latitud, sede.longitud)) continue;
+    const entre = distanciaM(Number(sede.latitud), Number(sede.longitud), Number(t.latitud), Number(t.longitud));
+    if (entre <= maxM) out.push({ sede: t, distancia: coordValida(punto?.lat, punto?.lng) ? distanciaM(punto.lat, punto.lng, Number(t.latitud), Number(t.longitud)) : entre });
+  }
+  return out.sort((a, b) => a.distancia - b.distancia);
+}
+
 // Formatea metros para el mensaje al técnico ("120 m", "1.3 km").
 export function fmtDistancia(m) {
   if (m == null || !Number.isFinite(m)) return '—';
