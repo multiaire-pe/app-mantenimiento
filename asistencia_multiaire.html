@@ -1124,6 +1124,16 @@ function fillEditModal(reg,fecha) {
 }
 
 // Muestra la evidencia del bot de asistencia (ubicación + distancia + banderas + selfie).
+// "JOCKEY PLAZA (RIPLEY)": sede + cliente, igual que en los mensajes del bot. Dos tiendas de
+// clientes distintos pueden compartir mall o incluso nombre, así que el cliente va siempre.
+function etiquetaSedeMarcaje(m){
+  const cli=String((m&&m.cliente)||'').trim();
+  let base=String((m&&m.sede)||'').trim();
+  if(cli&&base.toUpperCase().startsWith(cli.toUpperCase()+' '))base=base.slice(cli.length+1);
+  if(!base)return '—';
+  return cli?`${base} (${cli})`:base;
+}
+
 async function renderEvidencia(reg){
   const box=document.getElementById('edit-reg-evidencia');
   const body=document.getElementById('edit-reg-evidencia-body');
@@ -1152,7 +1162,7 @@ async function renderEvidencia(reg){
       ${selfie}
       <div style="flex:1;font-size:12px;line-height:1.6">
         <div style="font-weight:700">${tipo==='ENTRADA'?'🟢 Entrada':'🔴 Salida'} ${m.hora?`· ${escHtml(m.hora)}`:''}</div>
-        <div>🏪 ${escHtml(m.sede||'—')}${planBadge}</div>
+        <div>🏪 ${escHtml(etiquetaSedeMarcaje(m))}${planBadge}</div>
         <div style="margin-top:2px">${geoBadge}</div>
         ${mapa}
       </div>
