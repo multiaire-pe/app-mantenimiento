@@ -6,7 +6,7 @@
 // Estados de la sesión (wa_asistencia_sesiones):
 //   RECOLECTA   → espera ubicación y/o selfie (en cualquier orden).
 //   ELIGE_SEDE  → su ubicación no cae dentro de ninguna sede: se pregunta en cuál está (tenga plan o no).
-import { evaluarSede, sedeQueContiene, sedesQueContienen, fmtDistancia } from './geo.js';
+import { evaluarSede, sedeQueContiene, sedesQueContienen, sedesVecinasDeOtroCliente, fmtDistancia } from './geo.js';
 import { hoyLima, ahoraDecimalLima, horaHHMMLima, decimalAHHMM, diaAnterior } from './fecha.js';
 import { sedesDelDia as _sedesDelDia } from './plan_dia.js';
 import { cargarTiendas as _cargarTiendas, tiendaPorId as _tiendaPorId, tiendasConGeo as _tiendasConGeo } from './tiendas.js';
@@ -366,19 +366,29 @@ async function resolverSedePorUbicacion(ses, d) {
   //    Si esa ubicación cae dentro de tiendas de CLIENTES DISTINTOS a la vez (Atocongo/Mall del Sur,
   //    Jockey Ripley/Jockey Tottus: mismo mall) y ninguna es de su plan, elegir "la más cercana" sería
   //    adivinar por diferencias de metros → se le pregunta con botones (uno por cliente).
-  const contienen = sedesQueContienen(ses.punto, await d.tiendasConGeo());
+  const todas = await d.tiendasConGeo();
+  const contienen = sedesQueContienen(ses.punto, todas);
   if (contienen.length) {
-    const porCliente = new Map(); // la más cercana de cada cliente (ya vienen ordenadas por distancia)
+    // Candidatas: las que contienen el punto MÁS las que comparten mall con alguna de ellas, aunque
+    // el técnico haya quedado 11 m fuera del radio de la otra (caso real: 882 m de Atocongo y
+    // 1011 m de Mall del Sur con radio 1000 → antes marcaba Atocongo sin preguntar).
+    const candidatas = contienen.map((c) => c.sede);
     for (const c of contienen) {
-      const k = norm(c.sede.cliente || '');
-      if (!porCliente.has(k)) porCliente.set(k, c);
+      for (const v of sedesVecinasDeOtroCliente(c.sede, todas, ses.punto)) {
+        if (!candidatas.some((x) => (x.id || x.idTienda) === (v.sede.id || v.sede.idTienda))) candidatas.push(v.sede);
+      }
+    }
+    const porCliente = new Map(); // primera de cada cliente: las que contienen van antes, por cercanía
+    for (const sede of candidatas) {
+      const k = norm(sede.cliente || '');
+      if (!porCliente.has(k)) porCliente.set(k, { sede });
     }
     if (porCliente.size > 1) {
       const opciones = [...porCliente.values()].slice(0, 3).map((c) => compactSede(c.sede));
       return {
         preguntar: true, opciones,
         mensaje: {
-          texto: `📍 Tu ubicación está en un lugar con varias tiendas y no tienes una asignada en tu itinerario de hoy. ¿A cuál vas?\n${listaNumerada(opciones)}`,
+          texto: `📍 Tu ubicación está en un lugar con varias tiendas y no tienes una asignada en tu itinerario de hoy. ¿A cuál vas? Toca un botón o responde el número:\n${listaNumerada(opciones)}`,
           botones: opciones.map((s, i) => ({ id: String(i + 1), title: tituloCliente(s.cliente) || labelSede(s) })),
         },
       };
