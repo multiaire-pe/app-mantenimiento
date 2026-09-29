@@ -6,7 +6,7 @@
 // Estados de la sesión (wa_asistencia_sesiones):
 //   RECOLECTA   → espera ubicación y/o selfie (en cualquier orden).
 //   ELIGE_SEDE  → su ubicación no cae dentro de ninguna sede: se pregunta en cuál está (tenga plan o no).
-import { evaluarSede, sedeQueContiene, fmtDistancia } from './geo.js';
+import { evaluarSede, sedeQueContiene, sedesQueContienen, fmtDistancia } from './geo.js';
 import { hoyLima, ahoraDecimalLima, horaHHMMLima, decimalAHHMM, diaAnterior } from './fecha.js';
 import { sedesDelDia as _sedesDelDia } from './plan_dia.js';
 import { cargarTiendas as _cargarTiendas, tiendaPorId as _tiendaPorId, tiendasConGeo as _tiendasConGeo } from './tiendas.js';
@@ -77,8 +77,18 @@ async function enriquecer(sedePlan, tiendaPorId) {
   return { id: sedePlan.idTienda || '', idTienda: sedePlan.idTienda || '', tienda: sedePlan.tienda || '', sede: sedePlan.sede || sedePlan.tienda || '', cliente: sedePlan.cliente || '', latitud: null, longitud: null, radio: null };
 }
 
-function labelSede(s) {
-  return (s.sede || s.tienda || '').replace(/^RIPLEY\s+/i, '') || s.tienda || 'la sede';
+const tituloCliente = (c) => { const s = String(c || '').trim().toLowerCase(); return s ? s[0].toUpperCase() + s.slice(1) : ''; };
+
+// Etiqueta de una sede para mensajes y avisos: "JOCKEY PLAZA (RIPLEY)". El cliente va SIEMPRE
+// (no solo en las sedes compartidas): dos tiendas del mismo mall se llaman igual o casi igual, y
+// el aviso al supervisor tiene que decir de cuál cliente se trata. El prefijo del cliente que
+// algunas tiendas traen en el nombre ("RIPLEY COMAS") se quita para no repetirlo.
+export function labelSede(s) {
+  const cli = String(s.cliente || '').trim();
+  let base = String(s.sede || s.tienda || '').trim();
+  if (cli) base = base.replace(new RegExp(`^${cli.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+`, 'i'), '');
+  base = base || s.tienda || 'la sede';
+  return cli ? `${base} (${cli})` : base;
 }
 
 // ── Entrada principal ─────────────────────────────────────────────────────────
@@ -353,8 +363,29 @@ async function resolverSedePorUbicacion(ses, d) {
 
   // 2) Dentro de otra sede real (la realidad gana). `estaEnLista` evita marcar una bandera falsa
   //    cuando la sede sí era de su plan pero el bloque no traía coordenadas.
-  const enOtra = sedeQueContiene(ses.punto, await d.tiendasConGeo());
-  if (enOtra) return { sede: enOtra.sede, fueraDePlan: !estaEnLista(enOtra.sede, plan) };
+  //    Si esa ubicación cae dentro de tiendas de CLIENTES DISTINTOS a la vez (Atocongo/Mall del Sur,
+  //    Jockey Ripley/Jockey Tottus: mismo mall) y ninguna es de su plan, elegir "la más cercana" sería
+  //    adivinar por diferencias de metros → se le pregunta con botones (uno por cliente).
+  const contienen = sedesQueContienen(ses.punto, await d.tiendasConGeo());
+  if (contienen.length) {
+    const porCliente = new Map(); // la más cercana de cada cliente (ya vienen ordenadas por distancia)
+    for (const c of contienen) {
+      const k = norm(c.sede.cliente || '');
+      if (!porCliente.has(k)) porCliente.set(k, c);
+    }
+    if (porCliente.size > 1) {
+      const opciones = [...porCliente.values()].slice(0, 3).map((c) => compactSede(c.sede));
+      return {
+        preguntar: true, opciones,
+        mensaje: {
+          texto: `📍 Tu ubicación está en un lugar con varias tiendas y no tienes una asignada en tu itinerario de hoy. ¿A cuál vas?\n${listaNumerada(opciones)}`,
+          botones: opciones.map((s, i) => ({ id: String(i + 1), title: `🏬 ${tituloCliente(s.cliente) || labelSede(s)}` })),
+        },
+      };
+    }
+    const enOtra = contienen[0];
+    return { sede: enOtra.sede, fueraDePlan: !estaEnLista(enOtra.sede, plan) };
+  }
 
   // 3) Ninguna sede lo contiene: NO se asume ninguna.
   const preambulo = plan.length
