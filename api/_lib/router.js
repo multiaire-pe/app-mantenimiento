@@ -17,6 +17,8 @@ import { esRegistroActividad, esSaludo, esControlSuelto } from './mtto.js';
 // Flujos: 'asistencia' | 'mtto' | 'observaciones' | 'menu' (saludo en frío) |
 // 'hint-obs' / 'hint-asistencia' (elección 2/3 del menú: instrucción sin sesión).
 export async function decidirFlujo({ from, tipo, texto }) {
+  // Botón "Estoy en <otro cliente>" de un marcaje (funciona aunque la sesión ya no exista).
+  if (texto && /^corr_(ENTRADA|SALIDA)_/.test(texto)) return 'asistencia';
   if (await getSesionAsist(from)) return 'asistencia';
   const sesMtto = await getSesionMtto(from);
   if (sesMtto) {
