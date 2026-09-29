@@ -109,6 +109,19 @@ export default async function handler(req, res) {
     try { payload = JSON.parse(raw.toString('utf8')); } catch { return res.status(200).send('EVENT_RECEIVED'); }
 
     const mensajes = payload?.entry?.[0]?.changes?.[0]?.value?.messages || [];
+    // Estados de entrega: Meta puede ACEPTAR un envío (200) y fallar después. Solo interesa dejar
+    // constancia de los fallidos (wa_mensajes/st_<id>), para poder diagnosticar "el bot no contestó".
+    const estados = payload?.entry?.[0]?.changes?.[0]?.value?.statuses || [];
+    for (const st of estados) {
+      if (st?.status !== 'failed' || !st.id) continue;
+      try {
+        const { getDb } = await import('./_lib/firestore.js');
+        await getDb().collection('wa_mensajes').doc(`st_${st.id}`).set({
+          type: 'status_failed', from: String(st.recipient_id || ''), procesadoEn: new Date().toISOString(),
+          errors: JSON.stringify(st.errors || []).slice(0, 600),
+        }, { merge: true });
+      } catch (e) { console.error('[whatsapp] no se pudo registrar el estado fallido:', e?.message); }
+    }
     let reintentar = false;
     for (const msg of mensajes) {
       try {

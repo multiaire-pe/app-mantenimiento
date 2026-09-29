@@ -385,12 +385,14 @@ async function resolverSedePorUbicacion(ses, d) {
     }
     if (porCliente.size > 1) {
       const opciones = [...porCliente.values()].slice(0, 3).map((c) => compactSede(c.sede));
+      // TEXTO, no botones: en producción el mensaje interactivo de esta pregunta la aceptaba Meta (200) y
+      // aun así no le llegaba al técnico (2026-09-29, marcaje en Atocongo/Mall del Sur), mientras que el
+      // texto sí llega. Mientras se confirma por qué (ver wa_mensajes status_failed) la pregunta va como
+      // lista numerada, que es exactamente lo que ya resuelve resolverSedePorNombre ("1"/"2").
       return {
         preguntar: true, opciones,
-        mensaje: {
-          texto: `📍 Tu ubicación está en un lugar con varias tiendas y no tienes una asignada en tu itinerario de hoy. ¿A cuál vas? Toca un botón o responde el número:\n${listaNumerada(opciones)}`,
-          botones: opciones.map((s, i) => ({ id: String(i + 1), title: tituloCliente(s.cliente) || labelSede(s) })),
-        },
+        mensaje: `📍 Tu ubicación está en un lugar con varias tiendas y no tienes una asignada en tu itinerario de hoy. ¿A cuál vas? Responde el número:
+${listaNumerada(opciones)}`,
       };
     }
     const enOtra = contienen[0];
