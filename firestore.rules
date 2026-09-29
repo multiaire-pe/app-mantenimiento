@@ -82,6 +82,8 @@ service cloud.firestore {
     match /mtto_periodo_activo/{doc} { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
     // fotos de evidencia por actividad (1 doc por foto); borrar una foto propia del
     // período es parte de la operación normal del módulo
+    // Fotos de placa por equipo (1 doc por foto). Mismo permiso que el inventario; borrar es parte de la edición normal.
+    match /inventario_fotos/{doc}        { allow read: if authorized(); allow write: if canWrite('inventario'); }
     match /mantenimiento_fotos/{doc}     { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
     // bitácora de registros (tab Historial): el cliente solo AGREGA eventos; editar/borrar, solo super
     match /mtto_log/{doc}                { allow read: if authorized(); allow create: if canWrite('mantenimiento'); allow update, delete: if isSuper(); }
