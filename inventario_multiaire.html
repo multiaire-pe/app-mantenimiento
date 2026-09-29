@@ -88,6 +88,14 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 .fg2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .fgg{display:flex;flex-direction:column;gap:4px}
 .fgg.full{grid-column:1/-1}
+.placa-grid{display:flex;flex-wrap:wrap;gap:8px}
+.placa-th{position:relative;width:72px;height:72px;border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+.placa-th img{width:100%;height:100%;object-fit:cover;cursor:pointer;display:block}
+.placa-th button{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,.7);color:#fff;font-size:12px;line-height:1;cursor:pointer;padding:0}
+.placa-add{cursor:pointer;align-self:flex-start;display:inline-block}
+#plbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:400;align-items:center;justify-content:center;cursor:zoom-out}
+#plbox.open{display:flex}
+#plbox img{max-width:96vw;max-height:92vh;border-radius:6px}
 .fgg label{font-size:10px;color:var(--muted2);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
 .ma{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
 .ep{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;align-items:center;justify-content:center}
@@ -275,6 +283,10 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
       <div class="fgg"><label>Serie</label><input type="text" id="f_serie" placeholder="Número de serie"></div>
       <div class="fgg"><label>Capacidad</label><input type="text" id="f_capacidad" placeholder="Ej: 24000 BTU · 130 TN · 2000 CFM"></div>
       <div class="fgg"><label>Código de tienda</label><input type="text" id="f_codigoTienda" placeholder="Código propio del cliente (si lo usa)"></div>
+      <div class="fgg full"><label>Fotos de la placa <span id="placa_cnt" style="text-transform:none;letter-spacing:0"></span></label>
+        <div class="placa-grid" id="placa_grid"></div>
+        <label class="btn placa-add">📷 Agregar fotos<input type="file" id="placa_input" accept="image/*" multiple style="display:none" onchange="onPlacaFiles(this)"></label>
+      </div>
     </div>
     <div class="ma">
       <button class="btn" onclick="cm()">Cancelar</button>
@@ -282,6 +294,8 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
     </div>
   </div>
 </div>
+
+<div id="plbox" onclick="this.classList.remove('open')"><img id="plbox_img" alt="Placa"></div>
 
 <!-- EXPORT -->
 <div class="ep" id="epanel" onclick="if(event.target===this)ce()">
@@ -588,8 +602,75 @@ function tipoDelForm(){
   return (v === TIPO_OTRO ? document.getElementById('f_equipo_otro').value : v).trim();
 }
 
+// ── FOTOS DE PLACA ────────────────────────────────────────────────────────────
+// Colección inventario_fotos: 1 doc por foto {eq_id, foto(dataURL), createdAt, createdBy} — igual
+// que mantenimiento_fotos (esquiva el límite de 1 MB por doc y permite varias por equipo).
+// En un equipo nuevo las fotos esperan en memoria hasta que se conoce su eq_id (al guardar).
+var PLACA_MAX=10, placaFotos=[], placaBorrar=[], placaCargando=false;
+const PLACA_OK=/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+\/=]+$/;
+function placaCompress(file){
+  return new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onerror=()=>rej(new Error('No se pudo leer la imagen'));
+    fr.onload=()=>{const im=new Image();
+      im.onerror=()=>rej(new Error('Imagen no válida'));
+      im.onload=()=>{const M=1100,k=Math.min(1,M/Math.max(im.width,im.height));
+        const c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
+        c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',0.75));};
+      im.src=fr.result;};
+    fr.readAsDataURL(file);
+  });
+}
+async function onPlacaFiles(inp){
+  const files=[...inp.files];inp.value='';
+  for(const f of files){
+    if(placaFotos.length>=PLACA_MAX){toast('Máximo '+PLACA_MAX+' fotos por equipo','warn');break;}
+    try{placaFotos.push({id:null,src:await placaCompress(f)});}
+    catch(e){toast(e.message,'err');}
+  }
+  renderPlaca();
+}
+function renderPlaca(){
+  const g=document.getElementById('placa_grid');if(!g)return;
+  g.innerHTML='';
+  placaFotos.forEach((p,i)=>{
+    const d=document.createElement('div');d.className='placa-th';
+    if(PLACA_OK.test(p.src)){const im=document.createElement('img');im.src=p.src;im.alt='Placa '+(i+1);im.onclick=()=>{document.getElementById('plbox_img').src=p.src;document.getElementById('plbox').classList.add('open');};d.appendChild(im);}
+    const b=document.createElement('button');b.type='button';b.textContent='×';b.title='Quitar';b.onclick=()=>quitarPlaca(i);d.appendChild(b);
+    g.appendChild(d);
+  });
+  document.getElementById('placa_cnt').textContent=placaCargando?'(cargando…)':'('+placaFotos.length+'/'+PLACA_MAX+')';
+}
+function quitarPlaca(i){const p=placaFotos.splice(i,1)[0];if(p&&p.id)placaBorrar.push(p.id);renderPlaca();}
+var _placaEq=null;
+async function cargarPlacaEq(eqId){
+  _placaEq=eqId;placaCargando=true;renderPlaca();
+  try{
+    const s=await window.__db.collection('inventario_fotos').where('eq_id','==',eqId).get();
+    if(_placaEq!==eqId)return; // el usuario ya abrió otro equipo
+    placaFotos=s.docs.map(d=>({id:d.id,src:d.data().foto||'',t:d.data().createdAt||''})).sort((a,b)=>String(a.t).localeCompare(String(b.t)));
+  }catch(e){toast('No se pudieron cargar las fotos de placa','err');}
+  if(_placaEq===eqId){placaCargando=false;renderPlaca();}
+}
+async function guardarPlacaEq(eqId){
+  const nuevas=placaFotos.filter(p=>!p.id&&PLACA_OK.test(p.src));
+  if(!nuevas.length&&!placaBorrar.length)return;
+  const col=window.__db.collection('inventario_fotos'),b=window.__db.batch(),ts=new Date().toISOString();
+  placaBorrar.forEach(id=>b.delete(col.doc(id)));
+  nuevas.forEach((p,i)=>b.set(col.doc(),{eq_id:eqId,foto:p.src,createdAt:new Date(Date.now()+i).toISOString(),createdBy:(maUser&&maUser.email)||''}));
+  await b.commit();
+}
+async function borrarPlacaEq(eqId){
+  if(!eqId)return;
+  try{
+    const s=await window.__db.collection('inventario_fotos').where('eq_id','==',eqId).get();
+    for(let i=0;i<s.docs.length;i+=400){const b=window.__db.batch();s.docs.slice(i,i+400).forEach(d=>b.delete(d.ref));await b.commit();}
+  }catch(e){/* las fotos huérfanas no rompen nada; se pueden limpiar luego */}
+}
+
 async function openNew(){
   if(!MA.can('editar','inventario')){toast('Sin permisos','err');return;}
+  placaFotos=[];placaBorrar=[];placaCargando=false;_placaEq=null;renderPlaca();
   editRow=null;
   document.getElementById('mtitle').textContent='Nuevo equipo';
   document.getElementById('sbtn').textContent='Guardar';
@@ -601,7 +682,7 @@ async function openNew(){
   try { await cargarSedesMaestros(); } catch(e) { /* sedes ya pobladas en la carga inicial */ }
   document.getElementById('mov').classList.add('open');
 }
-function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('f_capacidad').value=r.capacidad||'';document.getElementById('f_codigoTienda').value=r.codigoTienda||'';document.getElementById('mov').classList.add('open');}
+function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('f_capacidad').value=r.capacidad||'';document.getElementById('f_codigoTienda').value=r.codigoTienda||'';placaFotos=[];placaBorrar=[];renderPlaca();cargarPlacaEq(r.eq_id);document.getElementById('mov').classList.add('open');}
 function cm(){document.getElementById('mov').classList.remove('open');}
 
 async function saveItem(){
@@ -669,6 +750,8 @@ async function saveItem(){
       if(!creado) throw new Error('No se pudo reservar un código único; recarga (⟳) e intenta de nuevo');
       toast('Equipo agregado ✓ ('+row[0]+')','ok');
     }
+    // Las fotos de placa no deben tumbar el guardado del equipo (ya está creado/actualizado).
+    try{await guardarPlacaEq(row[0]);}catch(e){toast('Equipo guardado, pero las fotos de placa no se pudieron guardar: '+e.message,'err');}
     cm();await sync();
   }catch(e){toast('Error: '+e.message,'err');}
   finally{btn.disabled=false;btn.textContent=editRow?'Guardar cambios':'Guardar';}
@@ -678,7 +761,7 @@ async function delItem(row){
   if(!MA.can('borrar')){toast('Solo el super admin puede eliminar','err');return;}
   const r=data.find(x=>x.row===row);
   if(!confirm('¿Eliminar "'+r?.descripcion+'" de '+r?.sede+'?'))return;
-  try{await gasPost({action:'delete',rowNum:row});toast('Eliminado ✓','ok');await sync();}
+  try{await gasPost({action:'delete',rowNum:row});await borrarPlacaEq(r?.eq_id);toast('Eliminado ✓','ok');await sync();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 
@@ -687,7 +770,7 @@ async function delSel(){
   if(!selected.size)return;
   if(!confirm('¿Eliminar '+selected.size+' equipos del inventario?'))return;
   try{
-    for(const row of [...selected].sort((a,b)=>b-a)){await gasPost({action:'delete',rowNum:row});await new Promise(r=>setTimeout(r,200));}
+    for(const row of [...selected].sort((a,b)=>b-a)){const eqId=data.find(x=>x.row===row)?.eq_id;await gasPost({action:'delete',rowNum:row});await borrarPlacaEq(eqId);await new Promise(r=>setTimeout(r,200));}
     selected.clear();toast('Eliminados ✓','ok');await sync();
   }catch(e){toast('Error: '+e.message,'err');}
 }
