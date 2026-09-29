@@ -14,7 +14,7 @@
 import crypto from 'node:crypto';
 import { yaProcesado, liberarMensaje } from './_lib/idempotencia.js';
 import { identificarTecnico } from './_lib/identidad.js';
-import { enviarTexto, enviarBotones, enviarLista } from './_lib/whatsapp.js';
+import { enviarTexto, enviarBotones, enviarBotonesDetalle, enviarListaDetalle } from './_lib/whatsapp.js';
 import { manejarMensaje } from './_lib/conversacion.js';
 import { guardarObservacion } from './_lib/escritura.js';
 import { descargarMedia } from './_lib/media.js';
@@ -30,8 +30,19 @@ import { getSesion as getSesionMtto } from './_lib/mtto_sesiones.js';
 async function enviarRespuesta(to, resp) {
   if (!resp) return;
   if (typeof resp === 'string') { await enviarTexto(to, resp); return; }
-  if (resp.botones) { await enviarBotones(to, resp.texto, resp.botones); return; }
-  if (resp.lista) { await enviarLista(to, resp.texto, resp.boton || 'Elegir', resp.lista); return; }
+  // Si Meta RECHAZA el mensaje interactivo (4xx, definitivo), el técnico igual recibe la pregunta como
+  // texto: antes el fallo era silencioso y el bot "no contestaba" (caso real: marcaje en un mall
+  // compartido). Ante un fallo ambiguo (timeout/5xx) NO se reenvía: el interactivo pudo haber llegado.
+  if (resp.botones) {
+    const r = await enviarBotonesDetalle(to, resp.texto, resp.botones);
+    if (r.estado === 'rechazado') await enviarTexto(to, resp.texto);
+    return;
+  }
+  if (resp.lista) {
+    const r = await enviarListaDetalle(to, resp.texto, resp.boton || 'Elegir', resp.lista);
+    if (r.estado === 'rechazado') await enviarTexto(to, resp.texto);
+    return;
+  }
   await enviarTexto(to, resp.texto || '');
 }
 

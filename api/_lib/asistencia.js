@@ -379,7 +379,7 @@ async function resolverSedePorUbicacion(ses, d) {
         preguntar: true, opciones,
         mensaje: {
           texto: `📍 Tu ubicación está en un lugar con varias tiendas y no tienes una asignada en tu itinerario de hoy. ¿A cuál vas?\n${listaNumerada(opciones)}`,
-          botones: opciones.map((s, i) => ({ id: String(i + 1), title: `🏬 ${tituloCliente(s.cliente) || labelSede(s)}` })),
+          botones: opciones.map((s, i) => ({ id: String(i + 1), title: tituloCliente(s.cliente) || labelSede(s) })),
         },
       };
     }
