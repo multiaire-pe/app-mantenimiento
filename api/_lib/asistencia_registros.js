@@ -136,3 +136,19 @@ export async function registrarMarcaje(m, deps = {}) {
 
   return { ok: true, id: regId, registro: { ...data, id: regId } };
 }
+
+// Reescribe SOLO la sede (y lo que depende de ella: distancia, radio, dentro/fuera, fuera de plan) de un
+// marcaje ya escrito — botón "Estoy en <otro cliente>". Conserva hora, ts, coordenadas y selfie.
+export async function corregirSedeMarcaje({ colabId, fecha, tipo, sede, ubic, fueraDePlan }, deps = {}) {
+  const db = deps.db || getDb();
+  const snap = await db.collection('asistencia_registros').where('fecha', '==', fecha).get();
+  const doc = snap.docs.find((d) => d.data().colabId === colabId);
+  if (!doc) return { ok: false, error: 'sin_registro' };
+  const campo = tipo === 'SALIDA' ? 'marcajeSalida' : 'marcajeEntrada';
+  const actual = doc.data()[campo];
+  if (!actual) return { ok: false, error: 'sin_marcaje' };
+  const ev = evidencia({ sede, ubic, fueraDePlan, horaExacta: actual.hora, ts: actual.ts });
+  await db.collection('asistencia_registros').doc(doc.id).set(
+    { [campo]: ev, observacion: notaMarca(ubic, fueraDePlan) }, { merge: true });
+  return { ok: true, id: doc.id };
+}
