@@ -27,20 +27,32 @@ import { getSesion as getSesionMtto } from './_lib/mtto_sesiones.js';
 // Los flujos devuelven un texto simple de siempre, o —en los puntos donde agregamos botones/
 // listas de un toque— {texto, botones} o {texto, lista, boton}. Un solo lugar decide cómo
 // mandarlo, así los flujos no necesitan saber nada de la API de mensajes interactivos.
-async function enviarRespuesta(to, resp) {
+// Deja constancia del fallo de un envío en el doc de idempotencia del mensaje entrante
+// (wa_mensajes/{id}.envio), que el panel puede leer: los logs de Vercel exigen sesión y un
+// "el bot no contestó" era imposible de diagnosticar. Solo se escribe cuando algo falló.
+async function registrarFallo(msgId, tipo, r) {
+  if (!msgId || !r || r.ok) return;
+  try {
+    const { getDb } = await import('./_lib/firestore.js');
+    await getDb().collection('wa_mensajes').doc(msgId).set(
+      { envio: { tipo, estado: r.estado || '', status: r.status ?? null, detalle: r.detalle || '' } }, { merge: true });
+  } catch (e) { console.error('[whatsapp] no se pudo registrar el fallo de envío:', e?.message); }
+}
+
+async function enviarRespuesta(to, resp, msgId) {
   if (!resp) return;
   if (typeof resp === 'string') { await enviarTexto(to, resp); return; }
-  // Si Meta RECHAZA el mensaje interactivo (4xx, definitivo), el técnico igual recibe la pregunta como
-  // texto: antes el fallo era silencioso y el bot "no contestaba" (caso real: marcaje en un mall
-  // compartido). Ante un fallo ambiguo (timeout/5xx) NO se reenvía: el interactivo pudo haber llegado.
+  // Si el mensaje interactivo falla —rechazado por Meta (4xx) O ambiguo (timeout/5xx)—, el técnico
+  // igual recibe la pregunta como texto: un bot que no contesta es peor que un mensaje repetido, y
+  // repetir una PREGUNTA es inofensivo (a diferencia de repetir un aviso o un registro).
   if (resp.botones) {
     const r = await enviarBotonesDetalle(to, resp.texto, resp.botones);
-    if (r.estado === 'rechazado') await enviarTexto(to, resp.texto);
+    if (!r.ok) { await registrarFallo(msgId, 'botones', r); await enviarTexto(to, resp.texto); }
     return;
   }
   if (resp.lista) {
     const r = await enviarListaDetalle(to, resp.texto, resp.boton || 'Elegir', resp.lista);
-    if (r.estado === 'rechazado') await enviarTexto(to, resp.texto);
+    if (!r.ok) { await registrarFallo(msgId, 'lista', r); await enviarTexto(to, resp.texto); }
     return;
   }
   await enviarTexto(to, resp.texto || '');
@@ -178,7 +190,7 @@ async function procesarMensaje(msg) {
         if (sesM) {
           // otras fases: la guía de la propia fase (Council) — texto vacío dispara el fallback
           const resp = await manejarMtto({ tecnico, from: msg.from, texto: '', imagenB64: null, mime: null });
-          await enviarRespuesta(msg.from, resp);
+          await enviarRespuesta(msg.from, resp, msg.id);
           return;
         }
         return;
@@ -210,12 +222,12 @@ async function procesarMensaje(msg) {
     if (flujo === 'mtto') {
       const resp = await manejarMtto({ tecnico, from: msg.from, texto, imagenB64, mime,
         onWriteStart: () => { escrituraIniciada = true; } });
-      await enviarRespuesta(msg.from, resp);
+      await enviarRespuesta(msg.from, resp, msg.id);
       return;
     }
     if (flujo === 'asistencia') {
       const resp = await manejarAsistencia({ tecnico, from: msg.from, texto, ubicacion, imagenB64, mime });
-      await enviarRespuesta(msg.from, resp);
+      await enviarRespuesta(msg.from, resp, msg.id);
       return;
     }
 
@@ -234,7 +246,7 @@ async function procesarMensaje(msg) {
         return obs;
       },
     });
-    await enviarRespuesta(msg.from, respuesta);
+    await enviarRespuesta(msg.from, respuesta, msg.id);
   } catch (e) {
     // Si el fallo ocurrió ANTES de cualquier escritura, liberamos la marca de idempotencia para que
     // el reintento de Meta reprocese el mensaje (no perderlo). Si ya empezó a escribir, NO la liberamos:
