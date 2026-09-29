@@ -79,6 +79,10 @@ async function enriquecer(sedePlan, tiendaPorId) {
 
 // Cliente que se asume cuando la ubicación no distingue entre tiendas de un mismo mall.
 const CLIENTE_POR_DEFECTO = 'ripley';
+// APAGADO a pedido del usuario (2026-09-29): las sedes de un mall compartido (Atocongo/Mall del Sur,
+// Jockey…) vuelven a marcar como las demás — la tienda MÁS CERCANA que contiene la ubicación, sin
+// asumir Ripley ni ofrecer el botón de corrección. Poner en true para reactivar esa lógica.
+const MALL_COMPARTIDO_ACTIVO = false;
 const tituloCliente = (c) => { const s = String(c || '').trim().toLowerCase(); return s ? s[0].toUpperCase() + s.slice(1) : ''; };
 
 // Etiqueta de una sede para mensajes y avisos: "JOCKEY PLAZA (RIPLEY)". El cliente va SIEMPRE
@@ -438,7 +442,7 @@ async function resolverSedePorUbicacion(ses, d) {
       const k = norm(sede.cliente || '');
       if (!porCliente.has(k)) porCliente.set(k, { sede });
     }
-    if (porCliente.size > 1) {
+    if (MALL_COMPARTIDO_ACTIVO && porCliente.size > 1) {
       // Sin itinerario y cerca de tiendas de distintos clientes del mismo mall: se ASUME la de RIPLEY
       // (decisión del usuario, 2026-09-29; si no hay una de Ripley, la más cercana) y el mensaje
       // siguiente trae un botón por cada otra tienda para corregir. Antes se preguntaba primero con
