@@ -70,6 +70,18 @@ export function sedeQueContiene(punto, sedes) {
   return mejor;
 }
 
+// TODAS las sedes que contienen al punto (dentro de su propio radio), de la más cercana a la más
+// lejana. Sirve para detectar cuando dos sedes —típicamente de clientes distintos en el mismo
+// mall— se solapan y elegir la más cercana sería adivinar.
+export function sedesQueContienen(punto, sedes) {
+  const out = [];
+  for (const sede of sedes || []) {
+    const ev = evaluarSede(punto, sede);
+    if (ev.valida && ev.dentro) out.push({ sede, ...ev });
+  }
+  return out.sort((a, b) => a.distancia - b.distancia);
+}
+
 // Formatea metros para el mensaje al técnico ("120 m", "1.3 km").
 export function fmtDistancia(m) {
   if (m == null || !Number.isFinite(m)) return '—';
