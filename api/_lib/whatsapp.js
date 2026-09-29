@@ -23,14 +23,15 @@ async function enviarDetalle(cuerpo, etiqueta) {
       body: JSON.stringify(cuerpo),
     });
     if (!res.ok) {
-      console.error(`[whatsapp] error al enviar ${etiqueta}:`, res.status, await res.text().catch(() => ''));
+      const detalle = String(await res.text().catch(() => '')).slice(0, 400);
+      console.error(`[whatsapp] error al enviar ${etiqueta}:`, res.status, detalle);
       // 5xx: Meta pudo haberlo aceptado y fallado después → se trata como ambiguo.
-      return { ok: false, estado: res.status >= 500 ? 'ambiguo' : 'rechazado' };
+      return { ok: false, estado: res.status >= 500 ? 'ambiguo' : 'rechazado', status: res.status, detalle };
     }
     return { ok: true, estado: 'ok' };
   } catch (e) {
     console.error(`[whatsapp] excepción al enviar ${etiqueta}:`, e.message);
-    return { ok: false, estado: 'ambiguo' };
+    return { ok: false, estado: 'ambiguo', detalle: String(e.message).slice(0, 400) };
   }
 }
 
