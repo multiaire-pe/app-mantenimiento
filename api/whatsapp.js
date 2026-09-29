@@ -42,6 +42,8 @@ async function registrarFallo(msgId, tipo, r) {
 async function enviarRespuesta(to, resp, msgId) {
   if (!resp) return;
   if (typeof resp === 'string') { await enviarTexto(to, resp); return; }
+  // Varios mensajes en orden (p. ej. confirmación en texto + mensaje con botón de corrección).
+  if (Array.isArray(resp.mensajes)) { for (const m of resp.mensajes) await enviarRespuesta(to, m, msgId); return; }
   // Si el mensaje interactivo falla —rechazado por Meta (4xx) O ambiguo (timeout/5xx)—, el técnico
   // igual recibe la pregunta como texto: un bot que no contesta es peor que un mensaje repetido, y
   // repetir una PREGUNTA es inofensivo (a diferencia de repetir un aviso o un registro).
