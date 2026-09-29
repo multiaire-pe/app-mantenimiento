@@ -10,7 +10,7 @@ import { evaluarSede, sedeQueContiene, sedesQueContienen, sedesVecinasDeOtroClie
 import { hoyLima, ahoraDecimalLima, horaHHMMLima, decimalAHHMM, diaAnterior } from './fecha.js';
 import { sedesDelDia as _sedesDelDia } from './plan_dia.js';
 import { cargarTiendas as _cargarTiendas, tiendaPorId as _tiendaPorId, tiendasConGeo as _tiendasConGeo } from './tiendas.js';
-import { registrarMarcaje as _registrarMarcaje, registroDelDia as _registroDelDia } from './asistencia_registros.js';
+import { registrarMarcaje as _registrarMarcaje, registroDelDia as _registroDelDia, corregirSedeMarcaje as _corregirSedeMarcaje } from './asistencia_registros.js';
 import * as _ses from './asistencia_sesiones.js';
 
 // Turno NOCTURNO (decisión del usuario, 2026-09-11): si la ENTRADA se marcó desde esta hora en
@@ -77,6 +77,8 @@ async function enriquecer(sedePlan, tiendaPorId) {
   return { id: sedePlan.idTienda || '', idTienda: sedePlan.idTienda || '', tienda: sedePlan.tienda || '', sede: sedePlan.sede || sedePlan.tienda || '', cliente: sedePlan.cliente || '', latitud: null, longitud: null, radio: null };
 }
 
+// Cliente que se asume cuando la ubicación no distingue entre tiendas de un mismo mall.
+const CLIENTE_POR_DEFECTO = 'ripley';
 const tituloCliente = (c) => { const s = String(c || '').trim().toLowerCase(); return s ? s[0].toUpperCase() + s.slice(1) : ''; };
 
 // Etiqueta de una sede para mensajes y avisos: "JOCKEY PLAZA (RIPLEY)". El cliente va SIEMPRE
@@ -101,12 +103,17 @@ export async function manejarAsistencia({ tecnico, from, texto = '', ubicacion =
     cargarTiendas: deps.cargarTiendas || _cargarTiendas,
     registrarMarcaje: deps.registrarMarcaje || _registrarMarcaje,
     registroDelDia: deps.registroDelDia || _registroDelDia,
+    corregirSedeMarcaje: deps.corregirSedeMarcaje || _corregirSedeMarcaje,
     store: deps.store || _ses,
     hoy: deps.hoy || hoyLima(),
     ahora: deps.ahora || Date.now(),
   };
   const t = (texto || '').trim();
   let ses = await d.store.getSesion(from);
+
+  // Botón "Estoy en <otro cliente>": corrige la sede asumida (antes o después de escribir el marcaje).
+  const mCorr = /^corr_(ENTRADA|SALIDA)_([A-Za-z0-9]+)$/.exec(t);
+  if (mCorr) return corregirSede({ tecnico, from, tipo: mCorr[1], idTienda: mCorr[2], ses }, d);
 
   if (ses && RE_CANCELA.test(t)) {
     await d.store.limpiarSesion(from);
@@ -218,6 +225,7 @@ async function avanzar(ses, msg, d) {
     }
     ses.sede = compactSede(r.sede);
     ses.fueraDePlan = r.fueraDePlan;
+    ses.alternativas = r.alternativas && r.alternativas.length ? r.alternativas : null;
     // Si venía de ELIGE_SEDE (le habíamos preguntado) y ahora una ubicación nueva SÍ resolvió la
     // sede, hay que salir de esa fase y tirar las opciones: si no, la sesión queda diciendo
     // "todavía le estoy preguntando" con la sede ya elegida.
@@ -246,7 +254,7 @@ async function avanzar(ses, msg, d) {
   const tieneSelfie = ses.tieneSelfie || !!(await d.store.getSelfie(from));
 
   if (!tieneUbic) { await d.store.guardarSesion(from, ses); return pedirUbicacion(ses); }
-  if (!tieneSelfie) { await d.store.guardarSesion(from, ses); return pedirSelfie(ses); }
+  if (!tieneSelfie) { await d.store.guardarSesion(from, ses); return ses.alternativas ? { mensajes: [pedirSelfie(ses), mensajeCorreccion(ses)] } : pedirSelfie(ses); }
 
   // Todo listo → escribir el marcaje.
   const selfie = await d.store.getSelfie(from);
@@ -285,7 +293,54 @@ async function avanzar(ses, msg, d) {
       ses.colabId || '',
       { params: [tipoTxt, ses.nombre, sedeTxt, hora, geo] });
   } catch (e) { console.error('[avisos asistencia]', e.message); }
-  return confirmacion(ses, res);
+  const conf = confirmacion(ses, res);
+  return ses.alternativas ? { mensajes: [conf, mensajeCorreccion(ses)] } : conf;
+}
+
+// Mensaje con un botón por cada otra tienda del mall ("Estoy en Tottus"). El id lleva el tipo de
+// marcaje y la tienda: así el botón funciona aunque la sesión ya no exista (marcaje ya escrito).
+function mensajeCorreccion(ses) {
+  const alts = (ses.alternativas || []).slice(0, 3);
+  return {
+    texto: `📍 Asumí *${labelSede(ses.sede)}* porque no tienes una tienda asignada en tu itinerario y hay más de una en este mall. ¿En realidad estás en otra? Toca el botón para corregir:`,
+    botones: alts.map((a) => ({ id: `corr_${ses.tipo}_${a.idTienda}`, title: `Estoy en ${tituloCliente(a.cliente) || 'otra'}`.slice(0, 20) })),
+  };
+}
+
+// Corrige la sede de un marcaje: si la sesión sigue viva (falta la selfie) cambia la sede asumida;
+// si ya se escribió, reescribe la evidencia de ese marcaje y avisa a los designados.
+async function corregirSede({ tecnico, from, tipo, idTienda, ses }, d) {
+  const alt = await d.tiendaPorId(idTienda);
+  if (!alt) return 'No encontré esa tienda. Escríbeme *entrada* o *salida* para marcar de nuevo.';
+  if (ses && ses.alternativas?.length) {
+    const plan = await enriquecerPlan(ses.planSedes, d);
+    ses.sede = compactSede(alt);
+    ses.fueraDePlan = !estaEnLista(alt, plan);
+    ses.alternativas = null;
+    return avanzar(ses, { t: '', ubicacion: null, imagenB64: null, mime: null }, d);
+  }
+  for (const fecha of [d.hoy, diaAnterior(d.hoy)]) {
+    const reg = await d.registroDelDia(tecnico.id, fecha);
+    const m = reg && (tipo === 'SALIDA' ? reg.marcajeSalida : reg.marcajeEntrada);
+    if (!m) continue;
+    let plan = { sedes: [] };
+    try { plan = await d.sedesDelDia(tecnico.id, fecha); } catch (_) { /* sin plan: queda fuera de plan */ }
+    const sede = compactSede(alt);
+    const ubic = { ...evaluarSede({ lat: m.lat, lng: m.lng }, sede), lat: m.lat, lng: m.lng };
+    const fueraDePlan = !estaEnLista(sede, await enriquecerPlan(plan.sedes || [], d));
+    const r = await d.corregirSedeMarcaje({ colabId: tecnico.id, fecha, tipo, sede, ubic, fueraDePlan });
+    if (!r.ok) return 'No pude corregir el marcaje ahora. Avísale al administrador para que lo ajuste.';
+    try {
+      const { notificarPorTipo } = await import('./avisos.js');
+      const tipoTxt = (tipo === 'SALIDA' ? 'Salida' : 'Entrada') + ' (corregida)';
+      const sedeTxt = labelSede(sede) + (fueraDePlan ? ' · ⚠️ fuera de plan' : '');
+      const geo = ubic.valida === false ? 'sin validación de distancia' : ubic.dentro ? `en la sede (${fmtDistancia(ubic.distancia)})` : `⚠️ fuera de radio (${fmtDistancia(ubic.distancia)})`;
+      await notificarPorTipo('asistencia', `🕐 *${tipoTxt}* — ${tecnico.nombre}\n🏪 ${sedeTxt}\n🕐 ${m.hora || ''} · 📍 ${geo}`, tecnico.id || '',
+        { params: [tipoTxt, tecnico.nombre || '', sedeTxt, m.hora || '', geo] });
+    } catch (e) { console.error('[avisos asistencia corrección]', e.message); }
+    return `✅ Corregido: tu ${tipo === 'SALIDA' ? 'salida' : 'entrada'} quedó en *${labelSede(sede)}*.`;
+  }
+  return 'No encontré un marcaje reciente para corregir.';
 }
 
 function compactSede(s) {
@@ -384,13 +439,15 @@ async function resolverSedePorUbicacion(ses, d) {
       if (!porCliente.has(k)) porCliente.set(k, { sede });
     }
     if (porCliente.size > 1) {
-      const opciones = [...porCliente.values()].slice(0, 3).map((c) => compactSede(c.sede));
+      // Sin itinerario y cerca de tiendas de distintos clientes del mismo mall: se ASUME la de RIPLEY
+      // (decisión del usuario, 2026-09-29; si no hay una de Ripley, la más cercana) y el mensaje
+      // siguiente trae un botón por cada otra tienda para corregir. Antes se preguntaba primero con
+      // botones, pero ese mensaje interactivo no le llegaba al técnico aunque Meta lo aceptaba.
+      const cand = [...porCliente.values()].slice(0, 3).map((c) => c.sede);
+      const def = cand.find((x) => norm(x.cliente) === CLIENTE_POR_DEFECTO) || cand[0];
       return {
-        preguntar: true, opciones,
-        mensaje: {
-          texto: `📍 Tu ubicación está en un lugar con varias tiendas y no tienes una asignada en tu itinerario de hoy. ¿A cuál vas? Toca un botón o responde el número:\n${listaNumerada(opciones)}`,
-          botones: opciones.map((s, i) => ({ id: String(i + 1), title: tituloCliente(s.cliente) || labelSede(s) })),
-        },
+        sede: def, fueraDePlan: !estaEnLista(def, plan),
+        alternativas: cand.filter((x) => x !== def).map(compactSede),
       };
     }
     const enOtra = contienen[0];
