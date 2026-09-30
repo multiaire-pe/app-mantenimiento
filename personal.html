@@ -332,6 +332,10 @@ tr:hover td{background:var(--surface2)}
           <label class="form-label">N° de documento</label>
           <input type="text" id="pers-numDoc" class="form-input" placeholder="12345678" autocomplete="off">
         </div>
+        <div class="form-group" style="flex:0 0 130px">
+          <label class="form-label">Código (6 dígitos)</label>
+          <input type="text" id="pers-codigo" class="form-input" placeholder="000000" inputmode="numeric" maxlength="6" autocomplete="off" style="font-family:var(--mono);letter-spacing:.12em" oninput="this.value=this.value.replace(/\D/g,'').slice(0,6)">
+        </div>
         <div class="form-group" style="flex:0 0 150px">
           <label class="form-label">Estado del registro</label>
           <select id="pers-activo" class="form-select">
@@ -1131,7 +1135,7 @@ function persFilter(){
   const q = (document.getElementById('pers-search').value || '').trim().toLowerCase();
   if(!q) return personal;
   return personal.filter(p => {
-    const hay = [p.nombre, p.numDoc, p.cargo, p.area,
+    const hay = [p.nombre, p.numDoc, p.codigo, p.cargo, p.area,
       telsDe(p).map(t=>t.e164+' '+t.numero).join(' '),
       correosDe(p).map(c=>c.email).join(' ')].join(' ').toLowerCase();
     return hay.includes(q);
@@ -1161,7 +1165,7 @@ function renderPersTable(){
     return `<tr class="row-clickable" ondblclick="openEditPers('${idAttr}')">
       <td class="col-estado">${dot}</td>
       <td>${avatarHTML(p)}</td>
-      <td><strong>${esc(p.nombre)}</strong></td>
+      <td><strong>${esc(p.nombre)}</strong>${p.codigo?` <span style="font-family:var(--mono);font-size:11px;color:var(--muted2)" title="Código">· ${esc(p.codigo)}</span>`:''}</td>
       <td style="font-family:var(--mono)">${esc(p.numDoc)}</td>
       <td>${esc(p.cargo)}</td>
       <td>${esc(p.area)}</td>
@@ -1281,7 +1285,7 @@ function fillJefeSelect(excludeId){
 
 // ── MODAL: form fill / read ─────────────────────────────────────────────────────
 function setModalReadonly(ro){
-  const ids = ['pers-nombre','pers-tipoDoc','pers-numDoc','pers-activo','pers-fechaNacimiento','pers-genero','pers-nacionalidad','pers-estadoCivil','pers-direccion','pers-emgNombre','pers-emgParentesco','pers-emgTelefono','pers-cargo','pers-area','pers-estadoLaboral','pers-fechaIngreso','pers-fechaCese','pers-tipoContrato','pers-sedeBase','pers-jefeId','pers-regimenAsist','pers-horfijo-entrada','pers-horfijo-salida','pers-rolOperativo','pers-vehiculo','pers-licTiene','pers-licCat','pers-licVence','pers-sueldo','pers-moneda','pers-periodicidad','pers-banco','pers-cuentaNumero','pers-cci','pers-notasConf','pers-notas','pers-comp-input'];
+  const ids = ['pers-nombre','pers-tipoDoc','pers-numDoc','pers-codigo','pers-activo','pers-fechaNacimiento','pers-genero','pers-nacionalidad','pers-estadoCivil','pers-direccion','pers-emgNombre','pers-emgParentesco','pers-emgTelefono','pers-cargo','pers-area','pers-estadoLaboral','pers-fechaIngreso','pers-fechaCese','pers-tipoContrato','pers-sedeBase','pers-jefeId','pers-regimenAsist','pers-horfijo-entrada','pers-horfijo-salida','pers-rolOperativo','pers-vehiculo','pers-licTiene','pers-licCat','pers-licVence','pers-sueldo','pers-moneda','pers-periodicidad','pers-banco','pers-cuentaNumero','pers-cci','pers-notasConf','pers-notas','pers-comp-input'];
   ids.forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = ro; });
   document.querySelectorAll('#modal-pers .rep-row select, #modal-pers .rep-row input').forEach(el=>el.disabled=ro);
   ['pers-tel-add','pers-correo-add','pers-foto-up-lbl','pers-foto-cam-lbl'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display = ro?'none':''; });
@@ -1315,7 +1319,7 @@ function paintFoto(){
 }
 
 function resetModal(){
-  setVal('pers-id',''); setVal('pers-nombre',''); setVal('pers-numDoc','');
+  setVal('pers-id',''); setVal('pers-nombre',''); setVal('pers-numDoc',''); setVal('pers-codigo','');
   setVal('pers-tipoDoc','DNI'); setVal('pers-activo','SI'); setVal('pers-fechaNacimiento','');
   setVal('pers-genero',''); setVal('pers-nacionalidad','PE'); setVal('pers-estadoCivil','');
   setVal('pers-direccion',''); setVal('pers-emgNombre',''); setVal('pers-emgParentesco',''); setVal('pers-emgTelefono','');
@@ -1358,7 +1362,7 @@ function openEditPers(id){
   resetModal();
   document.getElementById('pers-modal-title').textContent = admin ? '✎ Editar colaborador' : '👁 Expediente';
   setVal('pers-id', p.id);
-  setVal('pers-nombre', p.nombre); setVal('pers-numDoc', p.numDoc);
+  setVal('pers-nombre', p.nombre); setVal('pers-numDoc', p.numDoc); setVal('pers-codigo', p.codigo||'');
   setVal('pers-tipoDoc', p.tipoDoc||'DNI'); setVal('pers-activo', p.activo||'SI');
   setVal('pers-fechaNacimiento', p.fechaNacimiento); setVal('pers-genero', p.genero);
   setVal('pers-nacionalidad', p.nacionalidad||'PE'); setVal('pers-estadoCivil', p.estadoCivil);
@@ -1612,6 +1616,14 @@ async function savePers(){
   if(!nombre){ toast('El nombre es obligatorio', 'err'); document.getElementById('pers-nombre').focus(); return; }
   if(!cargo){ toast('El cargo es obligatorio', 'err'); document.getElementById('pers-cargo').focus(); return; }
 
+  // Código de 6 dígitos ("000000"): opcional, pero si se escribe debe tener EXACTAMENTE 6 dígitos y no
+  // repetirse con otro colaborador. Se guarda como texto para conservar los ceros a la izquierda.
+  const codigo = val('pers-codigo').trim();
+  if(codigo && !/^\d{6}$/.test(codigo)){ toast('El código debe tener exactamente 6 dígitos (ej. 000123)', 'err'); document.getElementById('pers-codigo').focus(); return; }
+  const idActual = val('pers-id');
+  const dupCodigo = codigo && personal.find(x => x.codigo === codigo && x.id !== idActual);
+  if(dupCodigo){ toast('Ese código ya lo tiene ' + (dupCodigo.nombre || 'otro colaborador'), 'err'); document.getElementById('pers-codigo').focus(); return; }
+
   const telefonos = collectTels();
   const correos   = collectCorreos();
   // El campo legacy `telefono` (el que usa el bot, identidad.js, por sus últimos 9 dígitos) sale
@@ -1628,6 +1640,7 @@ async function savePers(){
     area: val('pers-area').trim().toUpperCase(),
     tipoDoc: val('pers-tipoDoc'),
     numDoc: val('pers-numDoc').trim(),
+    codigo,
     fechaNacimiento: val('pers-fechaNacimiento'),
     genero: val('pers-genero'),
     nacionalidad: val('pers-nacionalidad'),
@@ -1712,19 +1725,19 @@ function exportPersonal(){
   if(!MA.can('exportar','personal')){ toast('Sin permisos para exportar', 'err'); return; }
   if(!personal.length){ toast('Sin personal para exportar', 'err'); return; }
   const data = [
-    ['ID','NOMBRE','TIPO DOC','N° DOC','CARGO','ÁREA','ROL OPERATIVO','WHATSAPP','OTROS TELÉFONOS','CORREO','TIPO CONTRATO','FECHA INGRESO','SEDE BASE','ESTADO LABORAL','ACTIVO'],
+    ['ID','NOMBRE','TIPO DOC','N° DOC','CÓDIGO','CARGO','ÁREA','ROL OPERATIVO','WHATSAPP','OTROS TELÉFONOS','CORREO','TIPO CONTRATO','FECHA INGRESO','SEDE BASE','ESTADO LABORAL','ACTIVO'],
     ...[...personal]
       .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es'))
       .map(p => {
         const ts = telsDe(p);
         const ws = telWhatsApp(p);
         const otros = ts.filter(t=>t.e164!==ws).map(t=>'+'+t.e164).join(' / ');
-        return [p.id||'', p.nombre||'', p.tipoDoc||'', p.numDoc||'', p.cargo||'', p.area||'', p.rolOperativo||'',
+        return [p.id||'', p.nombre||'', p.tipoDoc||'', p.numDoc||'', p.codigo||'', p.cargo||'', p.area||'', p.rolOperativo||'',
           ws?('+'+ws):'', otros, correoPrincipal(p), p.tipoContrato||'', p.fechaIngreso||'', p.sedeBase||'', p.estadoLaboral||'', p.activo||'SI'];
       })
   ];
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{wch:10},{wch:28},{wch:10},{wch:12},{wch:16},{wch:16},{wch:14},{wch:16},{wch:22},{wch:26},{wch:16},{wch:13},{wch:14},{wch:16},{wch:8}];
+  ws['!cols'] = [{wch:10},{wch:28},{wch:10},{wch:12},{wch:9},{wch:16},{wch:16},{wch:14},{wch:16},{wch:22},{wch:26},{wch:16},{wch:13},{wch:14},{wch:16},{wch:8}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Personal');
   const d  = new Date();
