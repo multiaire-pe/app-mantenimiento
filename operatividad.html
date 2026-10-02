@@ -444,18 +444,22 @@ function tieneReporte(eq){ return eq.operatividad != null; }
 // UNA sola definición, porque la cuentan las stats, las sedes y los clientes — y cuando la regla
 // está duplicada, se arregla en un lado y el otro se queda roto (pasó: sin el tieneReporte(),
 // `Number(null) === 0` es true en JS, así que los 552 equipos sin reportar salían como ⚫).
-function esInoperativo(eq){ return tieneReporte(eq) && Number(eq.operatividad) === 0; }
+function esInoperativo(eq){ return !esDesmontado(eq) && tieneReporte(eq) && Number(eq.operatividad) === 0; }
 // Frescura: nunca reportado, o reporte de hace más de STALE_DIAS → "a re-verificar" (señal interna).
 function esStale(eq){
+  if(esDesmontado(eq)) return false;
   if(!eq.operatividadFecha) return true;
   const d = new Date(eq.operatividadFecha + 'T12:00:00').getTime();
   if(isNaN(d)) return true;
   return (Date.now() - d) / 86400000 > STALE_DIAS;
 }
 // Promedio ponderado por criticidad de una lista de equipos.
+// Desmontado: el equipo ya no existe físicamente en la sede (sigue en el inventario como registro).
+// NO es un % de operatividad: no entra en promedios, ni en inoperativos, ni en "a re-verificar".
+function esDesmontado(eq){ return eq.desmontado === true; }
 function rollup(eqs){
   let num=0, den=0;
-  for(const eq of eqs){ const w=pesoTipo(eq.tipo); num += w*pctEquipo(eq); den += w; }
+  for(const eq of eqs.filter(e=>!esDesmontado(e))){ const w=pesoTipo(eq.tipo); num += w*pctEquipo(eq); den += w; }
   return den ? Math.round(num/den) : 100;
 }
 function hoyISO(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
@@ -486,6 +490,7 @@ async function loadAll(){
       eqId:d.id, sede:x.sede||'', cliente:x.cliente||'', tipo:x.tipo||'', nombre:x.nombre||'', area:x.area||'',
       operatividad:(x.operatividad==null?null:Number(x.operatividad)),
       operatividadFecha:x.operatividadFecha||null, operatividadPor:x.operatividadPor||'', operatividadOrigen:x.operatividadOrigen||'',
+      desmontado:x.desmontado===true, desmontadoFecha:x.desmontadoFecha||null, desmontadoPor:x.desmontadoPor||'',
     }; }).filter(e => e.sede && e.nombre);
     inventario.sort((a,b)=> (a.sede||'').localeCompare(b.sede||'','es') || (a.tipo||'').localeCompare(b.tipo||'','es') || (a.nombre||'').localeCompare(b.nombre||'','es',{numeric:true}));
     clientes = [...new Set(inventario.map(e=>e.cliente).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
@@ -513,6 +518,7 @@ function renderAll(){ renderStats(); renderSedes(); }
 function renderStats(){
   const fc = clienteFiltro();
   const eqs = inventario.filter(e=>!fc || e.cliente===fc);
+  const desm = eqs.filter(esDesmontado).length;
   const inop = eqs.filter(esInoperativo).length;
   const stale = eqs.filter(esStale).length;
   const global = rollup(eqs);
@@ -520,7 +526,7 @@ function renderStats(){
   const el = document.getElementById('stat-row');
   el.innerHTML = `
     <div class="stat-tile"><div class="stat-val" style="color:${b.color}">${b.emoji} ${global}%</div><div class="stat-lbl">Operatividad global</div></div>
-    <div class="stat-tile"><div class="stat-val">${eqs.length}</div><div class="stat-lbl">Equipos</div></div>
+    <div class="stat-tile"><div class="stat-val">${eqs.length-desm}</div><div class="stat-lbl">Equipos${desm?` <span style="opacity:.7">(+${desm} desmontados)</span>`:''}</div></div>
     <div class="stat-tile"><div class="stat-val" style="color:${inop?'#dc2626':'var(--blue)'}">${inop}</div><div class="stat-lbl">Inoperativos ⚫</div></div>
     <div class="stat-tile"><div class="stat-val" style="color:${stale?'#d48a00':'var(--blue)'}">${stale}</div><div class="stat-lbl">A re-verificar ⚠️</div></div>`;
 }
@@ -612,7 +618,7 @@ function openSede(cliente, sede){
   const eqs = inventario.filter(e=>e.cliente===cliente && e.sede===sede);
   const pct = rollup(eqs), b = bandaAgregado(pct);
   document.getElementById('modal-sede-title').textContent = sede + (clientes.length>1?` · ${cliente}`:'');
-  document.getElementById('modal-sede-sub').innerHTML = `<span style="color:${b.color};font-weight:700">${b.emoji} ${pct}% ${esc(b.etiqueta)}</span> · ${eqs.length} equipos (ponderado por criticidad).`;
+  document.getElementById('modal-sede-sub').innerHTML = `<span style="color:${b.color};font-weight:700">${b.emoji} ${pct}% ${esc(b.etiqueta)}</span> · ${eqs.filter(e=>!esDesmontado(e)).length} equipos${eqs.some(esDesmontado)?` (+${eqs.filter(esDesmontado).length} desmontados)`:''} (ponderado por criticidad).`;
   renderSedeBody();
   document.getElementById('modal-sede').classList.add('open');
 }
@@ -621,9 +627,20 @@ function renderSedeBody(){
   const {cliente, sede} = _sedeCur;
   const admin = canEditManual();
   const eqs = inventario.filter(e=>e.cliente===cliente && e.sede===sede)
-    .sort((a,b)=> pctEquipo(a)-pctEquipo(b) || (a.tipo||'').localeCompare(b.tipo||'','es') || (a.nombre||'').localeCompare(b.nombre||'','es',{numeric:true}));
+    .sort((a,b)=> (esDesmontado(a)-esDesmontado(b)) || pctEquipo(a)-pctEquipo(b) || (a.tipo||'').localeCompare(b.tipo||'','es') || (a.nombre||'').localeCompare(b.nombre||'','es',{numeric:true}));
   const body = document.getElementById('modal-sede-body');
   body.innerHTML = eqs.map(e=>{
+    if(esDesmontado(e)){
+      return `<div class="eq-row" style="opacity:.6">
+      <div class="eq-dot">🚫</div>
+      <div class="eq-info">
+        <div class="eq-name">${esc(e.nombre)}</div>
+        <div class="eq-sub">${esc((e.tipo||'').toLowerCase())}${e.area?' · 📍 '+esc(e.area):''} · Desmontado${e.desmontadoFecha?' desde '+esc(e.desmontadoFecha):''}</div>
+      </div>
+      <div class="eq-pct" style="color:var(--muted2)">—</div>
+      ${admin?`<button class="btn btn-sm op-edit-btn" data-eqid="${esc(e.eqId)}">✎</button>`:''}
+    </div>`;
+    }
     const rep = tieneReporte(e), pct = pctEquipo(e), n = nivelDe(pct);
     const stale = esStale(e);
     return `<div class="eq-row">
@@ -669,10 +686,10 @@ async function onEqEquipoChange(){
   if(!eqId){ box.innerHTML=''; return; }
   const e=inventario.find(x=>x.eqId===eqId);
   if(!e){ box.innerHTML=''; return; }
-  const rep=tieneReporte(e), pct=pctEquipo(e), n=nivelDe(pct), stale=esStale(e);
+  const rep=tieneReporte(e), pct=pctEquipo(e), n=nivelDe(pct), stale=esStale(e), desm=esDesmontado(e);
   box.innerHTML = `<div class="det-box">
     <div class="det-hero">
-      <div class="det-pct" style="color:${n.color}">${n.emoji} ${rep?pct+'%':'s/rep.'}</div>
+      <div class="det-pct" style="color:${desm?'var(--muted2)':n.color}">${desm?'🚫 Desmontado':n.emoji+' '+(rep?pct+'%':'s/rep.')}</div>
       <div style="flex:1">
         <div style="font-size:14px;font-weight:700">${esc(e.nombre)}</div>
         <div style="font-size:11px;color:var(--muted2)">${esc(e.tipo)}${e.area?' · 📍 '+esc(e.area):''} · <span class="mono">${esc(e.eqId)}</span></div>
@@ -694,7 +711,7 @@ async function onEqEquipoChange(){
     const tl = document.getElementById('tl-box');
     if(!tl) return;
     if(!evs.length){ tl.innerHTML='<div class="empty-msg" style="padding:16px">Sin reportes de operatividad todavía.</div>'; return; }
-    tl.innerHTML = evs.map(ev=>{ const nn=nivelDe(ev.porcentaje);
+    tl.innerHTML = evs.map(ev=>{ const nn=ev.estado==='DESMONTADO'?{emoji:'🚫',etiqueta:'Desmontado',color:'var(--muted2)'}:nivelDe(ev.porcentaje);
       return `<div class="tl-item">
         <div class="tl-dot">${nn.emoji}</div>
         <div class="tl-body">
@@ -712,19 +729,23 @@ let _pctEqId=null, _pctVal=null;
 function openPct(eqId){
   if(!canEditManual()){ toast('Sin permiso para editar','err'); return; }
   const e=inventario.find(x=>x.eqId===eqId); if(!e) return;
-  _pctEqId=eqId; _pctVal=(e.operatividad==null?null:Number(e.operatividad));
-  document.getElementById('modal-pct-sub').innerHTML = `<strong>${esc(e.nombre)}</strong> · ${esc(e.sede)}${clientes.length>1?' · '+esc(e.cliente):''}. Elige en qué % quedó operativo el equipo.`;
+  _pctEqId=eqId; _pctVal=esDesmontado(e)?'DESM':(e.operatividad==null?null:Number(e.operatividad));
+  document.getElementById('modal-pct-sub').innerHTML = `<strong>${esc(e.nombre)}</strong> · ${esc(e.sede)}${clientes.length>1?' · '+esc(e.cliente):''}. Elige en qué % quedó operativo el equipo, o márcalo como desmontado.`;
   document.getElementById('pct-opts').innerHTML = NIVELES.map(n=>`
     <div class="pct-opt${_pctVal===n.p?' sel':''}" data-p="${n.p}" onclick="pickPct(${n.p})">
       <div class="pct-opt-emoji">${n.emoji}</div>
       <div><div class="pct-opt-txt">${n.p}% · ${esc(n.etiqueta)}</div></div>
-    </div>`).join('');
+    </div>`).join('') + `
+    <div class="pct-opt${_pctVal==='DESM'?' sel':''}" data-p="DESM" onclick="pickPct('DESM')">
+      <div class="pct-opt-emoji">🚫</div>
+      <div><div class="pct-opt-txt">Desmontado</div><div style="font-size:11px;color:var(--muted2)">Ya no está en la sede; sigue en el inventario como registro y no cuenta en el %.</div></div>
+    </div>`;
   document.getElementById('btn-save-pct').disabled = (_pctVal==null);
   document.getElementById('modal-pct').classList.add('open');
 }
 function pickPct(p){
   _pctVal=p;
-  document.querySelectorAll('#pct-opts .pct-opt').forEach(el=>el.classList.toggle('sel', Number(el.dataset.p)===p));
+  document.querySelectorAll('#pct-opts .pct-opt').forEach(el=>el.classList.toggle('sel', el.dataset.p===String(p)));
   document.getElementById('btn-save-pct').disabled=false;
 }
 async function saveOperatividadManual(){
@@ -732,17 +753,25 @@ async function saveOperatividadManual(){
   const btn=document.getElementById('btn-save-pct'); if(btn.disabled) return;
   const e=inventario.find(x=>x.eqId===_pctEqId); if(!e){ toast('Equipo no encontrado','err'); return; }
   btn.disabled=true; btn.textContent='⏳ Guardando...';
-  const now=new Date().toISOString(), fecha=now.slice(0,10), pct=Number(_pctVal), niv=nivelDe(pct);
+  const now=new Date().toISOString(), fecha=now.slice(0,10), desm=(_pctVal==='DESM');
+  const pct=desm?null:Number(_pctVal), niv=desm?null:nivelDe(pct);
   const evento={ eqId:e.eqId, sede:e.sede, cliente:e.cliente, tipo:e.tipo, nombre:e.nombre, area:e.area,
-    porcentaje:pct, nivel:niv.nivel, origen:'APP', obsId:null, tecnicoId:null,
+    porcentaje:pct, nivel:desm?'DESMONTADO':niv.nivel, origen:'APP', obsId:null, tecnicoId:null,
     registradoPor:maUser.email, fecha, createdAt:now, createdBy:maUser.email };
+  if(desm) evento.estado='DESMONTADO';
   try{
     const batch=db.batch();
     batch.set(db.collection('operatividad_eventos').doc(), evento);
-    batch.set(db.collection('inventario').doc(e.eqId), { operatividad:pct, operatividadFecha:fecha, operatividadPor:maUser.email, operatividadObsId:null, operatividadOrigen:'APP' }, {merge:true});
+    // Desmontar NO toca el % previo (queda como último dato conocido); fijar un % reinstala el equipo.
+    const cambios = desm
+      ? { desmontado:true, desmontadoFecha:fecha, desmontadoPor:maUser.email }
+      : { operatividad:pct, operatividadFecha:fecha, operatividadPor:maUser.email, operatividadObsId:null, operatividadOrigen:'APP', desmontado:false, desmontadoFecha:null, desmontadoPor:'' };
+    batch.set(db.collection('inventario').doc(e.eqId), cambios, {merge:true});
     await batch.commit();
-    Object.assign(e, { operatividad:pct, operatividadFecha:fecha, operatividadPor:maUser.email, operatividadOrigen:'APP' });
-    toast('Operatividad actualizada ✓','ok');
+    Object.assign(e, desm
+      ? { desmontado:true, desmontadoFecha:fecha, desmontadoPor:maUser.email }
+      : { operatividad:pct, operatividadFecha:fecha, operatividadPor:maUser.email, operatividadOrigen:'APP', desmontado:false, desmontadoFecha:null, desmontadoPor:'' });
+    toast(desm?'Equipo marcado como desmontado ✓':'Operatividad actualizada ✓','ok');
     closeModal('modal-pct');
     renderAll();
     if(document.getElementById('modal-sede').classList.contains('open')) renderSedeBody();
