@@ -203,6 +203,7 @@ option{background:#fff}
 .eq-sel-item input{width:14px;height:14px;accent-color:var(--blue);cursor:pointer}
 .eq-sel-name{font-weight:500;flex:1}
 .eq-sel-id{font-family:var(--mono);font-size:9px;color:var(--muted)}
+.op-dot{flex:none;width:10px;height:10px;border-radius:50%;border:1px solid rgba(255,255,255,.35);cursor:help}
 
 /* TOAST */
 .toast{position:fixed;bottom:24px;right:24px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 18px;font-size:13px;z-index:999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:300px}
@@ -1261,13 +1262,14 @@ async function loadInventario() {
       const e = d.data();
       // el cliente se preserva tal cual: inventarlo (antes caía a 'RIPLEY') resolvería la plantilla
       // de un cliente que no es el suyo — justo el fallback silencioso que este modelo elimina
-      return [e.eq_id||'', e.sede||'', e.cliente||'', e.tipo||'', e.nombre||'', e.area||'', e.marca||'', e.modelo||'', e.serie||''];
+      return [e.eq_id||'', e.sede||'', e.cliente||'', e.tipo||'', e.nombre||'', e.area||'', e.marca||'', e.modelo||'', e.serie||'', Number.isFinite(e.operatividad)?e.operatividad:null, e.operatividadFecha||null];
     });
     allEquipos = rows
       .filter(r => r[0] && r[0].startsWith('MA-'))
       .map(r => ({
         eq_id: r[0], sede: r[1], cliente: r[2], tipo: r[3], nombre: r[4],
-        area: r[5], marca: r[6], modelo: r[7], serie: r[8]
+        area: r[5], marca: r[6], modelo: r[7], serie: r[8],
+        operatividad: r[9], operatividadFecha: r[10]
       }));
     // Orden base por tipo + nombre natural (ver _cmpNombreOrden): el checklist, el
     // dashboard, el selector de equipos y el resto de vistas agrupan por tipo
@@ -1881,6 +1883,22 @@ async function doSave() {
 // ── SELECCIÓN DE EQUIPOS ──────────────────────────────────────────────────────
 let tempSel = {};
 
+// Semáforo de operatividad (misma escala y colores que operatividad.html / el bot).
+// Solo se pinta si el equipo tiene un reporte; sin reporte no se muestra nada.
+const OP_NIVELES = [
+  {p:100, c:'#16a34a', t:'Operativo'},
+  {p:75,  c:'#eab308', t:'Operativo c/observaciones'},
+  {p:50,  c:'#f97316', t:'Parcial'},
+  {p:25,  c:'#dc2626', t:'Crítico'},
+  {p:0,   c:'#1f2937', t:'Inoperativo'}
+];
+function opDotHTML(e) {
+  if (!Number.isFinite(e.operatividad)) return '';
+  const n = OP_NIVELES.reduce((b, it) => Math.abs(it.p - e.operatividad) < Math.abs(b.p - e.operatividad) ? it : b);
+  const f = e.operatividadFecha ? ' · reportado ' + e.operatividadFecha : '';
+  return `<span class="op-dot" style="background:${n.c}" title="${_actEsc(e.operatividad + ' % · ' + n.t + f)}"></span>`;
+}
+
 function openSelEquipos() {
   if(!MA.can('editar','mantenimiento')) { toast('Sin permisos','err'); return; }
   if(!currentSede) { toast('Selecciona una sede primero','warn'); return; }
@@ -1907,6 +1925,7 @@ function openSelEquipos() {
         ${eqs.map(e => `
           <label class="eq-sel-item ${tempSel[e.eq_id]?'selected':''}" id="sel-${_actEsc(e.eq_id)}">
             <input type="checkbox" ${tempSel[e.eq_id]?'checked':''} onchange="toggleEqSel(${_jsq(e.eq_id)},this.checked)">
+            ${opDotHTML(e)}
             <div style="flex:1;min-width:0">
               <div class="eq-sel-name">${_actEsc(e.nombre)}</div>
               <div class="eq-sel-id">${_actEsc(e.eq_id)} · ${_actEsc(e.area||'—')}</div>
