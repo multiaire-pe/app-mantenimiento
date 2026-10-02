@@ -203,6 +203,7 @@ option{background:#fff}
 .eq-sel-item input{width:14px;height:14px;accent-color:var(--blue);cursor:pointer}
 .eq-sel-name{font-weight:500;flex:1}
 .eq-sel-id{font-family:var(--mono);font-size:9px;color:var(--muted)}
+.op-desm{flex:none;font-size:13px;line-height:1;cursor:help}
 .op-dot{flex:none;width:10px;height:10px;border-radius:50%;border:1px solid rgba(255,255,255,.35);cursor:help}
 
 /* TOAST */
@@ -1917,7 +1918,7 @@ const OP_NIVELES = [
   {p:0,   c:'#1f2937', t:'Inoperativo'}
 ];
 function opDotHTML(e) {
-  if (e.desmontado) return `<span class="op-dot" style="background:#6b7280" title="${_actEsc('Desmontado' + (e.desmontadoFecha ? ' desde ' + e.desmontadoFecha : ''))}"></span>`;
+  if (e.desmontado) return `<span class="op-desm" title="${_actEsc('Desmontado' + (e.desmontadoFecha ? ' desde ' + e.desmontadoFecha : ''))}">🚫</span>`;
   if (!Number.isFinite(e.operatividad)) return '';
   const n = OP_NIVELES.reduce((b, it) => Math.abs(it.p - e.operatividad) < Math.abs(b.p - e.operatividad) ? it : b);
   const f = e.operatividadFecha ? ' · reportado ' + e.operatividadFecha : '';
