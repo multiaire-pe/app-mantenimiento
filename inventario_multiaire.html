@@ -93,6 +93,13 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 .placa-th img{width:100%;height:100%;object-fit:cover;cursor:pointer;display:block}
 .placa-th button{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,.7);color:#fff;font-size:12px;line-height:1;cursor:pointer;padding:0}
 .placa-add{cursor:pointer;align-self:flex-start;display:inline-block}
+.cm-list{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.cm-item{display:flex;gap:8px;align-items:flex-start;background:var(--surface2,rgba(255,255,255,.04));border:1px solid var(--border);border-radius:6px;padding:7px 9px;font-size:12px}
+.cm-item .cm-t{flex:1;white-space:pre-wrap;word-break:break-word}
+.cm-item .cm-m{display:block;font-size:10px;color:var(--muted);margin-top:2px}
+.cm-item button{border:none;background:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0 2px}
+.cm-new{display:flex;gap:6px}
+.cm-new input{flex:1}
 #plbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:400;align-items:center;justify-content:center;cursor:zoom-out}
 #plbox.open{display:flex}
 #plbox img{max-width:96vw;max-height:92vh;border-radius:6px}
@@ -283,6 +290,10 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
       <div class="fgg"><label>Serie</label><input type="text" id="f_serie" placeholder="Número de serie"></div>
       <div class="fgg"><label>Capacidad</label><input type="text" id="f_capacidad" placeholder="Ej: 24000 BTU · 130 TN · 2000 CFM"></div>
       <div class="fgg"><label>Código de tienda</label><input type="text" id="f_codigoTienda" placeholder="Código propio del cliente (si lo usa)"></div>
+      <div class="fgg full"><label>Comentarios <span id="cm_cnt" style="text-transform:none;letter-spacing:0"></span></label>
+        <div class="cm-list" id="cm_list"></div>
+        <div class="cm-new"><input type="text" id="cm_input" maxlength="500" placeholder="Escribe un comentario y pulsa Agregar" onkeydown="if(event.key==='Enter'){event.preventDefault();addComentario();}"><button type="button" class="btn btn-sm" onclick="addComentario()">＋ Agregar</button></div>
+      </div>
       <div class="fgg full"><label>Fotos de la placa <span id="placa_cnt" style="text-transform:none;letter-spacing:0"></span></label>
         <div class="placa-grid" id="placa_grid"></div>
         <label class="btn placa-add">📷 Agregar fotos<input type="file" id="placa_input" accept="image/*" multiple style="display:none" onchange="onPlacaFiles(this)"></label>
@@ -373,7 +384,7 @@ async function gasGet() {
   // Convert Firestore docs to array format matching original row structure
   return snap.docs.map(d => {
     const e = d.data();
-    return [e.eq_id||'', e.sede||'', e.cliente||'', e.tipo||'', e.nombre||'', e.area||'', e.marca||'', e.modelo||'', e.serie||'', e.capacidad||'', e.codigoTienda||''];
+    return [e.eq_id||'', e.sede||'', e.cliente||'', e.tipo||'', e.nombre||'', e.area||'', e.marca||'', e.modelo||'', e.serie||'', e.capacidad||'', e.codigoTienda||'', Array.isArray(e.comentarios)?e.comentarios:[]];
   });
 }
 
@@ -385,7 +396,7 @@ async function crearEquipoUnico(row) {
   const equipo = {
     eq_id: row[0], sede: row[1], cliente: row[2]||'RIPLEY',
     tipo: row[3], nombre: row[4], area: row[5],
-    marca: row[6], modelo: row[7], serie: row[8]||'', capacidad: row[9]||'', codigoTienda: row[10]||''
+    marca: row[6], modelo: row[7], serie: row[8]||'', capacidad: row[9]||'', codigoTienda: row[10]||'', comentarios: row[11]||[]
   };
   const ref = window.__db.collection('inventario').doc(equipo.eq_id);
   await window.__db.runTransaction(async tx => {
@@ -402,7 +413,7 @@ async function gasPost(body) {
     const equipo = {
       eq_id: row[0], sede: row[1], cliente: row[2]||'RIPLEY',
       tipo: row[3], nombre: row[4], area: row[5],
-      marca: row[6], modelo: row[7], serie: row[8]||'', capacidad: row[9]||'', codigoTienda: row[10]||''
+      marca: row[6], modelo: row[7], serie: row[8]||'', capacidad: row[9]||'', codigoTienda: row[10]||'', comentarios: row[11]||[]
     };
     // merge: el doc de inventario también guarda el estado vivo de operatividad
     // (operatividad*, que escriben operatividad.html y el bot). Sin merge, editar la
@@ -428,7 +439,7 @@ async function sync() {
       .filter(r => r[1] || r[3])
       .map((r,i) => ({
         row:i+2, eq_id:r[0]||'', sede:r[1]||'', cliente:r[2]||'', equipo:r[3]||'', descripcion:r[4]||'',
-        area:r[5]||'', marca:r[6]||'', modelo:r[7]||'', serie:r[8]||'', capacidad:r[9]||'', codigoTienda:r[10]||''
+        area:r[5]||'', marca:r[6]||'', modelo:r[7]||'', serie:r[8]||'', capacidad:r[9]||'', codigoTienda:r[10]||'', comentarios:r[11]||[]
       }));
     // Orden base por tipo + nombre natural (ver _cmpNombreOrden): así, aunque el
     // usuario no toque ninguna columna, dentro de una misma sede los equipos salen
@@ -683,6 +694,20 @@ async function borrarPlacaEq(eqId){
   }catch(e){/* las fotos huérfanas no rompen nada; se pueden limpiar luego */}
 }
 
+// ── COMENTARIOS (lista de notas por equipo: {texto, autor, fecha}; se guardan con "Guardar") ──
+let comentariosForm=[];
+function renderComentarios(){
+  const l=document.getElementById('cm_list'),canEdit=MA.can('editar','inventario');
+  document.getElementById('cm_cnt').textContent=comentariosForm.length?'('+comentariosForm.length+')':'';
+  l.innerHTML=comentariosForm.map((c,i)=>'<div class="cm-item"><div class="cm-t">'+esc(c.texto)+'<span class="cm-m">'+esc(c.autor||'')+(c.fecha?' · '+esc(new Date(c.fecha).toLocaleString('es-PE',{dateStyle:'short',timeStyle:'short'})):'')+'</span></div>'+(canEdit?'<button type="button" title="Quitar" onclick="quitarComentario('+i+')">✕</button>':'')+'</div>').join('');
+}
+function addComentario(){
+  const inp=document.getElementById('cm_input'),t=inp.value.trim();
+  if(!t)return;
+  comentariosForm.push({texto:t,autor:(maUser&&maUser.email)||'',fecha:new Date().toISOString()});
+  inp.value='';renderComentarios();
+}
+function quitarComentario(i){comentariosForm.splice(i,1);renderComentarios();}
 async function openNew(){
   if(!MA.can('editar','inventario')){toast('Sin permisos','err');return;}
   placaFotos=[];placaBorrar=[];placaCargando=false;_placaEq=null;renderPlaca();
@@ -693,11 +718,12 @@ async function openNew(){
     const el = document.getElementById('f_'+f);
     if(el) el.value='';
   });
+  comentariosForm=[];renderComentarios();
   fillTipoForm();
   try { await cargarSedesMaestros(); } catch(e) { /* sedes ya pobladas en la carga inicial */ }
   document.getElementById('mov').classList.add('open');
 }
-function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('f_capacidad').value=r.capacidad||'';document.getElementById('f_codigoTienda').value=r.codigoTienda||'';placaFotos=[];placaBorrar=[];renderPlaca();cargarPlacaEq(r.eq_id);document.getElementById('mov').classList.add('open');}
+function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('f_capacidad').value=r.capacidad||'';document.getElementById('f_codigoTienda').value=r.codigoTienda||'';comentariosForm=(r.comentarios||[]).map(c=>({...c}));renderComentarios();placaFotos=[];placaBorrar=[];renderPlaca();cargarPlacaEq(r.eq_id);document.getElementById('mov').classList.add('open');}
 function cm(){document.getElementById('mov').classList.remove('open');}
 
 async function saveItem(){
@@ -739,7 +765,7 @@ async function saveItem(){
     // pero es un equipo aparte: falla por electrónica/parámetros, no por sello/rodamiento como
     // la bomba que controla — necesita su propia checklist, no la de la bomba.
     'VARIADOR DE FRECUENCIA':'VFR'};
-  const row=['',sede,cliente_val,tipo,desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim(),document.getElementById('f_capacidad').value.trim(),document.getElementById('f_codigoTienda').value.trim()];
+  const row=['',sede,cliente_val,tipo,desc,document.getElementById('f_area').value.trim(),document.getElementById('f_marca').value.trim(),document.getElementById('f_modelo').value.trim(),document.getElementById('f_serie').value.trim(),document.getElementById('f_capacidad').value.trim(),document.getElementById('f_codigoTienda').value.trim(),comentariosForm];
   try{
     if(editRow!==null){
       row[0]=data.find(x=>x.row===editRow)?.eq_id||'';
