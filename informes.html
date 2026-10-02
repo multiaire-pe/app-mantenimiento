@@ -504,11 +504,34 @@ function _parseNombreOrden(nombre) {
     suf: s.slice(m.index + m[0].length).toLowerCase().trim()
   };
 }
-function _cmpNombreOrden(a, b) {
+// porVariante=true (default): agrupa por variante y luego por número ("Extractor 01 (Axial)",
+// "02 (Axial)"… y después los "(Centrífugo)"). Solo hace falta cuando el MISMO número se repite en
+// distintas variantes (ver _variantesChocan). Si la numeración es única en el grupo (ej. Mall del
+// Sur: 01-05 Humo, 14-18 Grasa, el resto sin variante) la variante es solo una etiqueta y el orden
+// correcto es el número a secas: 01, 02, 03… sin saltar por variante.
+function _cmpNombreOrden(a, b, porVariante = true) {
   const pa = _parseNombreOrden(a), pb = _parseNombreOrden(b);
-  return pa.pre.localeCompare(pb.pre, 'es', { sensitivity: 'base', numeric: true })
-      || pa.suf.localeCompare(pb.suf, 'es', { sensitivity: 'base' })
-      || (pa.num - pb.num);
+  const preC = pa.pre.localeCompare(pb.pre, 'es', { sensitivity: 'base', numeric: true });
+  const sufC = pa.suf.localeCompare(pb.suf, 'es', { sensitivity: 'base' });
+  return porVariante ? (preC || sufC || (pa.num - pb.num)) : (preC || (pa.num - pb.num) || sufC);
+}
+// ¿Algún mismo (prefijo, número) aparece en 2+ variantes distintas dentro de este grupo?
+function _variantesChocan(nombres) {
+  const m = new Map();
+  for (const n of nombres) {
+    const p = _parseNombreOrden(n);
+    if (p.num < 0) continue;
+    const k = p.pre + '|' + p.num;
+    if (!m.has(k)) m.set(k, new Set());
+    m.get(k).add(p.suf);
+  }
+  return [...m.values()].some(s => s.size > 1);
+}
+// Marca cada item con `_pv` (¿ordenar por variante?) según su grupo (groupFn → clave).
+function _marcarPV(items, nameKey, groupFn) {
+  const g = new Map();
+  items.forEach(i => { const k = groupFn(i); if (!g.has(k)) g.set(k, []); g.get(k).push(i); });
+  g.forEach(l => { const pv = _variantesChocan(l.map(i => i[nameKey])); l.forEach(i => { i._pv = pv; }); });
 }
 
 function initApp() {
@@ -625,7 +648,7 @@ async function preparar() {
 function porTipo(equipos) {
   const g = {};
   equipos.forEach((e) => { const t = String(e.tipo || '').trim() || 'SIN TIPO'; (g[t] = g[t] || []).push(e); });
-  Object.values(g).forEach((l) => l.sort((a, b) => _cmpNombreOrden(a.nombre, b.nombre)));
+  Object.values(g).forEach((l) => { const pv = _variantesChocan(l.map(e => e.nombre)); l.sort((a, b) => _cmpNombreOrden(a.nombre, b.nombre, pv)); });
   return g;
 }
 

@@ -1194,7 +1194,7 @@ async function pendientesDeSede(sede, fecha, cliente){
       if (!tareaHecha(st, tarea, idx) && !planificadas.has(pkey)) out.push({ pid, eq_id: eq.eq_id, nombreEq: eq.nombre||eq.eq_id, tipo: eq.tipo||'', area: eq.area||'', tarea, idx, minutos: actsMin[idx], prev: arrastradas[pkey] || '' });
     });
   });
-  return out.sort((a,b) => a.nombreEq.localeCompare(b.nombreEq) || a.idx - b.idx);
+  return out.sort((a,b) => a.nombreEq.localeCompare(b.nombreEq, "es", { numeric: true }) || a.idx - b.idx);
 }
 
 async function abrirPanelActs(nBloque, tienda, cliente){
