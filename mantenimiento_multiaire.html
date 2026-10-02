@@ -1285,14 +1285,14 @@ async function loadInventario() {
       const e = d.data();
       // el cliente se preserva tal cual: inventarlo (antes caía a 'RIPLEY') resolvería la plantilla
       // de un cliente que no es el suyo — justo el fallback silencioso que este modelo elimina
-      return [e.eq_id||'', e.sede||'', e.cliente||'', e.tipo||'', e.nombre||'', e.area||'', e.marca||'', e.modelo||'', e.serie||'', Number.isFinite(e.operatividad)?e.operatividad:null, e.operatividadFecha||null];
+      return [e.eq_id||'', e.sede||'', e.cliente||'', e.tipo||'', e.nombre||'', e.area||'', e.marca||'', e.modelo||'', e.serie||'', Number.isFinite(e.operatividad)?e.operatividad:null, e.operatividadFecha||null, e.desmontado===true, e.desmontadoFecha||null];
     });
     allEquipos = rows
       .filter(r => r[0] && r[0].startsWith('MA-'))
       .map(r => ({
         eq_id: r[0], sede: r[1], cliente: r[2], tipo: r[3], nombre: r[4],
         area: r[5], marca: r[6], modelo: r[7], serie: r[8],
-        operatividad: r[9], operatividadFecha: r[10]
+        operatividad: r[9], operatividadFecha: r[10], desmontado: r[11], desmontadoFecha: r[12]
       }));
     // Orden base por tipo + nombre natural (ver _cmpNombreOrden): el checklist, el
     // dashboard, el selector de equipos y el resto de vistas agrupan por tipo
@@ -1917,6 +1917,7 @@ const OP_NIVELES = [
   {p:0,   c:'#1f2937', t:'Inoperativo'}
 ];
 function opDotHTML(e) {
+  if (e.desmontado) return `<span class="op-dot" style="background:#6b7280" title="${_actEsc('Desmontado' + (e.desmontadoFecha ? ' desde ' + e.desmontadoFecha : ''))}"></span>`;
   if (!Number.isFinite(e.operatividad)) return '';
   const n = OP_NIVELES.reduce((b, it) => Math.abs(it.p - e.operatividad) < Math.abs(b.p - e.operatividad) ? it : b);
   const f = e.operatividadFecha ? ' · reportado ' + e.operatividadFecha : '';
