@@ -385,11 +385,34 @@ function _parseNombreOrden(nombre) {
     suf: s.slice(m.index + m[0].length).toLowerCase().trim()
   };
 }
-function _cmpNombreOrden(a, b) {
+// porVariante=true (default): agrupa por variante y luego por número ("Extractor 01 (Axial)",
+// "02 (Axial)"… y después los "(Centrífugo)"). Solo hace falta cuando el MISMO número se repite en
+// distintas variantes (ver _variantesChocan). Si la numeración es única en el grupo (ej. Mall del
+// Sur: 01-05 Humo, 14-18 Grasa, el resto sin variante) la variante es solo una etiqueta y el orden
+// correcto es el número a secas: 01, 02, 03… sin saltar por variante.
+function _cmpNombreOrden(a, b, porVariante = true) {
   const pa = _parseNombreOrden(a), pb = _parseNombreOrden(b);
-  return pa.pre.localeCompare(pb.pre, 'es', { sensitivity: 'base', numeric: true })
-      || pa.suf.localeCompare(pb.suf, 'es', { sensitivity: 'base' })
-      || (pa.num - pb.num);
+  const preC = pa.pre.localeCompare(pb.pre, 'es', { sensitivity: 'base', numeric: true });
+  const sufC = pa.suf.localeCompare(pb.suf, 'es', { sensitivity: 'base' });
+  return porVariante ? (preC || sufC || (pa.num - pb.num)) : (preC || (pa.num - pb.num) || sufC);
+}
+// ¿Algún mismo (prefijo, número) aparece en 2+ variantes distintas dentro de este grupo?
+function _variantesChocan(nombres) {
+  const m = new Map();
+  for (const n of nombres) {
+    const p = _parseNombreOrden(n);
+    if (p.num < 0) continue;
+    const k = p.pre + '|' + p.num;
+    if (!m.has(k)) m.set(k, new Set());
+    m.get(k).add(p.suf);
+  }
+  return [...m.values()].some(s => s.size > 1);
+}
+// Marca cada item con `_pv` (¿ordenar por variante?) según su grupo (groupFn → clave).
+function _marcarPV(items, nameKey, groupFn) {
+  const g = new Map();
+  items.forEach(i => { const k = groupFn(i); if (!g.has(k)) g.set(k, []); g.get(k).push(i); });
+  g.forEach(l => { const pv = _variantesChocan(l.map(i => i[nameKey])); l.forEach(i => { i._pv = pv; }); });
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -460,7 +483,8 @@ async function sync() {
     // usuario no toque ninguna columna, dentro de una misma sede los equipos salen
     // agrupados por tipo y, dentro de cada tipo, por variante+número (no por el
     // orden arbitrario en que Firestore devolvió los documentos).
-    data.sort((a,b) => a.equipo.localeCompare(b.equipo,'es',{sensitivity:'base'}) || _cmpNombreOrden(a.descripcion,b.descripcion));
+    _marcarPV(data, 'descripcion', r => r.cliente+'|'+r.sede+'|'+r.equipo);
+    data.sort((a,b) => a.equipo.localeCompare(b.equipo,'es',{sensitivity:'base'}) || (a.cliente+'|'+a.sede).localeCompare(b.cliente+'|'+b.sede,'es') || _cmpNombreOrden(a.descripcion,b.descripcion,a._pv));
     setPill('ok', '✓ ' + data.length + ' equipos');
     pf(); af(); us();
     toast(data.length + ' equipos cargados','ok');
@@ -564,7 +588,7 @@ function af() {
     // DESCRIPCIÓN usa orden natural (número+variante, ver _cmpNombreOrden) en vez de
     // comparar el texto tal cual — si no, "Extractor 01 (Axial)" y "01 (Centrífugo)"
     // empatan y el resto queda en el orden en que llegó de Firestore.
-    const c = sortCol==='descripcion' ? _cmpNombreOrden(a.descripcion,b.descripcion) : (a[sortCol]||'').toLowerCase().localeCompare((b[sortCol]||'').toLowerCase());
+    const c = sortCol==='descripcion' ? _cmpNombreOrden(a.descripcion,b.descripcion,a._pv&&b._pv) : (a[sortCol]||'').toLowerCase().localeCompare((b[sortCol]||'').toLowerCase());
     return sortAsc?c:-c;
   });
   rt(); document.getElementById('cnt').textContent=filtered.length+' equipos';
