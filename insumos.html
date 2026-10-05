@@ -496,6 +496,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
     <div class="tab-view" id="tab-tecnicos">
       <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
         <select id="f-tec-persona" onchange="renderPorTecnico()" style="max-width:240px;font-size:12px"><option value="">Seleccionar...</option></select>
+        <button class="btn btn-sm" onclick="vfBandeja(null)" title="Faltantes y dañados reportados en las verificaciones, pendientes de validar">⏳ Por validar <span id="vf-badge" class="pending-badge" style="display:none"></span></button>
       </div>
       <div id="tecnico-content"><div class="empty"><div class="empty-icon">👥</div>Selecciona una persona o "Todos" para ver su inventario</div></div>
     </div>
@@ -1790,6 +1791,7 @@ async function loadAll(){
       .sort((a,b)=>a.sede.localeCompare(b.sede));
     personalData=persS.docs.map(d=>d.data()).filter(p=>String(p.activo||'SI').toUpperCase()!=='NO');
     paquetesData=paqS.docs.map(d=>({id:d.id,...d.data()}));
+    if(typeof vfCargar==='function') await vfCargar();   // historial de verificaciones de material (Por Persona)
     populateSedes();
     renderAll();
     // Poblar filtro sede paquetes y selector técnico después de renderAll
@@ -6148,7 +6150,7 @@ function renderTecnicoDetalle(tec){
     ? `<img class="tec-head-avatar" src="${fotoSrc(persona.foto)}" alt="${escB(tec)}">`
     : `<div class="tec-head-init">${escB(inicial)}</div>`;
   h+=`<div class="tec-head">${avatarHtml}<div><div class="tec-head-name">${escB(tec)}</div>${persona&&persona.cargo?`<div class="tec-head-cargo">${escB(persona.cargo)}</div>`:''}</div></div>`;
-  h+=`<div style="margin:-4px 0 14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="exportMaterialPersona()" title="Descargar todo el material asignado (paquetes + instancias sueltas)">⬇ Exportar material</button></div>`;
+  h+=`<div style="margin:-4px 0 14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" onclick="exportMaterialPersona()" title="Descargar todo el material asignado (paquetes + instancias sueltas)">⬇ Exportar material</button>${typeof vfBotonesPersona==='function'?vfBotonesPersona(tec):''}</div>`;
   // Paquetes
   h+=`<div class="tec-section"><div class="tec-section-title">🎒 Paquetes asignados (${pkgs.length})</div>`;
   if(pkgs.length){
@@ -6220,5 +6222,6 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
   o.addEventListener('click', e => { if (e.target === o) closeModal(o.id); });
 });
 </script>
+<script src="insumos_verificacion.js"></script>
 </body>
 </html>
