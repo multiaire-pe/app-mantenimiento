@@ -782,16 +782,23 @@ function calcHorasExtra(entrada,salida,fecha) {
   const f=fecha||todayKey();
   const d=new Date(f+'T12:00:00');
   const dow=d.getDay();
-  // Sábado: jornada 09:00–13:00 (ingreso 08:45 + 15 min de tolerancia → base 4h)
+  // Sábado desde SABADO_NUEVO_DESDE: un ingreso entre 08:30 y 09:00 no genera H.E. (cae dentro de la
+  // tolerancia del ingreso 08:45), el cómputo arranca a las 09:00. Antes de 08:30 SÍ cuenta desde la hora
+  // real, a favor del trabajador (08:00 → +1h, 07:30 → +1.5h, 07:00 → +2h). L-V, domingo y feriado no cambian.
+  if(dow===6&&!isFeriado(f)&&f>=SABADO_NUEVO_DESDE&&entrada>=8.5&&entrada<9&&salida>entrada)total=Math.max(0,salida-9);
   // Domingo o feriado: todo lo trabajado es hora extra (base=0)
-  const base=dow===0||isFeriado(f)?0:dow===6?4:9.5;
+  const base=dow===0||isFeriado(f)?0:dow===6?baseSabado(f):9.5;
   return Math.round((total-base)*100)/100;
 }
 
 function isFeriado(fecha){return feriados.includes(fecha);}
 function isDomingo(fecha){return new Date(fecha+'T12:00:00').getDay()===0;}
 function esDiaNoLaboral(fecha){return isDomingo(fecha)||isFeriado(fecha);}
-function heAusencia(fecha){return new Date(fecha+'T12:00:00').getDay()===6?-4:-8;}
+// Sábado: desde 2026-09-19 la jornada es 09:00–13:00 (ingreso 08:45 + 15 min de tolerancia → base 4h);
+// los sábados anteriores conservan 08:30–13:00 (base 4.5h). No se recalculan datos históricos.
+const SABADO_NUEVO_DESDE='2026-09-19';
+function baseSabado(f){return f>=SABADO_NUEVO_DESDE?4:4.5;}
+function heAusencia(fecha){return new Date(fecha+'T12:00:00').getDay()===6?-baseSabado(fecha):-8;}
 // Días fuera del período laboral del colaborador (antes de fechaIngreso o después de fechaCese) no cuentan como ausencia/deuda
 function fueraDeVigencia(c,f){return(c.fechaIngreso&&f<c.fechaIngreso)||(c.fechaCese&&f>c.fechaCese);}
 
