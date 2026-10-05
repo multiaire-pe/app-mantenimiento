@@ -183,11 +183,11 @@ Alimenta `manta_observaciones` desde WhatsApp. **No** es Firebase Functions: son
 function calcHorasExtra(entrada, salida, fecha) {
   const total = salida - entrada;
   const dow = new Date(fecha + 'T12:00:00').getDay();
-  const base = dow === 0 || isFeriado(fecha) ? 0 : dow === 6 ? 4 : 9.5;
+  const base = dow === 0 || isFeriado(fecha) ? 0 : dow === 6 ? baseSabado(fecha) : 9.5;
   return Math.round((total - base) * 100) / 100;
 }
 // Domingo/feriado: base=0 (todo cuenta como HE)
-// Sábado: base=4 (09:00–13:00; ingreso 08:45 + 15 min de tolerancia)
+// Sábado: base=4 desde 2026-10-03 (09:00–13:00; ingreso antes de 09:00 no suma H.E.); antes base=4.5
 // Lunes-Viernes: base=9.5
 ```
 
