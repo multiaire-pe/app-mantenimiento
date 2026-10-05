@@ -782,9 +782,10 @@ function calcHorasExtra(entrada,salida,fecha) {
   const f=fecha||todayKey();
   const d=new Date(f+'T12:00:00');
   const dow=d.getDay();
-  // Sábado desde SABADO_NUEVO_DESDE: llegar antes de las 09:00 (p.ej. 08:30) no genera H.E.,
-  // el cómputo arranca a las 09:00 (solo se adelantó dentro de la tolerancia del ingreso 08:45).
-  if(dow===6&&!isFeriado(f)&&f>=SABADO_NUEVO_DESDE&&entrada<9&&salida>entrada)total=Math.max(0,salida-9);
+  // Sábado desde SABADO_NUEVO_DESDE: un ingreso entre 08:30 y 09:00 no genera H.E. (cae dentro de la
+  // tolerancia del ingreso 08:45), el cómputo arranca a las 09:00. Antes de 08:30 SÍ cuenta desde la hora
+  // real, a favor del trabajador (08:00 → +1h, 07:30 → +1.5h, 07:00 → +2h). L-V, domingo y feriado no cambian.
+  if(dow===6&&!isFeriado(f)&&f>=SABADO_NUEVO_DESDE&&entrada>=8.5&&entrada<9&&salida>entrada)total=Math.max(0,salida-9);
   // Domingo o feriado: todo lo trabajado es hora extra (base=0)
   const base=dow===0||isFeriado(f)?0:dow===6?baseSabado(f):9.5;
   return Math.round((total-base)*100)/100;
