@@ -816,7 +816,7 @@ function formatFecha(iso){if(!iso)return'—';const[y,m,d]=iso.split('-');const 
 function getHeValue(reg) {
   if(reg.heManual===true&&reg.horasExtra!==null&&reg.horasExtra!==undefined)return{val:reg.horasExtra,manual:true};
   // Falta injustificada = jornada completa no trabajada
-  if(reg.estado==='F')return{val:-8,manual:false};
+  if(reg.estado==='F')return{val:heAusencia(reg.fecha),manual:false};
   // Descanso médico / Permiso / Vacaciones / Descanso compensatorio: días NO laborados → nunca
   // generan H.E. automática, aunque el registro conserve horaEntrada/Salida (p.ej. si se convirtió
   // un registro con horas a uno de estos estados desde el modal de edición). Sin esto, un
@@ -1383,8 +1383,8 @@ async function loadVistaES() {
           estadoStr=reg.estado||'A';
           if(heVal!=null)totalHE+=heVal;
         } else if(f<=todayKey()){
-          // Solo días laborables sin registro → X / -8
-          estadoStr='X';heVal=-8;heStr='-8.0';totalHE+=-8;
+          // Solo días laborables sin registro → X / -8 (sábado: -4, ver heAusencia)
+          estadoStr='X';heVal=heAusencia(f);heStr=heVal.toFixed(1);totalHE+=heVal;
         }
         const heColor=heVal==null?'':heVal<0?'color:var(--red);font-weight:700':heVal>0?'color:var(--orange);font-weight:700':'';
         const manualBadge=heManual?'<span class="he-manual-badge">M</span>':'';
