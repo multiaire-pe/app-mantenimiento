@@ -225,8 +225,8 @@ export async function esFeriadoHoy(db, hoy) {
   return !snap.empty;
 }
 
-// SÁBADO tiene jornada corta (8:30–13:00, la misma convención que ya usa el resto de
-// asistencia — ver `calcHorasExtra`: base 4.5h los sábados vs 9.5h L-V). La hora de ENTRADA
+// SÁBADO tiene jornada corta (9:00–13:00, la misma convención que ya usa el resto de
+// asistencia — ver `calcHorasExtra`: base 4h los sábados vs 9.5h L-V). La hora de ENTRADA
 // no cambia (sigue siendo `horaEntrada` los 6 días); solo la de SALIDA. Configurable aparte
 // en `config_recordatorios.horaSalidaSabado`; sin configurar, cae a la 1pm.
 export const SALIDA_SABADO_DEFAULT = 13;
