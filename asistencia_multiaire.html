@@ -794,9 +794,9 @@ function calcHorasExtra(entrada,salida,fecha) {
 function isFeriado(fecha){return feriados.includes(fecha);}
 function isDomingo(fecha){return new Date(fecha+'T12:00:00').getDay()===0;}
 function esDiaNoLaboral(fecha){return isDomingo(fecha)||isFeriado(fecha);}
-// Sábado: desde 2026-10-03 la jornada es 09:00–13:00 (ingreso 08:45 + 15 min de tolerancia → base 4h);
+// Sábado: desde 2026-09-19 la jornada es 09:00–13:00 (ingreso 08:45 + 15 min de tolerancia → base 4h);
 // los sábados anteriores conservan 08:30–13:00 (base 4.5h). No se recalculan datos históricos.
-const SABADO_NUEVO_DESDE='2026-10-03';
+const SABADO_NUEVO_DESDE='2026-09-19';
 function baseSabado(f){return f>=SABADO_NUEVO_DESDE?4:4.5;}
 function heAusencia(fecha){return new Date(fecha+'T12:00:00').getDay()===6?-baseSabado(fecha):-8;}
 // Días fuera del período laboral del colaborador (antes de fechaIngreso o después de fechaCese) no cuentan como ausencia/deuda
