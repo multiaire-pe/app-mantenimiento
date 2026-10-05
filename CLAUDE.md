@@ -187,7 +187,7 @@ function calcHorasExtra(entrada, salida, fecha) {
   return Math.round((total - base) * 100) / 100;
 }
 // Domingo/feriado: base=0 (todo cuenta como HE)
-// Sábado: base=4 desde 2026-10-03 (09:00–13:00; ingreso antes de 09:00 no suma H.E.); antes base=4.5
+// Sábado: base=4 desde 2026-10-03 (09:00–13:00; ingreso 08:30–09:00 no suma H.E., antes de 08:30 cuenta desde la hora real); antes base=4.5
 // Lunes-Viernes: base=9.5
 ```
 
