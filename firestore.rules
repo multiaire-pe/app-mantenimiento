@@ -131,6 +131,10 @@ service cloud.firestore {
     match /insumos_movimientos/{doc}       { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     match /insumos_instancias_fotos/{doc}  { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     match /insumos_movimientos_fotos/{doc} { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
+    // Verificación de material por persona (checklist en tienda): historial + fotos de daños.
+    // Mismo criterio que insumos_instancias (canWrite insumos); borrar solo super.
+    match /insumos_verificaciones/{doc}        { allow read: if authorized(); allow create, update: if canWrite('insumos'); allow delete: if isSuper(); }
+    match /insumos_verificaciones_fotos/{doc}  { allow read: if authorized(); allow create, update: if canWrite('insumos'); allow delete: if isSuper(); }
     match /insumos_catalogo_fotos/{doc}    { allow read: if authorized(); allow create, update: if canWrite('insumos');       allow delete: if isSuper(); }
     // comprobantes (Rendición de Caja): borrar una fila es corregir un escaneo mal
     // leído por la IA — operación normal del módulo, no un borrado administrativo.
