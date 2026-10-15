@@ -526,6 +526,8 @@ function plantillaDeEq(eq){
 }
 // Clave del ajuste de período de un equipo. La sede sale del EQUIPO (no de currentSede): el tab
 // Global recorre todas las sedes con el mismo período.
+const _idDoc = s => String(s).replace(/\//g, '∕');   // '/' en una sede (DOMINICOS / T. VALLE) rompe la ruta del doc → se guarda con '∕'
+const _deIdDoc = s => String(s).replace(/∕/g, '/');
 function clavePeriodoDe(eq, periodo, anio){
   const p = periodo || currentPeriodo, a = anio || currentAnio;
   return (eq.sede && eq.tipo) ? `${sedeEfectiva(eq.sede, eq.cliente)}|${p}|${a}|${eq.tipo}` : '';
@@ -782,7 +784,7 @@ async function actsGuardar(){
     await _flushSave();
 
     const ref = esPer
-      ? db.collection('mtto_actividades_periodo').doc(_acts.clave)
+      ? db.collection('mtto_actividades_periodo').doc(_idDoc(_acts.clave))
       : db.collection('mtto_actividades_equipo').doc(_acts.eqId);
     const data = esPer
       ? { sede: currentSede, periodo: currentPeriodo, anio: currentAnio, tipo: _acts.tipo,
@@ -795,7 +797,7 @@ async function actsGuardar(){
     // "el equipo entero está hecho" y se usa cuando NO tiene actividades): si el ajuste le agrega
     // actividades, ese `true` pasaría a afirmar que también se hicieron las nuevas. Se vuelve
     // explícito: lo que ya existía queda hecho, lo nuevo queda pendiente.
-    const mRef = db.collection('mantenimiento').doc(`${currentSede}|${currentPeriodo}|${currentAnio}`);
+    const mRef = db.collection('mantenimiento').doc(_idDoc(`${currentSede}|${currentPeriodo}|${currentAnio}`));
     const soloMarcar = afectados.filter(e => {
       if(tareaStatus[e.eq_id] !== true) return false;
       const viejo = viejas.get(e.eq_id) || [], nuevo = nuevas.get(e.eq_id) || [];
@@ -1116,7 +1118,7 @@ async function loadTareas(fresco) {
     // ② ajustes por período (doc-id `sede|periodo|anio|tipo`) — se cargan TODOS: el tab Global
     // necesita los de las otras sedes, y el histórico los de otros períodos.
     const actPer = {};
-    perSnap.docs.forEach(d => { const o = d.data(); actPer[d.id] = { agregadas: o.agregadas||[], quitadas: o.quitadas||[] }; });
+    perSnap.docs.forEach(d => { const o = d.data(); actPer[_deIdDoc(d.id)] = { agregadas: o.agregadas||[], quitadas: o.quitadas||[] }; });
     // ③ ajustes por equipo
     const actEq = {};
     ovSnap.docs.forEach(d => { const o = d.data(); actEq[d.id] = { agregadas: o.agregadas||[], quitadas: o.quitadas||[] }; });
@@ -1373,7 +1375,7 @@ async function loadPeriodo() {
   const cacheKey = 'ma_maint_' + key;
   try {
     const { getDoc, doc } = window.__fb;
-    const snap = await getDoc(doc(window.__db, 'mantenimiento', key));
+    const snap = await getDoc(doc(window.__db, 'mantenimiento', _idDoc(key)));
     const d = snap.exists ? snap.data() : {};
     // Handle both string and object formats
     function parseField(val) {
@@ -1434,7 +1436,7 @@ async function renderWspToggle() {
   let d = null;
   try {
     const { getDoc, doc } = window.__fb;
-    const snap = await getDoc(doc(window.__db, 'mtto_periodo_activo', currentSede));
+    const snap = await getDoc(doc(window.__db, 'mtto_periodo_activo', _idDoc(currentSede)));
     if(snap.exists) d = snap.data();
   } catch(e) { /* si falla la lectura, se asume sin adelanto (default = calendario) */ }
   // Vigente = existe Y sigue por delante del calendario — misma regla que el bot: en cuanto
@@ -1455,7 +1457,7 @@ async function renderWspToggle() {
 async function onToggleWspPeriodo(checked) {
   if(!MA.can('editar','mantenimiento')){ toast('Sin permisos','err'); renderWspToggle(); return; }
   const { setDoc, deleteDoc, doc } = window.__fb;
-  const ref = doc(window.__db, 'mtto_periodo_activo', currentSede);
+  const ref = doc(window.__db, 'mtto_periodo_activo', _idDoc(currentSede));
   let _by=''; try{ _by = firebase.auth().currentUser.email||''; }catch(e){}
   try {
     if(checked){
@@ -1920,7 +1922,7 @@ async function doSave() {
   try {
     const now = new Date().toISOString();
     const updatedBy = maUser?.email || '';
-    const ref = window.__db.collection('mantenimiento').doc(key);
+    const ref = window.__db.collection('mantenimiento').doc(_idDoc(key));
     await window.__db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       const d = snap.exists ? snap.data() : {};
