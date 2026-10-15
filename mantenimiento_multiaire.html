@@ -1188,7 +1188,13 @@ function _cmpNombreOrden(a, b, porVariante = true) {
   const pa = _parseNombreOrden(a), pb = _parseNombreOrden(b);
   const preC = pa.pre.localeCompare(pb.pre, 'es', { sensitivity: 'base', numeric: true });
   const sufC = pa.suf.localeCompare(pb.suf, 'es', { sensitivity: 'base' });
-  return porVariante ? (preC || sufC || (pa.num - pb.num)) : (preC || (pa.num - pb.num) || sufC);
+  if (!porVariante) return preC || (pa.num - pb.num) || sufC;
+  // porVariante es el Map sufijo→serie de _variantesChocan: la serie principal (0) mezcla sus
+  // variantes por número y las series repetidas (ej. Monóxido 01-04) van agrupadas después.
+  const sa = porVariante instanceof Map ? (porVariante.get(pa.suf) || 0) : null;
+  const sb = porVariante instanceof Map ? (porVariante.get(pb.suf) || 0) : null;
+  if (sa === null) return preC || sufC || (pa.num - pb.num);
+  return preC || (sa - sb) || (sa === 0 ? (pa.num - pb.num) || sufC : sufC || (pa.num - pb.num));
 }
 // ¿Algún mismo (prefijo, número) aparece en 2+ variantes distintas dentro de este grupo?
 function _variantesChocan(nombres) {
@@ -1200,7 +1206,21 @@ function _variantesChocan(nombres) {
     if (!m.has(k)) m.set(k, new Set());
     m.get(k).add(p.suf);
   }
-  return [...m.values()].some(s => s.size > 1);
+  let choques = [...m.values()].filter(s => s.size > 1);
+  if (!choques.length) return false;
+  // Series: mientras haya números repetidos, se separa como serie propia el sufijo que más choques
+  // provoca (Monóxido 01-04 repite números de la serie principal); en empate se separa el último
+  // alfabéticamente (Axial queda de principal, Centrífugo va después). Las demás variantes
+  // (Grasa, Humo, sin sufijo) se ordenan juntas por número: 01, 02 (Grasa), 03 (Grasa)…
+  const serie = new Map(); let n = 0;
+  while (choques.length) {
+    const cuenta = new Map();
+    choques.forEach(s => s.forEach(x => cuenta.set(x, (cuenta.get(x) || 0) + 1)));
+    const [sep] = [...cuenta.entries()].sort((a, b) => b[1] - a[1] || b[0].localeCompare(a[0], 'es'))[0];
+    serie.set(sep, ++n);
+    choques = choques.map(s => new Set([...s].filter(x => x !== sep))).filter(s => s.size > 1);
+  }
+  return serie;
 }
 // Marca cada item con `_pv` (¿ordenar por variante?) según su grupo (groupFn → clave).
 function _marcarPV(items, nameKey, groupFn) {
