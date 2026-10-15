@@ -22,6 +22,9 @@ const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0
 // Miraflores (2026-09-01) y Jockey Plaza (2026-09-02, orden explícita del usuario) — las 2 únicas
 // sedes que RIPLEY y TOTTUS comparten con el string exacto.
 const SEDES_COMPARTIDAS_PENDIENTES = new Set(['MIRAFLORES', 'JOCKEY PLAZA']);
+// Un '/' en el nombre de la sede (DOMINICOS / T. VALLE) parte la ruta del doc → en el doc-id va como '∕'.
+// El campo `clave` y los filtros siguen con la sede tal cual; solo el id del doc se codifica.
+export const idDoc = (s) => String(s).replace(/\//g, '∕');
 export function sedeEfectiva(sede, cliente) {
   if (SEDES_COMPARTIDAS_PENDIENTES.has(sede) && cliente && cliente !== 'RIPLEY') return `${sede} (${cliente})`;
   return sede;
@@ -118,7 +121,7 @@ const ordenPeriodo = (anio, periodo) => Number(anio) * 6 + PERIODOS.indexOf(peri
 export async function periodoEfectivo(sede, cliente) {
   const base = periodoLima();
   if (!sede) return base;
-  const ref = getDb().collection('mtto_periodo_activo').doc(sedeEfectiva(sede, cliente));
+  const ref = getDb().collection('mtto_periodo_activo').doc(idDoc(sedeEfectiva(sede, cliente)));
   const snap = await ref.get();
   if (!snap.exists) return base;
   const { periodo, anio } = snap.data() || {};
@@ -247,7 +250,7 @@ async function _resolverActs(eqId, tipo, cliente, sede, fresco) {
   const clavePer = (sede && tipo) ? `${sedeEfectiva(sede, cliente)}|${periodo}|${anio}|${tipo}` : '';
   const [plSnap, perSnap, eqSnap] = await Promise.all([
     clavePl ? db.collection('tareas_config').doc(clavePl).get() : Promise.resolve(null),
-    clavePer ? db.collection('mtto_actividades_periodo').doc(clavePer).get() : Promise.resolve(null),
+    clavePer ? db.collection('mtto_actividades_periodo').doc(idDoc(clavePer)).get() : Promise.resolve(null),
     db.collection('mtto_actividades_equipo').doc(String(eqId)).get(),
   ]);
   const c2 = componerCapas(
@@ -367,7 +370,7 @@ async function guardarRegistro(ses, tecnico) {
   const { periodo, anio } = periodoDeSesion(ses);
   const clave = `${sedeEfectiva(ses.sede, ses.cliente)}|${periodo}|${anio}`;
   const db = getDb();
-  const ref = db.collection('mantenimiento').doc(clave);
+  const ref = db.collection('mantenimiento').doc(idDoc(clave));
 
   // El técnico eligió por NOMBRE (leyó la lista); los números solo señalan. Si un admin cambió la
   // lista mientras él respondía —y el bot la cachea 5 min, así que puede mostrarla vieja un buen
@@ -383,7 +386,7 @@ async function guardarRegistro(ses, tecnico) {
     const [snap, plSnap, perSnap, eqSnap] = await Promise.all([
       tx.get(ref),
       clavePl  ? tx.get(db.collection('tareas_config').doc(clavePl)) : Promise.resolve(null),
-      clavePer ? tx.get(db.collection('mtto_actividades_periodo').doc(clavePer)) : Promise.resolve(null),
+      clavePer ? tx.get(db.collection('mtto_actividades_periodo').doc(idDoc(clavePer))) : Promise.resolve(null),
       tx.get(db.collection('mtto_actividades_equipo').doc(String(ses.eqId))),
     ]);
     const c = componerCapas(
