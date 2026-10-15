@@ -352,6 +352,8 @@ let allItis = [];   // todas las versiones de todos los itinerarios (para la tra
 let editBloques = [];
 
 // ── COLOR HELPERS ────────────────────────────────────────────────────────────
+const _idDoc = s => String(s).replace(/\//g, '∕');   // '/' en una sede (DOMINICOS / T. VALLE) rompe la ruta del doc: va como '∕'
+const _deIdDoc = s => String(s).replace(/∕/g, '/');
 function cargoColor(cargo) {
   const colors = [
     {bg:'#e8eef8',color:'#1B3F8B',border:'#c0d0ef'},
@@ -884,7 +886,7 @@ async function cargarPlanDia(fecha){
       const sedesPlan = [...new Set(planDia.map(p => p.sede).filter(Boolean))];
       if (sedesPlan.length) {
         const { getDoc, doc } = window.__fb;
-        const mSnaps = await Promise.all(sedesPlan.map(sd => getDoc(doc(window.__db, 'mantenimiento', `${sd}|${periodo}|${anio}`))));
+        const mSnaps = await Promise.all(sedesPlan.map(sd => getDoc(doc(window.__db, 'mantenimiento', _idDoc(`${sd}|${periodo}|${anio}`)))));
         const tsSede = {};
         mSnaps.forEach((sp, i) => {
           const d = sp.exists ? sp.data() : {};
@@ -1047,7 +1049,7 @@ async function _migrarPlanAVersionNueva(idIti, vNueva, bloques){
     const claveDe = p => (p.sede||'')+'|'+(p.periodo||'')+'|'+(p.anio||'');
     const claves = [...new Set(planes.map(pd => claveDe(pd.data())))].filter(k => !k.startsWith('|'));
     const tsPorClave = {};
-    const mSnaps = await Promise.all(claves.map(k => getDoc(doc(window.__db, 'mantenimiento', k))));
+    const mSnaps = await Promise.all(claves.map(k => getDoc(doc(window.__db, 'mantenimiento', _idDoc(k)))));
     mSnaps.forEach((sp, i) => {
       const dd = sp.exists ? sp.data() : {};
       tsPorClave[claves[i]] = (v => { if(!v) return {}; if(typeof v==='object') return v; try{ return JSON.parse(v)||{}; }catch(e){ return {}; } })(dd.tareaStatus);
@@ -1104,7 +1106,7 @@ async function pendientesDeSede(sede, fecha, cliente){
   // no tiene actividades que planificar.
   tcS.docs.forEach(d => { if (!d.id.includes('|')) return; const dd = d.data(); plantillasCli[d.id] = dd.tareas || []; plantillasMinCli[d.id] = dd.minutos || []; });
   // ② ajustes del PERÍODO que se está planificando (doc-id `sede|periodo|anio|tipo`)
-  const pers = {}; perS.docs.forEach(d => { pers[d.id] = d.data(); });
+  const pers = {}; perS.docs.forEach(d => { pers[_deIdDoc(d.id)] = d.data(); });
   // ③ ajustes por equipo (permanentes)
   const ovs = {}; ovS.docs.forEach(d => { ovs[d.id] = d.data(); });
   // aplica un ajuste {agregadas, quitadas} sobre una lista base (arrays paralelos tareas/minutos)
@@ -1125,7 +1127,7 @@ async function pendientesDeSede(sede, fecha, cliente){
   // hechos y planificados con la sede RESUELTA (hallazgo del Council: con la cruda
   // "RIPLEY PLAZA NORTE" el doc del período y el plan no matcheaban)
   const [mantS, planS] = await Promise.all([
-    getDoc(doc(window.__db, 'mantenimiento', `${target}|${periodo}|${anio}`)),
+    getDoc(doc(window.__db, 'mantenimiento', _idDoc(`${target}|${periodo}|${anio}`))),
     window.__db.collection('mtto_plan').where('sede','==',target).where('periodo','==',periodo).where('anio','==',anio).get(),
   ]);
   const md = mantS.exists ? mantS.data() : {};
