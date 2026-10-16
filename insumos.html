@@ -1086,6 +1086,10 @@ tbody td{padding:9px 12px;vertical-align:middle}
         </div>
       </div>
       <div class="form-group full"><div class="form-label">Sede *</div><select class="form-select" id="fe-inst-sede"></select></div>
+      <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="fe-inst-resp"></select></div>
+      <div class="form-group full"><div class="form-label">Lugar / paquete</div>
+        <div id="fe-inst-lugar" style="font-size:13px;color:var(--muted2);background:var(--surface2);padding:8px 12px;border-radius:6px;line-height:1.5"></div>
+      </div>
       <div id="fe-inst-nivel-wrap" style="display:none" class="form-group full">
         <div class="form-label">Nivel actual</div>
         <select class="form-select" id="fe-inst-nivel">
@@ -4755,6 +4759,13 @@ function openEditInstancia(instId) {
   document.getElementById('inst-edit-id-display').textContent = 'ID: ' + instId;
   document.getElementById('fe-inst-sede').innerHTML = sedeOpts(false);
   document.getElementById('fe-inst-sede').value = inst.sede || '';
+  const respSel = document.getElementById('fe-inst-resp');
+  respSel.innerHTML = optHtml('', '— Sin responsable —') + tecnicoResponsables().map(r => optHtml(r)).join('');
+  respSel.value = inst.responsable || '';
+  const pkgInst = inst.paqueteId ? paquetesData.find(x => x.id === inst.paqueteId) : null;
+  document.getElementById('fe-inst-lugar').innerHTML = pkgInst
+    ? `🎒 <strong>${escB(pkgInst.nombre || pkgInst.id)}</strong>${pkgInst.tipo ? ' (' + escB(pkgInst.tipo) + ')' : ''}<br>📍 ${escB(pkgInst.sede || inst.sede || '—')} · 👤 ${escB(pkgInst.responsable || '—')}`
+    : `📦 Suelta (no está en ningún paquete)<br>📍 ${escB(inst.sede || '—')} · 👤 ${escB(inst.responsable || '—')}`;
   document.getElementById('fe-inst-estado').value = inst.estado || 'DISPONIBLE';
   document.getElementById('fe-inst-notas').value = inst.notas || '';
   document.getElementById('fe-inst-nivel-wrap').style.display = esRango ? 'block' : 'none';
@@ -4770,16 +4781,18 @@ async function updateInstancia() {
   if (btn && btn.disabled) return; // ya se está guardando → ignora el doble-click
   const sede = document.getElementById('fe-inst-sede').value;
   const estado = document.getElementById('fe-inst-estado').value;
+  const responsable = document.getElementById('fe-inst-resp').value;
   const notas = document.getElementById('fe-inst-notas').value.trim();
   const inst = instanciasData.find(x => x.id === editingInstanciaId);
   const item = inst ? catalogoData.find(x => x.id === inst.itemId) : null;
   const nivel = (item && item.tipoCantidad === 'RANGO') ? Number(document.getElementById('fe-inst-nivel').value) : undefined;
-  const updates = { sede, estado, notas, updatedAt: new Date().toISOString(), updatedBy: maUser.email };
+  const updates = { sede, estado, responsable, notas, updatedAt: new Date().toISOString(), updatedBy: maUser.email };
   if (nivel !== undefined) updates.nivel = nivel;
   // Detectar qué cambió para el historial
   const diffs = [];
   if (inst.estado !== estado) diffs.push({campo:'estado', de:inst.estado||'DISPONIBLE', a:estado});
   if (inst.sede !== sede) diffs.push({campo:'sede', de:inst.sede||'', a:sede});
+  if ((inst.responsable||'') !== responsable) diffs.push({campo:'responsable', de:inst.responsable||'', a:responsable});
   if (nivel !== undefined && inst.nivel !== nivel) diffs.push({campo:'nivel', de:inst.nivel??0, a:nivel});
   if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
   try {
@@ -4792,6 +4805,7 @@ async function updateInstancia() {
         if(d.campo==='nivel') return `Nivel: ${d.de}% → ${d.a}%`;
         if(d.campo==='estado') return `Estado: ${d.de} → ${d.a}`;
         if(d.campo==='sede') return `Sede: ${d.de} → ${d.a}`;
+        if(d.campo==='responsable') return `Resp: ${d.de||'—'} → ${d.a||'—'}`;
         return `${d.campo}: ${d.de} → ${d.a}`;
       }).join(' | ');
       const mov = {
@@ -5312,6 +5326,7 @@ async function guardarEdicionMovimiento() {
         if(d.campo==='nivel') return `Nivel: ${d.de}% → ${d.a}%`;
         if(d.campo==='estado') return `Estado: ${d.de} → ${d.a}`;
         if(d.campo==='sede') return `Sede: ${d.de} → ${d.a}`;
+        if(d.campo==='responsable') return `Resp: ${d.de||'—'} → ${d.a||'—'}`;
         return `${d.campo}: ${d.de} → ${d.a}`;
       }).join(' | ');
       movUpdates.cambios = cambiosLabel;
