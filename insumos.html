@@ -1085,10 +1085,10 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <input type="file" id="fe-inst-foto-cam" accept="image/*" capture="environment" style="display:none" onchange="setInstanciaFoto(this.files[0]); this.value='';">
         </div>
       </div>
-      <div class="form-group full"><div class="form-label">Sede *</div><select class="form-select" id="fe-inst-sede"></select></div>
-      <div class="form-group full"><div class="form-label">Responsable</div><select class="form-select" id="fe-inst-resp"></select></div>
-      <div class="form-group full"><div class="form-label">Lugar / paquete</div>
-        <div id="fe-inst-lugar" style="font-size:13px;color:var(--muted2);background:var(--surface2);padding:8px 12px;border-radius:6px;line-height:1.5"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="form-group" style="flex:1 1 130px;min-width:0"><div class="form-label">Sede *</div><select class="form-select" id="fe-inst-sede"></select></div>
+        <div class="form-group" style="flex:1 1 130px;min-width:0"><div class="form-label">Responsable</div><select class="form-select" id="fe-inst-resp"></select></div>
+        <div class="form-group" style="flex:1 1 130px;min-width:0"><div class="form-label">Lugar</div><select class="form-select" id="fe-inst-lugar"></select></div>
       </div>
       <div id="fe-inst-nivel-wrap" style="display:none" class="form-group full">
         <div class="form-label">Nivel actual</div>
@@ -4762,10 +4762,9 @@ function openEditInstancia(instId) {
   const respSel = document.getElementById('fe-inst-resp');
   respSel.innerHTML = optHtml('', '— Sin responsable —') + tecnicoResponsables().map(r => optHtml(r)).join('');
   respSel.value = inst.responsable || '';
-  const pkgInst = inst.paqueteId ? paquetesData.find(x => x.id === inst.paqueteId) : null;
-  document.getElementById('fe-inst-lugar').innerHTML = pkgInst
-    ? `🎒 <strong>${escB(pkgInst.nombre || pkgInst.id)}</strong>${pkgInst.tipo ? ' (' + escB(pkgInst.tipo) + ')' : ''}<br>📍 ${escB(pkgInst.sede || inst.sede || '—')} · 👤 ${escB(pkgInst.responsable || '—')}`
-    : `📦 Suelta (no está en ningún paquete)<br>📍 ${escB(inst.sede || '—')} · 👤 ${escB(inst.responsable || '—')}`;
+  const lugarSel = document.getElementById('fe-inst-lugar');
+  lugarSel.innerHTML = optHtml('', '— Suelta —') + paquetesData.map(p => optHtml(p.id, (p.nombre || p.id) + (p.tipo ? ' (' + p.tipo + ')' : ''))).join('');
+  lugarSel.value = inst.paqueteId || '';
   document.getElementById('fe-inst-estado').value = inst.estado || 'DISPONIBLE';
   document.getElementById('fe-inst-notas').value = inst.notas || '';
   document.getElementById('fe-inst-nivel-wrap').style.display = esRango ? 'block' : 'none';
@@ -4782,6 +4781,7 @@ async function updateInstancia() {
   const sede = document.getElementById('fe-inst-sede').value;
   const estado = document.getElementById('fe-inst-estado').value;
   const responsable = document.getElementById('fe-inst-resp').value;
+  const paqueteNuevo = document.getElementById('fe-inst-lugar').value;
   const notas = document.getElementById('fe-inst-notas').value.trim();
   const inst = instanciasData.find(x => x.id === editingInstanciaId);
   const item = inst ? catalogoData.find(x => x.id === inst.itemId) : null;
@@ -4792,11 +4792,27 @@ async function updateInstancia() {
   const diffs = [];
   if (inst.estado !== estado) diffs.push({campo:'estado', de:inst.estado||'DISPONIBLE', a:estado});
   if (inst.sede !== sede) diffs.push({campo:'sede', de:inst.sede||'', a:sede});
+  const paqueteViejo = inst.paqueteId || '';
+  if (paqueteViejo !== paqueteNuevo) {
+    updates.paqueteId = paqueteNuevo || null;
+    diffs.push({campo:'paquete', de:paqueteViejo, a:paqueteNuevo});
+  }
   if ((inst.responsable||'') !== responsable) diffs.push({campo:'responsable', de:inst.responsable||'', a:responsable});
   if (nivel !== undefined && inst.nivel !== nivel) diffs.push({campo:'nivel', de:inst.nivel??0, a:nivel});
   if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
   try {
-    await db.collection('insumos_instancias').doc(editingInstanciaId).update(updates);
+    // Atómico: la instancia y los paquetes (relación bidireccional paquete.instancias[] ↔ instancia.paqueteId)
+    const batchInst = db.batch();
+    batchInst.update(db.collection('insumos_instancias').doc(editingInstanciaId), updates);
+    const pkgMem = [];
+    if (paqueteViejo !== paqueteNuevo) {
+      const pOld = paqueteViejo ? paquetesData.find(x => x.id === paqueteViejo) : null;
+      const pNew = paqueteNuevo ? paquetesData.find(x => x.id === paqueteNuevo) : null;
+      if (pOld) { const ni = (pOld.instancias || []).filter(i => i !== editingInstanciaId); batchInst.update(db.collection('insumos_paquetes').doc(pOld.id), {instancias: ni}); pkgMem.push({id: pOld.id, ni}); }
+      if (pNew) { const ni = [...new Set([...(pNew.instancias || []), editingInstanciaId])]; batchInst.update(db.collection('insumos_paquetes').doc(pNew.id), {instancias: ni}); pkgMem.push({id: pNew.id, ni}); }
+    }
+    await batchInst.commit();
+    pkgMem.forEach(u => { const pi = paquetesData.findIndex(x => x.id === u.id); if (pi >= 0) paquetesData[pi].instancias = u.ni; });
     const idx = instanciasData.findIndex(x => x.id === editingInstanciaId);
     if (idx >= 0) Object.assign(instanciasData[idx], updates);
     // Registrar movimiento solo si hubo cambios relevantes
@@ -4806,6 +4822,7 @@ async function updateInstancia() {
         if(d.campo==='estado') return `Estado: ${d.de} → ${d.a}`;
         if(d.campo==='sede') return `Sede: ${d.de} → ${d.a}`;
         if(d.campo==='responsable') return `Resp: ${d.de||'—'} → ${d.a||'—'}`;
+        if(d.campo==='paquete') return `Paquete: ${d.de||'suelta'} → ${d.a||'suelta'}`;
         return `${d.campo}: ${d.de} → ${d.a}`;
       }).join(' | ');
       const mov = {
@@ -5327,6 +5344,7 @@ async function guardarEdicionMovimiento() {
         if(d.campo==='estado') return `Estado: ${d.de} → ${d.a}`;
         if(d.campo==='sede') return `Sede: ${d.de} → ${d.a}`;
         if(d.campo==='responsable') return `Resp: ${d.de||'—'} → ${d.a||'—'}`;
+        if(d.campo==='paquete') return `Paquete: ${d.de||'suelta'} → ${d.a||'suelta'}`;
         return `${d.campo}: ${d.de} → ${d.a}`;
       }).join(' | ');
       movUpdates.cambios = cambiosLabel;
