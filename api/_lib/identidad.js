@@ -63,3 +63,43 @@ export async function identificarTecnico(waId) {
   const docs = snap.docs.map((d) => ({ id: d.id, data: d.data() }));
   return matchTecnico(docs, waId);
 }
+
+// ── Telegram ────────────────────────────────────────────────────────────────────────────────
+// Telegram identifica por `chat_id`, no por teléfono. El vínculo se hace una sola vez: el técnico
+// comparte su contacto con el bot y se guarda `telegramChatId` en su doc de maestros_personal.
+
+// Devuelve { id, ...data } del técnico vinculado a ese chat, o null (también si está inactivo).
+export async function identificarPorTelegram(chatId) {
+  const id = Number(chatId);
+  if (!Number.isFinite(id)) return null;
+  const snap = await getDb().collection('maestros_personal').where('telegramChatId', '==', id).get();
+  const docs = snap.docs.map((d) => ({ id: d.id, data: d.data() })).filter((d) => activo(d.data));
+  if (docs.length !== 1) {
+    if (docs.length > 1) console.error('[identidad] chat de Telegram vinculado a más de un colaborador:', id);
+    return null;   // ambiguo = no se adivina quién es
+  }
+  return { id: docs[0].id, ...docs[0].data };
+}
+
+// Vincula un chat de Telegram con el colaborador cuyo teléfono coincide. Reusa matchTecnico
+// (E.164 exacto, luego últimos 9 dígitos). Devuelve el técnico vinculado o null si el número no
+// está en el sistema. Quita el vínculo de cualquier otro colaborador con ese mismo chat (un chat
+// = una persona) antes de asignarlo.
+export async function vincularTelegram(chatId, telefono) {
+  const id = Number(chatId);
+  if (!Number.isFinite(id) || !soloDigitos(telefono)) return null;
+  const db = getDb();
+  const snap = await db.collection('maestros_personal').get();
+  const docs = snap.docs.map((d) => ({ id: d.id, data: d.data() }));
+  const t = matchTecnico(docs, telefono);
+  if (!t) return null;
+  const batch = db.batch();
+  for (const d of docs) {
+    if (d.id !== t.id && Number(d.data.telegramChatId) === id) {
+      batch.update(db.collection('maestros_personal').doc(d.id), { telegramChatId: null });
+    }
+  }
+  batch.update(db.collection('maestros_personal').doc(t.id), { telegramChatId: id });
+  await batch.commit();
+  return { ...t, telegramChatId: id };
+}
