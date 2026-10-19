@@ -780,6 +780,10 @@ function calcHorasExtra(entrada,salida,fecha) {
   if(total<0)total+=24;
   if(total<=0)return null;
   const f=fecha||todayKey();
+  // Amanecida (desde AMANECIDA_DESDE; los registros anteriores conservan el cálculo previo): entrada desde
+  // 20:00 o salida de reloj menor que la entrada (cruzó medianoche). Jornada corrida de 8.5h, igual todos
+  // los días (L-D y feriados): sin almuerzo ni base de sábado/domingo.
+  if(f>=AMANECIDA_DESDE&&(entrada>=20||salida<entrada))return Math.round((total-8.5)*100)/100;
   const d=new Date(f+'T12:00:00');
   const dow=d.getDay();
   // Sábado desde SABADO_NUEVO_DESDE: un ingreso entre 08:30 y 09:00 no genera H.E. (cae dentro de la
@@ -797,6 +801,7 @@ function esDiaNoLaboral(fecha){return isDomingo(fecha)||isFeriado(fecha);}
 // Sábado: desde 2026-09-19 la jornada es 09:00–13:00 (ingreso 08:45 + 15 min de tolerancia → base 4h);
 // los sábados anteriores conservan 08:30–13:00 (base 4.5h). No se recalculan datos históricos.
 const SABADO_NUEVO_DESDE='2026-09-19';
+const AMANECIDA_DESDE='2026-10-19';
 function baseSabado(f){return f>=SABADO_NUEVO_DESDE?4:4.5;}
 function heAusencia(fecha){return new Date(fecha+'T12:00:00').getDay()===6?-baseSabado(fecha):-8;}
 // Días fuera del período laboral del colaborador (antes de fechaIngreso o después de fechaCese) no cuentan como ausencia/deuda
