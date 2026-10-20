@@ -178,5 +178,45 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
   t('sin token → sin_credenciales', (await tg.enviarTextoDetalle(7, 'x')).estado === 'sin_credenciales');
 }
 
+// ── Avisos salientes: Telegram para quien esté vinculado, WhatsApp para el resto ──────────
+{
+  const { notificarPorTipo, notificarSupervisores } = await import('../api/_lib/avisos.js');
+  const wa = [], tgs = [];
+  const base = {
+    enviarTexto: async (to, x) => { wa.push(['texto', to, x]); return { ok: true, estado: 'ok' }; },
+    enviarPlantilla: async (to) => { wa.push(['plantilla', to]); return { ok: true, estado: 'ok' }; },
+    enviarTelegram: async (chat, x) => { tgs.push([chat, x]); return { ok: true, estado: 'ok' }; },
+  };
+  const destinos = [
+    { id: 'A', telefono: '51911111111' },                          // solo WhatsApp
+    { id: 'B', telefono: '51922222222', telegramChatId: 555 },     // vinculado: Telegram manda
+    { id: 'C', telegramChatId: 777 },                              // solo Telegram, sin teléfono
+  ];
+  const r = await notificarPorTipo('asistencia', 'hola', '', { ...base, destinos, plantilla: '', detalle: true });
+  t('avisos: 3 enviados', r.enviados === 3 && r.intentados === 3);
+  t('avisos: el vinculado NO recibe por WhatsApp', wa.length === 1 && wa[0][1] === '51911111111');
+  t('avisos: Telegram a quien corresponde', tgs.length === 2 && tgs.some((x) => x[0] === 555) && tgs.some((x) => x[0] === 777));
+
+  wa.length = 0; tgs.length = 0;
+  const rp = await notificarPorTipo('recordatorio', 'hola', '', { ...base, destinos, plantilla: 'plantilla_x', params: ['Entrada'], detalle: true });
+  t('avisos con plantilla: Telegram nunca usa plantilla', wa.filter((x) => x[0] === 'plantilla').length === 1 && tgs.length === 2 && rp.enviados === 3);
+
+  const ramb = await notificarPorTipo('mtto', 'x', '', { ...base, destinos: [{ id: 'C', telegramChatId: 777 }],
+    enviarTelegram: async () => ({ ok: false, estado: 'ambiguo' }), detalle: true });
+  t('avisos: fallo ambiguo en Telegram se cuenta aparte', ramb.enviados === 0 && ramb.ambiguos === 1);
+
+  const rrech = await notificarPorTipo('mtto', 'x', '', { ...base, destinos: [{ id: 'C', telegramChatId: 777 }],
+    enviarTelegram: async () => ({ ok: false, estado: 'rechazado' }), detalle: true });
+  t('avisos: bloqueado por el usuario no es ambiguo', rrech.enviados === 0 && rrech.ambiguos === 0);
+
+  const rx = await notificarPorTipo('mtto', 'x', 'B', { ...base, destinos, plantilla: '' });
+  t('avisos: no avisa a quien hizo la acción', rx === 2);
+
+  tgs.length = 0;
+  const ns = await notificarSupervisores({ obs: { tienda: 'RIPLEY X', equipo: 'E', estado: 'OK', observacion: 'o' }, tecnico: { id: 'Z' } },
+    { destinos, enviarTexto: base.enviarTexto, enviarTelegram: base.enviarTelegram });
+  t('supervisores: también por Telegram', ns === 3 && tgs.length === 2);
+}
+
 console.log(`${ok} ok · ${mal} mal`);
 process.exit(mal ? 1 : 0);

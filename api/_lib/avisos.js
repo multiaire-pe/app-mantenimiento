@@ -7,6 +7,9 @@ import { getDb } from './firestore.js';
 // Los `*Detalle` distinguen "no se envió" de "no se sabe" (ver whatsapp.js); los otros dos
 // son el contrato boolean de siempre, que sigue usando notificarSupervisores.
 import { enviarTexto, enviarPlantilla, enviarTextoDetalle, enviarPlantillaDetalle } from './whatsapp.js';
+// Telegram: quien tenga `telegramChatId` recibe por ahí (gratis, sin plantillas ni ventana de 24 h).
+import { enviarTextoDetalle as enviarTextoTg } from './telegram.js';
+const chatTg = (p) => { const n = Number(p && p.telegramChatId); return Number.isFinite(n) && n ? n : null; };
 
 const ESTADO_LABEL = { PENDIENTE: 'Pendiente', EN_PROCESO: 'En proceso', OK: 'Resuelto (OK)' };
 const sinRipley = (t) => String(t || '').replace(/^RIPLEY\s+/i, '');
@@ -25,7 +28,7 @@ export async function destinatariosAviso(tipo = 'obs') {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
     .filter((p) => tieneAviso(p, tipo))
     .filter((p) => String(p.activo === undefined ? 'SI' : p.activo).toUpperCase() !== 'NO')
-    .filter((p) => String(p.telefono || '').replace(/\D/g, '').length >= 9);
+    .filter((p) => chatTg(p) || String(p.telefono || '').replace(/\D/g, '').length >= 9);
 }
 
 // Aviso a los designados de un tipo. Con plantilla de Meta aprobada (env
@@ -55,8 +58,17 @@ export async function notificarPorTipo(tipo, texto, excluirId = '', opts = {}) {
   let n = 0, intentados = 0, ambiguos = 0;
   for (const p of destinos) {
     if (excluirId && p.id === excluirId) continue;   // no avisar a quien hizo la acción
-    const to = String(p.telefono).replace(/\D/g, '');
     intentados++;
+    // Telegram: un solo intento, sin plantilla ni texto de respaldo (no hay ventana de 24 h que
+    // sortear). Un fallo ambiguo se cuenta aparte, igual que en WhatsApp: reintentarlo duplicaría.
+    if (chatTg(p)) {
+      let rt;
+      try { rt = normEnvio(await (opts.enviarTelegram || enviarTextoTg)(chatTg(p), texto)); }
+      catch (e) { console.error('[avisos] telegram', tipo, p.id, e.message); rt = { ok: false, estado: 'ambiguo' }; }
+      if (rt.ok) n++; else if (rt.estado === 'ambiguo') ambiguos++;
+      continue;
+    }
+    const to = String(p.telefono).replace(/\D/g, '');
     let r = { ok: false, estado: 'rechazado' };
     let ambiguo = false;
     if (plantilla && Array.isArray(opts.params)) {
@@ -106,6 +118,11 @@ export async function notificarSupervisores({ obs, tecnico }, opts = {}) {
   let n = 0;
   for (const p of destinos) {
     if (tecnico && p.id === tecnico.id) continue;             // no avisar a quien reportó
+    if (chatTg(p) && !opts.enviar) {
+      try { if (normEnvio(await (opts.enviarTelegram || enviarTextoTg)(chatTg(p), textoAviso(obs, tecnico))).ok) n++; }
+      catch (e) { console.error('[avisos] telegram', p.id, e.message); }
+      continue;
+    }
     const to = String(p.telefono).replace(/\D/g, '');
     let ok;
     if (opts.enviar) {

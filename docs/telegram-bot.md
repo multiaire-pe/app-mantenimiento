@@ -58,20 +58,23 @@ Seguridad: solo se acepta el contacto **propio** (`contact.user_id` debe ser el 
 Telegram deja reenviar la tarjeta de otra persona y sin esa comprobación cualquiera podría
 vincularse al número de un compañero.
 
-## 5. Lo que cubre esta primera entrega y lo que falta
+## 5. Mensajes que el bot envía por iniciativa propia
 
-Cubierto (entrada): menú, observaciones (texto/foto), registro de mantenimiento (actividades y
-fotos), marcaje de asistencia (ubicación + selfie), botones, idempotencia y reintentos.
+Quien tenga `telegramChatId` recibe por Telegram; el resto sigue por WhatsApp. Telegram tiene
+prioridad si la persona tiene ambos (es gratis).
 
-**Pendiente (fase 2) — los mensajes que el bot envía por iniciativa propia siguen saliendo por
-WhatsApp**, porque dependen del teléfono y de plantillas de Meta:
+- `api/_lib/avisos.js` — avisos a supervisores y a los designados en 🔔 Alertas del bot
+  (observaciones, asistencia, mtto, recordatorios). Un solo intento por Telegram, sin plantilla ni
+  texto de respaldo; un fallo ambiguo se cuenta aparte (no se reintenta, igual que en WhatsApp).
+- `api/cron_recordatorios.js` — usa `notificarPorTipo`, así que hereda el cambio sin tocarse.
+- `api/enviar_itinerario.js` — a cada técnico vinculado le llega por Telegram (canal `telegram` en el
+  historial). El modo prueba sigue siendo un número de WhatsApp a propósito.
 
-- `api/_lib/avisos.js` (`notificarSupervisores`, `notificarPorTipo`): avisos a supervisores.
-- `api/cron_recordatorios.js`: recordatorios de entrada/salida.
-- `api/enviar_itinerario.js`: envío del itinerario a cada técnico.
+El técnico tiene que haber iniciado el bot al menos una vez; si lo bloquea, Telegram responde 403
+y queda como `error` (definitivo, no ambiguo).
 
-En Telegram no hay plantillas ni ventana de 24 h: bastará un `sendMessage` al `telegramChatId`
-(el técnico tiene que haber iniciado el bot al menos una vez). Hasta migrarlos, un técnico solo
-en Telegram **no recibe** esos avisos.
+## 6. Pendiente
 
-Tampoco está hecho: mostrar en `personal.html` quién ya está vinculado, ni el corte de WhatsApp.
+- Mostrar en `personal.html` quién ya está vinculado (hoy se ve en Firestore: `telegramChatId`).
+- Probar en vivo (falta el token) y recién después apagar WhatsApp.
+- Los textos de los avisos dicen "vía WhatsApp"; se cambian al apagar ese canal.
