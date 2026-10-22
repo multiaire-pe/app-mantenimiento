@@ -665,6 +665,14 @@ async function preparar() {
   }
 }
 
+// Inoperativo = reportado explícitamente en 0% y no desmontado. Misma regla que `operatividad.html`
+// (esInoperativo): `Number(null) === 0` es true en JS, así que SIN el chequeo de "hay reporte"
+// todos los equipos sin reportar saldrían como inoperativos.
+const FRASE_INOPERATIVO = 'Se deja constancia de que el equipo se encuentra inoperativo.';
+function esInoperativo(e) {
+  return e.desmontado !== true && e.operatividad != null && e.operatividad !== '' && Number(e.operatividad) === 0;
+}
+
 function porTipo(equipos) {
   const g = {};
   equipos.forEach((e) => { const t = String(e.tipo || '').trim() || 'SIN TIPO'; (g[t] = g[t] || []).push(e); });
@@ -677,6 +685,7 @@ function render() {
   const conEjec = Object.keys(d.ejecPorEq).length;
   const conFoto = Object.keys(d.fotosPorEq).length;
   const sinCap = d.equipos.filter((e) => !String(e.capacidad || '').trim()).length;
+  const nInop = d.equipos.filter(esInoperativo).length;
   const tipos = porTipo(d.equipos);
 
   const stat = (v, l, warn) => `<div class="stat${warn ? ' warn' : ''}"><div class="sv">${v}</div><div class="sl">${l}</div></div>`;
@@ -689,7 +698,9 @@ function render() {
       ${stat(d.obsPeriodo.length, 'observaciones', !d.obsPeriodo.length)}
       ${stat(conFoto + '/' + (conEjec || 0), 'equipos con foto', conFoto < conEjec)}
       ${stat(sinCap, 'sin capacidad cargada', sinCap > 0)}
+      ${nInop ? stat(nInop, 'inoperativos', true) : ''}
     </div>
+    ${nInop ? `<div class="aviso">⚠️ ${nInop} equipo(s) <b>inoperativo(s)</b>: al final de sus observaciones el informe agrega «${esc(FRASE_INOPERATIVO)}». El estado se cambia en el módulo <b>Operatividad</b>.</div>` : ''}
     ${sinCap ? `<div class="aviso">⚠️ ${sinCap} equipo(s) sin <b>capacidad</b>: en el informe esa celda sale vacía. Se carga en <b>Inventario</b>.</div>` : ''}
     ${!d.obsPeriodo.length ? '<div class="aviso">⚠️ Sin observaciones en el período: la sección <b>Observaciones y recomendaciones</b> saldrá vacía. Se llenan desde el bot de WhatsApp o el módulo <b>Observaciones</b>.</div>' : ''}`;
 
@@ -849,11 +860,17 @@ async function generar() {
           ...eqs.map((e) => new D.TableRow({ children: [td(e.nombre, { bold: true }), td(e.area), td(e.marca), td(e.modelo), td(e.serie), td(e.capacidad, { align: D.AlignmentType.CENTER })] }))] }));
 
       hijos.push(new D.Paragraph({ spacing: { before: 140, after: 60 }, children: [new D.TextRun({ text: 'Observaciones y recomendaciones', bold: true, italics: true, size: 20, font: 'Aptos' })] }));
-      const obsT = eqs.flatMap((e) => (d.obsPorEq[e.eq_id || e.id] || []).map((o) => ({ eq: e.nombre, o })));
+      // Por equipo: sus observaciones y, si está INOPERATIVO, una frase final que lo deja dicho.
+      // Solo el inoperativo (reportado en 0%): un equipo sin reporte o desmontado no lleva frase.
+      const obsT = eqs.flatMap((e) => {
+        const items = (d.obsPorEq[e.eq_id || e.id] || []).map((o) => ({ eq: e.nombre, texto: String(o.observacion || '') }));
+        if (esInoperativo(e)) items.push({ eq: e.nombre, texto: FRASE_INOPERATIVO, inop: true });
+        return items;
+      });
       if (obsT.length) {
-        obsT.forEach(({ eq, o }) => hijos.push(new D.Paragraph({ bullet: { level: 0 }, children: [
+        obsT.forEach(({ eq, texto, inop }) => hijos.push(new D.Paragraph({ bullet: { level: 0 }, children: [
           new D.TextRun({ text: eq + ': ', bold: true, size: 19, font: 'Aptos' }),
-          new D.TextRun({ text: String(o.observacion || ''), size: 19, font: 'Aptos' })] })));
+          new D.TextRun({ text: texto, size: 19, font: 'Aptos', ...(inop ? { bold: true } : {}) })] })));
       } else {
         hijos.push(p('Sin observaciones registradas para este tipo en el período.', { size: 18, italics: true, color: '888888' }));
       }
