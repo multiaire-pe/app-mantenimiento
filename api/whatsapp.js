@@ -14,7 +14,7 @@
 import crypto from 'node:crypto';
 import { yaProcesado, liberarMensaje } from './_lib/idempotencia.js';
 import { identificarTecnico } from './_lib/identidad.js';
-import { enviarTexto, enviarBotones, enviarBotonesDetalle, enviarListaDetalle } from './_lib/whatsapp.js';
+import { enviarTexto, enviarBotones, enviarBotonesDetalle, enviarListaDetalle, whatsappActivo } from './_lib/whatsapp.js';
 import { manejarMensaje } from './_lib/conversacion.js';
 import { guardarObservacion } from './_lib/escritura.js';
 import { descargarMedia } from './_lib/media.js';
@@ -100,6 +100,13 @@ export default async function handler(req, res) {
 
   // 2) EVENTOS ENTRANTES (mensajes) — POST firmado por Meta.
   if (req.method === 'POST') {
+    // Canal apagado: se acusa recibo (200, para que Meta no reintente ni acumule fallos) y NO se
+    // procesa nada. Procesar sin poder contestar dejaría observaciones guardadas sin que el
+    // técnico lo sepa. La verificación GET de arriba sigue funcionando para no invalidar el webhook.
+    if (!whatsappActivo()) {
+      console.warn('[whatsapp] canal desactivado — mensaje entrante ignorado');
+      return res.status(200).send('DESACTIVADO');
+    }
     let raw;
     try { raw = await leerBodyCrudo(req); } catch { return res.status(400).send('Bad Request'); }
 

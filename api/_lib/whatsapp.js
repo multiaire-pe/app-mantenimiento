@@ -5,6 +5,12 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 const token   = () => process.env.WHATSAPP_TOKEN || '';
 const phoneId = () => process.env.WHATSAPP_PHONE_NUMBER_ID || '';
 
+// INTERRUPTOR DEL CANAL. Cada mensaje de WhatsApp que sale de acá (sobre todo las plantillas fuera
+// de la ventana de 24 h) lo cobra Meta, así que el canal está APAGADO salvo que
+// WHATSAPP_BOT_ACTIVO sea exactamente 'true'. Se lee en cada llamada, no al cargar el módulo,
+// para que cambiar la variable y redesplegar baste. Un olvido deja el canal apagado, no gastando.
+export const whatsappActivo = () => process.env.WHATSAPP_BOT_ACTIVO === 'true';
+
 // POR QUÉ HAY UNA VERSIÓN "DETALLE": un `false` a secas no dice si el mensaje NO se envió o
 // si NO SE SABE. Meta respondiendo 4xx (token vencido, número inválido) es definitivo: no
 // entregó. Pero una excepción de red o un timeout es AMBIGUO — la petición pudo haber
@@ -12,6 +18,12 @@ const phoneId = () => process.env.WHATSAPP_PHONE_NUMBER_ID || '';
 // diferencia: reintentar tras un fallo definitivo es gratis, tras uno ambiguo duplica.
 // Estados: 'ok' | 'rechazado' (definitivo) | 'ambiguo' | 'sin_credenciales' (ni se intentó).
 async function enviarDetalle(cuerpo, etiqueta) {
+  if (!whatsappActivo()) {
+    // Definitivo y sin costo: no se llamó a Meta. Es 'rechazado' (no 'ambiguo') a propósito, para
+    // que quien reintente o haga fallback sepa con certeza que NO salió nada.
+    console.warn(`[whatsapp] canal desactivado (WHATSAPP_BOT_ACTIVO != 'true') — no se envió ${etiqueta}`);
+    return { ok: false, estado: 'rechazado', detalle: 'canal_desactivado' };
+  }
   if (!token() || !phoneId()) {
     console.warn(`[whatsapp] faltan WHATSAPP_TOKEN/PHONE_NUMBER_ID — no se envió ${etiqueta}`);
     return { ok: false, estado: 'sin_credenciales' };
