@@ -9,6 +9,7 @@ import admin from 'firebase-admin';
 import { getDb } from './_lib/firestore.js';
 import { enviarTextoDetalle, enviarPlantillaDetalle } from './_lib/whatsapp.js';
 import { mensajesPorTecnico } from './_lib/itinerario_envio.js';
+import { enviarTextoDetalle as enviarTextoTg } from './_lib/telegram.js';
 
 const SUPER_ADMIN_EMAILS = ['marchenaangulojoseluis@gmail.com', 'plataforma@multiaire.com.pe'];
 
@@ -84,9 +85,13 @@ export default async function handler(req, res) {
     // 5) Mapear técnico → teléfono (maestros_personal, e164 marcado WhatsApp).
     const perSnap = await db.collection('maestros_personal').get();
     const telById = {};
+    const tgById = {};
     perSnap.docs.forEach((d) => {
       const t = String((d.data() || {}).telefono || '').replace(/\D/g, '');
       if (t.length >= 9) telById[d.id] = t;
+      // Técnico vinculado a Telegram: se le escribe por ahí (gratis, sin plantillas ni ventana de 24 h).
+      const chat = Number((d.data() || {}).telegramChatId);
+      if (Number.isFinite(chat) && chat) tgById[d.id] = chat;
     });
 
     // Hash del contenido exacto a enviar (por técnico): el preview lo devuelve y el envío real lo
@@ -101,7 +106,7 @@ export default async function handler(req, res) {
     if (preview) {
       const mensajes = msgs.map((m) => ({
         tecnicoId: m.tecnicoId, nombre: m.nombre, texto: m.texto,
-        nTareas: m.nTareas, sedes: m.sedes || [], tieneTelefono: !!telById[m.tecnicoId],
+        nTareas: m.nTareas, sedes: m.sedes || [], tieneTelefono: !!(telById[m.tecnicoId] || tgById[m.tecnicoId]),
       }));
       return res.status(200).json({
         preview: true, previewHash, total: mensajes.length, actualizacion,
@@ -138,6 +143,15 @@ export default async function handler(req, res) {
     const idioma = process.env.WHATSAPP_TEMPLATE_IDIOMA || 'es';
     const detalle = [];
     for (const m of msgs) {
+      // Telegram primero (salvo en modo prueba, que es un número de WhatsApp a propósito). Sin plantilla
+      // ni fallback: no hay ventana de 24 h, y un fallo ambiguo se registra como incierto igual que arriba.
+      if (!prueba && tgById[m.tecnicoId]) {
+        let rt = { ok: false, estado: 'ambiguo' };
+        try { rt = await enviarTextoTg(tgById[m.tecnicoId], m.texto); } catch { /* queda ambiguo */ }
+        const estadoT = rt.ok ? 'enviado' : (rt.estado === 'ambiguo' ? 'incierto' : 'error');
+        detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: estadoT, nTareas: m.nTareas, texto: (m.texto || '').slice(0, 4000), ...(rt.ok ? { canal: 'telegram' } : {}) });
+        continue;
+      }
       const to = prueba ? to_prueba : telById[m.tecnicoId];
       if (!to) { detalle.push({ tecnicoId: m.tecnicoId, nombre: m.nombre, estado: 'sin_telefono', nTareas: m.nTareas, texto: (m.texto || '').slice(0, 4000) }); continue; }
       let canal = 'texto';
