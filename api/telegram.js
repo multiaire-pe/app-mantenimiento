@@ -103,8 +103,13 @@ export async function procesarUpdate(update, d) {
   const { chatId } = n;
   const from = `tg${chatId}`;
 
-  // Idempotencia por update_id (Telegram reintenta si no recibe 200).
-  if (update.update_id != null && await d.yaProcesado(`tg_${update.update_id}`, { from, type: n.tipo })) {
+  // Idempotencia por update_id (Telegram reintenta si no recibe 200). Si la propia marca falla
+  // (Firestore caído) todavía no se escribió nada: es recuperable, así Telegram reintenta.
+  let duplicado;
+  try {
+    duplicado = update.update_id != null && await d.yaProcesado(`tg_${update.update_id}`, { from, type: n.tipo });
+  } catch (e) { e.recuperable = true; throw e; }
+  if (duplicado) {
     console.log('[telegram] duplicado ignorado:', update.update_id);
     return;
   }

@@ -6,6 +6,10 @@ const API = 'https://api.telegram.org';
 
 const token = () => process.env.TELEGRAM_BOT_TOKEN || '';
 
+// El token va en la URL de la API: cualquier texto que se registre o se devuelva pasa por acá
+// para que nunca termine en los logs de Vercel.
+const sinToken = (t) => String(t).replace(/bot\d+:[\w-]+/g, 'bot<token>');
+
 // Mismo criterio que whatsapp.js: un `false` a secas no distingue "no se envió" de "no se sabe".
 // Estados: 'ok' | 'rechazado' (4xx: definitivo) | 'ambiguo' (excepción/timeout/5xx) | 'sin_credenciales'.
 async function llamar(metodo, cuerpo) {
@@ -20,15 +24,15 @@ async function llamar(metodo, cuerpo) {
       body: JSON.stringify(cuerpo),
     });
     if (!res.ok) {
-      const detalle = String(await res.text().catch(() => '')).slice(0, 400);
+      const detalle = sinToken(await res.text().catch(() => '')).slice(0, 400);
       console.error(`[telegram] ${metodo}:`, res.status, detalle);
       return { ok: false, estado: res.status >= 500 ? 'ambiguo' : 'rechazado', status: res.status, detalle };
     }
     const json = await res.json().catch(() => ({}));
     return { ok: true, estado: 'ok', result: json.result };
   } catch (e) {
-    console.error(`[telegram] excepción en ${metodo}:`, e.message);
-    return { ok: false, estado: 'ambiguo', detalle: String(e.message).slice(0, 400) };
+    console.error(`[telegram] excepción en ${metodo}:`, sinToken(e.message));
+    return { ok: false, estado: 'ambiguo', detalle: sinToken(e.message).slice(0, 400) };
   }
 }
 
@@ -138,7 +142,7 @@ export async function descargarArchivo(fileId) {
     const ext = String(ruta).split('.').pop().toLowerCase();
     return { base64: buf.toString('base64'), mime: MIME_POR_EXT[ext] || 'image/jpeg', bytes: buf.length };
   } catch (e) {
-    console.error('[telegram] excepción al descargar:', e.message);
+    console.error('[telegram] excepción al descargar:', sinToken(e.message));
     return null;
   }
 }

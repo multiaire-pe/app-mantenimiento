@@ -1,6 +1,7 @@
 // Pruebas del adaptador de Telegram. No tocan Firestore ni la red: el handler recibe `deps`
 // inyectables (mismo patrón que el resto de las suites del bot).  Uso: node tests/telegram.test.mjs
-import { htmlDeWa } from '../api/_lib/telegram.js';
+import { htmlDeWa, enviarTextoDetalle } from '../api/_lib/telegram.js';
+import { matchTelegram } from '../api/_lib/identidad.js';
 import { normalizarUpdate, procesarUpdate, secretValido } from '../api/telegram.js';
 
 let ok = 0, mal = 0;
@@ -122,6 +123,11 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
   let err; try { await procesarUpdate(msg({ text: 'a' }), d); } catch (e) { err = e; }
   t('fallo post-escritura: no libera', !err?.recuperable && d.log.liberados.length === 0);
 }
+{ // la propia marca de idempotencia falla (Firestore caído) → recuperable, Telegram reintenta
+  const d = mkDeps({ yaProcesado: async () => { throw new Error('firestore caído'); } });
+  let err; try { await procesarUpdate(msg({ text: 'a' }), d); } catch (e) { err = e; }
+  t('fallo de idempotencia: recuperable', err?.recuperable === true && d.log.manejarMensaje.length === 0);
+}
 { // mensaje de grupo → ignorado en silencio
   const d = mkDeps(); await procesarUpdate({ update_id: 1, message: { chat: { id: 1, type: 'group' }, text: 'x' } }, d);
   t('grupo: no responde', d.log.env.length === 0);
@@ -216,6 +222,45 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
   const ns = await notificarSupervisores({ obs: { tienda: 'RIPLEY X', equipo: 'E', estado: 'OK', observacion: 'o' }, tecnico: { id: 'Z' } },
     { destinos, enviarTexto: base.enviarTexto, enviarTelegram: base.enviarTelegram });
   t('supervisores: también por Telegram', ns === 3 && tgs.length === 2);
+}
+
+// ── matchTelegram: vinculación sin fallback por últimos 9 dígitos ───────────────────────
+{
+  const docs = [
+    { id: 'A', data: { nombre: 'Ana', telefono: '51912345678' } },
+    { id: 'B', data: { nombre: 'Beto', telefono: '987654321' } },                       // legacy sin prefijo
+    { id: 'C', data: { nombre: 'Caro', telefonos: [{ e164: '56911112222' }] } },        // Chile
+    { id: 'D', data: { nombre: 'Dani', telefono: '51955556666', activo: 'NO' } },
+    { id: 'E', data: { nombre: 'Eva', telefono: '51933334444' } }, { id: 'F', data: { nombre: 'Fer', telefono: '933334444' } },
+  ];
+  t('tg: E.164 exacto', matchTelegram(docs, '+51912345678')?.id === 'A');
+  t('tg: otro país con mismos 9 dígitos → no', matchTelegram(docs, '+34912345678') === null);
+  t('tg: legacy de 9 dígitos se toma como +51', matchTelegram(docs, '51987654321')?.id === 'B');
+  t('tg: legacy no se cruza con otro país', matchTelegram(docs, '56987654321') === null);
+  t('tg: número extranjero exacto', matchTelegram(docs, '+56 9 1111 2222')?.id === 'C');
+  t('tg: inactivo → no', matchTelegram(docs, '51955556666') === null);
+  t('tg: dos colaboradores con el mismo número → ambiguo', matchTelegram(docs, '51933334444') === null);
+  t('tg: número corto → no', matchTelegram(docs, '912345678') === null);
+  const cl = [{ id: 'CL', data: { nombre: 'Chileno', telefonos: [{ pais: 'CL', prefijo: '+56', numero: '912345678' }] } }];
+  t('tg: prefijo explícito sin e164 se respeta', matchTelegram(cl, '56912345678')?.id === 'CL');
+  t('tg: peruano no se vincula al chileno sin e164', matchTelegram(cl, '51912345678') === null);
+  const br = [{ id: 'BR', data: { telefonos: [{ pais: 'BR', prefijo: '+55', numero: '55912345678' }] } }];   // área 55
+  t('tg: número nacional que empieza como el código de país', matchTelegram(br, '5555912345678')?.id === 'BR' && matchTelegram(br, '55912345678') === null);
+  t('tg: 00 internacional', matchTelegram([{ id: 'Y', data: { telefono: '0051912345678' } }], '+51912345678')?.id === 'Y');
+}
+
+// ── el token nunca llega a los logs ─────────────────────────────────────────────────────
+{
+  const tok = '123456:ABC-def_GHI';
+  const prevTok = process.env.TELEGRAM_BOT_TOKEN, prevFetch = globalThis.fetch, prevErr = console.error;
+  process.env.TELEGRAM_BOT_TOKEN = tok;
+  const logs = [];
+  console.error = (...a) => logs.push(a.join(' '));
+  globalThis.fetch = async (url) => { throw new Error(`request to ${url} failed`); };
+  const r = await enviarTextoDetalle(7, 'hola');
+  console.error = prevErr; globalThis.fetch = prevFetch;
+  if (prevTok === undefined) delete process.env.TELEGRAM_BOT_TOKEN; else process.env.TELEGRAM_BOT_TOKEN = prevTok;
+  t('token: no aparece en logs ni en el detalle', logs.length > 0 && !logs.some((l) => l.includes(tok)) && !String(r.detalle).includes(tok));
 }
 
 console.log(`${ok} ok · ${mal} mal`);
