@@ -18,7 +18,7 @@ Si Telegram te pregunta por permisos de ubicación o notificaciones, **acéptalo
 
 ## 2. El menú
 
-Escribe **menú** (o `/menu`) cuando quieras volver al inicio. Tiene 3 botones:
+Toca **Menú** (el botón junto al campo de texto) o escribe `/menu` cuando quieras volver al inicio; corta lo que estabas haciendo. Tiene 3 botones:
 **Mantenimiento · Observación · Asistencia**. También puedes escribirle directo, como antes.
 
 ## 3. Reportar una observación 📝
@@ -58,7 +58,8 @@ tienda estás, te pregunta cuál (responde con el número de la lista).
 - Nombra el equipo por **dónde está**: *"extractor del comedor"*, *"cortina del ingreso de clientes"*.
 - Escribe la **sede bien escrita**. Ante la duda, usa el **código del equipo + la sede**:
   *"MA-ATO-CHI-001 de atocongo"*.
-- Para **salir** de lo que estés haciendo: escribe **cancelar**. Para empezar de nuevo: **menú**.
+- Para **salir** de lo que estés haciendo: `/cancelar` (lo que no alcanzaste a guardar se pierde; lo ya guardado se queda). Para empezar de nuevo: `/menu`.
+- Solo existen esos dos comandos: **/menu** y **/cancelar**.
 - Un mensaje por vez; espera la respuesta del bot antes de mandar el siguiente.
 
 ## 7. Si algo falla
@@ -68,5 +69,5 @@ tienda estás, te pregunta cuál (responde con el número de la lista).
 | El bot no contesta | Espera 1 minuto y escribe **menú**. Si sigue igual, avisa a la oficina. |
 | "No encuentro ese número" | Tu teléfono no está en Personal, o abriste Telegram con otro número. Avisa a la oficina. |
 | No me llegan recordatorios o avisos | Aún no vinculaste tu cuenta (paso 1) o silenciaste/bloqueaste el bot. |
-| Se me cortó a medias | Escribe **menú** y vuelve a empezar; lo ya guardado no se pierde. |
+| Se me cortó a medias | Escribe `/cancelar`, luego `/menu` y vuelve a empezar; lo ya guardado no se pierde. |
 | La foto no subió | Reenvíala; si pesa mucho, mándala como foto (no como archivo). |

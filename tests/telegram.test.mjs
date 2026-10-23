@@ -35,7 +35,7 @@ t('sticker → otro', normalizarUpdate({ message: { chat: priv, from: { id: 7 },
 
 // ── procesarUpdate con deps falsas ───────────────────────────────────────────────────────
 function mkDeps(over = {}) {
-  const log = { env: [], liberados: [], vinculos: [], manejarMensaje: [], visto: new Set() };
+  const log = { env: [], liberados: [], vinculos: [], manejarMensaje: [], visto: new Set(), limpiadas: [] };
   const tec = { id: 'PER1', nombre: 'ANA' };
   return {
     log,
@@ -54,6 +54,7 @@ function mkDeps(over = {}) {
     guardarObservacion: async () => ({ id: 'O1' }), notificarSupervisores: async () => 0,
     decidirFlujo: async () => 'observaciones', manejarAsistencia: async () => 'resp-asis', manejarMtto: async () => 'resp-mtto',
     getSesionMtto: async () => null, MENU_TEXTO: 'MENU', MENU_BOTONES: [{ id: '1', title: 'M' }],
+    limpiarSesiones: async (from) => { log.limpiadas.push(from); },
     ...over,
   };
 }
@@ -90,6 +91,40 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 { // /start → menú sin pasar por el router
   const d = mkDeps(); await procesarUpdate(msg({ text: '/start' }), d);
   t('/start: menú', d.log.env[0].r.texto === 'MENU' && d.log.manejarMensaje.length === 0);
+}
+{ // /menu: corta lo que esté en curso y muestra el menú
+  const d = mkDeps(); await procesarUpdate(msg({ text: '/menu' }), d);
+  t('/menu: corta las sesiones', d.log.limpiadas.join() === 'tg7');
+  t('/menu: muestra el menú', d.log.env.length === 1 && d.log.env[0].r.texto === 'MENU');
+  t('/menu: no llega al motor', d.log.manejarMensaje.length === 0);
+}
+{ // /cancelar: corta, avisa que lo no guardado se pierde y vuelve al menú
+  const d = mkDeps(); await procesarUpdate(msg({ text: '/cancelar' }), d);
+  t('/cancelar: corta las sesiones', d.log.limpiadas.join() === 'tg7');
+  t('/cancelar: avisa y muestra el menú', /Cancelado/.test(d.log.env[0].r.texto) && /MENU/.test(d.log.env[0].r.texto) && d.log.env[0].r.botones.length === 1);
+  t('/cancelar: no llega al motor', d.log.manejarMensaje.length === 0);
+}
+{ // variantes: mayúsculas, @bot, espacios, /start con parámetro
+  for (const txt of ['/MENU', '/menu@multiaire_pe_bot', '  /menu  ', '/start abc123']) {
+    const d = mkDeps(); await procesarUpdate(msg({ text: txt }), d);
+    t(`variante ${JSON.stringify(txt)} → menú`, d.log.env[0]?.r?.texto === 'MENU' && d.log.limpiadas.length === 1);
+  }
+  const d = mkDeps(); await procesarUpdate(msg({ text: '/CANCELAR@multiaire_pe_bot' }), d);
+  t('variante /CANCELAR@bot', /Cancelado/.test(d.log.env[0]?.r?.texto || ''));
+}
+{ // cualquier otro comando: NO existe, NO va al motor de observaciones, NO corta nada
+  for (const txt of ['/obs', '/mtto', '/asistencia', '/ayuda', '/loquesea']) {
+    const d = mkDeps(); await procesarUpdate(msg({ text: txt }), d);
+    t(`${txt}: no existe`, /no existe/.test(d.log.env[0]?.x || '') && d.log.manejarMensaje.length === 0 && d.log.limpiadas.length === 0, JSON.stringify(d.log.env));
+  }
+}
+{ // un texto normal que no empieza con "/" sigue yendo al motor; una "/" en medio no es comando
+  const d = mkDeps(); await procesarUpdate(msg({ text: 'fuga en el rooftop 3/4 de megaplaza' }), d);
+  t('"/" en medio del texto no es comando', d.log.manejarMensaje.length === 1 && d.log.limpiadas.length === 0);
+}
+{ // un comando de un técnico NO vinculado no corta ni responde el menú: primero hay que vincularse
+  const d = mkDeps(); await procesarUpdate(msg({ text: '/cancelar' }, 99, 99), d);
+  t('sin vincular: pide el contacto', d.log.env.length === 1 && d.log.env[0].e?.reply_markup?.k === 'contacto' && d.log.limpiadas.length === 0);
 }
 { // foto
   const d = mkDeps(); await procesarUpdate(msg({ caption: 'x', photo: [{ file_id: 'f' }] }), d);
