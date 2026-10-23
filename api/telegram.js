@@ -140,7 +140,7 @@ export async function procesarUpdate(update, d) {
         await d.tg.enviarTexto(chatId, '🤔 No encuentro ese número en el sistema de MultiAire. Pídele al administrador que lo registre en *Personal* y vuelve a intentarlo.');
         return;
       }
-      await d.tg.enviarTexto(chatId, `✅ Listo, *${t.nombre}*. Ya estás vinculado.\n\nTe dejé abajo los botones para moverte rápido: *Mantenimiento*, *Observación*, *Asistencia* y *Compartir ubicación*.`,
+      await d.tg.enviarTexto(chatId, `✅ Listo, *${t.nombre}*. Ya estás vinculado.\n\nTe dejé abajo el botón *❌ Cancelar* para salir de lo que estés haciendo cuando quieras.`,
         { reply_markup: d.tg.TECLADO_PRINCIPAL });
       await d.tg.enviarRespuestaTg(chatId, { texto: d.MENU_TEXTO, botones: d.MENU_BOTONES });
       return;
@@ -155,10 +155,15 @@ export async function procesarUpdate(update, d) {
 
     if (n.messageId) d.tg.quitarBotones(chatId, n.messageId).catch(() => {});   // evita el doble toque
 
-    // TECLAS DEL TECLADO FIJO (🔧 Mantenimiento / 📝 Observación / 🕐 Asistencia): empezar una acción
-    // es abandonar la anterior, así que primero se corta lo que estuviera en curso (igual que los
-    // comandos) y el texto se traduce a la opción 1/2/3 que ya entiende el router. Solo coincide el
-    // rótulo EXACTO del botón: un técnico que escribe "mantenimiento" a mano no se toca.
+    // BOTÓN FIJO "❌ Cancelar": hace exactamente lo mismo que el comando /cancelar (corta lo que esté
+    // en curso y muestra el menú). Solo coincide el rótulo EXACTO: un técnico que escribe "cancelar"
+    // a mano no se toca (eso lo resuelve el flujo en curso, como siempre).
+    if (n.tipo === 'text' && d.tg.BOTON_CANCELAR && n.texto.trim() === d.tg.BOTON_CANCELAR) {
+      n.texto = '/cancelar';
+    }
+    // COMPATIBILIDAD con el teclado anterior de 4 teclas (ver ACCION_DE_BOTON en telegram.js): empezar
+    // una acción es abandonar la anterior, así que se corta lo que estuviera en curso y el texto se
+    // traduce a la opción 1/2/3 del router.
     if (n.tipo === 'text' && d.tg.ACCION_DE_BOTON && d.tg.ACCION_DE_BOTON[n.texto.trim()]) {
       await d.limpiarSesiones(from);
       n.texto = d.tg.ACCION_DE_BOTON[n.texto.trim()];
@@ -176,7 +181,7 @@ export async function procesarUpdate(update, d) {
       // el teclado lo recibe al tocar Menú.
       const mostrarMenu = async (prefijo = '') => {
         await d.tg.enviarRespuestaTg(chatId, { texto: prefijo + d.MENU_TEXTO, botones: d.MENU_BOTONES });
-        await d.tg.enviarTexto(chatId, '⌨️ Tienes los botones fijos aquí abajo 👇', { reply_markup: d.tg.TECLADO_PRINCIPAL });
+        await d.tg.enviarTexto(chatId, 'Para salir de lo que estés haciendo, toca *❌ Cancelar* aquí abajo 👇', { reply_markup: d.tg.TECLADO_PRINCIPAL });
       };
       if (cmd === '/menu' || cmd === '/start') {
         await d.limpiarSesiones(from);
