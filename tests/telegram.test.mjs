@@ -1,6 +1,6 @@
 // Pruebas del adaptador de Telegram. No tocan Firestore ni la red: el handler recibe `deps`
 // inyectables (mismo patrón que el resto de las suites del bot).  Uso: node tests/telegram.test.mjs
-import { htmlDeWa, enviarTextoDetalle, ACCION_DE_BOTON, TECLADO_PRINCIPAL } from '../api/_lib/telegram.js';
+import { htmlDeWa, enviarTextoDetalle, ACCION_DE_BOTON, TECLADO_PRINCIPAL, BOTON_CANCELAR } from '../api/_lib/telegram.js';
 import { matchTelegram } from '../api/_lib/identidad.js';
 import { normalizarUpdate, procesarUpdate, secretValido } from '../api/telegram.js';
 
@@ -48,7 +48,7 @@ function mkDeps(over = {}) {
       enviarTexto: async (c, x, e) => { log.env.push({ c, x, e }); return true; },
       enviarRespuestaTg: async (c, r) => { log.env.push({ c, r }); },
       descargarArchivo: async () => ({ base64: 'QQ==', mime: 'image/jpeg' }),
-      TECLADO_CONTACTO: { k: 'contacto' }, TECLADO_PRINCIPAL: { k: 'principal' }, ACCION_DE_BOTON,
+      TECLADO_CONTACTO: { k: 'contacto' }, TECLADO_PRINCIPAL: { k: 'principal' }, ACCION_DE_BOTON, BOTON_CANCELAR,
     },
     manejarMensaje: async (a) => { log.manejarMensaje.push(a); return 'resp-obs'; },
     guardarObservacion: async () => ({ id: 'O1' }), notificarSupervisores: async () => 0,
@@ -114,11 +114,24 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 }
 { // TECLADO FIJO: la definición
   const filas = TECLADO_PRINCIPAL.keyboard;
-  t('teclado fijo: 4 teclas, la de ubicación pide ubicación', filas.flat().length === 4 && filas.flat().some((k) => k.request_location === true));
+  t('teclado fijo: UN solo botón, "Cancelar"', filas.flat().length === 1 && filas.flat()[0].text === BOTON_CANCELAR && /Cancelar/.test(BOTON_CANCELAR), JSON.stringify(filas));
+  t('teclado fijo: ya no pide ubicación ni ofrece acciones', !filas.flat().some((k) => k.request_location || ACCION_DE_BOTON[k.text]));
   t('teclado fijo: persistente y ajustado', TECLADO_PRINCIPAL.is_persistent === true && TECLADO_PRINCIPAL.resize_keyboard === true);
-  t('cada tecla de acción tiene su opción 1/2/3', filas.flat().filter((k) => !k.request_location).every((k) => ['1', '2', '3'].includes(ACCION_DE_BOTON[k.text])), JSON.stringify(ACCION_DE_BOTON));
 }
-{ // tocar una tecla: corta lo anterior y llega al router como 1/2/3
+{ // tocar "❌ Cancelar": hace lo mismo que /cancelar
+  const d = mkDeps(); await procesarUpdate(msg({ text: BOTON_CANCELAR }), d);
+  t('botón Cancelar: corta las sesiones', d.log.limpiadas.join() === 'tg7');
+  t('botón Cancelar: avisa y muestra el menú con botones', /Cancelado/.test(d.log.env[0]?.r?.texto || '') && /MENU/.test(d.log.env[0]?.r?.texto || '') && d.log.env[0]?.r?.botones?.length === 1);
+  t('botón Cancelar: deja el teclado fijo', d.log.env[1]?.e?.reply_markup?.k === 'principal');
+  t('botón Cancelar: no llega al motor', d.log.manejarMensaje.length === 0);
+  const d2 = mkDeps(); await procesarUpdate(msg({ text: '  ' + BOTON_CANCELAR + '  ' }), d2);
+  t('botón Cancelar: tolera espacios', d2.log.limpiadas.length === 1);
+  // escribir "cancelar" a mano NO es el botón: lo resuelve el flujo en curso, como siempre
+  const d3 = mkDeps(); await procesarUpdate(msg({ text: 'cancelar' }), d3);
+  t('"cancelar" escrito a mano va al flujo (no corta por su cuenta)', d3.log.limpiadas.length === 0 && d3.log.manejarMensaje[0]?.texto === 'cancelar');
+}
+{ // COMPATIBILIDAD: el teclado anterior de 4 teclas sigue funcionando hasta que llegue el nuevo
+  // (tocar una tecla: corta lo anterior y llega al router como 1/2/3)
   for (const [tecla, op] of [['🔧 Mantenimiento', '1'], ['📝 Observación', '2'], ['🕐 Asistencia', '3']]) {
     const d = mkDeps(); await procesarUpdate(msg({ text: tecla }), d);
     t(`tecla ${tecla}: corta las sesiones`, d.log.limpiadas.join() === 'tg7');
