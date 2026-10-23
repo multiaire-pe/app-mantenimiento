@@ -16,10 +16,18 @@ El bot hace lo mismo que hacía en WhatsApp: **registrar mantenimiento**, **repo
 número"*, avisa a la oficina para que revisen tu teléfono en Personal.
 Si Telegram te pregunta por permisos de ubicación o notificaciones, **acéptalos**.
 
-## 2. El menú
+## 2. Los botones de abajo
 
-Toca **Menú** (el botón junto al campo de texto) o escribe `/menu` cuando quieras volver al inicio; corta lo que estabas haciendo. Tiene 3 botones:
-**Mantenimiento · Observación · Asistencia**. También puedes escribirle directo, como antes.
+Debajo del chat siempre tienes estos botones fijos:
+
+| 🔧 Mantenimiento | 📝 Observación | 🕐 Asistencia |
+|---|---|---|
+| **📍 Compartir ubicación** (para marcar asistencia) | | |
+
+Tócalos en cualquier momento: **si estabas haciendo otra cosa, la cancela** y empieza la que elegiste.
+Si no los ves, escribe `/menu` y aparecen. También puedes escribirle directo al bot, como antes.
+
+Solo hay dos comandos: **/menu** (volver al inicio) y **/cancelar** (salir de lo que estés haciendo).
 
 ## 3. Reportar una observación 📝
 
