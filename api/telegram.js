@@ -87,7 +87,8 @@ export function normalizarUpdate(update) {
   }
   if (Array.isArray(m.photo) && m.photo.length) {
     // Telegram manda varias resoluciones de la misma foto, de menor a mayor: la última es la mejor.
-    return { ...base, tipo: 'image', texto: m.caption || '', fileId: m.photo[m.photo.length - 1].file_id };
+    return { ...base, tipo: 'image', texto: m.caption || '', fileId: m.photo[m.photo.length - 1].file_id,
+      grupo: m.media_group_id || null };   // varias fotos juntas = un álbum: se responde UNA vez
   }
   if (typeof m.text === 'string') return { ...base, texto: m.text };
   return { ...base, tipo: 'otro' };   // audio, sticker, documento, etc.
@@ -199,7 +200,7 @@ export async function procesarUpdate(update, d) {
       return;
     }
     if (flujo === 'mtto') {
-      const resp = await d.manejarMtto({ tecnico, from, texto, imagenB64, mime, onWriteStart: () => { escrituraIniciada = true; } });
+      const resp = await d.manejarMtto({ tecnico, from, texto, imagenB64, mime, grupoFoto: n.grupo || null, onWriteStart: () => { escrituraIniciada = true; } });
       await d.tg.enviarRespuestaTg(chatId, resp);
       return;
     }
