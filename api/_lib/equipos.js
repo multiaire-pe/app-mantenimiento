@@ -412,9 +412,19 @@ function porArea(lista) {
 //   - modo 'areas'   → muchos y TODOS del mismo tipo: pedirle "el tipo" sería pedirle lo que ya
 //     dijo; acotamos por ubicación y en la vuelta siguiente ya caen en 'equipos'. Hoy no dispara
 //     (el grupo mayor son 28) — es la red para cuando entre un cliente más grande.
+// Orden NATURAL por nombre: "Inyector 02" antes que "Inyector 10", sin importar en qué orden
+// vengan los candidatos. Antes salían en el orden de los CÓDIGOS del inventario, y el código no
+// siempre sigue la numeración que ve el técnico (INY-034 es el "Jet Fan 10", el "Jet Fan 2" es el
+// INY-044) → los Jet Fan aparecían desordenados. `Array.prototype.sort` es estable, así que los
+// empates (mismo nombre) conservan su orden de llegada. Copia: no muta la lista del llamador.
+export function ordenarPorNombre(lista) {
+  const nom = (e) => String((e && (e.nombre || e.equipo)) || '');
+  return [...lista].sort((a, b) => nom(a).localeCompare(nom(b), 'es', { numeric: true, sensitivity: 'base' }));
+}
+
 export function opcionesEquipo(cands) {
-  const lista = cands || [];
-  if (!lista.length) return null;
+  if (!cands || !cands.length) return null;
+  const lista = ordenarPorNombre(cands);
 
   const areas = porArea(lista);
 
