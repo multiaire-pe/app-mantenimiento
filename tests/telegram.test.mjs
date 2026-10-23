@@ -1,6 +1,6 @@
 // Pruebas del adaptador de Telegram. No tocan Firestore ni la red: el handler recibe `deps`
 // inyectables (mismo patrón que el resto de las suites del bot).  Uso: node tests/telegram.test.mjs
-import { htmlDeWa, enviarTextoDetalle } from '../api/_lib/telegram.js';
+import { htmlDeWa, enviarTextoDetalle, ACCION_DE_BOTON, TECLADO_PRINCIPAL } from '../api/_lib/telegram.js';
 import { matchTelegram } from '../api/_lib/identidad.js';
 import { normalizarUpdate, procesarUpdate, secretValido } from '../api/telegram.js';
 
@@ -48,7 +48,7 @@ function mkDeps(over = {}) {
       enviarTexto: async (c, x, e) => { log.env.push({ c, x, e }); return true; },
       enviarRespuestaTg: async (c, r) => { log.env.push({ c, r }); },
       descargarArchivo: async () => ({ base64: 'QQ==', mime: 'image/jpeg' }),
-      TECLADO_CONTACTO: { k: 'contacto' }, TECLADO_UBICACION: { k: 'ubic' },
+      TECLADO_CONTACTO: { k: 'contacto' }, TECLADO_PRINCIPAL: { k: 'principal' }, ACCION_DE_BOTON,
     },
     manejarMensaje: async (a) => { log.manejarMensaje.push(a); return 'resp-obs'; },
     guardarObservacion: async () => ({ id: 'O1' }), notificarSupervisores: async () => 0,
@@ -77,7 +77,7 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 { // contacto propio con número conocido → vincula y manda menú
   const d = mkDeps(); await procesarUpdate(msg({ contact: { phone_number: '51999', user_id: 99 } }, 99, 99), d);
   t('contacto propio: vincula', d.log.vinculos.length === 1 && d.log.vinculos[0][0] === 99);
-  t('contacto propio: teclado de ubicación + menú', d.log.env.some((e) => e.e?.reply_markup?.k === 'ubic') && d.log.env.some((e) => e.r?.texto === 'MENU'));
+  t('contacto propio: teclado fijo + menú', d.log.env.some((e) => e.e?.reply_markup?.k === 'principal') && d.log.env.some((e) => e.r?.texto === 'MENU'));
 }
 { // contacto propio con número desconocido
   const d = mkDeps(); await procesarUpdate(msg({ contact: { phone_number: '51000', user_id: 99 } }, 99, 99), d);
@@ -90,27 +90,50 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 }
 { // /start → menú sin pasar por el router
   const d = mkDeps(); await procesarUpdate(msg({ text: '/start' }), d);
-  t('/start: menú', d.log.env[0].r.texto === 'MENU' && d.log.manejarMensaje.length === 0);
+  t('/start: menú con botones + teclado fijo', d.log.env[0].r?.texto === 'MENU' && d.log.env[0].r?.botones?.length === 1 && d.log.env[1]?.e?.reply_markup?.k === 'principal' && d.log.manejarMensaje.length === 0, JSON.stringify(d.log.env));
 }
 { // /menu: corta lo que esté en curso y muestra el menú
   const d = mkDeps(); await procesarUpdate(msg({ text: '/menu' }), d);
   t('/menu: corta las sesiones', d.log.limpiadas.join() === 'tg7');
-  t('/menu: muestra el menú', d.log.env.length === 1 && d.log.env[0].r.texto === 'MENU');
+  t('/menu: dos mensajes — el menú con sus botones y luego el teclado fijo', d.log.env.length === 2 && d.log.env[0].r?.texto === 'MENU' && d.log.env[0].r?.botones?.length === 1 && d.log.env[1].e?.reply_markup?.k === 'principal');
   t('/menu: no llega al motor', d.log.manejarMensaje.length === 0);
 }
 { // /cancelar: corta, avisa que lo no guardado se pierde y vuelve al menú
   const d = mkDeps(); await procesarUpdate(msg({ text: '/cancelar' }), d);
   t('/cancelar: corta las sesiones', d.log.limpiadas.join() === 'tg7');
-  t('/cancelar: avisa y muestra el menú', /Cancelado/.test(d.log.env[0].r.texto) && /MENU/.test(d.log.env[0].r.texto) && d.log.env[0].r.botones.length === 1);
+  t('/cancelar: avisa, muestra el menú con botones y deja el teclado fijo', /Cancelado/.test(d.log.env[0].r?.texto) && /MENU/.test(d.log.env[0].r?.texto) && d.log.env[0].r?.botones?.length === 1 && d.log.env[1]?.e?.reply_markup?.k === 'principal');
   t('/cancelar: no llega al motor', d.log.manejarMensaje.length === 0);
 }
 { // variantes: mayúsculas, @bot, espacios, /start con parámetro
   for (const txt of ['/MENU', '/menu@multiaire_pe_bot', '  /menu  ', '/start abc123']) {
     const d = mkDeps(); await procesarUpdate(msg({ text: txt }), d);
-    t(`variante ${JSON.stringify(txt)} → menú`, d.log.env[0]?.r?.texto === 'MENU' && d.log.limpiadas.length === 1);
+    t(`variante ${JSON.stringify(txt)} → menú`, d.log.env[0]?.r?.texto === 'MENU' && d.log.env[1]?.e?.reply_markup?.k === 'principal' && d.log.limpiadas.length === 1);
   }
   const d = mkDeps(); await procesarUpdate(msg({ text: '/CANCELAR@multiaire_pe_bot' }), d);
   t('variante /CANCELAR@bot', /Cancelado/.test(d.log.env[0]?.r?.texto || ''));
+}
+{ // TECLADO FIJO: la definición
+  const filas = TECLADO_PRINCIPAL.keyboard;
+  t('teclado fijo: 4 teclas, la de ubicación pide ubicación', filas.flat().length === 4 && filas.flat().some((k) => k.request_location === true));
+  t('teclado fijo: persistente y ajustado', TECLADO_PRINCIPAL.is_persistent === true && TECLADO_PRINCIPAL.resize_keyboard === true);
+  t('cada tecla de acción tiene su opción 1/2/3', filas.flat().filter((k) => !k.request_location).every((k) => ['1', '2', '3'].includes(ACCION_DE_BOTON[k.text])), JSON.stringify(ACCION_DE_BOTON));
+}
+{ // tocar una tecla: corta lo anterior y llega al router como 1/2/3
+  for (const [tecla, op] of [['🔧 Mantenimiento', '1'], ['📝 Observación', '2'], ['🕐 Asistencia', '3']]) {
+    const d = mkDeps(); await procesarUpdate(msg({ text: tecla }), d);
+    t(`tecla ${tecla}: corta las sesiones`, d.log.limpiadas.join() === 'tg7');
+    t(`tecla ${tecla}: llega como "${op}"`, d.log.manejarMensaje[0]?.texto === op, JSON.stringify(d.log.manejarMensaje));
+  }
+  // el rótulo debe coincidir EXACTO: texto a mano no se toca ni corta nada
+  const d = mkDeps(); await procesarUpdate(msg({ text: 'mantenimiento' }), d);
+  t('"mantenimiento" a mano no corta ni se traduce', d.log.limpiadas.length === 0 && d.log.manejarMensaje[0]?.texto === 'mantenimiento');
+  // con espacios alrededor sí (Telegram puede recortar o no)
+  const d2 = mkDeps(); await procesarUpdate(msg({ text: '  🕐 Asistencia  ' }), d2);
+  t('tolera espacios alrededor de la tecla', d2.log.manejarMensaje[0]?.texto === '3');
+}
+{ // la ayuda de asistencia no debe PISAR el teclado fijo con uno distinto
+  const d = mkDeps({ decidirFlujo: async () => 'hint-asistencia' }); await procesarUpdate(msg({ text: '3' }), d);
+  t('hint de asistencia conserva el teclado fijo', d.log.env[0]?.e?.reply_markup?.k === 'principal', JSON.stringify(d.log.env));
 }
 { // cualquier otro comando: NO existe, NO va al motor de observaciones, NO corta nada
   for (const txt of ['/obs', '/mtto', '/asistencia', '/ayuda', '/loquesea']) {

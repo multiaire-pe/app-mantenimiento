@@ -87,13 +87,23 @@ export const enviarListaDetalle = (chatId, texto, filas) =>
     reply_markup: tecladoInline((filas || []).map((f) => ({ id: f.id, text: f.description ? `${f.title} · ${f.description}` : f.title }))),
   });
 
-// Teclado persistente con "Compartir ubicación": el marcaje de asistencia exige ubicación, y
-// con este botón el técnico la manda de un toque en vez de buscarla en el clip 📎.
-export const TECLADO_UBICACION = {
-  keyboard: [[{ text: '📍 Compartir ubicación', request_location: true }]],
+// TECLADO PRINCIPAL: botones fijos debajo del chat, siempre visibles (is_persistent). Las tres
+// acciones del menú a un toque, y "Compartir ubicación" para el marcaje de asistencia (la exige, y
+// así el técnico la manda sin buscarla en el clip 📎). Es UN solo teclado a propósito: Telegram
+// muestra uno por chat, y si cada mensaje mandara el suyo se pisarían entre sí.
+export const TECLADO_PRINCIPAL = {
+  keyboard: [
+    [{ text: '🔧 Mantenimiento' }, { text: '📝 Observación' }, { text: '🕐 Asistencia' }],
+    [{ text: '📍 Compartir ubicación', request_location: true }],
+  ],
   resize_keyboard: true,
   is_persistent: true,
 };
+
+// Lo que llega cuando el técnico toca una de esas teclas es TEXTO (con el rótulo del botón).
+// Se traduce a la misma opción numérica que ya entiende el router (1 mtto, 2 observación,
+// 3 asistencia): así el flujo no necesita saber que vino de un teclado.
+export const ACCION_DE_BOTON = { '🔧 Mantenimiento': '1', '📝 Observación': '2', '🕐 Asistencia': '3' };
 
 // Pide el contacto del técnico para vincular su cuenta. one_time: desaparece tras usarlo.
 export const TECLADO_CONTACTO = {
