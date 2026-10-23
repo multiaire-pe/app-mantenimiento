@@ -507,7 +507,7 @@ async function contarFotos(ses, tarea) {
   return snap.docs.filter((d) => iso(d.data().createdAt) >= desde).length;
 }
 
-async function guardarFoto(ses, tecnico, imagenB64, mime) {
+async function guardarFoto(ses, tecnico, imagenB64, mime, grupo = null) {
   const { periodo, anio } = periodoDeSesion(ses);
   await getDb().collection('mantenimiento_fotos').add({
     clave: `${sedeEfectiva(ses.sede, ses.cliente)}|${periodo}|${anio}`,
@@ -516,14 +516,58 @@ async function guardarFoto(ses, tecnico, imagenB64, mime) {
     foto: `data:${mime || 'image/jpeg'};base64,${imagenB64}`,
     createdAt: new Date().toISOString(),
     createdBy: `BOT · ${tecnico?.nombre || ses.nombre || ses.from}`,
+    ...(grupo ? { grupo: String(grupo) } : {}),   // álbum de Telegram: sirve para contar y responder UNA vez
   });
+}
+
+// ── Álbum de fotos ──────────────────────────────────────────────────────────────────────────
+// Cuando el técnico manda varias fotos juntas, Telegram las entrega como mensajes SEPARADOS que
+// comparten un media_group_id, y cada uno llega a una invocación distinta (en paralelo). Si cada
+// una contestaba "Foto N guardada", salían 3 mensajes y parecía que el bot solo sabe recibir de a
+// una. Ahora todas guardan su foto, pero responde UNA sola: la primera en reclamar el álbum
+// espera un momento a que las demás terminen de guardarse y confirma el total.
+export const ESPERA_ALBUM_MS = 3000;
+
+// create() es atómico: solo una invocación lo logra. Va en wa_mensajes (la colección de marcas de
+// idempotencia, transitoria). Si Firestore falla, se asume líder: mejor un mensaje de más que ninguno.
+async function reclamarAlbum(from, grupo) {
+  try {
+    await getDb().collection('wa_mensajes').doc(`alb_${from}_${grupo}`).create({
+      procesadoEn: new Date().toISOString(), type: 'album_mtto', from,
+    });
+    return true;
+  } catch (e) {
+    if (e && (e.code === 6 || /already exists/i.test(e.message || ''))) return false;
+    console.error('[mtto] no se pudo reclamar el álbum:', e?.message);
+    return true;
+  }
+}
+
+async function contarFotosGrupo(ses, tarea, grupo) {
+  const { periodo, anio } = periodoDeSesion(ses);
+  const snap = await getDb().collection('mantenimiento_fotos')
+    .where('clave', '==', `${sedeEfectiva(ses.sede, ses.cliente)}|${periodo}|${anio}`)
+    .where('eq_id', '==', ses.eqId)
+    .where('grupo', '==', String(grupo))
+    .select('tarea').get();
+  return snap.docs.filter((d) => d.data().tarea === tarea).length;
+}
+
+// Lógica pura (todo inyectado) para poder probarla sin Firestore ni esperas reales.
+// Devuelve null si NO es el líder del álbum: su foto ya se guardó y otra invocación responde.
+export async function respuestaAlbum({ lider, esperar, contar, tarea, siguiente, botones }) {
+  if (!(await lider())) return null;
+  await esperar();
+  const k = Math.max(1, await contar());
+  const que = k === 1 ? '1 foto cargada' : `${k} fotos cargadas`;
+  return { texto: `✅ ${que} para *${tarea}*. Envía más${siguiente} o *FIN*.`, botones };
 }
 
 // ── Motor del flujo ───────────────────────────────────────────────────────────
 // Devuelve el texto de respuesta (o null). El webhook lo envía.
 // `corregir` (Gemini) se inyecta para poder testear sin llamar a la API real — mismo patrón
 // que `analizar` en conversacion.js.
-export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWriteStart, corregir = corregirSedeEquipo }) {
+export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWriteStart, corregir = corregirSedeEquipo, grupoFoto = null }) {
   const t = norm(texto).trim();
   let ses = await getSesion(from);
 
@@ -628,8 +672,16 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
         return '📷 Esa foto es muy pesada para guardarla. Reenvíala como *foto normal* (no como documento/HD).';
       }
       if (onWriteStart) onWriteStart();   // idempotencia: la foto se escribe una sola vez
-      await guardarFoto(ses, tecnico, imagenB64, mime);
+      await guardarFoto(ses, tecnico, imagenB64, mime, grupoFoto);
       const tarea = (ses.hechas || [])[ses.fotoPos];
+      if (grupoFoto) {
+        return respuestaAlbum({
+          lider: () => reclamarAlbum(from, grupoFoto),
+          esperar: () => new Promise((r) => setTimeout(r, ESPERA_ALBUM_MS)),
+          contar: () => contarFotosGrupo(ses, tarea, grupoFoto),
+          tarea, siguiente: ', *SIGUIENTE*', botones: FOTOS_BOTONES,
+        });
+      }
       const n = await contarFotos(ses, tarea);
       return { texto: `📷 Foto ${n} guardada para *${tarea}*. Envía otra, *SIGUIENTE* o *FIN*.`, botones: FOTOS_BOTONES };
     }
