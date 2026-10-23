@@ -140,8 +140,8 @@ export async function procesarUpdate(update, d) {
         await d.tg.enviarTexto(chatId, '🤔 No encuentro ese número en el sistema de MultiAire. Pídele al administrador que lo registre en *Personal* y vuelve a intentarlo.');
         return;
       }
-      await d.tg.enviarTexto(chatId, `✅ Listo, *${t.nombre}*. Ya estás vinculado.\n\nTe dejé abajo un botón para compartir tu ubicación cuando marques asistencia.`,
-        { reply_markup: d.tg.TECLADO_UBICACION });
+      await d.tg.enviarTexto(chatId, `✅ Listo, *${t.nombre}*. Ya estás vinculado.\n\nTe dejé abajo los botones para moverte rápido: *Mantenimiento*, *Observación*, *Asistencia* y *Compartir ubicación*.`,
+        { reply_markup: d.tg.TECLADO_PRINCIPAL });
       await d.tg.enviarRespuestaTg(chatId, { texto: d.MENU_TEXTO, botones: d.MENU_BOTONES });
       return;
     }
@@ -155,21 +155,31 @@ export async function procesarUpdate(update, d) {
 
     if (n.messageId) d.tg.quitarBotones(chatId, n.messageId).catch(() => {});   // evita el doble toque
 
+    // TECLAS DEL TECLADO FIJO (🔧 Mantenimiento / 📝 Observación / 🕐 Asistencia): empezar una acción
+    // es abandonar la anterior, así que primero se corta lo que estuviera en curso (igual que los
+    // comandos) y el texto se traduce a la opción 1/2/3 que ya entiende el router. Solo coincide el
+    // rótulo EXACTO del botón: un técnico que escribe "mantenimiento" a mano no se toca.
+    if (n.tipo === 'text' && d.tg.ACCION_DE_BOTON && d.tg.ACCION_DE_BOTON[n.texto.trim()]) {
+      await d.limpiarSesiones(from);
+      n.texto = d.tg.ACCION_DE_BOTON[n.texto.trim()];
+    }
+
     // COMANDOS. Solo hay dos que el técnico usa: /menu y /cancelar (más /start, que es lo que manda
     // el botón "Iniciar" de Telegram y se comporta como /menu). Ambos cortan primero lo que esté en
     // curso. Cualquier otro "/algo" NO se manda al motor de observaciones (abriría un borrador
     // absurdo con el texto "/algo"): se le dice que no existe.
     if (n.tipo === 'text' && n.texto.trim().startsWith('/')) {
       const cmd = n.texto.trim().split(/\s+/)[0].replace(/@[A-Za-z0-9_]+$/, '').toLowerCase();
+      // El menú sale con el TECLADO FIJO (no con botones en el mensaje): un mensaje no puede llevar
+      // los dos, y así quien ya estaba vinculado antes de existir el teclado lo recibe al tocar Menú.
       if (cmd === '/menu' || cmd === '/start') {
         await d.limpiarSesiones(from);
-        await d.tg.enviarRespuestaTg(chatId, { texto: d.MENU_TEXTO, botones: d.MENU_BOTONES });
+        await d.tg.enviarTexto(chatId, d.MENU_TEXTO, { reply_markup: d.tg.TECLADO_PRINCIPAL });
       } else if (cmd === '/cancelar') {
         await d.limpiarSesiones(from);
-        await d.tg.enviarRespuestaTg(chatId, {
-          texto: '❌ Cancelado. Lo que estabas haciendo no se guardó (lo que ya estaba guardado se mantiene).\n\n' + d.MENU_TEXTO,
-          botones: d.MENU_BOTONES,
-        });
+        await d.tg.enviarTexto(chatId,
+          '❌ Cancelado. Lo que estabas haciendo no se guardó (lo que ya estaba guardado se mantiene).\n\n' + d.MENU_TEXTO,
+          { reply_markup: d.tg.TECLADO_PRINCIPAL });
       } else {
         await d.tg.enviarTexto(chatId, 'Ese comando no existe. Usa /menu para ver las opciones o /cancelar para salir de lo que estás haciendo.');
       }
@@ -219,7 +229,7 @@ export async function procesarUpdate(update, d) {
     }
     if (flujo === 'hint-asistencia') {
       await d.tg.enviarTexto(chatId, '🕐 Para marcar, escribe *entrada* o *salida* y comparte tu *ubicación* 📍 (y tu selfie si te la pido).',
-        { reply_markup: d.tg.TECLADO_UBICACION });
+        { reply_markup: d.tg.TECLADO_PRINCIPAL });
       return;
     }
     if (flujo === 'mtto') {
