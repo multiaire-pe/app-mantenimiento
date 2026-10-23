@@ -219,8 +219,8 @@ tr:hover td{background:var(--surface2)}
   <!-- ALERTAS DEL BOT: matriz de notificaciones de WhatsApp -->
   <div class="card" id="view-alertas" style="display:none">
     <div class="results-header">
-      <h3>🔔 Alertas del bot — ¿a quién le llega cada aviso de WhatsApp?</h3>
-      <span style="font-size:11px;color:var(--muted2)">requiere teléfono con WhatsApp</span>
+      <h3>🔔 Alertas del bot — ¿a quién le llega cada aviso?</h3>
+      <span id="alertas-resumen-tg" style="font-size:11px;color:var(--muted2)">requiere haber vinculado Telegram</span>
     </div>
     <div style="font-size:11.5px;color:var(--muted2);padding:0 16px 10px">Marca quién recibe la notificación cuando el bot registra una <b>observación</b>, un <b>marcaje de asistencia</b> o una <b>actividad de mantenimiento</b>. No se avisa a quien hizo la acción.</div>
     <div class="form-row" style="padding:0 16px 12px;align-items:flex-end;gap:14px;flex-wrap:wrap">
@@ -245,7 +245,7 @@ tr:hover td{background:var(--surface2)}
     </div>
     <div class="table-scroll">
       <table>
-        <thead><tr><th>Colaborador</th><th style="text-align:center">👁 Observaciones</th><th style="text-align:center">🕐 Asistencia</th><th style="text-align:center">🔧 Actividades</th><th style="text-align:center">⏰ Recordatorios</th></tr></thead>
+        <thead><tr><th>Colaborador</th><th style="text-align:center">✈️ Telegram</th><th style="text-align:center">👁 Observaciones</th><th style="text-align:center">🕐 Asistencia</th><th style="text-align:center">🔧 Actividades</th><th style="text-align:center">⏰ Recordatorios</th></tr></thead>
         <tbody id="alertas-tbody"></tbody>
       </table>
     </div>
@@ -267,7 +267,7 @@ tr:hover td{background:var(--surface2)}
             <th>Documento</th>
             <th>Cargo</th>
             <th>Área</th>
-            <th>WhatsApp</th>
+            <th>Telegram</th>
             <th>Correo</th>
             <th class="col-acc"></th>
           </tr>
@@ -293,7 +293,7 @@ tr:hover td{background:var(--surface2)}
     <div class="modal-sub">
       Los campos marcados con <span style="color:var(--orange)">*</span> son obligatorios.
       El <strong>nombre</strong> se guarda en MAYÚSCULAS y es el que ven asistencia, itinerario e insumos.
-      El teléfono marcado como <strong>WhatsApp</strong> es el que usa el bot para identificar al colaborador.
+      El teléfono marcado como <strong>principal</strong> es el que el bot compara con el número que el colaborador comparte en Telegram para identificarlo (tiene que ser el mismo número, con su código de país).
     </div>
     <input type="hidden" id="pers-id">
 
@@ -963,16 +963,24 @@ function renderAlertas(){
   const edita = isPersAdmin();
   const activos = personal.filter(p => String(p.activo===undefined?'SI':p.activo).toUpperCase() !== 'NO')
     .sort((a,b) => String(a.nombre||'').localeCompare(String(b.nombre||'')));
+  // Los avisos salen por Telegram (WhatsApp está apagado): solo recibe quien ya vinculó su cuenta
+  // (campo `telegramChatId`, que el bot guarda cuando el colaborador comparte su número).
+  const vinculado = (p) => { const n = Number(p.telegramChatId); return Number.isFinite(n) && n !== 0; };
+  const nVinc = activos.filter(vinculado).length;
+  const resumen = document.getElementById('alertas-resumen-tg');
+  if (resumen) resumen.textContent = nVinc + ' de ' + activos.length + ' vinculados a Telegram';
   tb.innerHTML = activos.map(p => {
-    const tel = String(p.telefono||'').replace(/\D/g,'').length >= 9;
+    const tel = vinculado(p);
     const chk = (tipo) => '<td style="text-align:center"><input type="checkbox" style="width:16px;height:16px"'
       + (avisoDe(p,tipo) ? ' checked' : '') + (edita ? '' : ' disabled')
       + ' data-av-id="'+esc(p.id)+'" data-av-tipo="'+tipo+'"></td>';
     return '<tr' + (tel ? '' : ' style="opacity:.55"') + '><td><b>'+esc(p.nombre||'')+'</b>'
       + ' <span style="font-size:10px;color:var(--muted2)">'+esc(p.cargo||'')+'</span>'
-      + (tel ? '' : ' <span title="Sin teléfono WhatsApp: no puede recibir avisos">📵</span>')
+      + '</td><td style="text-align:center;white-space:nowrap">'
+      + (tel ? '<span style="color:#1a9e5a;font-weight:600" title="Ya vinculó su Telegram: recibe los avisos">✅ Vinculado</span>'
+             : '<span style="color:#d48a00" title="Aún no abrió el bot de Telegram: no recibe avisos hasta vincularse">⏳ Pendiente</span>')
       + '</td>' + chk('obs') + chk('asistencia') + chk('mtto') + chk('recordatorio') + '</tr>';
-  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--muted2);padding:16px">Sin personal activo</td></tr>';
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted2);padding:16px">Sin personal activo</td></tr>';
 }
 async function toggleAvisoTipo(id, tipo, checked){
   if(!isPersAdmin()){ toast('Sin permisos','err'); return; }
@@ -1169,7 +1177,7 @@ function renderPersTable(){
       <td style="font-family:var(--mono)">${esc(p.numDoc)}</td>
       <td>${esc(p.cargo)}</td>
       <td>${esc(p.area)}</td>
-      <td style="font-family:var(--mono)">${ws?('+'+esc(ws)):''}</td>
+      <td style="white-space:nowrap">${Number(p.telegramChatId)?'<span style="color:#1a9e5a;font-weight:600" title="Ya vinculó su Telegram: recibe los avisos">✅ Vinculado</span>':'<span style="color:#d48a00" title="Aún no abrió el bot de Telegram">⏳ Pendiente</span>'}</td>
       <td>${esc(correoPrincipal(p))}</td>
       <td class="col-acc"><button class="btn btn-sm" onclick="openEditPers('${idAttr}')" title="${admin?'Editar':'Ver'}" style="padding:3px 9px">${actIcon}</button></td>
     </tr>`;
@@ -1186,7 +1194,7 @@ function telRowHTML(t){
     <span class="rep-pref" style="font-family:var(--mono);font-size:12px;color:var(--muted2);min-width:42px">${esc(paisByCod(t.pais).prefijo)}</span>
     <input type="text" class="form-input rep-num" inputmode="tel" placeholder="988511111" value="${esc(t.numero)}" style="flex:1;min-width:120px" autocomplete="off">
     <select class="form-select rep-tipo" style="flex:0 0 130px">${tipoOpts}</select>
-    <label class="rep-tag"><input type="radio" name="tel-principal" class="rep-princ"${t.principal?' checked':''}> WhatsApp</label>
+    <label class="rep-tag"><input type="radio" name="tel-principal" class="rep-princ"${t.principal?' checked':''}> Principal</label>
     <button type="button" class="rep-del" onclick="this.closest('.rep-row').remove()">✕</button>
   </div>`;
 }
@@ -1631,7 +1639,7 @@ async function savePers(){
   const legacyTel = (telefonos.find(t=>t.principal) || telefonos.find(t=>t.tipo==='whatsapp') || telefonos[0] || {}).e164 || '';
   const activo = val('pers-activo');
   if(activo==='SI' && !legacyTel){
-    if(!confirm('Este colaborador está ACTIVO y no tiene un teléfono para WhatsApp.\nEl bot no podrá identificarlo. ¿Guardar de todos modos?')) return;
+    if(!confirm('Este colaborador está ACTIVO y no tiene un teléfono principal.\nEl bot no podrá vincularlo a Telegram. ¿Guardar de todos modos?')) return;
   }
 
   const data = {

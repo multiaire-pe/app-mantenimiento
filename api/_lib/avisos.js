@@ -98,7 +98,7 @@ export async function notificarPorTipo(tipo, texto, excluirId = '', opts = {}) {
 }
 
 function textoAviso(obs, tecnico) {
-  return '🔧 *Nueva observación* (vía WhatsApp)\n' +
+  return '🔧 *Nueva observación* (vía bot)\n' +
     `🏪 ${sinRipley(obs.tienda)} · ❄️ ${obs.equipo}\n` +
     (obs.area ? `📍 Ubicación: ${obs.area}\n` : '') +
     `📌 ${ESTADO_LABEL[obs.estado] || obs.estado}\n` +
