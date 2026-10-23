@@ -170,16 +170,20 @@ export async function procesarUpdate(update, d) {
     // absurdo con el texto "/algo"): se le dice que no existe.
     if (n.tipo === 'text' && n.texto.trim().startsWith('/')) {
       const cmd = n.texto.trim().split(/\s+/)[0].replace(/@[A-Za-z0-9_]+$/, '').toLowerCase();
-      // El menú sale con el TECLADO FIJO (no con botones en el mensaje): un mensaje no puede llevar
-      // los dos, y así quien ya estaba vinculado antes de existir el teclado lo recibe al tocar Menú.
+      // El menú sale con sus botones EN el mensaje y, aparte, un mensaje corto que deja puesto el
+      // TECLADO FIJO: un mismo mensaje no puede llevar los dos tipos de botón. Se manda siempre
+      // (no se puede saber si el técnico ya lo tiene), así quien se vinculó antes de que existiera
+      // el teclado lo recibe al tocar Menú.
+      const mostrarMenu = async (prefijo = '') => {
+        await d.tg.enviarRespuestaTg(chatId, { texto: prefijo + d.MENU_TEXTO, botones: d.MENU_BOTONES });
+        await d.tg.enviarTexto(chatId, '⌨️ Tienes los botones fijos aquí abajo 👇', { reply_markup: d.tg.TECLADO_PRINCIPAL });
+      };
       if (cmd === '/menu' || cmd === '/start') {
         await d.limpiarSesiones(from);
-        await d.tg.enviarTexto(chatId, d.MENU_TEXTO, { reply_markup: d.tg.TECLADO_PRINCIPAL });
+        await mostrarMenu();
       } else if (cmd === '/cancelar') {
         await d.limpiarSesiones(from);
-        await d.tg.enviarTexto(chatId,
-          '❌ Cancelado. Lo que estabas haciendo no se guardó (lo que ya estaba guardado se mantiene).\n\n' + d.MENU_TEXTO,
-          { reply_markup: d.tg.TECLADO_PRINCIPAL });
+        await mostrarMenu('❌ Cancelado. Lo que estabas haciendo no se guardó (lo que ya estaba guardado se mantiene).\n\n');
       } else {
         await d.tg.enviarTexto(chatId, 'Ese comando no existe. Usa /menu para ver las opciones o /cancelar para salir de lo que estás haciendo.');
       }

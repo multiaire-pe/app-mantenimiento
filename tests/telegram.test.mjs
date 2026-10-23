@@ -90,27 +90,27 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 }
 { // /start → menú sin pasar por el router
   const d = mkDeps(); await procesarUpdate(msg({ text: '/start' }), d);
-  t('/start: menú con teclado fijo', d.log.env[0].x === 'MENU' && d.log.env[0].e?.reply_markup?.k === 'principal' && d.log.manejarMensaje.length === 0);
+  t('/start: menú con botones + teclado fijo', d.log.env[0].r?.texto === 'MENU' && d.log.env[0].r?.botones?.length === 1 && d.log.env[1]?.e?.reply_markup?.k === 'principal' && d.log.manejarMensaje.length === 0, JSON.stringify(d.log.env));
 }
 { // /menu: corta lo que esté en curso y muestra el menú
   const d = mkDeps(); await procesarUpdate(msg({ text: '/menu' }), d);
   t('/menu: corta las sesiones', d.log.limpiadas.join() === 'tg7');
-  t('/menu: muestra el menú con el teclado fijo', d.log.env.length === 1 && d.log.env[0].x === 'MENU' && d.log.env[0].e?.reply_markup?.k === 'principal');
+  t('/menu: dos mensajes — el menú con sus botones y luego el teclado fijo', d.log.env.length === 2 && d.log.env[0].r?.texto === 'MENU' && d.log.env[0].r?.botones?.length === 1 && d.log.env[1].e?.reply_markup?.k === 'principal');
   t('/menu: no llega al motor', d.log.manejarMensaje.length === 0);
 }
 { // /cancelar: corta, avisa que lo no guardado se pierde y vuelve al menú
   const d = mkDeps(); await procesarUpdate(msg({ text: '/cancelar' }), d);
   t('/cancelar: corta las sesiones', d.log.limpiadas.join() === 'tg7');
-  t('/cancelar: avisa, muestra el menú y deja el teclado fijo', /Cancelado/.test(d.log.env[0].x) && /MENU/.test(d.log.env[0].x) && d.log.env[0].e?.reply_markup?.k === 'principal');
+  t('/cancelar: avisa, muestra el menú con botones y deja el teclado fijo', /Cancelado/.test(d.log.env[0].r?.texto) && /MENU/.test(d.log.env[0].r?.texto) && d.log.env[0].r?.botones?.length === 1 && d.log.env[1]?.e?.reply_markup?.k === 'principal');
   t('/cancelar: no llega al motor', d.log.manejarMensaje.length === 0);
 }
 { // variantes: mayúsculas, @bot, espacios, /start con parámetro
   for (const txt of ['/MENU', '/menu@multiaire_pe_bot', '  /menu  ', '/start abc123']) {
     const d = mkDeps(); await procesarUpdate(msg({ text: txt }), d);
-    t(`variante ${JSON.stringify(txt)} → menú`, d.log.env[0]?.x === 'MENU' && d.log.limpiadas.length === 1);
+    t(`variante ${JSON.stringify(txt)} → menú`, d.log.env[0]?.r?.texto === 'MENU' && d.log.env[1]?.e?.reply_markup?.k === 'principal' && d.log.limpiadas.length === 1);
   }
   const d = mkDeps(); await procesarUpdate(msg({ text: '/CANCELAR@multiaire_pe_bot' }), d);
-  t('variante /CANCELAR@bot', /Cancelado/.test(d.log.env[0]?.x || ''));
+  t('variante /CANCELAR@bot', /Cancelado/.test(d.log.env[0]?.r?.texto || ''));
 }
 { // TECLADO FIJO: la definición
   const filas = TECLADO_PRINCIPAL.keyboard;
