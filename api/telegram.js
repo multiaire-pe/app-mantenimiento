@@ -16,11 +16,12 @@ import crypto from 'node:crypto';
 // Cada dependencia se importa dinámicamente la primera vez: el módulo se puede importar en un
 // test sin arrastrar firebase-admin, y `procesarUpdate` recibe `deps` inyectables.
 async function depsReales() {
-  const [idem, ident, tg, conv, esc, av, rout, asis, mt, mtSes] = await Promise.all([
+  const [idem, ident, tg, conv, esc, av, rout, asis, mt, mtSes, obsSes, asisSes, fotos] = await Promise.all([
     import('./_lib/idempotencia.js'), import('./_lib/identidad.js'), import('./_lib/telegram.js'),
     import('./_lib/conversacion.js'), import('./_lib/escritura.js'), import('./_lib/avisos.js'),
     import('./_lib/router.js'), import('./_lib/asistencia.js'), import('./_lib/mtto.js'),
-    import('./_lib/mtto_sesiones.js'),
+    import('./_lib/mtto_sesiones.js'), import('./_lib/sesiones.js'), import('./_lib/asistencia_sesiones.js'),
+    import('./_lib/fotos.js'),
   ]);
   return {
     yaProcesado: idem.yaProcesado, liberarMensaje: idem.liberarMensaje,
@@ -29,6 +30,13 @@ async function depsReales() {
     notificarSupervisores: av.notificarSupervisores, decidirFlujo: rout.decidirFlujo,
     manejarAsistencia: asis.manejarAsistencia, manejarMtto: mt.manejarMtto,
     MENU_TEXTO: mt.MENU_TEXTO, MENU_BOTONES: mt.MENU_BOTONES, getSesionMtto: mtSes.getSesion,
+    // Corta CUALQUIER conversación a medias (observación + su foto pendiente, asistencia + su selfie,
+    // mantenimiento). Lo usan /menu y /cancelar: sin esto, lo que el técnico toque después se
+    // mezclaría con la conversación vieja.
+    limpiarSesiones: (from) => Promise.all([
+      obsSes.limpiarSesion(from), fotos.limpiarFotoPendiente(from),
+      asisSes.limpiarSesion(from), mtSes.limpiarSesion(from),
+    ]),
   };
 }
 
@@ -147,9 +155,24 @@ export async function procesarUpdate(update, d) {
 
     if (n.messageId) d.tg.quitarBotones(chatId, n.messageId).catch(() => {});   // evita el doble toque
 
-    // /start y /menu muestran el menú sin pasar por el router.
-    if (n.tipo === 'text' && /^\/(start|menu)(@\w+)?\s*$/i.test(n.texto)) {
-      await d.tg.enviarRespuestaTg(chatId, { texto: d.MENU_TEXTO, botones: d.MENU_BOTONES });
+    // COMANDOS. Solo hay dos que el técnico usa: /menu y /cancelar (más /start, que es lo que manda
+    // el botón "Iniciar" de Telegram y se comporta como /menu). Ambos cortan primero lo que esté en
+    // curso. Cualquier otro "/algo" NO se manda al motor de observaciones (abriría un borrador
+    // absurdo con el texto "/algo"): se le dice que no existe.
+    if (n.tipo === 'text' && n.texto.trim().startsWith('/')) {
+      const cmd = n.texto.trim().split(/\s+/)[0].replace(/@[A-Za-z0-9_]+$/, '').toLowerCase();
+      if (cmd === '/menu' || cmd === '/start') {
+        await d.limpiarSesiones(from);
+        await d.tg.enviarRespuestaTg(chatId, { texto: d.MENU_TEXTO, botones: d.MENU_BOTONES });
+      } else if (cmd === '/cancelar') {
+        await d.limpiarSesiones(from);
+        await d.tg.enviarRespuestaTg(chatId, {
+          texto: '❌ Cancelado. Lo que estabas haciendo no se guardó (lo que ya estaba guardado se mantiene).\n\n' + d.MENU_TEXTO,
+          botones: d.MENU_BOTONES,
+        });
+      } else {
+        await d.tg.enviarTexto(chatId, 'Ese comando no existe. Usa /menu para ver las opciones o /cancelar para salir de lo que estás haciendo.');
+      }
       return;
     }
 
