@@ -87,22 +87,24 @@ export const enviarListaDetalle = (chatId, texto, filas) =>
     reply_markup: tecladoInline((filas || []).map((f) => ({ id: f.id, text: f.description ? `${f.title} · ${f.description}` : f.title }))),
   });
 
-// TECLADO PRINCIPAL: UN solo botón fijo debajo del chat, "❌ Cancelar" (is_persistent: siempre
-// visible). Cancela lo que el técnico esté haciendo y vuelve al menú. Antes tenía también las tres
-// acciones y "Compartir ubicación", pero resultó incómodo (ocupaba mucho espacio del chat). Es UN
-// solo teclado a propósito: Telegram muestra uno por chat, y si cada mensaje mandara el suyo se
-// pisarían entre sí.
+// TECLADO FIJO VARIABLE (is_persistent: siempre visible). Hay dos versiones y el bot cambia de una a otra
+// según lo que el técnico esté haciendo:
+//   · INICIO — nadie está en medio de un flujo: las tres acciones (Mantenimiento · Observación ·
+//     Asistencia) a un toque, en una sola fila.
+//   · FLUJO  — ya entró a una de las tres: un solo botón "❌ Cancelar" para salir y volver al inicio.
+// Al terminar el registro (o al cancelar) vuelve el de INICIO. Telegram muestra UN teclado por chat y
+// lo reemplaza cuando llega un mensaje con otro `reply_markup`, así que el cambio se hace mandando un
+// mensaje con el teclado nuevo (ver sincronizarTeclado en api/telegram.js). "Compartir ubicación" ya
+// no está: el técnico manda su ubicación con el clip 📎.
 export const BOTON_CANCELAR = '❌ Cancelar';
-export const TECLADO_PRINCIPAL = {
-  keyboard: [[{ text: BOTON_CANCELAR }]],
-  resize_keyboard: true,
-  is_persistent: true,
-};
+export const ACCIONES_INICIO = ['🔧 Mantenimiento', '📝 Observación', '🕐 Asistencia'];
+const fijo = (fila) => ({ keyboard: [fila.map((text) => ({ text }))], resize_keyboard: true, is_persistent: true });
+export const TECLADO_INICIO = fijo(ACCIONES_INICIO);
+export const TECLADO_FLUJO = fijo([BOTON_CANCELAR]);
 
-// COMPATIBILIDAD: un técnico que recibió la versión anterior del teclado (4 teclas) lo conserva en
-// el teléfono hasta que le llegue el nuevo (lo recibe al usar /menu, /cancelar o vincularse). Mientras
-// tanto esas teclas siguen funcionando: llegan como TEXTO con el rótulo y se traducen a la opción
-// numérica que ya entiende el router (1 mtto, 2 observación, 3 asistencia). Ya no se ofrecen.
+// Lo que llega cuando el técnico toca una de las teclas de INICIO es TEXTO (con el rótulo del botón). Se
+// traduce a la opción numérica que ya entiende el router (1 mtto, 2 observación, 3 asistencia): así
+// el flujo no necesita saber que vino de un teclado.
 export const ACCION_DE_BOTON = { '🔧 Mantenimiento': '1', '📝 Observación': '2', '🕐 Asistencia': '3' };
 
 // Pide el contacto del técnico para vincular su cuenta. one_time: desaparece tras usarlo.

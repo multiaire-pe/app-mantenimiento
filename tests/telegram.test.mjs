@@ -1,6 +1,6 @@
 // Pruebas del adaptador de Telegram. No tocan Firestore ni la red: el handler recibe `deps`
 // inyectables (mismo patrón que el resto de las suites del bot).  Uso: node tests/telegram.test.mjs
-import { htmlDeWa, enviarTextoDetalle, ACCION_DE_BOTON, TECLADO_PRINCIPAL, BOTON_CANCELAR } from '../api/_lib/telegram.js';
+import { htmlDeWa, enviarTextoDetalle, ACCION_DE_BOTON, TECLADO_INICIO, TECLADO_FLUJO, BOTON_CANCELAR, ACCIONES_INICIO } from '../api/_lib/telegram.js';
 import { matchTelegram } from '../api/_lib/identidad.js';
 import { normalizarUpdate, procesarUpdate, secretValido } from '../api/telegram.js';
 
@@ -35,7 +35,7 @@ t('sticker → otro', normalizarUpdate({ message: { chat: priv, from: { id: 7 },
 
 // ── procesarUpdate con deps falsas ───────────────────────────────────────────────────────
 function mkDeps(over = {}) {
-  const log = { env: [], liberados: [], vinculos: [], manejarMensaje: [], visto: new Set(), limpiadas: [] };
+  const log = { env: [], liberados: [], vinculos: [], manejarMensaje: [], visto: new Set(), limpiadas: [], modos: [] };
   const tec = { id: 'PER1', nombre: 'ANA' };
   return {
     log,
@@ -48,13 +48,17 @@ function mkDeps(over = {}) {
       enviarTexto: async (c, x, e) => { log.env.push({ c, x, e }); return true; },
       enviarRespuestaTg: async (c, r) => { log.env.push({ c, r }); },
       descargarArchivo: async () => ({ base64: 'QQ==', mime: 'image/jpeg' }),
-      TECLADO_CONTACTO: { k: 'contacto' }, TECLADO_PRINCIPAL: { k: 'principal' }, ACCION_DE_BOTON, BOTON_CANCELAR,
+      TECLADO_CONTACTO: { k: 'contacto' }, TECLADO_INICIO: { k: 'inicio' }, TECLADO_FLUJO: { k: 'flujo' }, ACCION_DE_BOTON, BOTON_CANCELAR,
     },
     manejarMensaje: async (a) => { log.manejarMensaje.push(a); return 'resp-obs'; },
     guardarObservacion: async () => ({ id: 'O1' }), notificarSupervisores: async () => 0,
     decidirFlujo: async () => 'observaciones', manejarAsistencia: async () => 'resp-asis', manejarMtto: async () => 'resp-mtto',
     getSesionMtto: async () => null, MENU_TEXTO: 'MENU', MENU_BOTONES: [{ id: '1', title: 'M' }],
     limpiarSesiones: async (from) => { log.limpiadas.push(from); },
+    // teclado fijo variable: por defecto el chat ya tiene el de inicio y no está en ningún flujo
+    hayFlujo: async () => !!log.enFlujo,
+    getModoTeclado: async () => (log.modo === undefined ? 'inicio' : log.modo),
+    setModoTeclado: async (_f, m) => { log.modo = m; log.modos.push(m); },
     ...over,
   };
 }
@@ -77,7 +81,7 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 { // contacto propio con número conocido → vincula y manda menú
   const d = mkDeps(); await procesarUpdate(msg({ contact: { phone_number: '51999', user_id: 99 } }, 99, 99), d);
   t('contacto propio: vincula', d.log.vinculos.length === 1 && d.log.vinculos[0][0] === 99);
-  t('contacto propio: teclado fijo + menú', d.log.env.some((e) => e.e?.reply_markup?.k === 'principal') && d.log.env.some((e) => e.r?.texto === 'MENU'));
+  t('contacto propio: teclado fijo + menú', d.log.env.some((e) => e.e?.reply_markup?.k === 'inicio') && d.log.env.some((e) => e.r?.texto === 'MENU'));
 }
 { // contacto propio con número desconocido
   const d = mkDeps(); await procesarUpdate(msg({ contact: { phone_number: '51000', user_id: 99 } }, 99, 99), d);
@@ -90,39 +94,41 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 }
 { // /start → menú sin pasar por el router
   const d = mkDeps(); await procesarUpdate(msg({ text: '/start' }), d);
-  t('/start: menú con botones + teclado fijo', d.log.env[0].r?.texto === 'MENU' && d.log.env[0].r?.botones?.length === 1 && d.log.env[1]?.e?.reply_markup?.k === 'principal' && d.log.manejarMensaje.length === 0, JSON.stringify(d.log.env));
+  t('/start: menú con botones + teclado fijo', d.log.env[0].r?.texto === 'MENU' && d.log.env[0].r?.botones?.length === 1 && d.log.env[1]?.e?.reply_markup?.k === 'inicio' && d.log.manejarMensaje.length === 0, JSON.stringify(d.log.env));
 }
 { // /menu: corta lo que esté en curso y muestra el menú
   const d = mkDeps(); await procesarUpdate(msg({ text: '/menu' }), d);
   t('/menu: corta las sesiones', d.log.limpiadas.join() === 'tg7');
-  t('/menu: dos mensajes — el menú con sus botones y luego el teclado fijo', d.log.env.length === 2 && d.log.env[0].r?.texto === 'MENU' && d.log.env[0].r?.botones?.length === 1 && d.log.env[1].e?.reply_markup?.k === 'principal');
+  t('/menu: dos mensajes — el menú con sus botones y luego el teclado fijo', d.log.env.length === 2 && d.log.env[0].r?.texto === 'MENU' && d.log.env[0].r?.botones?.length === 1 && d.log.env[1].e?.reply_markup?.k === 'inicio');
   t('/menu: no llega al motor', d.log.manejarMensaje.length === 0);
 }
 { // /cancelar: corta, avisa que lo no guardado se pierde y vuelve al menú
   const d = mkDeps(); await procesarUpdate(msg({ text: '/cancelar' }), d);
   t('/cancelar: corta las sesiones', d.log.limpiadas.join() === 'tg7');
-  t('/cancelar: avisa, muestra el menú con botones y deja el teclado fijo', /Cancelado/.test(d.log.env[0].r?.texto) && /MENU/.test(d.log.env[0].r?.texto) && d.log.env[0].r?.botones?.length === 1 && d.log.env[1]?.e?.reply_markup?.k === 'principal');
+  t('/cancelar: avisa, muestra el menú con botones y deja el teclado fijo', /Cancelado/.test(d.log.env[0].r?.texto) && /MENU/.test(d.log.env[0].r?.texto) && d.log.env[0].r?.botones?.length === 1 && d.log.env[1]?.e?.reply_markup?.k === 'inicio');
   t('/cancelar: no llega al motor', d.log.manejarMensaje.length === 0);
 }
 { // variantes: mayúsculas, @bot, espacios, /start con parámetro
   for (const txt of ['/MENU', '/menu@multiaire_pe_bot', '  /menu  ', '/start abc123']) {
     const d = mkDeps(); await procesarUpdate(msg({ text: txt }), d);
-    t(`variante ${JSON.stringify(txt)} → menú`, d.log.env[0]?.r?.texto === 'MENU' && d.log.env[1]?.e?.reply_markup?.k === 'principal' && d.log.limpiadas.length === 1);
+    t(`variante ${JSON.stringify(txt)} → menú`, d.log.env[0]?.r?.texto === 'MENU' && d.log.env[1]?.e?.reply_markup?.k === 'inicio' && d.log.limpiadas.length === 1);
   }
   const d = mkDeps(); await procesarUpdate(msg({ text: '/CANCELAR@multiaire_pe_bot' }), d);
   t('variante /CANCELAR@bot', /Cancelado/.test(d.log.env[0]?.r?.texto || ''));
 }
-{ // TECLADO FIJO: la definición
-  const filas = TECLADO_PRINCIPAL.keyboard;
-  t('teclado fijo: UN solo botón, "Cancelar"', filas.flat().length === 1 && filas.flat()[0].text === BOTON_CANCELAR && /Cancelar/.test(BOTON_CANCELAR), JSON.stringify(filas));
-  t('teclado fijo: ya no pide ubicación ni ofrece acciones', !filas.flat().some((k) => k.request_location || ACCION_DE_BOTON[k.text]));
-  t('teclado fijo: persistente y ajustado', TECLADO_PRINCIPAL.is_persistent === true && TECLADO_PRINCIPAL.resize_keyboard === true);
+{ // TECLADO FIJO VARIABLE: las dos definiciones
+  const ini = TECLADO_INICIO.keyboard, flu = TECLADO_FLUJO.keyboard;
+  t('teclado de inicio: las tres acciones en una fila', ini.length === 1 && ini[0].map((k) => k.text).join() === ACCIONES_INICIO.join() && ACCIONES_INICIO.length === 3, JSON.stringify(ini));
+  t('teclado de inicio: cada tecla se traduce a 1/2/3', ini.flat().every((k) => ACCION_DE_BOTON[k.text]) && ['1', '2', '3'].every((x) => Object.values(ACCION_DE_BOTON).includes(x)));
+  t('teclado de flujo: UN solo botón, "Cancelar"', flu.flat().length === 1 && flu.flat()[0].text === BOTON_CANCELAR && /Cancelar/.test(BOTON_CANCELAR), JSON.stringify(flu));
+  t('ninguno pide ubicación', ![...ini.flat(), ...flu.flat()].some((k) => k.request_location));
+  t('ambos persistentes y ajustados', [TECLADO_INICIO, TECLADO_FLUJO].every((k) => k.is_persistent === true && k.resize_keyboard === true));
 }
 { // tocar "❌ Cancelar": hace lo mismo que /cancelar
   const d = mkDeps(); await procesarUpdate(msg({ text: BOTON_CANCELAR }), d);
   t('botón Cancelar: corta las sesiones', d.log.limpiadas.join() === 'tg7');
   t('botón Cancelar: avisa y muestra el menú con botones', /Cancelado/.test(d.log.env[0]?.r?.texto || '') && /MENU/.test(d.log.env[0]?.r?.texto || '') && d.log.env[0]?.r?.botones?.length === 1);
-  t('botón Cancelar: deja el teclado fijo', d.log.env[1]?.e?.reply_markup?.k === 'principal');
+  t('botón Cancelar: deja el teclado fijo', d.log.env[1]?.e?.reply_markup?.k === 'inicio');
   t('botón Cancelar: no llega al motor', d.log.manejarMensaje.length === 0);
   const d2 = mkDeps(); await procesarUpdate(msg({ text: '  ' + BOTON_CANCELAR + '  ' }), d2);
   t('botón Cancelar: tolera espacios', d2.log.limpiadas.length === 1);
@@ -146,7 +152,54 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 }
 { // la ayuda de asistencia no debe PISAR el teclado fijo con uno distinto
   const d = mkDeps({ decidirFlujo: async () => 'hint-asistencia' }); await procesarUpdate(msg({ text: '3' }), d);
-  t('hint de asistencia conserva el teclado fijo', d.log.env[0]?.e?.reply_markup?.k === 'principal', JSON.stringify(d.log.env));
+  t('hint de asistencia: ya entró, muestra Cancelar', d.log.env[0]?.e?.reply_markup?.k === 'flujo' && d.log.modo === 'flujo', JSON.stringify(d.log.env));
+}
+{ // TECLADO VARIABLE: inicio ⇄ flujo
+  // 1) tocar Mantenimiento/Observación/Asistencia y quedar dentro de un flujo → pasa a Cancelar
+  //    (texto simple: el teclado viaja EN la respuesta, sin mensaje extra)
+  const d = mkDeps({ decidirFlujo: async () => 'mtto', manejarMtto: async () => 'Dime la sede', hayFlujo: async () => true });
+  await procesarUpdate(msg({ text: '🔧 Mantenimiento' }), d);
+  t('entrar a un flujo: la respuesta lleva Cancelar', d.log.env.length === 1 && d.log.env[0].x === 'Dime la sede' && d.log.env[0].e?.reply_markup?.k === 'flujo', JSON.stringify(d.log.env));
+  t('entrar a un flujo: recuerda el modo', d.log.modo === 'flujo' && d.log.modos.join() === 'flujo');
+  // 2) seguir dentro del flujo: no vuelve a mandar teclado
+  const d2 = mkDeps({ decidirFlujo: async () => 'mtto', manejarMtto: async () => 'Siguiente pregunta', hayFlujo: async () => true });
+  d2.log.modo = 'flujo';
+  await procesarUpdate(msg({ text: 'atocongo' }), d2);
+  t('dentro del flujo: sin teclado repetido', d2.log.env.length === 1 && d2.log.env[0].r === 'Siguiente pregunta' && d2.log.modos.length === 0, JSON.stringify(d2.log.env));
+  // 3) terminar el registro (ya no hay sesión) → vuelven las tres acciones
+  const d3 = mkDeps({ decidirFlujo: async () => 'mtto', manejarMtto: async () => '✅ Listo, registrado', hayFlujo: async () => false });
+  d3.log.modo = 'flujo';
+  await procesarUpdate(msg({ text: 'fin' }), d3);
+  t('terminar el registro: la respuesta lleva las tres acciones', d3.log.env.length === 1 && d3.log.env[0].x === '✅ Listo, registrado' && d3.log.env[0].e?.reply_markup?.k === 'inicio' && d3.log.modo === 'inicio', JSON.stringify(d3.log.env));
+  // 4) respuesta con botones en línea: el teclado va en un mensaje corto aparte
+  const d4 = mkDeps({ decidirFlujo: async () => 'mtto', manejarMtto: async () => ({ texto: 'Elige', botones: [{ id: 'a', title: 'A' }] }), hayFlujo: async () => true });
+  await procesarUpdate(msg({ text: '1' }), d4);
+  t('botones en línea: respuesta intacta + mensaje aparte con Cancelar', d4.log.env.length === 2 && d4.log.env[0].r?.botones?.length === 1 && !d4.log.env[0].e && d4.log.env[1].e?.reply_markup?.k === 'flujo', JSON.stringify(d4.log.env));
+  // 5) observación: la sesión viva (también en la fase de operatividad) cuenta como flujo
+  const d5 = mkDeps({ hayFlujo: async () => true });
+  await procesarUpdate(msg({ text: 'fuga en el rooftop 6' }), d5);
+  t('observación en curso: Cancelar', d5.log.env[0]?.e?.reply_markup?.k === 'flujo' && d5.log.modo === 'flujo');
+  // 6) tocar Observación sin sesión todavía (hint): ya "entró" → Cancelar
+  const d6 = mkDeps({ decidirFlujo: async () => 'hint-obs' });
+  await procesarUpdate(msg({ text: '📝 Observación' }), d6);
+  t('hint de observación: muestra Cancelar', d6.log.env[0]?.e?.reply_markup?.k === 'flujo' && d6.log.modo === 'flujo', JSON.stringify(d6.log.env));
+  // 7) saludo en frío: menú + teclado de inicio
+  const d7 = mkDeps({ decidirFlujo: async () => 'menu' });
+  d7.log.modo = 'flujo';
+  await procesarUpdate(msg({ text: 'hola' }), d7);
+  t('saludo: menú y vuelven las tres acciones', d7.log.env[0].r?.texto === 'MENU' && d7.log.env[1]?.e?.reply_markup?.k === 'inicio' && d7.log.modo === 'inicio', JSON.stringify(d7.log.env));
+  // 8) /cancelar y /menu siempre dejan el teclado de inicio (aunque el chat tuviera Cancelar)
+  const d8 = mkDeps(); d8.log.modo = 'flujo';
+  await procesarUpdate(msg({ text: BOTON_CANCELAR }), d8);
+  t('Cancelar: vuelven las tres acciones', d8.log.env[1]?.e?.reply_markup?.k === 'inicio' && d8.log.modo === 'inicio');
+  // 9) una falla del teclado NO pierde la respuesta
+  const d9 = mkDeps({ decidirFlujo: async () => 'mtto', manejarMtto: async () => 'Respuesta importante', hayFlujo: async () => { throw new Error('firestore caído'); } });
+  await procesarUpdate(msg({ text: 'hola' }), d9);
+  t('si falla el teclado, la respuesta sale igual', d9.log.env.length === 1 && d9.log.env[0].r === 'Respuesta importante');
+  // 10) respuesta vacía (foto de álbum que no es la líder): no manda nada ni toca el teclado
+  const d10 = mkDeps({ decidirFlujo: async () => 'mtto', manejarMtto: async () => null, hayFlujo: async () => true });
+  await procesarUpdate(msg({ text: 'x' }), d10);
+  t('respuesta null: silencio', d10.log.env.length === 0 && d10.log.modos.length === 0);
 }
 { // cualquier otro comando: NO existe, NO va al motor de observaciones, NO corta nada
   for (const txt of ['/obs', '/mtto', '/asistencia', '/ayuda', '/loquesea']) {
