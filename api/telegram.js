@@ -111,6 +111,24 @@ const TXT_VINCULAR =
   '👋 Hola, soy el bot de MultiAire.\n\nPara usarlo necesito saber quién eres. ' +
   'Toca el botón de abajo para compartir tu número (el mismo que tiene registrado la oficina).';
 
+// El menú de Telegram NO lleva botones en línea ni la lista numerada: las tres opciones ya están en el
+// teclado fijo de abajo y repetirlas se ve redundante. (El texto numerado "1️⃣ 2️⃣ 3️⃣" y sus botones
+// son del canal de WhatsApp y siguen igual allá.)
+const TXT_MENU = '👋 ¡Hola! Soy el bot de MultiAire. ¿Qué necesitas?\n\nElige una opción aquí abajo 👇 o escríbeme directo (ej: "mantenimiento preventivo del chiller 1 de atocongo").';
+
+// Adapta una respuesta de los flujos (hechos para WhatsApp) a Telegram: donde llevaba el menú — texto
+// numerado y/o sus tres botones (flujos que terminan devolviendo al menú) — queda el texto corto sin
+// botones. Las demás respuestas (confirmaciones, listas, etc.) pasan tal cual.
+function paraTelegram(d, resp) {
+  if (!resp) return resp;
+  const corto = (x) => (typeof x === 'string' && d.MENU_TEXTO ? x.split(d.MENU_TEXTO).join(TXT_MENU) : x);
+  if (typeof resp === 'string') return corto(resp);
+  if (Array.isArray(resp.mensajes)) return { ...resp, mensajes: resp.mensajes.map((m) => paraTelegram(d, m)) };
+  const out = { ...resp, texto: corto(resp.texto) };
+  if (resp.botones && resp.botones === d.MENU_BOTONES) delete out.botones;
+  return out;
+}
+
 const TXT_TECLADO_FLUJO = 'Para salir de lo que estés haciendo, toca *❌ Cancelar* aquí abajo 👇';
 const TXT_TECLADO_INICIO = '👇 Cuando quieras empezar otra cosa, elige una opción aquí abajo.';
 const tecladoDe = (d, modo) => (modo === 'flujo' ? d.tg.TECLADO_FLUJO : d.tg.TECLADO_INICIO);
@@ -124,6 +142,7 @@ const tecladoDe = (d, modo) => (modo === 'flujo' ? d.tg.TECLADO_FLUJO : d.tg.TEC
 // botón por mensaje), así que el teclado va en un mensaje corto aparte.
 async function responderConTeclado(d, chatId, from, resp, forzar) {
   if (!resp) return;
+  resp = paraTelegram(d, resp);
   let modo = null;
   try {
     const deseado = forzar || ((await d.hayFlujo(from)) ? 'flujo' : 'inicio');
@@ -179,7 +198,7 @@ export async function procesarUpdate(update, d) {
       await d.tg.enviarTexto(chatId, `✅ Listo, *${t.nombre}*. Ya estás vinculado.\n\nAbajo te dejé las tres opciones a un toque. Cuando entres a una, ahí mismo aparece *❌ Cancelar* para salir.`,
         { reply_markup: d.tg.TECLADO_INICIO });
       await d.setModoTeclado(`tg${chatId}`, 'inicio').catch(() => {});
-      await d.tg.enviarRespuestaTg(chatId, { texto: d.MENU_TEXTO, botones: d.MENU_BOTONES });
+      await d.tg.enviarTexto(chatId, TXT_MENU);
       return;
     }
 
@@ -212,13 +231,11 @@ export async function procesarUpdate(update, d) {
     // absurdo con el texto "/algo"): se le dice que no existe.
     if (n.tipo === 'text' && n.texto.trim().startsWith('/')) {
       const cmd = n.texto.trim().split(/\s+/)[0].replace(/@[A-Za-z0-9_]+$/, '').toLowerCase();
-      // El menú sale con sus botones EN el mensaje y, aparte, un mensaje corto que deja puesto el
-      // TECLADO FIJO de inicio: un mismo mensaje no puede llevar los dos tipos de botón. Se manda
-      // siempre (no se puede saber qué teclado tiene el técnico en el teléfono: quien venía con uno
-      // viejo, o con «Cancelar» puesto, lo recibe acá).
+      // El menú es UN solo mensaje que deja puesto el TECLADO FIJO de inicio. Se manda siempre (no se
+      // puede saber qué teclado tiene el técnico en el teléfono: quien venía con uno viejo, o con
+      // «Cancelar» puesto, lo recibe acá).
       const mostrarMenu = async (prefijo = '') => {
-        await d.tg.enviarRespuestaTg(chatId, { texto: prefijo + d.MENU_TEXTO, botones: d.MENU_BOTONES });
-        await d.tg.enviarTexto(chatId, TXT_TECLADO_INICIO, { reply_markup: d.tg.TECLADO_INICIO });
+        await d.tg.enviarTexto(chatId, prefijo + TXT_MENU, { reply_markup: d.tg.TECLADO_INICIO });
         await d.setModoTeclado(from, 'inicio').catch(() => {});
       };
       if (cmd === '/menu' || cmd === '/start') {
