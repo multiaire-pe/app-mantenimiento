@@ -19,7 +19,7 @@ Si Telegram te pregunta por permisos de ubicación o notificaciones, **acéptalo
 ## 2. El menú y el botón Cancelar
 
 Escribe `/menu` (o toca **Menú**, el botón junto al campo de texto) cuando quieras volver al inicio:
-te muestra 3 botones — **Mantenimiento · Observación · Asistencia** — y corta lo que estabas haciendo.
+te deja abajo las 3 opciones — **Mantenimiento · Observación · Asistencia** — y corta lo que estabas haciendo.
 También puedes escribirle directo al bot, como antes.
 
 Los botones de abajo del chat **cambian según lo que estés haciendo**:
