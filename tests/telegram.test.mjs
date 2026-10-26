@@ -62,6 +62,7 @@ function mkDeps(over = {}) {
     ...over,
   };
 }
+const esMenuTg = (e) => typeof e?.x === 'string' && /Elige una opción aquí abajo/.test(e.x) && !/1️⃣|Responde con el número/.test(e.x) && !e.r && e.e?.reply_markup?.k === 'inicio';
 const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random() * 1e9), message: { chat: { id: chat, type: 'private' }, from: { id: uid }, ...extra } });
 
 { // técnico sin vincular → pide el contacto, no corre ningún flujo
@@ -81,7 +82,7 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 { // contacto propio con número conocido → vincula y manda menú
   const d = mkDeps(); await procesarUpdate(msg({ contact: { phone_number: '51999', user_id: 99 } }, 99, 99), d);
   t('contacto propio: vincula', d.log.vinculos.length === 1 && d.log.vinculos[0][0] === 99);
-  t('contacto propio: teclado fijo + menú', d.log.env.some((e) => e.e?.reply_markup?.k === 'inicio') && d.log.env.some((e) => e.r?.texto === 'MENU'));
+  t('contacto propio: teclado de inicio + menú corto sin botones en línea', d.log.env.some((e) => e.e?.reply_markup?.k === 'inicio') && d.log.env.some((e) => /Elige una opción aquí abajo/.test(e.x || '')) && !d.log.env.some((e) => e.r?.botones));
 }
 { // contacto propio con número desconocido
   const d = mkDeps(); await procesarUpdate(msg({ contact: { phone_number: '51000', user_id: 99 } }, 99, 99), d);
@@ -94,27 +95,27 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 }
 { // /start → menú sin pasar por el router
   const d = mkDeps(); await procesarUpdate(msg({ text: '/start' }), d);
-  t('/start: menú con botones + teclado fijo', d.log.env[0].r?.texto === 'MENU' && d.log.env[0].r?.botones?.length === 1 && d.log.env[1]?.e?.reply_markup?.k === 'inicio' && d.log.manejarMensaje.length === 0, JSON.stringify(d.log.env));
+  t('/start: UN mensaje, el menú corto con el teclado de inicio', d.log.env.length === 1 && esMenuTg(d.log.env[0]) && d.log.manejarMensaje.length === 0, JSON.stringify(d.log.env));
 }
 { // /menu: corta lo que esté en curso y muestra el menú
   const d = mkDeps(); await procesarUpdate(msg({ text: '/menu' }), d);
   t('/menu: corta las sesiones', d.log.limpiadas.join() === 'tg7');
-  t('/menu: dos mensajes — el menú con sus botones y luego el teclado fijo', d.log.env.length === 2 && d.log.env[0].r?.texto === 'MENU' && d.log.env[0].r?.botones?.length === 1 && d.log.env[1].e?.reply_markup?.k === 'inicio');
+  t('/menu: UN mensaje, sin botones en línea ni lista numerada', d.log.env.length === 1 && esMenuTg(d.log.env[0]), JSON.stringify(d.log.env));
   t('/menu: no llega al motor', d.log.manejarMensaje.length === 0);
 }
 { // /cancelar: corta, avisa que lo no guardado se pierde y vuelve al menú
   const d = mkDeps(); await procesarUpdate(msg({ text: '/cancelar' }), d);
   t('/cancelar: corta las sesiones', d.log.limpiadas.join() === 'tg7');
-  t('/cancelar: avisa, muestra el menú con botones y deja el teclado fijo', /Cancelado/.test(d.log.env[0].r?.texto) && /MENU/.test(d.log.env[0].r?.texto) && d.log.env[0].r?.botones?.length === 1 && d.log.env[1]?.e?.reply_markup?.k === 'inicio');
+  t('/cancelar: avisa y deja el menú corto con el teclado de inicio, en un solo mensaje', d.log.env.length === 1 && /Cancelado/.test(d.log.env[0].x) && /Elige una opción aquí abajo/.test(d.log.env[0].x) && d.log.env[0].e?.reply_markup?.k === 'inicio' && !d.log.env[0].r, JSON.stringify(d.log.env));
   t('/cancelar: no llega al motor', d.log.manejarMensaje.length === 0);
 }
 { // variantes: mayúsculas, @bot, espacios, /start con parámetro
   for (const txt of ['/MENU', '/menu@multiaire_pe_bot', '  /menu  ', '/start abc123']) {
     const d = mkDeps(); await procesarUpdate(msg({ text: txt }), d);
-    t(`variante ${JSON.stringify(txt)} → menú`, d.log.env[0]?.r?.texto === 'MENU' && d.log.env[1]?.e?.reply_markup?.k === 'inicio' && d.log.limpiadas.length === 1);
+    t(`variante ${JSON.stringify(txt)} → menú`, esMenuTg(d.log.env[0]) && d.log.limpiadas.length === 1);
   }
   const d = mkDeps(); await procesarUpdate(msg({ text: '/CANCELAR@multiaire_pe_bot' }), d);
-  t('variante /CANCELAR@bot', /Cancelado/.test(d.log.env[0]?.r?.texto || ''));
+  t('variante /CANCELAR@bot', /Cancelado/.test(d.log.env[0]?.x || ''));
 }
 { // TECLADO FIJO VARIABLE: las dos definiciones
   const ini = TECLADO_INICIO.keyboard, flu = TECLADO_FLUJO.keyboard;
@@ -127,8 +128,8 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
 { // tocar "❌ Cancelar": hace lo mismo que /cancelar
   const d = mkDeps(); await procesarUpdate(msg({ text: BOTON_CANCELAR }), d);
   t('botón Cancelar: corta las sesiones', d.log.limpiadas.join() === 'tg7');
-  t('botón Cancelar: avisa y muestra el menú con botones', /Cancelado/.test(d.log.env[0]?.r?.texto || '') && /MENU/.test(d.log.env[0]?.r?.texto || '') && d.log.env[0]?.r?.botones?.length === 1);
-  t('botón Cancelar: deja el teclado fijo', d.log.env[1]?.e?.reply_markup?.k === 'inicio');
+  t('botón Cancelar: avisa y muestra el menú corto', /Cancelado/.test(d.log.env[0]?.x || '') && /Elige una opción aquí abajo/.test(d.log.env[0]?.x || '') && !d.log.env[0]?.r);
+  t('botón Cancelar: deja el teclado de inicio en ese mismo mensaje', d.log.env.length === 1 && d.log.env[0]?.e?.reply_markup?.k === 'inicio');
   t('botón Cancelar: no llega al motor', d.log.manejarMensaje.length === 0);
   const d2 = mkDeps(); await procesarUpdate(msg({ text: '  ' + BOTON_CANCELAR + '  ' }), d2);
   t('botón Cancelar: tolera espacios', d2.log.limpiadas.length === 1);
@@ -187,11 +188,11 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
   const d7 = mkDeps({ decidirFlujo: async () => 'menu' });
   d7.log.modo = 'flujo';
   await procesarUpdate(msg({ text: 'hola' }), d7);
-  t('saludo: menú y vuelven las tres acciones', d7.log.env[0].r?.texto === 'MENU' && d7.log.env[1]?.e?.reply_markup?.k === 'inicio' && d7.log.modo === 'inicio', JSON.stringify(d7.log.env));
+  t('saludo: menú corto y vuelven las tres acciones, en un solo mensaje', d7.log.env.length === 1 && esMenuTg(d7.log.env[0]) && d7.log.modo === 'inicio', JSON.stringify(d7.log.env));
   // 8) /cancelar y /menu siempre dejan el teclado de inicio (aunque el chat tuviera Cancelar)
   const d8 = mkDeps(); d8.log.modo = 'flujo';
   await procesarUpdate(msg({ text: BOTON_CANCELAR }), d8);
-  t('Cancelar: vuelven las tres acciones', d8.log.env[1]?.e?.reply_markup?.k === 'inicio' && d8.log.modo === 'inicio');
+  t('Cancelar: vuelven las tres acciones', d8.log.env[0]?.e?.reply_markup?.k === 'inicio' && d8.log.modo === 'inicio');
   // 9) una falla del teclado NO pierde la respuesta
   const d9 = mkDeps({ decidirFlujo: async () => 'mtto', manejarMtto: async () => 'Respuesta importante', hayFlujo: async () => { throw new Error('firestore caído'); } });
   await procesarUpdate(msg({ text: 'hola' }), d9);
@@ -200,6 +201,21 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
   const d10 = mkDeps({ decidirFlujo: async () => 'mtto', manejarMtto: async () => null, hayFlujo: async () => true });
   await procesarUpdate(msg({ text: 'x' }), d10);
   t('respuesta null: silencio', d10.log.env.length === 0 && d10.log.modos.length === 0);
+}
+{ // un flujo que termina devolviendo al menú (p. ej. mtto al cerrar las fotos): sin botones del menú ni lista numerada
+  const MENU_B = [{ id: '1', title: 'M' }];
+  const d = mkDeps({ decidirFlujo: async () => 'mtto', MENU_TEXTO: 'MENU-NUMERADO', MENU_BOTONES: MENU_B,
+    manejarMtto: async () => ({ texto: '🏁 Cerré el registro (3 foto(s)).\n\nMENU-NUMERADO', botones: MENU_B }), hayFlujo: async () => false });
+  d.log.modo = 'flujo';
+  await procesarUpdate(msg({ text: 'fin' }), d);
+  const m = d.log.env[0];
+  t('flujo que vuelve al menú: texto corto, sin botones en línea ni lista numerada', d.log.env.length === 1 && /Cerré el registro/.test(m.x) && /Elige una opción aquí abajo/.test(m.x) && !/NUMERADO/.test(m.x) && !m.r && m.e?.reply_markup?.k === 'inicio', JSON.stringify(d.log.env));
+  // otros botones en línea (confirmaciones) NO se tocan
+  const OTROS = [{ id: 'si', title: 'Sí' }];
+  const d2 = mkDeps({ decidirFlujo: async () => 'mtto', MENU_BOTONES: MENU_B, manejarMtto: async () => ({ texto: '¿Confirmas?', botones: OTROS }), hayFlujo: async () => true });
+  d2.log.modo = 'flujo';
+  await procesarUpdate(msg({ text: 'x' }), d2);
+  t('confirmaciones con botones en línea: intactas', d2.log.env[0]?.r?.botones === OTROS, JSON.stringify(d2.log.env));
 }
 { // cualquier otro comando: NO existe, NO va al motor de observaciones, NO corta nada
   for (const txt of ['/obs', '/mtto', '/asistencia', '/ayuda', '/loquesea']) {
