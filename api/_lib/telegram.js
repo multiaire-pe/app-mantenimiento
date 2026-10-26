@@ -87,14 +87,15 @@ export const enviarListaDetalle = (chatId, texto, filas) =>
     reply_markup: tecladoInline((filas || []).map((f) => ({ id: f.id, text: f.description ? `${f.title} · ${f.description}` : f.title }))),
   });
 
-// TECLADO PRINCIPAL: UN solo botón fijo debajo del chat, "❌ Cancelar" (is_persistent: siempre
-// visible). Cancela lo que el técnico esté haciendo y vuelve al menú. Antes tenía también las tres
-// acciones y "Compartir ubicación", pero resultó incómodo (ocupaba mucho espacio del chat). Es UN
-// solo teclado a propósito: Telegram muestra uno por chat, y si cada mensaje mandara el suyo se
-// pisarían entre sí.
+// TECLADO PRINCIPAL: DOS botones fijos en una sola fila debajo del chat, "📋 Menú" y "❌ Cancelar"
+// (is_persistent: siempre visibles). Menú vuelve a mostrar las opciones; Cancelar corta lo que el
+// técnico esté haciendo y vuelve al menú. Antes tenía también las tres acciones y "Compartir
+// ubicación", pero resultó incómodo (ocupaba mucho espacio del chat). Es UN solo teclado a propósito:
+// Telegram muestra uno por chat, y si cada mensaje mandara el suyo se pisarían entre sí.
+export const BOTON_MENU = '📋 Menú';
 export const BOTON_CANCELAR = '❌ Cancelar';
 export const TECLADO_PRINCIPAL = {
-  keyboard: [[{ text: BOTON_CANCELAR }]],
+  keyboard: [[{ text: BOTON_MENU }, { text: BOTON_CANCELAR }]],
   resize_keyboard: true,
   is_persistent: true,
 };

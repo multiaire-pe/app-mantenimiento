@@ -161,6 +161,11 @@ export async function procesarUpdate(update, d) {
     if (n.tipo === 'text' && d.tg.BOTON_CANCELAR && n.texto.trim() === d.tg.BOTON_CANCELAR) {
       n.texto = '/cancelar';
     }
+    // BOTÓN FIJO "📋 Menú": igual que /menu. Mismo criterio de rótulo exacto: escribir "menu" a mano no
+    // se toca.
+    if (n.tipo === 'text' && d.tg.BOTON_MENU && n.texto.trim() === d.tg.BOTON_MENU) {
+      n.texto = '/menu';
+    }
     // COMPATIBILIDAD con el teclado anterior de 4 teclas (ver ACCION_DE_BOTON en telegram.js): empezar
     // una acción es abandonar la anterior, así que se corta lo que estuviera en curso y el texto se
     // traduce a la opción 1/2/3 del router.
@@ -181,7 +186,7 @@ export async function procesarUpdate(update, d) {
       // el teclado lo recibe al tocar Menú.
       const mostrarMenu = async (prefijo = '') => {
         await d.tg.enviarRespuestaTg(chatId, { texto: prefijo + d.MENU_TEXTO, botones: d.MENU_BOTONES });
-        await d.tg.enviarTexto(chatId, 'Para salir de lo que estés haciendo, toca *❌ Cancelar* aquí abajo 👇', { reply_markup: d.tg.TECLADO_PRINCIPAL });
+        await d.tg.enviarTexto(chatId, 'Usa *📋 Menú* para volver a ver las opciones o *❌ Cancelar* para salir de lo que estés haciendo, aquí abajo 👇', { reply_markup: d.tg.TECLADO_PRINCIPAL });
       };
       if (cmd === '/menu' || cmd === '/start') {
         await d.limpiarSesiones(from);
