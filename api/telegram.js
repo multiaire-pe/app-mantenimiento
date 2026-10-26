@@ -16,12 +16,12 @@ import crypto from 'node:crypto';
 // Cada dependencia se importa dinámicamente la primera vez: el módulo se puede importar en un
 // test sin arrastrar firebase-admin, y `procesarUpdate` recibe `deps` inyectables.
 async function depsReales() {
-  const [idem, ident, tg, conv, esc, av, rout, asis, mt, mtSes, obsSes, asisSes, fotos] = await Promise.all([
+  const [idem, ident, tg, conv, esc, av, rout, asis, mt, mtSes, obsSes, asisSes, fotos, tecl] = await Promise.all([
     import('./_lib/idempotencia.js'), import('./_lib/identidad.js'), import('./_lib/telegram.js'),
     import('./_lib/conversacion.js'), import('./_lib/escritura.js'), import('./_lib/avisos.js'),
     import('./_lib/router.js'), import('./_lib/asistencia.js'), import('./_lib/mtto.js'),
     import('./_lib/mtto_sesiones.js'), import('./_lib/sesiones.js'), import('./_lib/asistencia_sesiones.js'),
-    import('./_lib/fotos.js'),
+    import('./_lib/fotos.js'), import('./_lib/teclado.js'),
   ]);
   return {
     yaProcesado: idem.yaProcesado, liberarMensaje: idem.liberarMensaje,
@@ -33,6 +33,11 @@ async function depsReales() {
     // Corta CUALQUIER conversación a medias (observación + su foto pendiente, asistencia + su selfie,
     // mantenimiento). Lo usan /menu y /cancelar: sin esto, lo que el técnico toque después se
     // mezclaría con la conversación vieja.
+    // ¿Está en medio de alguna de las tres conversaciones? Decide qué teclado fijo le toca.
+    hayFlujo: async (from) => (await Promise.all([
+      obsSes.getSesion(from), asisSes.getSesion(from), mtSes.getSesion(from),
+    ])).some(Boolean),
+    getModoTeclado: tecl.getModoTeclado, setModoTeclado: tecl.setModoTeclado,
     limpiarSesiones: (from) => Promise.all([
       obsSes.limpiarSesion(from), fotos.limpiarFotoPendiente(from),
       asisSes.limpiarSesion(from), mtSes.limpiarSesion(from),
@@ -106,6 +111,37 @@ const TXT_VINCULAR =
   '👋 Hola, soy el bot de MultiAire.\n\nPara usarlo necesito saber quién eres. ' +
   'Toca el botón de abajo para compartir tu número (el mismo que tiene registrado la oficina).';
 
+const TXT_TECLADO_FLUJO = 'Para salir de lo que estés haciendo, toca *❌ Cancelar* aquí abajo 👇';
+const TXT_TECLADO_INICIO = '👇 Cuando quieras empezar otra cosa, elige una opción aquí abajo.';
+const tecladoDe = (d, modo) => (modo === 'flujo' ? d.tg.TECLADO_FLUJO : d.tg.TECLADO_INICIO);
+
+// Manda la respuesta del bot y, si el técnico tiene que cambiar de teclado fijo, lo cambia en el mismo
+// movimiento. El teclado depende de si está dentro de un flujo (observación, mantenimiento o
+// asistencia): dentro → solo «Cancelar»; fuera → las tres acciones. `forzar` fija el modo cuando
+// todavía no hay sesión pero el técnico ya "entró" (p. ej. tocó Observación y falta que escriba).
+// Solo se manda el cambio cuando el modo CAMBIA: un mensaje de texto simple lleva el teclado puesto
+// (no gasta un mensaje extra); uno con botones en línea no puede (Telegram admite un solo tipo de
+// botón por mensaje), así que el teclado va en un mensaje corto aparte.
+async function responderConTeclado(d, chatId, from, resp, forzar) {
+  if (!resp) return;
+  let modo = null;
+  try {
+    const deseado = forzar || ((await d.hayFlujo(from)) ? 'flujo' : 'inicio');
+    if (deseado !== (await d.getModoTeclado(from))) modo = deseado;
+  } catch (e) {
+    console.error('[telegram] no pude decidir el teclado:', e?.message);   // el teclado es secundario: la respuesta sale igual
+  }
+  if (!modo) { await d.tg.enviarRespuestaTg(chatId, resp); return; }
+  const kb = tecladoDe(d, modo);
+  const simple = typeof resp === 'string' || (!resp.botones && !resp.lista && !Array.isArray(resp.mensajes));
+  if (simple) await d.tg.enviarTexto(chatId, typeof resp === 'string' ? resp : (resp.texto || ''), { reply_markup: kb });
+  else {
+    await d.tg.enviarRespuestaTg(chatId, resp);
+    await d.tg.enviarTexto(chatId, modo === 'flujo' ? TXT_TECLADO_FLUJO : TXT_TECLADO_INICIO, { reply_markup: kb });
+  }
+  await d.setModoTeclado(from, modo).catch((e) => console.error('[telegram] no pude guardar el teclado:', e?.message));
+}
+
 export async function procesarUpdate(update, d) {
   const n = normalizarUpdate(update);
   if (!n) return;
@@ -140,8 +176,9 @@ export async function procesarUpdate(update, d) {
         await d.tg.enviarTexto(chatId, '🤔 No encuentro ese número en el sistema de MultiAire. Pídele al administrador que lo registre en *Personal* y vuelve a intentarlo.');
         return;
       }
-      await d.tg.enviarTexto(chatId, `✅ Listo, *${t.nombre}*. Ya estás vinculado.\n\nTe dejé abajo los botones para moverte rápido: *Mantenimiento*, *Observación*, *Asistencia* y *Compartir ubicación*.`,
-        { reply_markup: d.tg.TECLADO_PRINCIPAL });
+      await d.tg.enviarTexto(chatId, `✅ Listo, *${t.nombre}*. Ya estás vinculado.\n\nAbajo te dejé las tres opciones a un toque. Cuando entres a una, ahí mismo aparece *❌ Cancelar* para salir.`,
+        { reply_markup: d.tg.TECLADO_INICIO });
+      await d.setModoTeclado(`tg${chatId}`, 'inicio').catch(() => {});
       await d.tg.enviarRespuestaTg(chatId, { texto: d.MENU_TEXTO, botones: d.MENU_BOTONES });
       return;
     }
@@ -155,10 +192,15 @@ export async function procesarUpdate(update, d) {
 
     if (n.messageId) d.tg.quitarBotones(chatId, n.messageId).catch(() => {});   // evita el doble toque
 
-    // TECLAS DEL TECLADO FIJO (🔧 Mantenimiento / 📝 Observación / 🕐 Asistencia): empezar una acción
-    // es abandonar la anterior, así que primero se corta lo que estuviera en curso (igual que los
-    // comandos) y el texto se traduce a la opción 1/2/3 que ya entiende el router. Solo coincide el
-    // rótulo EXACTO del botón: un técnico que escribe "mantenimiento" a mano no se toca.
+    // BOTÓN FIJO "❌ Cancelar": hace exactamente lo mismo que el comando /cancelar (corta lo que esté
+    // en curso y muestra el menú). Solo coincide el rótulo EXACTO: un técnico que escribe "cancelar"
+    // a mano no se toca (eso lo resuelve el flujo en curso, como siempre).
+    if (n.tipo === 'text' && d.tg.BOTON_CANCELAR && n.texto.trim() === d.tg.BOTON_CANCELAR) {
+      n.texto = '/cancelar';
+    }
+    // TECLAS DE INICIO (Mantenimiento · Observación · Asistencia, ver ACCION_DE_BOTON en telegram.js):
+    // empezar una acción es abandonar la anterior, así que se corta lo que estuviera en curso y el
+    // texto se traduce a la opción 1/2/3 del router.
     if (n.tipo === 'text' && d.tg.ACCION_DE_BOTON && d.tg.ACCION_DE_BOTON[n.texto.trim()]) {
       await d.limpiarSesiones(from);
       n.texto = d.tg.ACCION_DE_BOTON[n.texto.trim()];
@@ -171,12 +213,13 @@ export async function procesarUpdate(update, d) {
     if (n.tipo === 'text' && n.texto.trim().startsWith('/')) {
       const cmd = n.texto.trim().split(/\s+/)[0].replace(/@[A-Za-z0-9_]+$/, '').toLowerCase();
       // El menú sale con sus botones EN el mensaje y, aparte, un mensaje corto que deja puesto el
-      // TECLADO FIJO: un mismo mensaje no puede llevar los dos tipos de botón. Se manda siempre
-      // (no se puede saber si el técnico ya lo tiene), así quien se vinculó antes de que existiera
-      // el teclado lo recibe al tocar Menú.
+      // TECLADO FIJO de inicio: un mismo mensaje no puede llevar los dos tipos de botón. Se manda
+      // siempre (no se puede saber qué teclado tiene el técnico en el teléfono: quien venía con uno
+      // viejo, o con «Cancelar» puesto, lo recibe acá).
       const mostrarMenu = async (prefijo = '') => {
         await d.tg.enviarRespuestaTg(chatId, { texto: prefijo + d.MENU_TEXTO, botones: d.MENU_BOTONES });
-        await d.tg.enviarTexto(chatId, '⌨️ Tienes los botones fijos aquí abajo 👇', { reply_markup: d.tg.TECLADO_PRINCIPAL });
+        await d.tg.enviarTexto(chatId, TXT_TECLADO_INICIO, { reply_markup: d.tg.TECLADO_INICIO });
+        await d.setModoTeclado(from, 'inicio').catch(() => {});
       };
       if (cmd === '/menu' || cmd === '/start') {
         await d.limpiarSesiones(from);
@@ -224,26 +267,26 @@ export async function procesarUpdate(update, d) {
 
     const flujo = await d.decidirFlujo({ from, tipo: n.tipo === 'image' ? 'image' : n.tipo, texto });
     if (flujo === 'menu') {
-      await d.tg.enviarRespuestaTg(chatId, { texto: d.MENU_TEXTO, botones: d.MENU_BOTONES });
+      await responderConTeclado(d, chatId, from, { texto: d.MENU_TEXTO, botones: d.MENU_BOTONES }, 'inicio');
       return;
     }
     if (flujo === 'hint-obs') {
-      await d.tg.enviarTexto(chatId, '📝 Descríbeme la observación: *sede*, *equipo* y el problema (puedes adjuntar una foto). Ej: "fuga de gas en el rooftop 6 de megaplaza".');
+      // Ya "entró" a Observación aunque todavía no haya sesión: se le ofrece Cancelar.
+      await responderConTeclado(d, chatId, from, '📝 Descríbeme la observación: *sede*, *equipo* y el problema (puedes adjuntar una foto). Ej: "fuga de gas en el rooftop 6 de megaplaza".', 'flujo');
       return;
     }
     if (flujo === 'hint-asistencia') {
-      await d.tg.enviarTexto(chatId, '🕐 Para marcar, escribe *entrada* o *salida* y comparte tu *ubicación* 📍 (y tu selfie si te la pido).',
-        { reply_markup: d.tg.TECLADO_PRINCIPAL });
+      await responderConTeclado(d, chatId, from, '🕐 Para marcar, escribe *entrada* o *salida* y comparte tu *ubicación* 📍 con el clip 📎 (y tu selfie si te la pido).', 'flujo');
       return;
     }
     if (flujo === 'mtto') {
       const resp = await d.manejarMtto({ tecnico, from, texto, imagenB64, mime, grupoFoto: n.grupo || null, onWriteStart: () => { escrituraIniciada = true; } });
-      await d.tg.enviarRespuestaTg(chatId, resp);
+      await responderConTeclado(d, chatId, from, resp);
       return;
     }
     if (flujo === 'asistencia') {
       const resp = await d.manejarAsistencia({ tecnico, from, texto, ubicacion, imagenB64, mime });
-      await d.tg.enviarRespuestaTg(chatId, resp);
+      await responderConTeclado(d, chatId, from, resp);
       return;
     }
 
@@ -257,7 +300,7 @@ export async function procesarUpdate(update, d) {
         return obs;
       },
     });
-    await d.tg.enviarRespuestaTg(chatId, respuesta);
+    await responderConTeclado(d, chatId, from, respuesta);
   } catch (e) {
     if (!escrituraIniciada && update.update_id != null) {
       await d.liberarMensaje(`tg_${update.update_id}`);
