@@ -22,8 +22,14 @@ Escribe `/menu` (o toca **Menú**, el botón junto al campo de texto) cuando qui
 te muestra 3 botones — **Mantenimiento · Observación · Asistencia** — y corta lo que estabas haciendo.
 También puedes escribirle directo al bot, como antes.
 
-Debajo del chat queda un botón fijo: **❌ Cancelar**. Tócalo cuando quieras salir de lo que estás haciendo:
-cancela y te muestra el menú. Es lo mismo que escribir `/cancelar`.
+Los botones de abajo del chat **cambian según lo que estés haciendo**:
+
+- Cuando no estás en medio de nada, ves las tres opciones fijas: **🔧 Mantenimiento · 📝 Observación · 🕐 Asistencia**.
+- En cuanto entras a una de las tres, esos botones se reemplazan por uno solo: **❌ Cancelar**. Tócalo cuando
+  quieras salir de lo que estás haciendo: cancela y te muestra el menú. Es lo mismo que escribir `/cancelar`.
+- Cuando terminas el registro (o cancelas), vuelven las tres opciones.
+
+Para mandar tu **ubicación** al marcar asistencia usa el clip 📎 → *Ubicación*.
 
 Solo hay dos comandos: **/menu** y **/cancelar**.
 
