@@ -16,18 +16,16 @@ El bot hace lo mismo que hacía en WhatsApp: **registrar mantenimiento**, **repo
 número"*, avisa a la oficina para que revisen tu teléfono en Personal.
 Si Telegram te pregunta por permisos de ubicación o notificaciones, **acéptalos**.
 
-## 2. Los botones de abajo
+## 2. El menú y el botón Cancelar
 
-Debajo del chat siempre tienes estos botones fijos:
+Escribe `/menu` (o toca **Menú**, el botón junto al campo de texto) cuando quieras volver al inicio:
+te muestra 3 botones — **Mantenimiento · Observación · Asistencia** — y corta lo que estabas haciendo.
+También puedes escribirle directo al bot, como antes.
 
-| 🔧 Mantenimiento | 📝 Observación | 🕐 Asistencia |
-|---|---|---|
-| **📍 Compartir ubicación** (para marcar asistencia) | | |
+Debajo del chat queda un botón fijo: **❌ Cancelar**. Tócalo cuando quieras salir de lo que estás haciendo:
+cancela y te muestra el menú. Es lo mismo que escribir `/cancelar`.
 
-Tócalos en cualquier momento: **si estabas haciendo otra cosa, la cancela** y empieza la que elegiste.
-Si no los ves, escribe `/menu` y aparecen. También puedes escribirle directo al bot, como antes.
-
-Solo hay dos comandos: **/menu** (volver al inicio) y **/cancelar** (salir de lo que estés haciendo).
+Solo hay dos comandos: **/menu** y **/cancelar**.
 
 ## 3. Reportar una observación 📝
 
@@ -66,7 +64,7 @@ tienda estás, te pregunta cuál (responde con el número de la lista).
 - Nombra el equipo por **dónde está**: *"extractor del comedor"*, *"cortina del ingreso de clientes"*.
 - Escribe la **sede bien escrita**. Ante la duda, usa el **código del equipo + la sede**:
   *"MA-ATO-CHI-001 de atocongo"*.
-- Para **salir** de lo que estés haciendo: `/cancelar` (lo que no alcanzaste a guardar se pierde; lo ya guardado se queda). Para empezar de nuevo: `/menu`.
+- Para **salir** de lo que estés haciendo: toca **❌ Cancelar** o escribe `/cancelar` (lo que no alcanzaste a guardar se pierde; lo ya guardado se queda). Para empezar de nuevo: `/menu`.
 - Solo existen esos dos comandos: **/menu** y **/cancelar**.
 - Un mensaje por vez; espera la respuesta del bot antes de mandar el siguiente.
 
