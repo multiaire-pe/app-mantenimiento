@@ -35,7 +35,7 @@ t('sticker → otro', normalizarUpdate({ message: { chat: priv, from: { id: 7 },
 
 // ── procesarUpdate con deps falsas ───────────────────────────────────────────────────────
 function mkDeps(over = {}) {
-  const log = { env: [], liberados: [], vinculos: [], manejarMensaje: [], visto: new Set(), limpiadas: [], modos: [] };
+  const log = { env: [], liberados: [], vinculos: [], manejarMensaje: [], visto: new Set(), limpiadas: [], modos: [], menu: [] };
   const tec = { id: 'PER1', nombre: 'ANA' };
   return {
     log,
@@ -48,6 +48,8 @@ function mkDeps(over = {}) {
       enviarTexto: async (c, x, e) => { log.env.push({ c, x, e }); return true; },
       enviarRespuestaTg: async (c, r) => { log.env.push({ c, r }); },
       descargarArchivo: async () => ({ base64: 'QQ==', mime: 'image/jpeg' }),
+      fijarBotonMenu: async (c, b) => { log.menu.push({ c, b }); return { ok: true }; },
+      botonWebApp: (texto, url) => ({ type: 'web_app', text: texto, web_app: { url } }), BOTON_MENU_DEFECTO: { type: 'default' },
       TECLADO_CONTACTO: { k: 'contacto' }, TECLADO_INICIO: { k: 'inicio' }, TECLADO_FLUJO: { k: 'flujo' }, ACCION_DE_BOTON, BOTON_CANCELAR,
     },
     manejarMensaje: async (a) => { log.manejarMensaje.push(a); return 'resp-obs'; },
@@ -56,6 +58,7 @@ function mkDeps(over = {}) {
     getSesionMtto: async () => null, MENU_TEXTO: 'MENU', MENU_BOTONES: [{ id: '1', title: 'M' }],
     limpiarSesiones: async (from) => { log.limpiadas.push(from); },
     // teclado fijo variable: por defecto el chat ya tiene el de inicio y no está en ningún flujo
+    parametros: { url: 'https://app.test/parametros.html', ids: ['PER1'] },
     hayFlujo: async () => !!log.enFlujo,
     getModoTeclado: async () => (log.modo === undefined ? 'inicio' : log.modo),
     setModoTeclado: async (_f, m) => { log.modo = m; log.modos.push(m); },
@@ -216,6 +219,29 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
   d2.log.modo = 'flujo';
   await procesarUpdate(msg({ text: 'x' }), d2);
   t('confirmaciones con botones en línea: intactas', d2.log.env[0]?.r?.botones === OTROS, JSON.stringify(d2.log.env));
+}
+{ // /parametros: vista previa OCULTA de la Mini App (solo colaboradores permitidos, por chat, sin BotFather)
+  const d = mkDeps(); await procesarUpdate(msg({ text: '/parametros' }), d);
+  const m = d.log.menu[0], env = d.log.env[0];
+  t('/parametros (permitido): pone el botón de menú SOLO en este chat', d.log.menu.length === 1 && m.c === 7 && m.b.type === 'web_app' && m.b.text === 'Parámetros', JSON.stringify(d.log.menu));
+  t('la URL abre en modo vista previa (demo=1)', /^https:\/\/app\.test\/parametros\.html\?demo=1$/.test(m.b.web_app.url), m.b.web_app.url);
+  const btn = env.e?.reply_markup?.inline_keyboard?.[0]?.[0];
+  t('manda un mensaje con un botón web_app a la misma URL', btn?.web_app?.url === m.b.web_app.url && /no se guarda nada/.test(env.x), JSON.stringify(env));
+  t('no corta lo que estaba haciendo ni llega al motor', d.log.limpiadas.length === 0 && d.log.manejarMensaje.length === 0);
+  const q = mkDeps(); await procesarUpdate(msg({ text: '/parametros quitar' }), q);
+  t('/parametros quitar: devuelve el botón normal de este chat', q.log.menu.length === 1 && q.log.menu[0].c === 7 && q.log.menu[0].b.type === 'default' && /quité/.test(q.log.env[0].x), JSON.stringify(q.log));
+  for (const txt of ['/PARAMETROS', '/parametros@multiaire_pe_bot']) {
+    const v = mkDeps(); await procesarUpdate(msg({ text: txt }), v);
+    t(`variante ${txt}`, v.log.menu.length === 1 && v.log.menu[0].b.type === 'web_app');
+  }
+  // quien NO está permitido: el comando "no existe" y no se toca su menú (sigue siendo oculto)
+  const n = mkDeps({ parametros: { url: 'https://app.test/parametros.html', ids: ['OTRO'] } }); await procesarUpdate(msg({ text: '/parametros' }), n);
+  t('no permitido: "Ese comando no existe" y no se toca su botón de menú', n.log.menu.length === 0 && /no existe/.test(n.log.env[0].x), JSON.stringify(n.log.env));
+  const sin = mkDeps({ parametros: undefined }); await procesarUpdate(msg({ text: '/parametros' }), sin);
+  t('sin configuración: tampoco existe', sin.log.menu.length === 0 && /no existe/.test(sin.log.env[0].x));
+  // un técnico sin vincular no llega al comando
+  const nv = mkDeps(); await procesarUpdate(msg({ text: '/parametros' }, 99, 99), nv);
+  t('sin vincular: pide el contacto, no abre nada', nv.log.menu.length === 0 && nv.log.env[0].e?.reply_markup?.k === 'contacto');
 }
 { // cualquier otro comando: NO existe, NO va al motor de observaciones, NO corta nada
   for (const txt of ['/obs', '/mtto', '/asistencia', '/ayuda', '/loquesea']) {

@@ -32,6 +32,22 @@ cambia lo que ven todos los técnicos.
 
 No requiere variables nuevas: usa `TELEGRAM_BOT_TOKEN` y `FIREBASE_SERVICE_ACCOUNT`, que ya existen.
 
+## Vista previa sin BotFather (comando oculto)
+
+Para ver la Mini App sin tocar BotFather, el bot tiene el comando **`/parametros`** (no aparece en ninguna lista de
+comandos y solo funciona para colaboradores autorizados). Al escribirlo:
+
+- Pone el botón **Parámetros** en el menú **de ese chat** (Telegram permite un botón de menú por chat desde el propio
+  bot con `setChatMenuButton`; no afecta a nadie más).
+- Manda un mensaje con un botón que abre la Mini App.
+- Se abre en **modo vista previa** (`?demo=1`): se recorre y se valida todo igual, pero **no se guarda ni se envía nada**.
+
+`/parametros quitar` devuelve el botón normal de ese chat.
+
+Quién puede usarlo: por defecto `PER942454` (Adrián). Para sumar más colaboradores, la variable de entorno
+`PARAMETROS_IDS` (ej. `PER009,PER781233`); la URL se puede cambiar con `PARAMETROS_URL`. Cuando se configure el botón
+global en BotFather, este comando deja de ser necesario.
+
 ## Qué se guarda (`mtto_parametros`)
 
 Un documento por registro; el id lo genera la Mini App (`PAR-<fecha>-<azar>`) y se crea con `create()`, así que

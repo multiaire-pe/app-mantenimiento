@@ -38,6 +38,12 @@ async function depsReales() {
       obsSes.getSesion(from), asisSes.getSesion(from), mtSes.getSesion(from),
     ])).some(Boolean),
     getModoTeclado: tecl.getModoTeclado, setModoTeclado: tecl.setModoTeclado,
+    // Vista previa de la Mini App de parámetros (comando oculto /parametros): solo para estos colaboradores
+    // (se pueden sumar con PARAMETROS_IDS="PER1,PER2"). No aparece en ninguna lista de comandos.
+    parametros: {
+      url: process.env.PARAMETROS_URL || 'https://multiaire-peru-app.vercel.app/parametros.html',
+      ids: ['PER942454', ...(process.env.PARAMETROS_IDS || '').split(',').map((x) => x.trim()).filter(Boolean)],
+    },
     limpiarSesiones: (from) => Promise.all([
       obsSes.limpiarSesion(from), fotos.limpiarFotoPendiente(from),
       asisSes.limpiarSesion(from), mtSes.limpiarSesion(from),
@@ -244,6 +250,21 @@ export async function procesarUpdate(update, d) {
       } else if (cmd === '/cancelar') {
         await d.limpiarSesiones(from);
         await mostrarMenu('❌ Cancelado. Lo que estabas haciendo no se guardó (lo que ya estaba guardado se mantiene).\n\n');
+      } else if (cmd === '/parametros' && d.parametros && d.parametros.ids.includes(tecnico.id)) {
+        // VISTA PREVIA de la Mini App (no guarda nada). Pone el botón «Parámetros» en el menú de ESTE chat y
+        // manda un mensaje con un botón que la abre. No corta lo que el técnico esté haciendo.
+        const arg = (n.texto.trim().split(/\s+/)[1] || '').toLowerCase();
+        if (arg === 'quitar') {
+          await d.tg.fijarBotonMenu(chatId, d.tg.BOTON_MENU_DEFECTO);
+          await d.tg.enviarTexto(chatId, '✅ Listo, quité el botón *Parámetros* de este chat.');
+        } else {
+          const u = new URL(d.parametros.url);
+          u.searchParams.set('demo', '1');
+          const url = u.toString();
+          await d.tg.fijarBotonMenu(chatId, d.tg.botonWebApp('Parámetros', url));
+          await d.tg.enviarTexto(chatId, '📊 *Vista previa* de la toma de parámetros.\n\nToca el botón de abajo, o *Parámetros* junto al campo de texto. En esta vista *no se guarda nada*.\n\nPara quitar el botón de este chat: /parametros quitar',
+            { reply_markup: { inline_keyboard: [[{ text: '📊 Abrir toma de parámetros', web_app: { url } }]] } });
+        }
       } else {
         await d.tg.enviarTexto(chatId, 'Ese comando no existe. Usa /menu para ver las opciones o /cancelar para salir de lo que estás haciendo.');
       }
