@@ -214,6 +214,11 @@ header{background:#1B3F8B;padding:0 20px;height:56px;display:flex;align-items:ce
 .tb .c{text-align:center}
 .mut{color:var(--muted)}
 .tb td.falta{background:var(--yellow-bg);color:var(--yellow);font-weight:600}
+/* equipo NO seleccionado en Mantenimiento: no entra al informe (se ve en rojo; el motivo sale al pasar el cursor) */
+.tb tr.nosel td{background:var(--red-bg);color:var(--red);cursor:help}
+.tb tr.nosel .mut,.tb tr.nosel td.falta{color:var(--red);background:var(--red-bg)}
+.bnosel{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;border:1px solid var(--red-border);font-size:10px;font-weight:600;white-space:nowrap}
+.aviso.rojo{background:var(--red-bg);border-color:var(--red-border);color:var(--red)}
 @media(max-width:768px){
   .toolbar{padding:10px 12px}
   .tb-row{gap:8px}
@@ -592,6 +597,18 @@ function onCliente() {
   preparar();
 }
 
+// Equipos que Mantenimiento SELECCIONÓ para la sede y el período (doc `mantenimiento/{SEDE|PERIODO|AÑO}`,
+// campo `seleccionados`: { eq_id: true }; puede venir como objeto o como texto JSON). Solo esos equipos
+// entran al informe: los demás no se trabajaron en el período, así que no llevan cuadro.
+function seleccionadosDe(data) {
+  let raw = data ? data.seleccionados : null;
+  if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }
+  if (!raw || typeof raw !== 'object') return new Set();
+  return new Set(Object.keys(raw).filter((k) => raw[k] === true));
+}
+// La '/' de una sede (DOMINICOS / T. VALLE) rompe la ruta del doc: Mantenimiento la guarda con '∕'.
+const idDocMtto = (s) => String(s).replace(/\//g, '∕');
+
 // Junta todo lo que va a salir en el informe y lo muestra en pantalla ANTES de generar:
 // el usuario ve qué tiene y qué le falta sin abrir Word.
 async function preparar() {
@@ -612,10 +629,13 @@ async function preparar() {
   document.getElementById('resumen').innerHTML = '<div class="cargando">Reuniendo datos…</div>';
 
   try {
-    const [ejSnap, foSnap] = await Promise.all([
+    const [ejSnap, foSnap, mtSnap] = await Promise.all([
       db.collection('mtto_ejecuciones').where('sede', '==', sede).where('periodo', '==', periodo).where('anio', '==', anio).get(),
       db.collection('mantenimiento_fotos').where('clave', '==', `${sede}|${periodo}|${anio}`).get(),
+      db.collection('mantenimiento').doc(idDocMtto(`${sede}|${periodo}|${anio}`)).get(),
     ]);
+    // Si esta lectura falla se corta todo (catch de abajo): no se asume "nada seleccionado" en silencio.
+    const sel = seleccionadosDe(mtSnap.exists ? mtSnap.data() : null);
     ejecuciones = ejSnap.docs.map((d) => d.data());
     // Se descartan acá las que no son una imagen usable: si entraran, ocuparían uno de los
     // 3 cupos en el selector y recién se caerían al generar, dejando el informe con menos
@@ -639,7 +659,10 @@ async function preparar() {
     fotos.forEach((f) => acum(fotosPorEq, f.eq_id, f));
     obsPeriodo.forEach((o) => acum(obsPorEq, o.eqId, o));
 
-    datos = { cliente, sede, periodo, anio, equipos, ejecPorEq, fotosPorEq, obsPorEq, obsPeriodo };
+    // `equipos` = todos los del inventario (se muestran, los no seleccionados en rojo);
+    // `equiposInforme` = los seleccionados en Mantenimiento: de acá sale TODO el documento.
+    const equiposInforme = equipos.filter((e) => sel.has(e.eq_id || e.id));
+    datos = { cliente, sede, periodo, anio, equipos, equiposInforme, sel, ejecPorEq, fotosPorEq, obsPorEq, obsPeriodo };
 
     // La selección se recuerda por sede+período: rehacer un informe no obliga a volver a
     // elegir. Se guarda en el navegador (no en Firestore): es una preferencia de armado del
@@ -658,7 +681,7 @@ async function preparar() {
       seleccion[eqId] = validas.length ? validas.slice(0, MAX_FOTOS) : preseleccionar(fotosPorEq[eqId]);
     });
     render();
-    document.getElementById('btn-gen').disabled = !equipos.length;
+    document.getElementById('btn-gen').disabled = !equiposInforme.length;
   } catch (e) {
     document.getElementById('resumen').innerHTML = '';
     toast('Error reuniendo datos: ' + e.message, 'err');
@@ -682,24 +705,30 @@ function porTipo(equipos) {
 
 function render() {
   const d = datos;
-  const conEjec = Object.keys(d.ejecPorEq).length;
-  const conFoto = Object.keys(d.fotosPorEq).length;
-  const sinCap = d.equipos.filter((e) => !String(e.capacidad || '').trim()).length;
-  const nInop = d.equipos.filter(esInoperativo).length;
-  const tipos = porTipo(d.equipos);
+  const idEq = (e) => e.eq_id || e.id;
+  // Los contadores hablan de lo que SALE en el informe: solo los equipos seleccionados.
+  const conEjec = Object.keys(d.ejecPorEq).filter((k) => d.sel.has(k)).length;
+  const conFoto = Object.keys(d.fotosPorEq).filter((k) => d.sel.has(k)).length;
+  const sinCap = d.equiposInforme.filter((e) => !String(e.capacidad || '').trim()).length;
+  const nInop = d.equiposInforme.filter(esInoperativo).length;
+  const nNoSel = d.equipos.length - d.equiposInforme.length;
+  const tipNoSel = `Este equipo no fue seleccionado en Mantenimiento para ${PERIODO_LARGO[d.periodo]} ${d.anio}, por lo tanto no se va a crear su cuadro en el informe.`;
+  const tipos = porTipo(d.equipos);   // la pantalla muestra TODOS (los no seleccionados, en rojo)
 
   const stat = (v, l, warn) => `<div class="stat${warn ? ' warn' : ''}"><div class="sv">${v}</div><div class="sl">${l}</div></div>`;
   document.getElementById('resumen').innerHTML = `
     <div class="tit">${esc(d.cliente)} ${esc(d.sede)} · ${esc(PERIODO_LARGO[d.periodo])} ${d.anio}</div>
     <div class="stats">
-      ${stat(d.equipos.length, 'equipos en el alcance')}
-      ${stat(Object.keys(tipos).length, 'tipos de equipo')}
+      ${stat(d.equiposInforme.length, 'equipos en el alcance')}
+      ${nNoSel ? stat(nNoSel, 'no seleccionados', true) : ''}
+      ${stat(Object.keys(porTipo(d.equiposInforme)).length, 'tipos de equipo')}
       ${stat(conEjec, 'con mantenimiento ejecutado', !conEjec)}
       ${stat(d.obsPeriodo.length, 'observaciones', !d.obsPeriodo.length)}
       ${stat(conFoto + '/' + (conEjec || 0), 'equipos con foto', conFoto < conEjec)}
       ${stat(sinCap, 'sin capacidad cargada', sinCap > 0)}
       ${nInop ? stat(nInop, 'inoperativos', true) : ''}
     </div>
+    ${!d.equiposInforme.length ? '<div class="aviso rojo">🔴 En <b>Mantenimiento</b> no hay equipos seleccionados para esta sede y período: no hay cuadros que generar. Se eligen en Mantenimiento → ＋ Seleccionar equipos.</div>' : (nNoSel ? `<div class="aviso rojo">🔴 ${nNoSel} equipo(s) <b>no fueron seleccionados</b> en Mantenimiento para este período: aparecen en rojo y <b>no se crea su cuadro</b> en el informe.</div>` : '')}
     ${nInop ? `<div class="aviso">⚠️ ${nInop} equipo(s) <b>inoperativo(s)</b>: al final de sus observaciones el informe agrega «${esc(FRASE_INOPERATIVO)}». El estado se cambia en el módulo <b>Operatividad</b>.</div>` : ''}
     ${sinCap ? `<div class="aviso">⚠️ ${sinCap} equipo(s) sin <b>capacidad</b>: en el informe esa celda sale vacía. Se carga en <b>Inventario</b>.</div>` : ''}
     ${!d.obsPeriodo.length ? '<div class="aviso">⚠️ Sin observaciones en el período: la sección <b>Observaciones y recomendaciones</b> saldrá vacía. Se llenan desde el bot de WhatsApp o el módulo <b>Observaciones</b>.</div>' : ''}`;
@@ -711,12 +740,13 @@ function render() {
       const ej = (d.ejecPorEq[e.eq_id || e.id] || []).length;
       const fo = (d.fotosPorEq[e.eq_id || e.id] || []).length;
       const ob = (d.obsPorEq[e.eq_id || e.id] || []).length;
-      return `<tr>
-        <td class="eq">${esc(e.nombre)}</td><td class="mut ubi">${esc(e.area || '—')}</td>
+      const noSel = !d.sel.has(idEq(e));
+      return `<tr${noSel ? ` class="nosel" title="${esc(tipNoSel)}"` : ''}>
+        <td class="eq">${esc(e.nombre)}${noSel ? '<span class="bnosel">No seleccionado</span>' : ''}</td><td class="mut ubi">${esc(e.area || '—')}</td>
         <td data-l="Capacidad" class="${String(e.capacidad || '').trim() ? '' : 'falta'}">${esc(e.capacidad || '—')}</td>
         <td data-l="Activ." class="c">${ej ? '<b>' + ej + '</b>' : '<span class="mut">—</span>'}</td>
         <td data-l="Obs." class="c">${ob ? '<b>' + ob + '</b>' : '<span class="mut">—</span>'}</td>
-        <td data-l="Fotos" class="c">${fo ? `<button class="mini" data-eq="${esc(e.eq_id || e.id)}" title="Elegir las 3 fotos del informe">${(seleccion[e.eq_id || e.id] || []).length}/${Math.min(fo, 3)} de ${fo} 📷</button>` : '<span class="mut">—</span>'}</td></tr>`;
+        <td data-l="Fotos" class="c">${fo && !noSel ? `<button class="mini" data-eq="${esc(e.eq_id || e.id)}" title="Elegir las 3 fotos del informe">${(seleccion[e.eq_id || e.id] || []).length}/${Math.min(fo, 3)} de ${fo} 📷</button>` : '<span class="mut">—</span>'}</td></tr>`;
     }).join('');
     return `<div class="bloque"><div class="bt">
         <span class="pos">${iT + 1}</span> ${esc(nomTipo(t))} <span class="mut">· ${eqs.length}</span>
@@ -845,7 +875,9 @@ async function generar() {
     const h1 = (t, salto) => new D.Paragraph({ pageBreakBefore: !!salto, spacing: { before: 240, after: 100 }, children: [new D.TextRun({ text: t, bold: true, size: 26, font: 'Aptos' })] });
     const hTipo = (t) => new D.Paragraph({ spacing: { before: 200, after: 60 }, children: [new D.TextRun({ text: t.toUpperCase(), bold: true, underline: {}, size: 21, font: 'Aptos' })] });
 
-    const tipos = porTipo(d.equipos);
+    // Solo los equipos SELECCIONADOS en Mantenimiento: los demás no llevan cuadro en ninguna sección
+    // (alcance, observaciones ni reporte fotográfico), y un tipo sin equipos seleccionados no aparece.
+    const tipos = porTipo(d.equiposInforme);
     const orden = tiposOrdenados(tipos);      // el que se eligió en pantalla
     const hijos = [];
 
