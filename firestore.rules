@@ -87,6 +87,9 @@ service cloud.firestore {
     match /mantenimiento_fotos/{doc}     { allow read: if authorized(); allow write: if canWrite('mantenimiento'); }
     // bitácora de registros (tab Historial): el cliente solo AGREGA eventos; editar/borrar, solo super
     match /mtto_log/{doc}                { allow read: if authorized(); allow create: if canWrite('mantenimiento'); allow update, delete: if isSuper(); }
+    // toma de parámetros de ventilación (Mini App de Telegram): la escribe SOLO el backend (admin SDK,
+    // tras validar la firma de Telegram); desde el navegador solo se lee.
+    match /mtto_parametros/{doc}         { allow read: if authorized(); allow write: if false; }
     // registro de envíos del itinerario por técnico (WhatsApp): lo escribe el backend (admin SDK);
     // lo lee el HISTORIAL (solo ADMIN — el doc guarda snapshots del mensaje + auditoría de quién
     // envió qué); import de backup = super. Log inmutable para no-super.
