@@ -71,6 +71,9 @@ const hoyLima = () => new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 1
 
 let tecnico = null, sedes = [], sedeSel = LS.get('par_sede', ''), equipos = [], filtro = '';
 let enviando = false;
+// ?demo=1 → vista previa: se recorre y se valida todo igual, pero NO se guarda ni se envía nada.
+const DEMO = new URLSearchParams(location.search).get('demo') === '1';
+const bannerDemo = () => (DEMO ? '<div class="pill warn" style="display:block;margin:0 0 10px">🧪 Vista previa — no se guarda nada</div>' : '');
 
 // ── comunicación ────────────────────────────────────────────────────────────────────────────
 class ErrorApi extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -134,7 +137,7 @@ function pintarPendientes() {
 }
 
 function encabezado() {
-  return `<div class="top"><div><h1>📊 Toma de parámetros</h1><div class="sub">Extractores e inyectores${tecnico ? ' · ' + esc(tecnico.nombre) : ''}</div></div><div id="pend"></div></div>`;
+  return bannerDemo() + `<div class="top"><div><h1>📊 Toma de parámetros</h1><div class="sub">Extractores e inyectores${tecnico ? ' · ' + esc(tecnico.nombre) : ''}</div></div><div id="pend"></div></div>`;
 }
 
 async function iniciar() {
@@ -208,7 +211,7 @@ function abrirForm(eq) {
   if (!eq) return;
   const app = $('#app');
   app.innerHTML = `<div id="form">
-    <div class="top"><div><h1>${esc(eq.nombre)}</h1><div class="sub">${esc(eq.sede)} · ${esc(eq.area) || 'Sin ubicación'}</div></div><div id="pend"></div></div>
+    ${bannerDemo()}<div class="top"><div><h1>${esc(eq.nombre)}</h1><div class="sub">${esc(eq.sede)} · ${esc(eq.area) || 'Sin ubicación'}</div></div><div id="pend"></div></div>
 
     <h2>1 · Información general</h2>
     <div class="sub">La fecha y la hora se registran al guardar. El técnico responsable es quien tiene la sesión de Telegram: <b>${esc(tecnico.nombre)}</b>.</div>
@@ -280,6 +283,11 @@ function guardar(eq) {
   if (faltan.length) {
     aviso('Faltan datos por completar (en rojo).');
     const primero = $(`[data-campo="${faltan[0]}"]`); if (primero) primero.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  if (DEMO) {   // vista previa: pasó la validación, pero no se guarda ni se envía
+    aviso('🧪 Vista previa: el formulario está completo. No se guardó nada.');
+    filtro = ''; pintarLista(); window.scrollTo(0, 0);
     return;
   }
   const sup = $('#supervisor').value.trim();

@@ -114,6 +114,13 @@ export const TECLADO_CONTACTO = {
   one_time_keyboard: true,
 };
 
+// Botón de menú (el que sale junto al campo de texto) de UN chat. Telegram lo permite por chat desde
+// el propio bot (setChatMenuButton con chat_id), sin pasar por BotFather: sirve para dar una Mini App
+// solo a quien se quiera. `{type:'default'}` lo devuelve al botón normal.
+export const botonWebApp = (texto, url) => ({ type: 'web_app', text: texto, web_app: { url } });
+export const BOTON_MENU_DEFECTO = { type: 'default' };
+export const fijarBotonMenu = (chatId, boton) => llamar('setChatMenuButton', { chat_id: chatId, menu_button: boton });
+
 export const responderCallback = (callbackId) => llamar('answerCallbackQuery', { callback_query_id: callbackId });
 
 // Quita los botones de un mensaje ya respondido (evita el doble toque sobre una confirmación).
