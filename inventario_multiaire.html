@@ -294,6 +294,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
     <div class="fg2">
       <div class="fgg"><label>Sede *</label><div class="sdd-wrap"><input type="text" id="f_sede" placeholder="Escribe para buscar la sede..." autocomplete="off"><div class="sdd" id="dd_f_sede"></div></div></div>
       <div class="fgg"><label>Tipo *</label><select id="f_equipo" onchange="onTipoChange()"><option value="">Seleccionar tipo...</option></select><input type="text" id="f_equipo_otro" placeholder="Nombre del tipo nuevo" style="display:none;margin-top:6px"></div>
+      <div class="fgg"><label>Cliente *</label><select id="f_cliente"><option value="">— Elige la sede primero —</option></select></div>
       <div class="fgg full"><label>Descripción *</label><input type="text" id="f_desc" placeholder="Ej: AA Fan Coil 16"></div>
       <div class="fgg full"><label>Área / Ubicación</label><input type="text" id="f_area" placeholder="Ej: Almacén, Azotea..."></div>
       <div class="fgg"><label>Marca</label><input type="text" id="f_marca" list="dl_marca" placeholder="Ej: Midea"><datalist id="dl_marca"></datalist></div>
@@ -352,9 +353,33 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 <script>
 
 let data=[], filtered=[], selected=new Set(), sortCol='sede', sortAsc=true, editRow=null, sedesForm=[];
-// sede canónica → cliente (maestros pisa a datos): al guardar, el cliente se
-// deriva de la sede elegida en vez de hardcodear RIPLEY (hallazgo del Council)
-const sedeCliente={};
+// sede → clientes que la tienen (maestros_tiendas activas + inventario). Una sede puede ser de VARIOS
+// clientes (Miraflores y Jockey Plaza son de Ripley y de Tottus): por eso es un CONJUNTO, no un valor.
+// Antes era un único cliente por sede (el último que se cargaba) y al guardar se le asignaba al equipo:
+// editar un equipo de Tottus en una sede compartida lo pasaba a Ripley y desaparecía de su lista.
+const sedeClientes={};
+function registrarSedeCliente(sede,cliente){
+  if(!sede||!cliente||cliente==='-') return;
+  (sedeClientes[sede]=sedeClientes[sede]||new Set()).add(cliente);
+}
+const clientesDeSede=(sede)=>[...(sedeClientes[sede]||[])].sort();
+// ¿Qué cliente se guarda? Al EDITAR se conserva el del equipo (el cliente no se reasigna por tocar otro
+// campo). Al CREAR sale de la elección explícita del formulario (obligatoria si la sede es compartida).
+// Siempre debe ser un cliente que tenga esa sede. Función pura: la prueba la ejecuta tal cual.
+function resolverClienteGuardado({editando,clienteEquipo,clienteElegido,sede,clientesDeLaSede}){
+  const c=String(editando?(clienteEquipo||clienteElegido||''):(clienteElegido||'')).trim();
+  if(!c||c==='-'){
+    return {ok:false,error: editando
+      ? 'Este equipo no tiene cliente: elígelo antes de guardar.'
+      : (clientesDeLaSede.length>1
+        ? 'La sede "'+sede+'" la comparten varios clientes: elige el cliente del equipo.'
+        : 'La sede "'+sede+'" no tiene cliente asignado. Asignáselo en la app de Clientes antes de cargarle equipos.')};
+  }
+  if(!clientesDeLaSede.includes(c)){
+    return {ok:false,error:'La sede "'+sede+'" no tiene al cliente "'+c+'". Elige una sede de ese cliente (o asígnala en la app de Clientes).'};
+  }
+  return {ok:true,cliente:c};
+}
 
 // ── ORDEN NATURAL DE NOMBRE ─────────────────────────────────────────────────
 // "Extractor 01 (Axial)"/"Extractor 05 (Centrífugo)": el número identifica al
@@ -546,12 +571,15 @@ function sddInit(inputId, onPick){
   dd.addEventListener('click',e=>{
     const it=e.target.closest('.sdd-i'); if(!it) return;
     inp.value=it.textContent; dd.classList.remove('open');
-    if(onPick) onPick();
+    // la sede salió bajo el encabezado de un cliente: ese es el cliente que se quiso elegir
+    let h=it.previousElementSibling; while(h&&!h.classList.contains('sdd-g')) h=h.previousElementSibling;
+    if(onPick) onPick(h?h.textContent:'');
   });
   document.addEventListener('click',e=>{ if(e.target!==inp&&!dd.contains(e.target)) dd.classList.remove('open'); });
 }
 sddInit('fSede', af);      // al elegir sede en el filtro, re-filtra
-sddInit('f_sede', null);   // en el formulario solo fija el valor
+sddInit('f_sede', (cli)=>refrescarClienteForm(cli));   // en el formulario fija la sede y propone el cliente bajo el que se eligió
+document.getElementById('f_sede').addEventListener('input',()=>refrescarClienteForm());
 
 // ── FILTERS ───────────────────────────────────────────────────────────────────
 function pf() {
@@ -561,7 +589,7 @@ function pf() {
   if (!sedesForm.length) sddGroups.f_sede = sddGroups.fSede;  // fallback hasta que se carguen maestros
   // el cliente se toma tal cual (antes se inventaba 'RIPLEY'): es la llave que resuelve la
   // plantilla de actividades del equipo — asignarle otro cliente le cambiaría las actividades
-  data.forEach(r=>{ if(r.sede && !(r.sede in sedeCliente)) sedeCliente[r.sede]=r.cliente||''; });
+  data.forEach(r=>registrarSedeCliente(r.sede,r.cliente));
   fs('fCliente', u('cliente'), 'Todos los clientes');
 
   // Tipo — filtro + selector del formulario. Los tipos salen del INVENTARIO (es la fuente de
@@ -653,8 +681,30 @@ async function cargarSedesMaestros(){
     const tiendas = mSnap.docs.map(d => d.data()).filter(t => String(t.activo).trim().toUpperCase() !== 'NO');
     sedesForm = [...new Set(tiendas.map(t => t.sede).filter(Boolean))].sort();
     if (sedesForm.length) sddGroups.f_sede = sddGrupos(tiendas.map(t=>({cliente:t.cliente, sede:t.sede})));
-    tiendas.forEach(t=>{ if(t.sede) sedeCliente[t.sede]=t.cliente||''; });  // maestros pisa a datos
+    tiendas.forEach(t=>registrarSedeCliente(t.sede,t.cliente));
   }catch(e){ /* fallback: el dropdown del form ya trae las sedes de los datos (pf) */ }
+}
+
+// Cliente del formulario. EDITAR: el del equipo, bloqueado (no se reasigna por tocar otro campo).
+// CREAR: los clientes de esa sede; si es uno solo se fija, si hay varios se elige (se propone el del
+// encabezado bajo el que se eligió la sede o el del filtro de la lista, pero nunca se adivina).
+function refrescarClienteForm(preferido){
+  const sel=document.getElementById('f_cliente'); if(!sel) return;
+  const txt=document.getElementById('f_sede').value.trim().toLowerCase();
+  const sede=Object.keys(sedeClientes).find(k=>k.toLowerCase()===txt)||'';
+  const eq=editRow!==null?data.find(x=>x.row===editRow):null;
+  const actual=eq?String(eq.cliente||'').trim():'';
+  const prev=sel.value;
+  const opciones=sede?clientesDeSede(sede):[];
+  if(actual&&actual!=='-'&&!opciones.includes(actual)) opciones.unshift(actual);   // se ve siempre; guardar lo valida
+  let valor='';
+  if(actual&&actual!=='-') valor=actual;
+  else if(opciones.length===1) valor=opciones[0];
+  else valor=[preferido,prev,document.getElementById('fCliente').value].find(c=>c&&opciones.includes(c))||'';
+  sel.innerHTML=(opciones.length===1&&valor?'':'<option value="">'+(sede?'— Elegir cliente —':'— Elige la sede primero —')+'</option>')
+    +opciones.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
+  sel.value=valor;
+  sel.disabled=(actual&&actual!=='-')||opciones.length<=1;
 }
 
 // Selector de tipo del formulario: los tipos del inventario + la escapatoria para dar de alta el
@@ -787,9 +837,10 @@ async function openNew(){
   comentariosForm=[];renderComentarios();togComentarios(false);
   fillTipoForm();
   try { await cargarSedesMaestros(); } catch(e) { /* sedes ya pobladas en la carga inicial */ }
+  refrescarClienteForm();
   document.getElementById('mov').classList.add('open');
 }
-function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('f_capacidad').value=r.capacidad||'';document.getElementById('f_codigoTienda').value=r.codigoTienda||'';comentariosForm=(r.comentarios||[]).map(c=>({...c}));renderComentarios();togComentarios(false);placaFotos=[];placaBorrar=[];renderPlaca();cargarPlacaEq(r.eq_id);document.getElementById('mov').classList.add('open');}
+function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;refrescarClienteForm();fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('f_capacidad').value=r.capacidad||'';document.getElementById('f_codigoTienda').value=r.codigoTienda||'';comentariosForm=(r.comentarios||[]).map(c=>({...c}));renderComentarios();togComentarios(false);placaFotos=[];placaBorrar=[];renderPlaca();cargarPlacaEq(r.eq_id);document.getElementById('mov').classList.add('open');}
 function cm(){togComentarios(false);document.getElementById('mov').classList.remove('open');}
 
 async function saveItem(){
@@ -809,11 +860,10 @@ async function saveItem(){
   // Sin cliente no hay plantilla de actividades: el equipo nacería imposible de mantener. Se corta
   // acá (antes de tocar el botón) con un mensaje claro, en vez de crearlo huérfano y que el técnico
   // lo descubra en el techo. Antes se le inventaba 'RIPLEY', que le daría las actividades de OTRO cliente.
-  const cliente_val=sedeCliente[sede]||'';
-  if(!cliente_val || cliente_val==='-'){
-    toast('La sede "'+sede+'" no tiene cliente asignado. Asignáselo en la app de Clientes antes de cargarle equipos.','err');
-    return;
-  }
+  const eqEdit=editRow!==null?data.find(x=>x.row===editRow):null;
+  const rc=resolverClienteGuardado({editando:editRow!==null,clienteEquipo:eqEdit?eqEdit.cliente:'',clienteElegido:document.getElementById('f_cliente').value,sede,clientesDeLaSede:clientesDeSede(sede)});
+  if(!rc.ok){toast(rc.error,'err');return;}
+  const cliente_val=rc.cliente;
   const btn=document.getElementById('sbtn');
   btn.disabled=true;btn.innerHTML='<span class="spin"></span> Guardando...';
   // Auto-generate EQ_ID for new items
