@@ -12,7 +12,7 @@ const ini = html.indexOf('const PAR_FILAS = 10;');
 const fin = html.indexOf('// ── Pantalla ──');
 t('existe el bloque del visor', ini > 0 && fin > ini);
 const codigo = html.slice(ini, fin);
-const { parBloques, PAR_FORMATOS, PAR_FILAS } = new Function(`${codigo}\nreturn { parBloques, PAR_FORMATOS, PAR_FILAS };`)();
+const { parBloques, PAR_FORMATOS, PAR_FILAS, parRangoPeriodo } = new Function(`${codigo}\nreturn { parBloques, PAR_FORMATOS, PAR_FILAS, parRangoPeriodo };`)();
 
 const elec = { fases: '3PH', v1: 220, v2: 221, v3: 219, a1: 9.8, a2: 10.1, a3: 'NA' };
 const rec = (i, formato, extra = {}) => ({
@@ -78,8 +78,21 @@ const cols = (f) => PAR_FORMATOS[f].cols;
   const per = (f) => parBloques([SPLIT(1, { fecha: f })])[0].periodo;
   t('periodos bimestrales', per('2026-01-15') === 'ENE-FEB 2026' && per('2026-02-28') === 'ENE-FEB 2026' && per('2026-03-01') === 'MAR-ABR 2026' && per('2026-12-31') === 'NOV-DIC 2026' && per('2026-10-29') === 'SEP-OCT 2026');
 }
+// ── filtro por período (igual que Desempeño): período + año → rango de fechas ──
+{
+  const r = (p, a) => JSON.stringify(parRangoPeriodo(p, a));
+  t('SEP-OCT 2026', r('SEP-OCT', 2026) === '{"desde":"2026-09-01","hasta":"2026-10-31"}', r('SEP-OCT', 2026));
+  t('ENE-FEB: febrero normal y bisiesto', r('ENE-FEB', 2026) === '{"desde":"2026-01-01","hasta":"2026-02-28"}' && r('ENE-FEB', 2028) === '{"desde":"2028-01-01","hasta":"2028-02-29"}', r('ENE-FEB', 2026) + r('ENE-FEB', 2028));
+  t('MAR-ABR / MAY-JUN / JUL-AGO / NOV-DIC', r('MAR-ABR', 2026) === '{"desde":"2026-03-01","hasta":"2026-04-30"}' && r('MAY-JUN', 2026) === '{"desde":"2026-05-01","hasta":"2026-06-30"}' && r('JUL-AGO', 2026) === '{"desde":"2026-07-01","hasta":"2026-08-31"}' && r('NOV-DIC', 2026) === '{"desde":"2026-11-01","hasta":"2026-12-31"}');
+  t('período o año inválido → null', parRangoPeriodo('XXX', 2026) === null && parRangoPeriodo('SEP-OCT', 'abc') === null && parRangoPeriodo('', 2026) === null);
+  const g = parRangoPeriodo('SEP-OCT', 2026), dentro = (f) => f >= g.desde && f <= g.hasta;
+  t('los bordes del período entran y los días vecinos no', dentro('2026-09-01') && dentro('2026-10-31') && !dentro('2026-08-31') && !dentro('2026-11-01'));
+}
 // ── la pantalla ──
 t('pestaña Parámetros y su vista', /switchTab\('parametros'\)/.test(html) && /id="tab-parametros"/.test(html) && /if\(tab==='parametros'\) renderParametros\(\);/.test(html));
+t('filtros: período + año, sede y tipo de equipo (sin fechas sueltas ni "formato")', /id="par-periodo"/.test(html) && /id="par-anio"/.test(html) && /id="par-sede"/.test(html) && /id="par-tipo"/.test(html) && !/id="par-desde"|id="par-hasta"|id="par-formato"/.test(html));
+t('el filtro de tipo usa el tipo del equipo del registro', /\(!tipo \|\| r\.tipo === tipo\)/.test(html));
+t('el Excel se nombra por período', /a\.download = `Parametros \$\{periodoTxt\}\.xlsx`/.test(html));
 t('lee mtto_parametros por rango de fecha (sin índice compuesto)', /collection\('mtto_parametros'\)\.where\('fecha', '>=', desde\)\.where\('fecha', '<=', hasta\)/.test(html));
 t('exportar exige permiso', /async function parExportarExcel\(\) \{\s*\n\s*if \(!MA\.can\('exportar', 'mantenimiento'\)\)/.test(html));
 t('ExcelJS cargado desde cdnjs', /cdnjs\.cloudflare\.com\/ajax\/libs\/exceljs\/4\.4\.0\/exceljs\.min\.js/.test(html));
