@@ -36,6 +36,26 @@ Los tipos sin formato (chiller, paquete, escalera, bombas, variador, VRV, TVR) n
   aparece "📤 N por enviar" arriba a la derecha. Para **abrir** la app y cargar los equipos sí se necesita internet.
 - No hay firma: el registro queda con el nombre del técnico (el de su cuenta de Telegram vinculada) y la hora.
 
+## Ver y exportar los registros (módulo Mantenimiento → pestaña 📋 Parámetros)
+
+Los registros que guardan los técnicos se ven en **Mantenimiento → 📋 Parámetros**:
+
+- Filtros: rango de fechas (por defecto, el mes en curso), sede y formato. La lista trae fecha/hora, equipo, ubicación, formato,
+  técnico y estado (OP/OO/FS); **Ver** abre el detalle completo del registro. 📶 indica que se capturó sin señal y se envió después.
+- **👁 Ver formato / PDF:** arma los registros seleccionados en el **formato de la hoja impresa** (A4 horizontal, 10 equipos por hoja)
+  y se imprime o se guarda como PDF desde el navegador.
+- **⬇ Excel:** descarga un `.xlsx` con el mismo diseño de `Formatos de parametros TOTTUS.xlsx` (una hoja por sede + formato + fecha,
+  de a 10 equipos; A4 horizontal ajustado a una página). Requiere el permiso `exportar` de Mantenimiento.
+- Cabecera de cada hoja: cliente, sede, fecha, periodo (bimestre), técnico(s) y N.º de OS salen de los registros; las filas que sobran
+  quedan en blanco para completar a mano. Las observaciones salen numeradas por equipo.
+
+## Para que los técnicos puedan guardar
+
+1. **Vincular a cada técnico con su Telegram:** en el bot, el técnico comparte **su propio contacto** (botón *Compartir mi número*);
+   el número debe estar en su ficha de Personal. Sin eso la Mini App responde "tu cuenta no está vinculada".
+2. **Botón del bot:** en @BotFather → Menu Button, la URL de producción de abajo (o `/parametros` para ver una vista previa).
+3. Las reglas de `mtto_parametros` ya están publicadas (lectura autorizada, escritura solo del servidor).
+
 ## Configurar el botón en el bot (una sola vez)
 
 En **@BotFather**:

@@ -301,6 +301,7 @@ option{background:#fff}
 .back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:8px;white-space:nowrap;transition:all .15s}
 .back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="firebase-config.js"></script>
 <script src="auth-guard.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -412,6 +413,7 @@ option{background:#fff}
       <button class="tab-btn" onclick="switchTab('global')">🌐 Global</button>
       <button class="tab-btn" onclick="switchTab('historial')">🕘 Historial</button>
       <button class="tab-btn" onclick="switchTab('desempeno')">👷 Desempeño</button>
+      <button class="tab-btn" onclick="switchTab('parametros')">📋 Parámetros</button>
     </div>
 
     <div class="tab-view active" id="tab-checklist">
@@ -466,6 +468,22 @@ option{background:#fff}
         <button class="btn btn-sm" onclick="renderDesempeno()" title="Recargar">↻</button>
       </div>
       <div id="dsp-content"></div>
+    </div>
+
+    <div class="tab-view" id="tab-parametros">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--muted)">Desde</label>
+        <input type="date" id="par-desde" onchange="renderParametros()" style="max-width:150px;-webkit-appearance:none;appearance:none;text-align:left">
+        <label style="font-size:12px;color:var(--muted)">Hasta</label>
+        <input type="date" id="par-hasta" onchange="renderParametros()" style="max-width:150px;-webkit-appearance:none;appearance:none;text-align:left">
+        <select id="par-sede" onchange="renderParametrosFiltrado(true)" style="max-width:200px"><option value="">Todas las sedes</option></select>
+        <select id="par-formato" onchange="renderParametrosFiltrado(true)" style="max-width:190px">
+          <option value="">Todos los formatos</option><option value="SPLIT">Split</option><option value="FANCOIL_UMA">Fan coil y UMA</option>
+          <option value="VENTILACION">Ventilación mecánica</option><option value="CORTINA">Cortinas de aire</option>
+        </select>
+        <button class="btn btn-sm" onclick="renderParametros()" title="Recargar">↻</button>
+      </div>
+      <div id="par-content"></div>
     </div>
 
     <div class="tab-view" id="tab-pendientes">
@@ -2305,6 +2323,352 @@ function renderDashboard() {
   document.getElementById('dashContent').innerHTML = html;
 }
 
+// ── TAB PARÁMETROS (visor + exportación de la toma de parámetros hecha desde la Mini App) ──────
+// Lee `mtto_parametros` (la escribe SOLO el backend, ver api/parametros.js). Muestra los registros y los
+// arma en el MISMO formato de las hojas impresas de TOTTUS (Split · Fan coil y UMA · Ventilación mecánica ·
+// Cortinas de aire): vista en pantalla/imprimir a PDF y exportación a Excel (ExcelJS) con el diseño de
+// `Formatos de parametros TOTTUS.xlsx`. 10 equipos por hoja; las hojas se agrupan por sede + formato + fecha.
+const PAR_FILAS = 10;
+const PAR_ESTADO_TXT = { OP: 'Operativo', OO: 'Operativo con observación', FS: 'Fuera de funcionamiento' };
+const PAR_TIPO_EXT = [['AXIAL', 'Axial'], ['CENTRIFUGA', 'Centrífuga'], ['HUMO', 'Humo'], ['HONGO', 'Hongo'], ['CAJON', 'Cajón']];
+const _parVal = (v) => v == null ? '' : v === 'NA' ? 'N/A' : String(v);
+const _parMark = (r) => {
+  const t = r.datos && r.datos.tipoExtractor;
+  if (t === 'NA') return 'N/A';
+  const m = (k) => (t === k ? '☒' : '☐');
+  return `${m('AXIAL')} Axial   ${m('CENTRIFUGA')} Centrífuga\n${m('HUMO')} Humo   ${m('HONGO')} Hongo   ${m('CAJON')} Cajón`;
+};
+const _parD = (k) => (r) => _parVal((r.datos || {})[k]);
+const _parE = (k) => (r) => _parVal((r.electrico || {})[k]);
+// Columnas por formato, en el orden de la hoja. g = grupo del encabezado, s = subtítulo (columnas agrupadas),
+// w = ancho (unidades de Excel), f = cómo sale el valor de un registro.
+const PAR_BASE = [
+  { g: 'N°', w: 4.5, f: (r, i) => i + 1, centro: true, neg: true },
+  { g: 'EQUIPO\n(código / nombre)', w: 22, f: (r) => `${r.nombreEq || ''}\n${r.eqId || ''}` },
+  { g: 'UBICACIÓN', w: 19, f: (r) => r.area || '' },
+  { g: 'VOLTAJE (V)', s: 'L1', w: 6.5, f: _parE('v1') }, { g: 'VOLTAJE (V)', s: 'L2', w: 6.5, f: _parE('v2') }, { g: 'VOLTAJE (V)', s: 'L3', w: 6.5, f: _parE('v3') },
+  { g: 'AMPERAJE (A)', s: 'L1', w: 6.5, f: _parE('a1') }, { g: 'AMPERAJE (A)', s: 'L2', w: 6.5, f: _parE('a2') }, { g: 'AMPERAJE (A)', s: 'L3', w: 6.5, f: _parE('a3') },
+];
+const PAR_ESTADO = { g: 'ESTADO\n(OP / OO / FS)', w: 9.5, f: (r) => r.estado || '' };
+const PAR_POT = { g: 'POTENCIA DEL\nMOTOR (hp / W)', w: 11, f: _parD('potenciaMotor') };
+const PAR_MOT = { g: 'MODELO / SERIE\nDEL MOTOR', w: 15, f: _parD('modeloSerieMotor') };
+const PAR_FAJA = { g: 'MODELO / CANT.\nDE FAJA', w: 13, f: _parD('modeloCantFaja') };
+const PAR_FORMATOS = {
+  SPLIT: { titulo: 'SPLIT', hoja: 'Split', cols: [...PAR_BASE,
+    { g: 'PRESIÓN DE BAJA\n(psi)', w: 11, f: _parD('presionBaja') }, { g: 'PRESIÓN DE ALTA\n(psi)', w: 11, f: _parD('presionAlta') },
+    { g: 'TEMP. SALIDA\nDE AIRE (°C)', w: 11, f: _parD('tempSalidaAire') }, PAR_ESTADO] },
+  FANCOIL_UMA: { titulo: 'FAN COIL / UMA', hoja: 'Fan coil y UMA', cols: [...PAR_BASE, PAR_POT, PAR_MOT, PAR_FAJA,
+    { g: 'TEMP. ENTRADA\nAGUA HELADA (°C)', w: 12, f: _parD('tempEntradaAgua') }, { g: 'TEMP. SALIDA\nAGUA HELADA (°C)', w: 12, f: _parD('tempSalidaAgua') }, PAR_ESTADO] },
+  VENTILACION: { titulo: 'VENTILACIÓN MECÁNICA (extractores / inyectores)', hoja: 'Ventilación', cols: [...PAR_BASE, PAR_POT, PAR_MOT, PAR_FAJA,
+    { g: 'TIPO DE EXTRACTOR', w: 27, f: _parMark, izq: true, chico: true }, PAR_ESTADO] },
+  CORTINA: { titulo: 'CORTINAS DE AIRE', hoja: 'Cortinas', cols: [...PAR_BASE,
+    { g: 'MEDIDA DE\nCORTINA', w: 13, f: _parD('medidaCortina') }, { g: 'POTENCIA DEL\nMOTOR (hp / W)', w: 13, f: _parD('potenciaMotor') },
+    { g: 'MODELO / SERIE\nDEL MOTOR', w: 17, f: _parD('modeloSerieMotor') }, PAR_ESTADO] },
+};
+const _parFechaTxt = (iso) => { const [y, m, d] = String(iso || '').split('-'); return d ? `${d}/${m}/${y}` : ''; };
+const _parPeriodo = (iso) => {
+  const m = Number(String(iso || '').slice(5, 7)), y = String(iso || '').slice(0, 4);
+  return m ? (['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'][Math.floor((m - 1) / 2)] + ' ' + y) : '';
+};
+
+// Agrupa los registros en "hojas": una por sede + formato + fecha, de a PAR_FILAS equipos (orden de captura).
+// Pura (sin DOM ni Firestore): la prueba la ejecuta tal cual.
+function parBloques(recs) {
+  const grupos = new Map();
+  [...recs].sort((a, b) => String(a.capturadoEn || '').localeCompare(String(b.capturadoEn || ''))).forEach((r) => {
+    if (!PAR_FORMATOS[r.formato]) return;
+    const k = JSON.stringify([r.sede || '', r.formato, r.fecha || '']);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(r);
+  });
+  const bloques = [];
+  [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es')).forEach(([k, lista]) => {
+    const [sede, formato, fecha] = JSON.parse(k);
+    const paginas = Math.ceil(lista.length / PAR_FILAS);
+    for (let p = 0; p < paginas; p++) {
+      const rs = lista.slice(p * PAR_FILAS, (p + 1) * PAR_FILAS);
+      const uniq = (f) => [...new Set(rs.map(f).filter(Boolean))];
+      bloques.push({
+        formato, sede, fecha, pagina: p + 1, paginas,
+        cliente: uniq((r) => r.cliente).join(' / ') || 'TOTTUS',
+        periodo: _parPeriodo(fecha),
+        tecnicos: uniq((r) => r.tecnicoNombre).join(', '),
+        os: uniq((r) => r.os).join(', '),
+        filas: rs.map((r, i) => PAR_FORMATOS[formato].cols.map((c) => c.f(r, i))),
+        observaciones: rs.map((r, i) => (r.observaciones ? `${i + 1}. ${r.nombreEq || r.eqId}: ${r.observaciones}` : '')).filter(Boolean),
+      });
+    }
+  });
+  return bloques;
+}
+
+// ── Pantalla ──
+let _parRecs = [], _parSel = new Set(), _parReq = 0;
+function _parInit() {
+  const d = document.getElementById('par-desde');
+  if (d.value) return;
+  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
+  d.value = hoy.slice(0, 8) + '01';
+  document.getElementById('par-hasta').value = hoy;
+}
+async function renderParametros() {
+  _parInit();
+  const req = ++_parReq;
+  const cont = document.getElementById('par-content');
+  const desde = document.getElementById('par-desde').value, hasta = document.getElementById('par-hasta').value;
+  if (!desde || !hasta) { cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Elige las fechas.</div>'; return; }
+  cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando parámetros…</div>';
+  try {
+    const snap = await window.__db.collection('mtto_parametros').where('fecha', '>=', desde).where('fecha', '<=', hasta).get();
+    if (req !== _parReq) return;   // llegó una consulta más nueva
+    _parRecs = snap.docs.map((d) => d.data());
+    const sedes = [...new Set(_parRecs.map((r) => r.sede).filter(Boolean))].sort();
+    const sel = document.getElementById('par-sede'), cur = sel.value;
+    sel.innerHTML = '<option value="">Todas las sedes</option>' + sedes.map((s) => `<option value="${_actEsc(s)}"${s === cur ? ' selected' : ''}>${_actEsc(s)}</option>`).join('');
+    _parSel = new Set();
+    renderParametrosFiltrado(true);
+  } catch (e) { cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: ' + _actEsc(e.message) + '</div>'; }
+}
+function _parFiltrados() {
+  const sede = document.getElementById('par-sede').value, fmt = document.getElementById('par-formato').value;
+  return _parRecs.filter((r) => (!sede || r.sede === sede) && (!fmt || r.formato === fmt))
+    .sort((a, b) => String(b.capturadoEn || '').localeCompare(String(a.capturadoEn || '')));
+}
+function renderParametrosFiltrado(todos) {
+  const cont = document.getElementById('par-content');
+  const lista = _parFiltrados();
+  if (todos) _parSel = new Set(lista.map((r) => r.id));
+  else _parSel = new Set([..._parSel].filter((id) => lista.some((r) => r.id === id)));
+  if (!lista.length) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:14px">No hay registros de parámetros en ese rango. Los técnicos los toman desde el bot de Telegram (botón <b>Parámetros</b>).</div>';
+    return;
+  }
+  const nSel = lista.filter((r) => _parSel.has(r.id)).length;
+  const puedeExp = MA.can('exportar', 'mantenimiento');
+  const badge = (e) => `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:${e === 'FS' ? '#fde8e8' : e === 'OO' ? '#fff4e0' : '#e6f4ea'};color:${e === 'FS' ? '#b42318' : e === 'OO' ? '#b45309' : '#1e7e34'}" title="${_actEsc(PAR_ESTADO_TXT[e] || '')}">${_actEsc(e || '—')}</span>`;
+  cont.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <span style="font-size:12px;color:var(--muted)"><b id="par-nsel">${nSel}</b> de ${lista.length} seleccionados</span>
+      <button class="btn btn-sm" onclick="parSeleccionar(true)">☑ Todos</button>
+      <button class="btn btn-sm" onclick="parSeleccionar(false)">☐ Ninguno</button>
+      <span style="flex:1"></span>
+      <button class="btn btn-sm" onclick="parVistaFormato()" title="Ver los seleccionados en el formato de la hoja impresa (se puede imprimir o guardar como PDF)">👁 Ver formato / PDF</button>
+      ${puedeExp ? '<button class="btn btn-sm btn-primary" onclick="parExportarExcel()" title="Excel con el diseño de las hojas de parámetros de TOTTUS">⬇ Excel</button>' : ''}
+    </div>
+    <div style="overflow-x:auto"><table class="tbl" style="width:100%;font-size:12px;border-collapse:collapse">
+      <thead><tr style="text-align:left;color:var(--muted2)"><th></th><th>Fecha</th><th>Equipo</th><th>Ubicación</th><th>Formato</th><th>Técnico</th><th>Estado</th><th></th></tr></thead>
+      <tbody>${lista.map((r) => `<tr style="border-top:1px solid var(--border)">
+        <td><input type="checkbox" data-par-id="${_actEsc(r.id)}" ${_parSel.has(r.id) ? 'checked' : ''}></td>
+        <td style="white-space:nowrap">${_actEsc(_parFechaTxt(r.fecha))} ${_actEsc(r.hora || '')}${r.diferido ? ' <span title="Se envió después de capturarlo (sin señal)">📶</span>' : ''}</td>
+        <td><b>${_actEsc(r.nombreEq || r.eqId)}</b><div style="font-size:10px;color:var(--muted2)">${_actEsc(r.eqId)} · ${_actEsc(r.sede)}</div></td>
+        <td>${_actEsc(r.area || '')}</td>
+        <td>${_actEsc((PAR_FORMATOS[r.formato] || {}).hoja || r.formato || '')}</td>
+        <td>${_actEsc(r.tecnicoNombre || '')}</td>
+        <td>${badge(r.estado)}</td>
+        <td><button class="btn btn-sm" data-par-ver="${_actEsc(r.id)}">Ver</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+document.addEventListener('change', (e) => {
+  const cb = e.target && e.target.matches && e.target.matches('#par-content input[data-par-id]') ? e.target : null;
+  if (!cb) return;
+  if (cb.checked) _parSel.add(cb.dataset.parId); else _parSel.delete(cb.dataset.parId);
+  const n = document.getElementById('par-nsel'); if (n) n.textContent = _parFiltrados().filter((r) => _parSel.has(r.id)).length;
+});
+document.addEventListener('click', (e) => {
+  const b = e.target && e.target.closest ? e.target.closest('#par-content [data-par-ver]') : null;
+  if (b) parDetalle(b.dataset.parVer);
+});
+function parSeleccionar(todos) { renderParametrosFiltrado(false); _parSel = todos ? new Set(_parFiltrados().map((r) => r.id)) : new Set(); renderParametrosFiltrado(false); }
+function _parSeleccionados() { return _parFiltrados().filter((r) => _parSel.has(r.id)); }
+
+function parDetalle(id) {
+  const r = _parRecs.find((x) => x.id === id); if (!r) return;
+  const def = PAR_FORMATOS[r.formato];
+  const fila = (k, v) => `<tr><td style="padding:3px 10px 3px 0;color:var(--muted2);white-space:nowrap">${_actEsc(k)}</td><td style="padding:3px 0"><b>${_actEsc(v)}</b></td></tr>`;
+  const cols = def ? def.cols.slice(3) : [];   // sin N°, equipo y ubicación (ya están arriba)
+  const filaVals = def ? def.cols.map((c) => c.f(r, 0)) : [];
+  const detalle = cols.map((c, i) => fila((c.s ? c.g.replace('\n', ' ') + ' ' + c.s : c.g.replace(/\n/g, ' ')), String(filaVals[i + 3]).replace(/\n/g, ' ')));
+  const e = r.equipo || {};
+  const html = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center;padding:14px" onclick="if(event.target===this)this.remove()">
+    <div style="background:var(--surface,#fff);border-radius:12px;max-width:520px;width:100%;max-height:90vh;overflow:auto;padding:18px;font-size:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><div style="font-size:15px;font-weight:700">${_actEsc(r.nombreEq || r.eqId)}</div><div style="color:var(--muted2)">${_actEsc(r.sede)} · ${_actEsc(r.area || '')} · ${_actEsc(def ? def.hoja : r.formato)}</div></div><button class="btn btn-sm" onclick="this.closest('div[style*=fixed]').remove()">✕</button></div>
+      <table style="margin-top:10px;border-collapse:collapse">${fila('Fecha y hora', _parFechaTxt(r.fecha) + ' ' + (r.hora || ''))}${fila('Técnico', r.tecnicoNombre || '')}${fila('N.º OS', r.os || '—')}${fila('Estado', (r.estado || '') + ' · ' + (PAR_ESTADO_TXT[r.estado] || ''))}
+      ${fila('Marca / modelo / serie', [e.marca, e.modelo, e.serie].filter(Boolean).join(' · ') || '—')}${fila('Fases', r.electrico ? r.electrico.fases : '')}${detalle.join('')}${fila('Observaciones', r.observaciones || '—')}</table>
+      ${r.diferido ? '<div style="margin-top:8px;color:var(--muted2)">📶 Se capturó sin señal y se envió después.</div>' : ''}
+    </div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+// ── Vista del formato (se imprime / guarda como PDF desde el navegador) ──
+function _parHojaHtml(b) {
+  const def = PAR_FORMATOS[b.formato], cols = def.cols;
+  const e = _actEsc;
+  // encabezado de 2 niveles
+  let h1 = '', h2 = '';
+  for (let i = 0; i < cols.length;) {
+    const c = cols[i];
+    if (!c.s) { h1 += `<th rowspan="2">${e(c.g).replace(/\n/g, '<br>')}</th>`; i++; continue; }
+    let j = i; while (j < cols.length && cols[j].g === c.g && cols[j].s) j++;
+    h1 += `<th colspan="${j - i}">${e(c.g)}</th>`;
+    for (let k = i; k < j; k++) h2 += `<th class="sub">${e(cols[k].s)}</th>`;
+    i = j;
+  }
+  const anchoTot = cols.reduce((a, c) => a + c.w, 0);
+  const filas = [];
+  for (let n = 0; n < PAR_FILAS; n++) {
+    const fila = b.filas[n];
+    filas.push(`<tr>${cols.map((c, k) => {
+      const v = fila ? String(fila[k] == null ? '' : fila[k]) : (k === 0 ? String(n + 1) : (c.chico ? _parMark({ datos: {} }) : ''));
+      return `<td class="${c.izq ? 'izq' : ''}${c.chico ? ' chico' : ''}${c.neg ? ' neg' : ''}">${e(v).replace(/\n/g, '<br>')}</td>`;
+    }).join('')}</tr>`);
+  }
+  const obs = b.observaciones.length ? b.observaciones.map((o) => `<div>${e(o)}</div>`).join('') : '';
+  return `<section class="hoja">
+    <div class="cab"><div class="logo"><img src="logo-multiaire.png" alt="MultiAire" onerror="this.style.display='none'"></div><div class="tit">HOJA DE PARÁMETROS — ${e(def.titulo)}</div><div class="os">N.º OS: <b>${e(b.os)}</b></div></div>
+    <table class="datos"><tr><td>CLIENTE: <b>${e(b.cliente)}</b></td><td>SEDE: <b>${e(b.sede)}</b></td><td>FECHA: <b>${e(_parFechaTxt(b.fecha))}</b></td><td>PERIODO: <b>${e(b.periodo)}</b></td><td>TÉCNICO: <b>${e(b.tecnicos)}</b></td></tr></table>
+    <div class="ley">OP: Operativo &nbsp;&nbsp;&nbsp; OO: Operativo con observación &nbsp;&nbsp;&nbsp; FS: Fuera de funcionamiento${b.paginas > 1 ? ` &nbsp;&nbsp;·&nbsp;&nbsp; Hoja ${b.pagina} de ${b.paginas}` : ''}</div>
+    <table class="par"><colgroup>${cols.map((c) => `<col style="width:${(c.w / anchoTot * 100).toFixed(2)}%">`).join('')}</colgroup><thead><tr>${h1}</tr><tr>${h2}</tr></thead><tbody>${filas.join('')}</tbody></table>
+    <div class="obs"><div class="obs-t">OBSERVACIONES (indicar N° de equipo)</div><div class="obs-c">${obs}</div></div>
+    <div class="firmas"><div><span></span>FIRMA Y NOMBRE DEL TÉCNICO</div><div><span></span>V°B° SUPERVISOR / CLIENTE</div></div>
+  </section>`;
+}
+function parVistaFormato() {
+  const recs = _parSeleccionados();
+  if (!recs.length) { toast('Selecciona al menos un registro', 'warn'); return; }
+  const bloques = parBloques(recs);
+  const css = `@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Calibri,Arial,sans-serif;font-size:10px;color:#000}
+  .hoja{page-break-after:always;padding:2px}.hoja:last-child{page-break-after:auto}
+  .cab{display:flex;align-items:center;gap:10px;margin-bottom:4px}.logo{width:90px}.logo img{width:90px}.tit{flex:1;text-align:center;font-size:15px;font-weight:700;color:#1F3864}
+  .os{width:150px;border:2px solid #000;padding:6px;font-size:11px;height:44px}
+  table{border-collapse:collapse;width:100%}td,th{border:1px solid #000}
+  .datos td{padding:4px 5px;font-size:10px}.ley{font-size:9px;font-style:italic;border:1px solid #000;border-top:0;border-bottom:0;padding:2px 5px;margin-top:0}
+  .par{table-layout:fixed}.par th{background:#1F3864;color:#fff;font-size:9px;padding:3px}.par th.sub{background:#D9E2F3;color:#000}
+  .par td{height:30px;text-align:center;font-size:10px;padding:2px;line-height:1.15}.par td.izq{text-align:left}.par td.chico{font-size:8px}.par td.neg{font-weight:700}
+  .obs{border:1px solid #000;border-top:0}.obs-t{background:#D9E2F3;text-align:center;font-weight:700;padding:3px;border-bottom:1px solid #000}.obs-c{min-height:66px;padding:3px 6px;font-size:10px}
+  .firmas{display:flex;justify-content:space-around;margin-top:26px;font-size:9px}.firmas div{width:40%;text-align:center}.firmas span{display:block;border-top:1px solid #000;margin-bottom:3px}`;
+  const w = window.open('', '_blank');
+  if (!w) { toast('Habilita los pop-ups para ver el formato', 'err'); return; }
+  w.document.open();
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Hojas de parámetros</title><style>${css}</style></head><body>${bloques.map(_parHojaHtml).join('')}</body></html>`);
+  w.document.close();
+  w.onload = () => { try { w.focus(); } catch (e) { /* ignorar */ } };
+}
+
+// ── Exportación a Excel (mismo diseño que `Formatos de parametros TOTTUS.xlsx`) ──
+const _parNombreHoja = (b, usados) => {
+  let base = `${PAR_FORMATOS[b.formato].hoja} ${b.sede} ${_parFechaTxt(b.fecha).slice(0, 5)}${b.paginas > 1 ? ' ' + b.pagina : ''}`.replace(/[\\/?*[\]:]/g, '-').slice(0, 31);
+  let n = base, i = 2;
+  while (usados.has(n)) n = base.slice(0, 28) + ' ' + i++;
+  usados.add(n);
+  return n;
+};
+function parHojaExcel(wb, b, logoId, nombre) {
+  const def = PAR_FORMATOS[b.formato], cols = def.cols, n = cols.length;
+  const ws = wb.addWorksheet(nombre, { views: [{ showGridLines: false }] });
+  const AZUL = 'FF1F3864', CLARO = 'FFD9E2F3', thin = { style: 'thin', color: { argb: 'FF000000' } }, med = { style: 'medium', color: { argb: 'FF000000' } };
+  const borde = { left: thin, right: thin, top: thin, bottom: thin };
+  cols.forEach((c, i) => { ws.getColumn(i + 1).width = c.w; });
+  const set = (r, c, v, o = {}) => {
+    const cell = ws.getCell(r, c);
+    if (v !== undefined) cell.value = v;
+    cell.font = { name: 'Calibri', size: o.size || 10, bold: !!o.bold, italic: !!o.italic, color: { argb: o.color || 'FF000000' } };
+    cell.alignment = { horizontal: o.align || 'center', vertical: 'middle', wrapText: true };
+    if (o.fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: o.fill } };
+    if (o.border !== false) cell.border = borde;
+    return cell;
+  };
+  const fusionar = (r1, c1, r2, c2) => { if (r2 > r1 || c2 > c1) ws.mergeCells(r1, c1, r2, c2); };
+  const alto = (r, h) => { ws.getRow(r).height = h; };
+  // Encabezado
+  alto(1, 24); alto(2, 24); alto(3, 20); alto(4, 16);
+  if (logoId != null) ws.addImage(logoId, { tl: { col: 0.1, row: 0.1 }, ext: { width: 96, height: 45 } });
+  fusionar(1, 4, 2, n - 3);
+  set(1, 4, `HOJA DE PARÁMETROS — ${def.titulo}`, { bold: true, size: n < 17 ? 13 : 15, border: false, color: AZUL });
+  fusionar(1, n - 2, 2, n);
+  set(1, n - 2, 'N.º OS: ' + (b.os || ''), { bold: true, size: 11, align: 'left', border: false });
+  for (let r = 1; r <= 2; r++) for (let c = n - 2; c <= n; c++) {
+    ws.getCell(r, c).border = { left: c === n - 2 ? med : undefined, right: c === n ? med : undefined, top: r === 1 ? med : undefined, bottom: r === 2 ? med : undefined };
+  }
+  const puntos = [1, ...[1, 2, 3, 4].map((k) => Math.round(1 + n * k / 5)), n + 1];
+  const etiquetas = ['CLIENTE: ' + b.cliente, 'SEDE: ' + b.sede, 'FECHA: ' + _parFechaTxt(b.fecha), 'PERIODO: ' + b.periodo, 'TÉCNICO: ' + b.tecnicos];
+  for (let k = 0; k < 5; k++) {
+    const c1 = puntos[k], c2 = puntos[k + 1] - 1;
+    fusionar(3, c1, 3, c2);
+    for (let c = c1; c <= c2; c++) ws.getCell(3, c).border = borde;
+    set(3, c1, etiquetas[k], { bold: true, align: 'left' });
+  }
+  fusionar(4, 1, 4, n);
+  set(4, 1, 'OP: Operativo        OO: Operativo con observación        FS: Fuera de funcionamiento' + (b.paginas > 1 ? `        Hoja ${b.pagina} de ${b.paginas}` : ''), { size: 9, italic: true, align: 'left' });
+  // Encabezado de la tabla (2 filas)
+  alto(5, 18); alto(6, 30);
+  for (let i = 1; i <= n;) {
+    const c = cols[i - 1];
+    if (!c.s) { fusionar(5, i, 6, i); set(5, i, c.g, { bold: true, size: 9, fill: AZUL, color: 'FFFFFFFF' }); ws.getCell(6, i).border = borde; i++; continue; }
+    let j = i; while (j < n && cols[j].g === c.g && cols[j].s) j++;
+    fusionar(5, i, 5, j);
+    set(5, i, c.g, { bold: true, size: 9, fill: AZUL, color: 'FFFFFFFF' });
+    for (let k = i; k <= j; k++) { ws.getCell(5, k).border = borde; set(6, k, cols[k - 1].s, { bold: true, size: 9, fill: CLARO }); }
+    i = j + 1;
+  }
+  // Filas de datos (siempre PAR_FILAS: las que sobran quedan en blanco para completar a mano)
+  for (let r = 0; r < PAR_FILAS; r++) {
+    alto(7 + r, 31);
+    for (let c = 0; c < n; c++) {
+      const col = cols[c], fila = b.filas[r];
+      let v = fila ? fila[c] : (c === 0 ? r + 1 : (col.chico ? _parMark({ datos: {} }) : ''));
+      if (v === '' || v == null) v = null;
+      set(7 + r, c + 1, v, { size: col.chico ? 8 : 10, align: col.izq ? 'left' : 'center', bold: !!col.neg });
+    }
+  }
+  const fin = 6 + PAR_FILAS;
+  // Observaciones (una línea por observación; mínimo 3 líneas)
+  alto(fin + 1, 18);
+  fusionar(fin + 1, 1, fin + 1, n);
+  set(fin + 1, 1, 'OBSERVACIONES (indicar N° de equipo)', { bold: true, fill: CLARO });
+  for (let c = 1; c <= n; c++) ws.getCell(fin + 1, c).border = borde;
+  const nObs = Math.max(3, b.observaciones.length);
+  for (let k = 0; k < nObs; k++) {
+    const r = fin + 2 + k;
+    alto(r, 22);
+    fusionar(r, 1, r, n);
+    set(r, 1, b.observaciones[k] || null, { align: 'left', size: 10 });
+    for (let c = 1; c <= n; c++) ws.getCell(r, c).border = borde;
+  }
+  // Firmas
+  const rf = fin + 2 + nObs;
+  alto(rf, 34); alto(rf + 1, 16);
+  const mitad = Math.floor(n / 2);
+  fusionar(rf + 1, 1, rf + 1, mitad); set(rf + 1, 1, 'FIRMA Y NOMBRE DEL TÉCNICO', { size: 9, border: false });
+  fusionar(rf + 1, mitad + 1, rf + 1, n); set(rf + 1, mitad + 1, 'V°B° SUPERVISOR / CLIENTE', { size: 9, border: false });
+  for (let c = 2; c <= mitad - 1; c++) ws.getCell(rf, c).border = { bottom: thin };
+  for (let c = mitad + 2; c <= n - 1; c++) ws.getCell(rf, c).border = { bottom: thin };
+  ws.pageSetup = { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 1, horizontalCentered: true,
+    margins: { left: 0.4, right: 0.4, top: 0.45, bottom: 0.45, header: 0.3, footer: 0.3 }, printArea: `A1:${ws.getColumn(n).letter}${rf + 1}` };
+  return ws;
+}
+async function parExportarExcel() {
+  if (!MA.can('exportar', 'mantenimiento')) { toast('Sin permisos para exportar', 'err'); return; }
+  const recs = _parSeleccionados();
+  if (!recs.length) { toast('Selecciona al menos un registro', 'warn'); return; }
+  if (typeof ExcelJS === 'undefined') { toast('No se pudo cargar el generador de Excel (revisa tu conexión)', 'err'); return; }
+  toast('Generando Excel...', 'warn');
+  try {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'MultiAire Perú S.A.C.';
+    let logoId = null;
+    try { const r = await fetch('logo-multiaire.png'); if (r.ok) logoId = wb.addImage({ buffer: await r.arrayBuffer(), extension: 'png' }); } catch (e) { /* sin logo */ }
+    const usados = new Set();
+    parBloques(recs).forEach((b) => parHojaExcel(wb, b, logoId, _parNombreHoja(b, usados)));
+    const buf = await wb.xlsx.writeBuffer();
+    const desde = document.getElementById('par-desde').value, hasta = document.getElementById('par-hasta').value;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    a.download = `Parametros ${desde} a ${hasta}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    toast('✓ Excel generado', 'ok');
+  } catch (e) { toast('Error al generar el Excel: ' + e.message, 'err'); }
+}
+
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.tab-view').forEach(v=>v.classList.remove('active'));
@@ -2315,6 +2679,7 @@ function switchTab(tab) {
   if(tab==='global') renderGlobal();
   if(tab==='historial') renderHistorialLog();
   if(tab==='desempeno') renderDesempeno();
+  if(tab==='parametros') renderParametros();
   if(tab==='pendientes') renderPendientes();
 }
 function refreshPendIfActive(){
