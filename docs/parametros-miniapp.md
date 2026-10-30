@@ -1,18 +1,37 @@
 # Toma de parámetros — Mini App de Telegram
 
-Reemplaza el **formato impreso de toma de parámetros** de ventilación mecánica (extractores e inyectores).
-El técnico lo llena en el celular, dentro de Telegram, y el registro queda guardado en la colección
-`mtto_parametros`. Sin hojas, sin letra ilegible y sin enviar papeles.
+Reemplaza las **hojas impresas de toma de parámetros** de TOTTUS (archivo `Formatos de parametros TOTTUS.xlsx`).
+El técnico las llena en el celular, dentro de Telegram, y cada registro queda guardado en la colección
+`mtto_parametros` con **la misma estructura de columnas de esas hojas**, para exportarlo después a ese Excel
+sin transformar nada. Sin hojas, sin letra ilegible y sin enviar papeles.
+
+## Los 4 formatos
+
+El formulario se arma solo según el **tipo del equipo** (la definición vive en `FORMATOS`, `api/_lib/parametros.js`,
+y el servidor se la manda a la Mini App):
+
+| Formato | Tipos de equipo del inventario | Campos propios (además de Voltaje L1-L2-L3, Amperaje L1-L2-L3 y Estado) |
+|---|---|---|
+| **Split** | Split decorativo / consola / ducto / portátil, Unidad evaporadora, Unidad condensador | Presión de baja (psi), presión de alta (psi), temperatura de salida de aire (°C) |
+| **Fan coil y UMA** | Fan coil, UMA | Potencia del motor (hp/W), modelo/serie del motor, modelo/cantidad de faja, temp. entrada y salida de agua helada (°C) |
+| **Ventilación mecánica** | Extractor, Inyector | Potencia del motor, modelo/serie del motor, modelo/cantidad de faja, tipo de extractor (Axial, Centrífuga, Humo, Hongo, Cajón) |
+| **Cortinas de aire** | Cortina de aire | Medida de cortina, potencia del motor, modelo/serie del motor |
+
+Los tipos sin formato (chiller, paquete, escalera, bombas, variador, VRV, TVR) no aparecen en la lista.
 
 ## Cómo lo usa el técnico
 
 1. Abre el bot de MultiAire y toca el botón **Parámetros** (junto al campo de texto).
-2. Elige la **sede** y el **equipo** (la lista sale del inventario).
-3. Completa el formulario. Marca, modelo, serie y potencia vienen del inventario, pero se pueden corregir.
-   Cada medición exige un número o marcar **N/A**.
-4. Toca **Guardar registro**.
+2. Elige la **sede** y el **equipo** (la lista sale del inventario; si la sede mezcla tipos, hay botones para filtrar por formato).
+3. Revisa los datos del equipo: **marca, modelo y número de serie vienen ya completos del sistema** (solo lectura; el lápiz ✏️
+   permite corregirlos y lo corregido es lo que se guarda). La **potencia del motor** se precarga con la capacidad del inventario
+   (en extractores, UMA y cortinas la capacidad es la potencia: `1.5 HP`, `870 W`); en splits no aplica.
+4. Completa las mediciones: voltaje y amperaje de las 3 líneas y los campos de su formato. Cada medición exige un número o **N/A**.
+   Los campos de texto (placa del motor, faja, medida) son opcionales.
+5. Indica el **estado**: OP (operativo), OO (operativo con observación) o FS (fuera de funcionamiento), y toca **Guardar registro**.
 
 - **Monofásico:** solo se piden las mediciones de L1.
+- **N.º de OS:** opcional, se recuerda de un registro al siguiente.
 - **Sin internet:** el registro se guarda en el teléfono y se envía solo cuando vuelve la señal. Mientras tanto
   aparece "📤 N por enviar" arriba a la derecha. Para **abrir** la app y cargar los equipos sí se necesita internet.
 - No hay firma: el registro queda con el nombre del técnico (el de su cuenta de Telegram vinculada) y la hora.
