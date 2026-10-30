@@ -475,6 +475,9 @@ tbody td{padding:9px 12px;vertical-align:middle}
     </div>
 
     <div class="tab-view" id="tab-stock">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button class="btn btn-primary btn-sm" id="btn-transf-sede" style="display:none" onclick="openModalTransfSede()" title="Mover de una sede a otra todo lo que hay en ella, dejando afuera las excepciones">🔄 Transferencia masiva</button>
+      </div>
       <div id="stock-sede-content"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
     </div>
 
@@ -1221,6 +1224,48 @@ tbody td{padding:9px 12px;vertical-align:middle}
     <div class="modal-foot" style="flex-shrink:0">
       <button class="btn" onclick="cerrarLoteModal('modal-transf-lote')">Cancelar</button>
       <button class="btn btn-primary" id="btn-save-transf-lote" onclick="saveTransfLote()">🔄 Confirmar transferencia</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL TRANSFERENCIA MASIVA DE SEDE -->
+<div class="modal-overlay" id="modal-transf-sede" onclick="if(event.target===this)closeModal('modal-transf-sede')">
+  <div class="modal" style="max-width:600px;display:flex;flex-direction:column;max-height:92vh">
+    <div class="modal-header" style="flex-shrink:0">
+      <div class="modal-title">🔄 Transferencia masiva entre sedes</div>
+      <div onclick="closeModal('modal-transf-sede')" style="min-width:44px;min-height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--red-bg);color:var(--red);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</div>
+    </div>
+    <div class="modal-sub" style="margin-bottom:12px;flex-shrink:0">Mueve a otra sede TODO lo que hay en la sede de origen. Desmarca lo que <b>no</b> se transfirió: queda en el origen como excepción. Cada bien mantiene su ID y QR; si alguno está en un paquete, saldrá de él.</div>
+    <div class="modal-body" style="overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <div class="form-group" style="flex:1;min-width:200px"><div class="form-label">Sede de origen *</div><select class="form-select" id="fts-origen" onchange="onTsOrigenChange()"></select></div>
+        <div class="form-group" style="flex:1;min-width:200px"><div class="form-label">Sede destino *</div><select class="form-select" id="fts-destino"></select></div>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">Bienes de la sede de origen — desmarca las excepciones</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <input type="text" class="form-input" id="fts-buscar" placeholder="🔍 Buscar por código, nombre o responsable..." oninput="renderTsLista()" style="flex:1;min-width:180px;font-size:12px" autocomplete="off">
+          <button class="btn btn-sm" type="button" onclick="tsMarcarVisibles(true)" title="Incluir todos los que se ven en la lista">☑ Todas</button>
+          <button class="btn btn-sm" type="button" onclick="tsMarcarVisibles(false)" title="Dejar como excepción todos los que se ven en la lista">☐ Ninguna</button>
+        </div>
+        <div id="fts-lista" style="max-height:260px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:11px"></div>
+        <div id="fts-resumen" style="margin-top:6px;font-size:12px;font-weight:600"></div>
+      </div>
+      <div class="form-group full">
+        <div class="form-label">Excepciones — NO se transfieren (<span id="fts-exc-count">0</span>)</div>
+        <div id="fts-exc-chips" style="display:flex;flex-wrap:wrap;gap:4px;font-size:11px;min-height:22px"></div>
+        <textarea class="form-textarea" id="fts-exc-motivo" placeholder="Opcional: por qué no se transfirieron (ej. se quedan en la obra, en reparación...)" style="margin-top:6px"></textarea>
+      </div>
+      <div class="form-group full"><div class="form-label">Realizado por</div><select class="form-select" id="fts-tecnico"></select></div>
+      <div class="form-group full"><div class="form-label">Observación</div><textarea class="form-textarea" id="fts-obs" placeholder="Opcional..."></textarea></div>
+      <div class="form-group full">
+        <div class="form-label">N° de guía de remisión <span style="color:var(--muted);font-weight:400">(opcional)</span></div>
+        <input type="text" class="form-input" id="fts-guia-num" placeholder="Ej. 001-000123">
+      </div>
+    </div>
+    <div class="modal-foot" style="flex-shrink:0">
+      <button class="btn" onclick="closeModal('modal-transf-sede')">Cancelar</button>
+      <button class="btn btn-primary" id="btn-save-transf-sede" onclick="saveTransfSede()">🔄 Confirmar transferencia</button>
     </div>
   </div>
 </div>
@@ -2152,6 +2197,8 @@ async function resetStockItem(itemId,nombre){
 
 function renderStockSede(){
   const c=document.getElementById('stock-sede-content');
+  const btnTs=document.getElementById('btn-transf-sede');
+  if(btnTs) btnTs.style.display = can('transferencia')===1 ? '' : 'none';
   const byC={};
   sedes.forEach(s=>{if(!byC[s.cliente])byC[s.cliente]=[];byC[s.cliente].push(s.sede);});
   let h='';
@@ -2162,7 +2209,8 @@ function renderStockSede(){
       // También mostrar instancias específicas en esta sede
       const instsSede = instanciasData.filter(i => i.sede === sede && i.estado !== 'BAJA');
       if(!items.length && !instsSede.length)return;
-      h+=`<div class="sede-stock-card"><div class="sede-stock-name">🏢 ${escB(sede)}</div>
+      const btnMover = can('transferencia')===1 ? `<button class="btn btn-sm" style="float:right;font-size:10px;padding:2px 7px" data-sede-origen="${escB(sede)}" onclick="openModalTransfSede(this.dataset.sedeOrigen)" title="Transferir todo lo de esta sede a otra">🔄 Mover</button>` : '';
+      h+=`<div class="sede-stock-card"><div class="sede-stock-name">🏢 ${escB(sede)}${btnMover}</div>
       ${items.map(i=>{
         const canEdit=can('editarItem');
         const instsDeEste = instanciasData.filter(x => x.itemId === i.id && x.sede === sede && x.estado !== 'BAJA');
@@ -3605,6 +3653,160 @@ async function saveTransfLote() {
     clearInstQRSelection();
     renderAll();
   } catch(e) { toast('Error: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '🔄 Confirmar transferencia'; } }
+}
+
+// ── TRANSFERENCIA MASIVA DE SEDE ──────────────────────────
+// Mueve TODO lo que hay en una sede a otra, menos las EXCEPCIONES (lo que no se transfirió).
+// Un solo movimiento TRANSFERENCIA con el mismo formato que la transferencia en lote (instancias[] +
+// instanciasSnapshot[] con la sede previa), así que "↩ Revertir" funciona igual. Además guarda las
+// excepciones (excepciones[] + excepcionesMotivo) para que quede constancia de lo que NO se movió.
+let tsExc = new Set();   // ids de instancias que NO se transfieren
+const instanciasTransferibles = (origen) => instanciasData.filter(i => origen && i.sede === origen && i.estado !== 'BAJA');
+const idsATransferir = (insts, excepciones) => insts.filter(i => !excepciones.has(i.id)).map(i => i.id);
+
+function openModalTransfSede(sedeOrigen) {
+  if (can('transferencia') !== 1) { toast('No tienes permiso para transferir', 'err'); return; }
+  tsExc = new Set();
+  document.getElementById('fts-origen').innerHTML = sedeOpts(false);
+  document.getElementById('fts-destino').innerHTML = sedeOpts(false);
+  document.getElementById('fts-origen').value = sedeOrigen || '';
+  document.getElementById('fts-buscar').value = '';
+  document.getElementById('fts-exc-motivo').value = '';
+  document.getElementById('fts-obs').value = '';
+  document.getElementById('fts-guia-num').value = '';
+  const pOpts = personalData.map(p => optHtml(p.nombre)).join('');
+  document.getElementById('fts-tecnico').innerHTML = `<option value="">—</option>${pOpts}`;
+  renderTsLista();
+  document.getElementById('modal-transf-sede').classList.add('open');
+}
+
+function onTsOrigenChange() { tsExc = new Set(); renderTsLista(); }
+
+function tsVisibles() {
+  const origen = document.getElementById('fts-origen').value;
+  const q = (document.getElementById('fts-buscar').value || '').trim().toLowerCase();
+  return instanciasTransferibles(origen)
+    .filter(i => !q || [i.id, i.nombre, i.responsable].some(v => String(v || '').toLowerCase().includes(q)))
+    .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es') || String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+}
+
+function renderTsLista() {
+  const origen = document.getElementById('fts-origen').value;
+  const todas = instanciasTransferibles(origen);
+  const vis = tsVisibles();
+  const box = document.getElementById('fts-lista');
+  if (!origen) box.innerHTML = '<div class="empty" style="padding:14px">Elige la sede de origen</div>';
+  else if (!todas.length) box.innerHTML = '<div class="empty" style="padding:14px">Esta sede no tiene bienes registrados</div>';
+  else if (!vis.length) box.innerHTML = '<div class="empty" style="padding:14px">Sin coincidencias</div>';
+  else {
+    let h = '', ult = null;
+    vis.forEach(i => {
+      if (i.nombre !== ult) { ult = i.nombre; h += `<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;padding:6px 0 2px">${escB(i.nombre || '—')}</div>`; }
+      const pk = i.paqueteId ? ` <span title="Está en un paquete: saldrá de él" style="color:var(--blue)">🎒</span>` : '';
+      const resp = i.responsable ? ` <span style="color:var(--muted2)">· ${escB(i.responsable)}</span>` : '';
+      h += `<label style="display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer"><input type="checkbox" data-ts-id="${escB(i.id)}" ${tsExc.has(i.id) ? '' : 'checked'} style="width:15px;height:15px;flex-shrink:0"><span style="font-family:var(--mono);font-weight:600">${escB(i.id)}</span>${pk}${resp}</label>`;
+    });
+    box.innerHTML = h;
+  }
+  actualizarTsResumen();
+}
+
+function actualizarTsResumen() {
+  const origen = document.getElementById('fts-origen').value;
+  const todas = instanciasTransferibles(origen);
+  const exc = todas.filter(i => tsExc.has(i.id));
+  const n = todas.length - exc.length;
+  document.getElementById('fts-resumen').innerHTML = origen
+    ? `<span style="color:var(--green)">✓ ${n} a transferir</span> · <span style="color:${exc.length ? 'var(--orange)' : 'var(--muted2)'}">${exc.length} excepción(es)</span> · ${todas.length} en total`
+    : '';
+  document.getElementById('fts-exc-count').textContent = exc.length;
+  document.getElementById('fts-exc-chips').innerHTML = exc.length
+    ? exc.map(i => `<span class="tipo-badge" style="background:var(--orange-pale);color:var(--orange);border:1px solid var(--orange)">${escB(i.id)} · ${escB(i.nombre || '')}</span>`).join('')
+    : '<span style="color:var(--muted2)">Ninguna: se transfiere todo.</span>';
+}
+
+function tsMarcarVisibles(incluir) {
+  tsVisibles().forEach(i => { if (incluir) tsExc.delete(i.id); else tsExc.add(i.id); });
+  renderTsLista();
+}
+
+document.addEventListener('change', (e) => {
+  const cb = e.target && e.target.matches && e.target.matches('#fts-lista input[data-ts-id]') ? e.target : null;
+  if (!cb) return;
+  const id = cb.dataset.tsId;
+  if (cb.checked) tsExc.delete(id); else tsExc.add(id);
+  actualizarTsResumen();
+});
+
+async function saveTransfSede() {
+  if (can('transferencia') !== 1) { toast('Sin permisos', 'err'); return; }
+  const btn = document.getElementById('btn-save-transf-sede');
+  if (btn && btn.disabled) return;
+  const origen = document.getElementById('fts-origen').value;
+  const destino = document.getElementById('fts-destino').value;
+  if (!origen) { toast('Elige la sede de origen', 'err'); return; }
+  if (!destino) { toast('Elige la sede destino', 'err'); return; }
+  if (origen === destino) { toast('El origen y el destino son la misma sede', 'err'); return; }
+  const insts = instanciasTransferibles(origen);
+  const ids = idsATransferir(insts, tsExc);
+  const exc = insts.filter(i => tsExc.has(i.id));
+  if (!ids.length) { toast('No hay nada para transferir: todo está marcado como excepción', 'err'); return; }
+  if (ids.length > 449) { toast(`Máximo 449 bienes por transferencia (hay ${ids.length}) — marca excepciones y hazlo en tandas`, 'err'); return; }
+  if (!confirm(`¿Transferir ${ids.length} bien(es) de "${origen}" a "${destino}"?` + (exc.length ? `\n${exc.length} quedan en "${origen}" como excepción.` : '') + `\nPuedes deshacerlo con "↩ Revertir" en Movimientos.`)) return;
+  const obs = document.getElementById('fts-obs').value.trim();
+  const excMotivo = document.getElementById('fts-exc-motivo').value.trim();
+  const guiaNumero = document.getElementById('fts-guia-num').value.trim();
+  const tecnico = document.getElementById('fts-tecnico').value;
+  if (btn) { btn.disabled = true; btn._origText = btn.textContent; btn.textContent = '⏳ Guardando...'; }
+  try {
+    const porId = Object.fromEntries(insts.map(i => [i.id, i]));
+    const now = new Date().toISOString();
+    const snapshot = ids.map(id => ({ id, sede: porId[id].sede || '' }));
+    const batch = db.batch();
+    const pkgTouched = {};
+    const instMemUpdates = [];
+    let nPaquete = 0;
+    for (const id of ids) {
+      const inst = porId[id];
+      const upd = { sede: destino, updatedAt: now, updatedBy: maUser.email };
+      if (inst.paqueteId) {
+        upd.paqueteId = null;
+        (pkgTouched[inst.paqueteId] = pkgTouched[inst.paqueteId] || []).push(id);
+        nPaquete++;
+      }
+      batch.update(db.collection('insumos_instancias').doc(id), upd);
+      instMemUpdates.push({ id, upd });
+    }
+    const pkgMemUpdates = [];
+    for (const [pkgId, removeIds] of Object.entries(pkgTouched)) {
+      const pkg = paquetesData.find(x => x.id === pkgId);
+      if (!pkg) continue;
+      const newInsts = (pkg.instancias || []).filter(i => !removeIds.includes(i));
+      batch.update(db.collection('insumos_paquetes').doc(pkgId), { instancias: newInsts, updatedAt: now });
+      pkgMemUpdates.push({ id: pkgId, newInsts });
+    }
+    const movData = {
+      tipo: 'TRANSFERENCIA', itemId: '', itemNombre: `${ids.length} bienes · ${origen}`,
+      instancias: ids, instanciasSnapshot: snapshot, camposTransferidos: ['sede'],
+      sedeOrigen: origen, sedeDestino: destino, respDestino: '',
+      cantidad: ids.length, cambios: `${origen} → ${destino}` + (exc.length ? ` | ${exc.length} sin transferir` : ''),
+      masiva: true, excepciones: exc.map(i => ({ id: i.id, nombre: i.nombre || '' })),
+      motivo: obs, responsable: tecnico, usuario: maUser.email,
+      estado: 'CONFIRMADO', fecha: new Date()
+    };
+    if (excMotivo) movData.excepcionesMotivo = excMotivo;
+    if (guiaNumero) movData.guiaNumero = guiaNumero;
+    const movRef = db.collection('insumos_movimientos').doc();
+    batch.set(movRef, movData);
+    await batch.commit();   // atómico: instancias + paquetes afectados + movimiento
+    instMemUpdates.forEach(u => { const idx = instanciasData.findIndex(x => x.id === u.id); if (idx >= 0) Object.assign(instanciasData[idx], u.upd); });
+    pkgMemUpdates.forEach(u => { const pIdx = paquetesData.findIndex(x => x.id === u.id); if (pIdx >= 0) paquetesData[pIdx].instancias = u.newInsts; });
+    movimientosData.unshift({ id: movRef.id, ...movData });
+    toast(`✓ ${ids.length} bien(es) → ${destino}` + (exc.length ? ` · ${exc.length} excepción(es) quedan en ${origen}` : '') + (nPaquete ? ` · ${nPaquete} salió(eron) de su paquete` : ''), 'ok');
+    closeModal('modal-transf-sede');
+    renderAll();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
   finally { if (btn) { btn.disabled = false; btn.textContent = btn._origText || '🔄 Confirmar transferencia'; } }
 }
 
