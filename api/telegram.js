@@ -251,18 +251,25 @@ export async function procesarUpdate(update, d) {
         await d.limpiarSesiones(from);
         await mostrarMenu('❌ Cancelado. Lo que estabas haciendo no se guardó (lo que ya estaba guardado se mantiene).\n\n');
       } else if (cmd === '/parametros' && d.parametros && d.parametros.ids.includes(tecnico.id)) {
-        // VISTA PREVIA de la Mini App (no guarda nada). Pone el botón «Parámetros» en el menú de ESTE chat y
-        // manda un mensaje con un botón que la abre. No corta lo que el técnico esté haciendo.
+        // Toma de parámetros por Mini App, SIN esperar el botón global de BotFather. Pone el botón «Parámetros» en
+        // el menú de ESTE chat (no afecta a nadie más) y manda un mensaje con un botón que la abre.
+        //   /parametros          → modo REAL: los registros SE GUARDAN en `mtto_parametros`.
+        //   /parametros demo     → vista previa (?demo=1): se recorre y se valida todo, pero NO se guarda nada.
+        //   /parametros quitar   → devuelve el botón normal del chat.
+        // No corta lo que el técnico esté haciendo.
         const arg = (n.texto.trim().split(/\s+/)[1] || '').toLowerCase();
         if (arg === 'quitar') {
           await d.tg.fijarBotonMenu(chatId, d.tg.BOTON_MENU_DEFECTO);
           await d.tg.enviarTexto(chatId, '✅ Listo, quité el botón *Parámetros* de este chat.');
         } else {
+          const demo = arg === 'demo';
           const u = new URL(d.parametros.url);
-          u.searchParams.set('demo', '1');
+          if (demo) u.searchParams.set('demo', '1');
           const url = u.toString();
           await d.tg.fijarBotonMenu(chatId, d.tg.botonWebApp('Parámetros', url));
-          await d.tg.enviarTexto(chatId, '📊 *Vista previa* de la toma de parámetros.\n\nToca el botón de abajo, o *Parámetros* junto al campo de texto. En esta vista *no se guarda nada*.\n\nPara quitar el botón de este chat: /parametros quitar',
+          await d.tg.enviarTexto(chatId, demo
+            ? '📊 *Vista previa* de la toma de parámetros.\n\nToca el botón de abajo, o *Parámetros* junto al campo de texto. En esta vista *no se guarda nada*.\n\nPara quitar el botón de este chat: /parametros quitar'
+            : '📊 *Toma de parámetros*\n\nToca el botón de abajo, o *Parámetros* junto al campo de texto. Lo que registres *se guarda en el sistema* (Mantenimiento → Parámetros). Si no hay señal, queda en tu teléfono y se envía solo después.\n\nVista previa sin guardar: /parametros demo · Quitar el botón de este chat: /parametros quitar',
             { reply_markup: { inline_keyboard: [[{ text: '📊 Abrir toma de parámetros', web_app: { url } }]] } });
         }
       } else {
