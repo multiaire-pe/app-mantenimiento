@@ -1,4 +1,4 @@
-// Endpoint de la Mini App "Toma de parámetros" (extractores / inyectores).
+// Endpoint de la Mini App "Toma de parámetros" (Split, Fan coil/UMA, ventilación mecánica y cortinas de aire).
 // La Mini App manda `Authorization: tma <Telegram.WebApp.initData>`; se valida la firma con el token del
 // bot (TELEGRAM_BOT_TOKEN, ya configurado para el bot) y de ahí sale QUIÉN es el técnico: no hay login
 // aparte. Escribe en `mtto_parametros` con Admin SDK (las reglas de Firestore no permiten escribir
@@ -12,7 +12,7 @@ import { procesar, TIPOS } from './_lib/parametros.js';
 const CACHE_MS = 5 * 60 * 1000;
 let _cache = null, _cacheAt = 0;
 
-// Equipos de ventilación mecánica del inventario. Se cachea 5 min: es la lista que la Mini App pide al
+// Equipos del inventario que tienen formato de parámetros (ver FORMATOS). Se cachea 5 min: es la lista que la Mini App pide al
 // abrir y al elegir sede, y no cambia con frecuencia.
 async function equipos() {
   if (_cache && Date.now() - _cacheAt < CACHE_MS) return _cache;

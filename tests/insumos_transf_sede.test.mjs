@@ -1,7 +1,7 @@
 // Insumos · Transferencia masiva de sede: ejecuta el código REAL (saveTransfSede + helpers) con un Firestore falso.
 // Uso: node tests/insumos_transf_sede.test.mjs
 import fs from 'node:fs';
-const html = fs.readFileSync(new URL('../insumos.html', import.meta.url), 'utf8');
+const html = fs.readFileSync(new URL('../insumos.html', import.meta.url), 'utf8').split(String.fromCharCode(13, 10)).join(String.fromCharCode(10));
 let ok = 0, mal = 0;
 const t = (n, c, e = '') => { if (c) ok++; else { mal++; console.log('✗', n, e); } };
 [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].forEach((m, i) => { try { new Function(m[1]); ok++; } catch (e) { mal++; console.log('✗ script', i, e.message); } });
