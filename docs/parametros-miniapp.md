@@ -40,7 +40,7 @@ Los tipos sin formato (chiller, paquete, escalera, bombas, variador, VRV, TVR) n
 
 Los registros que guardan los técnicos se ven en **Mantenimiento → 📋 Parámetros**:
 
-- Filtros: rango de fechas (por defecto, el mes en curso), sede y formato. La lista trae fecha/hora, equipo, ubicación, formato,
+- Filtros (como en Desempeño): **período + año** (por defecto, el período en curso), **sede** y **tipo de equipo**. La lista trae fecha/hora, equipo, ubicación, formato,
   técnico y estado (OP/OO/FS); **Ver** abre el detalle completo del registro. 📶 indica que se capturó sin señal y se envió después.
 - **👁 Ver formato / PDF:** arma los registros seleccionados en el **formato de la hoja impresa** (A4 horizontal, 10 equipos por hoja)
   y se imprime o se guarda como PDF desde el navegador.
