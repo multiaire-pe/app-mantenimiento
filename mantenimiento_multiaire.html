@@ -472,15 +472,14 @@ option{background:#fff}
 
     <div class="tab-view" id="tab-parametros">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-        <label style="font-size:12px;color:var(--muted)">Desde</label>
-        <input type="date" id="par-desde" onchange="renderParametros()" style="max-width:150px;-webkit-appearance:none;appearance:none;text-align:left">
-        <label style="font-size:12px;color:var(--muted)">Hasta</label>
-        <input type="date" id="par-hasta" onchange="renderParametros()" style="max-width:150px;-webkit-appearance:none;appearance:none;text-align:left">
-        <select id="par-sede" onchange="renderParametrosFiltrado(true)" style="max-width:200px"><option value="">Todas las sedes</option></select>
-        <select id="par-formato" onchange="renderParametrosFiltrado(true)" style="max-width:190px">
-          <option value="">Todos los formatos</option><option value="SPLIT">Split</option><option value="FANCOIL_UMA">Fan coil y UMA</option>
-          <option value="VENTILACION">Ventilación mecánica</option><option value="CORTINA">Cortinas de aire</option>
+        <select id="par-periodo" onchange="renderParametros()" style="max-width:150px">
+          <option value="ENE-FEB">Ene – Feb</option><option value="MAR-ABR">Mar – Abr</option>
+          <option value="MAY-JUN">May – Jun</option><option value="JUL-AGO">Jul – Ago</option>
+          <option value="SEP-OCT">Sep – Oct</option><option value="NOV-DIC">Nov – Dic</option>
         </select>
+        <select id="par-anio" onchange="renderParametros()" style="max-width:110px"></select>
+        <select id="par-sede" onchange="renderParametrosFiltrado(true)" style="max-width:200px"><option value="">Todas las sedes</option></select>
+        <select id="par-tipo" onchange="renderParametrosFiltrado(true)" style="max-width:180px"><option value="">Todos los tipos</option></select>
         <button class="btn btn-sm" onclick="renderParametros()" title="Recargar">↻</button>
       </div>
       <div id="par-content"></div>
@@ -2402,21 +2401,33 @@ function parBloques(recs) {
   return bloques;
 }
 
+const PAR_PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
+// 'SEP-OCT' + 2026 → { desde: '2026-09-01', hasta: '2026-10-31' } (los registros se guardan con `fecha` YYYY-MM-DD, hora de Lima)
+function parRangoPeriodo(periodo, anio) {
+  const i = PAR_PERIODOS.indexOf(periodo), y = Number(anio);
+  if (i < 0 || !Number.isFinite(y)) return null;
+  const m1 = i * 2 + 1, m2 = m1 + 1;
+  const ultimo = new Date(Date.UTC(y, m2, 0)).getUTCDate();
+  const dos = (n) => String(n).padStart(2, '0');
+  return { desde: `${y}-${dos(m1)}-01`, hasta: `${y}-${dos(m2)}-${dos(ultimo)}` };
+}
+
 // ── Pantalla ──
 let _parRecs = [], _parSel = new Set(), _parReq = 0;
 function _parInit() {
-  const d = document.getElementById('par-desde');
-  if (d.value) return;
-  const hoy = new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
-  d.value = hoy.slice(0, 8) + '01';
-  document.getElementById('par-hasta').value = hoy;
+  const sa = document.getElementById('par-anio');
+  if (sa.options.length) return;
+  const hoy = new Date(Date.now() - 5 * 3600e3), y = hoy.getUTCFullYear();
+  for (let i = y - 1; i <= y + 1; i++) { const o = document.createElement('option'); o.value = i; o.textContent = i; if (i === y) o.selected = true; sa.appendChild(o); }
+  document.getElementById('par-periodo').value = PAR_PERIODOS[Math.floor(hoy.getUTCMonth() / 2)];   // el período en curso
 }
 async function renderParametros() {
   _parInit();
   const req = ++_parReq;
   const cont = document.getElementById('par-content');
-  const desde = document.getElementById('par-desde').value, hasta = document.getElementById('par-hasta').value;
-  if (!desde || !hasta) { cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Elige las fechas.</div>'; return; }
+  const rango = parRangoPeriodo(document.getElementById('par-periodo').value, document.getElementById('par-anio').value);
+  if (!rango) { cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Elige el período.</div>'; return; }
+  const { desde, hasta } = rango;
   cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando parámetros…</div>';
   try {
     const snap = await window.__db.collection('mtto_parametros').where('fecha', '>=', desde).where('fecha', '<=', hasta).get();
@@ -2425,13 +2436,16 @@ async function renderParametros() {
     const sedes = [...new Set(_parRecs.map((r) => r.sede).filter(Boolean))].sort();
     const sel = document.getElementById('par-sede'), cur = sel.value;
     sel.innerHTML = '<option value="">Todas las sedes</option>' + sedes.map((s) => `<option value="${_actEsc(s)}"${s === cur ? ' selected' : ''}>${_actEsc(s)}</option>`).join('');
+    const tipos = [...new Set(_parRecs.map((r) => r.tipo).filter(Boolean))].sort();
+    const st = document.getElementById('par-tipo'), curT = st.value;
+    st.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map((x) => `<option value="${_actEsc(x)}"${x === curT ? ' selected' : ''}>${_actEsc(x)}</option>`).join('');
     _parSel = new Set();
     renderParametrosFiltrado(true);
   } catch (e) { cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: ' + _actEsc(e.message) + '</div>'; }
 }
 function _parFiltrados() {
-  const sede = document.getElementById('par-sede').value, fmt = document.getElementById('par-formato').value;
-  return _parRecs.filter((r) => (!sede || r.sede === sede) && (!fmt || r.formato === fmt))
+  const sede = document.getElementById('par-sede').value, tipo = document.getElementById('par-tipo').value;
+  return _parRecs.filter((r) => (!sede || r.sede === sede) && (!tipo || r.tipo === tipo))
     .sort((a, b) => String(b.capturadoEn || '').localeCompare(String(a.capturadoEn || '')));
 }
 function renderParametrosFiltrado(todos) {
@@ -2440,7 +2454,7 @@ function renderParametrosFiltrado(todos) {
   if (todos) _parSel = new Set(lista.map((r) => r.id));
   else _parSel = new Set([..._parSel].filter((id) => lista.some((r) => r.id === id)));
   if (!lista.length) {
-    cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:14px">No hay registros de parámetros en ese rango. Los técnicos los toman desde el bot de Telegram (botón <b>Parámetros</b>).</div>';
+    cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:14px">No hay registros de parámetros en ese período. Los técnicos los toman desde el bot de Telegram (botón <b>Parámetros</b>).</div>';
     return;
   }
   const nSel = lista.filter((r) => _parSel.has(r.id)).length;
@@ -2659,10 +2673,10 @@ async function parExportarExcel() {
     const usados = new Set();
     parBloques(recs).forEach((b) => parHojaExcel(wb, b, logoId, _parNombreHoja(b, usados)));
     const buf = await wb.xlsx.writeBuffer();
-    const desde = document.getElementById('par-desde').value, hasta = document.getElementById('par-hasta').value;
+    const periodoTxt = document.getElementById('par-periodo').value + ' ' + document.getElementById('par-anio').value;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-    a.download = `Parametros ${desde} a ${hasta}.xlsx`;
+    a.download = `Parametros ${periodoTxt}.xlsx`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     toast('✓ Excel generado', 'ok');
