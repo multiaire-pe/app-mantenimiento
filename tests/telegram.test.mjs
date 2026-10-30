@@ -220,14 +220,16 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
   await procesarUpdate(msg({ text: 'x' }), d2);
   t('confirmaciones con botones en línea: intactas', d2.log.env[0]?.r?.botones === OTROS, JSON.stringify(d2.log.env));
 }
-{ // /parametros: vista previa OCULTA de la Mini App (solo colaboradores permitidos, por chat, sin BotFather)
+{ // /parametros: toma de parámetros OCULTA (solo colaboradores permitidos, por chat, sin BotFather)
   const d = mkDeps(); await procesarUpdate(msg({ text: '/parametros' }), d);
   const m = d.log.menu[0], env = d.log.env[0];
   t('/parametros (permitido): pone el botón de menú SOLO en este chat', d.log.menu.length === 1 && m.c === 7 && m.b.type === 'web_app' && m.b.text === 'Parámetros', JSON.stringify(d.log.menu));
-  t('la URL abre en modo vista previa (demo=1)', /^https:\/\/app\.test\/parametros\.html\?demo=1$/.test(m.b.web_app.url), m.b.web_app.url);
+  t('/parametros abre la Mini App en modo REAL (sin demo): se guarda', m.b.web_app.url === 'https://app.test/parametros.html' && !/demo/.test(m.b.web_app.url), m.b.web_app.url);
   const btn = env.e?.reply_markup?.inline_keyboard?.[0]?.[0];
-  t('manda un mensaje con un botón web_app a la misma URL', btn?.web_app?.url === m.b.web_app.url && /no se guarda nada/.test(env.x), JSON.stringify(env));
+  t('manda un mensaje con un botón web_app a la misma URL, avisando que se guarda', btn?.web_app?.url === m.b.web_app.url && /se guarda en el sistema/.test(env.x) && !/no se guarda nada/.test(env.x), JSON.stringify(env));
   t('no corta lo que estaba haciendo ni llega al motor', d.log.limpiadas.length === 0 && d.log.manejarMensaje.length === 0);
+  const dm = mkDeps(); await procesarUpdate(msg({ text: '/parametros demo' }), dm);
+  t('/parametros demo: vista previa (?demo=1) y avisa que no guarda', /^https:\/\/app\.test\/parametros\.html\?demo=1$/.test(dm.log.menu[0].b.web_app.url) && /no se guarda nada/.test(dm.log.env[0].x), JSON.stringify(dm.log.menu));
   const q = mkDeps(); await procesarUpdate(msg({ text: '/parametros quitar' }), q);
   t('/parametros quitar: devuelve el botón normal de este chat', q.log.menu.length === 1 && q.log.menu[0].c === 7 && q.log.menu[0].b.type === 'default' && /quité/.test(q.log.env[0].x), JSON.stringify(q.log));
   for (const txt of ['/PARAMETROS', '/parametros@multiaire_pe_bot']) {
