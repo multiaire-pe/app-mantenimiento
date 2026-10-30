@@ -50,6 +50,12 @@ button.sec{flex:1;background:var(--card);color:var(--fg)}
 button:disabled{opacity:.5}
 .toast{position:fixed;left:14px;right:14px;top:12px;padding:12px 14px;border-radius:12px;background:#111;color:#fff;z-index:9;display:none}
 .vacio{color:var(--hint);text-align:center;padding:28px 8px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 2px}
+.chip{padding:6px 12px;border-radius:999px;background:var(--card);font-size:13px;cursor:pointer}
+.chip.on{background:var(--btn);color:var(--btnfg)}
+.fix{display:flex;gap:8px;align-items:center}.fix input{flex:1}
+.fix button{flex:0 0 auto;padding:10px 12px;background:var(--card);color:var(--fg);font-size:13px}
+.fuente{font-size:12px;color:var(--hint);margin-top:3px}
 .hidden{display:none!important}
 </style>
 </head>
@@ -69,7 +75,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 const $ = (sel, root = document) => root.querySelector(sel);
 const hoyLima = () => new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
 
-let tecnico = null, sedes = [], sedeSel = LS.get('par_sede', ''), equipos = [], filtro = '';
+let tecnico = null, sedes = [], formatos = {}, sedeSel = LS.get('par_sede', ''), equipos = [], filtro = '', fmtSel = '';
 let enviando = false;
 // ?demo=1 → vista previa: se recorre y se valida todo igual, pero NO se guarda ni se envía nada.
 const DEMO = new URLSearchParams(location.search).get('demo') === '1';
@@ -137,7 +143,7 @@ function pintarPendientes() {
 }
 
 function encabezado() {
-  return bannerDemo() + `<div class="top"><div><h1>📊 Toma de parámetros</h1><div class="sub">Extractores e inyectores${tecnico ? ' · ' + esc(tecnico.nombre) : ''}</div></div><div id="pend"></div></div>`;
+  return bannerDemo() + `<div class="top"><div><h1>📊 Toma de parámetros</h1><div class="sub">Split · Fan coil y UMA · Ventilación · Cortinas${tecnico ? ' · ' + esc(tecnico.nombre) : ''}</div></div><div id="pend"></div></div>`;
 }
 
 async function iniciar() {
@@ -151,11 +157,11 @@ async function iniciar() {
   pintarPendientes();
   try {
     const r = await api('inicio');
-    tecnico = r.tecnico; sedes = r.sedes;
+    tecnico = r.tecnico; sedes = r.sedes; formatos = r.formatos || {};
     LS.set('par_inicio', r);
   } catch (e) {
     const prev = LS.get('par_inicio', null);
-    if (e.status === 0 && prev) { tecnico = prev.tecnico; sedes = prev.sedes; aviso('Sin conexión: usando la última lista cargada'); }
+    if (e.status === 0 && prev) { tecnico = prev.tecnico; sedes = prev.sedes; formatos = prev.formatos || {}; aviso('Sin conexión: usando la última lista cargada'); }
     else {
       app.innerHTML = encabezado() + `<div class="vacio">${esc(e.message)}<br><br><button class="main" id="reint">Reintentar</button></div>`;
       $('#reint').onclick = iniciar;
@@ -173,16 +179,19 @@ function pintarLista() {
   const opts = sedes.map((s) => { const v = `${s.cliente}|${s.sede}`; return `<option value="${esc(v)}"${v === sedeSel ? ' selected' : ''}>${esc(s.cliente)} · ${esc(s.sede)} (${s.n})</option>`; }).join('');
   const hoy = new Set(hechos());
   const q = filtro.toLowerCase();
-  const lista = equipos.filter((e) => !q || (e.nombre + ' ' + e.area).toLowerCase().includes(q));
+  const lista = equipos.filter((e) => (!fmtSel || e.formato === fmtSel) && (!q || (e.nombre + ' ' + e.area).toLowerCase().includes(q)));
+  const fmtsSede = [...new Set(equipos.map((e) => e.formato).filter(Boolean))];
+  const chips = fmtsSede.length > 1 ? `<div class="chips"><span class="chip${fmtSel ? '' : ' on'}" data-fmt="">Todos</span>${fmtsSede.map((f) => `<span class="chip${fmtSel === f ? ' on' : ''}" data-fmt="${esc(f)}">${esc((formatos[f] || {}).titulo || f)}</span>`).join('')}</div>` : '';
   app.innerHTML = encabezado()
     + `<label>Sede</label><select id="sede"><option value="">— Elegir sede —</option>${opts}</select>`
-    + (sedeSel ? `<label>Buscar equipo</label><input id="buscar" type="search" placeholder="Nombre o ubicación" value="${esc(filtro)}">` : '')
+    + (sedeSel ? `<label>Buscar equipo</label><input id="buscar" type="search" placeholder="Nombre o ubicación" value="${esc(filtro)}">${chips}` : '')
     + (sedeSel
-      ? (lista.length ? lista.map((e) => `<div class="card" data-eq="${esc(e.eqId)}"><div><b>${esc(e.nombre)}</b><small>${esc(e.area) || 'Sin ubicación'}</small></div>${hoy.has(e.eqId) ? '<span class="done">✓ hoy</span>' : ''}</div>`).join('') : '<div class="vacio">No hay equipos que coincidan.</div>')
+      ? (lista.length ? lista.map((e) => `<div class="card" data-eq="${esc(e.eqId)}"><div><b>${esc(e.nombre)}</b><small>${esc(e.area) || 'Sin ubicación'} · ${esc((formatos[e.formato] || {}).titulo || e.tipo)}</small></div>${hoy.has(e.eqId) ? '<span class="done">✓ hoy</span>' : ''}</div>`).join('') : '<div class="vacio">No hay equipos que coincidan.</div>')
       : '<div class="vacio">Elige la sede para ver sus equipos.</div>');
   pintarPendientes();
-  $('#sede').onchange = async (ev) => { sedeSel = ev.target.value; LS.set('par_sede', sedeSel); filtro = ''; equipos = []; pintarLista(); if (sedeSel) await cargarEquipos(); };
+  $('#sede').onchange = async (ev) => { sedeSel = ev.target.value; LS.set('par_sede', sedeSel); filtro = ''; fmtSel = ''; equipos = []; pintarLista(); if (sedeSel) await cargarEquipos(); };
   const b = $('#buscar'); if (b) b.oninput = (ev) => { filtro = ev.target.value; const pos = ev.target.selectionStart; pintarLista(); const n = $('#buscar'); n.focus(); n.setSelectionRange(pos, pos); };
+  document.querySelectorAll('.chip').forEach((c) => { c.onclick = () => { fmtSel = c.dataset.fmt; pintarLista(); }; });
   document.querySelectorAll('.card').forEach((c) => { c.onclick = () => abrirForm(equipos.find((e) => e.eqId === c.dataset.eq)); });
 }
 
@@ -199,49 +208,48 @@ async function cargarEquipos() {
 }
 
 // ── formulario ──────────────────────────────────────────────────────────────────────────────
-const SEL = {
-  estado: [['BUENO', 'Bueno'], ['REGULAR', 'Regular'], ['MALO', 'Malo'], ['NA', 'N/A']],
-  filtros: [['BUENO', 'Bueno'], ['REGULAR', 'Regular'], ['MALO', 'Malo'], ['SIN_FILTRO', 'Sin filtro'], ['NA', 'N/A']],
-  transmision: [['DIRECTA', 'Directa'], ['FAJAS', 'Por fajas'], ['ACOPLADA', 'Acoplada'], ['NA', 'N/A']],
-};
+// Se arma con la definición del formato que manda el servidor (formatos[eq.formato].campos): las columnas
+// son las mismas de las hojas impresas de TOTTUS, así el registro se exporta tal cual a ese Excel.
+const ESTADOS_EQ = [['OP', 'OP · Operativo'], ['OO', 'OO · Operativo con obs.'], ['FS', 'FS · Fuera de func.']];
+const LINEAS = [['v1', 'Voltaje L1 (V)'], ['v2', 'Voltaje L2 (V)'], ['v3', 'Voltaje L3 (V)'], ['a1', 'Amperaje L1 (A)'], ['a2', 'Amperaje L2 (A)'], ['a3', 'Amperaje L3 (A)']];
 const select = (id, rotulo, lista) => `<div data-campo="${id}"><label for="${id}">${rotulo}</label><select id="${id}"><option value="">— Elegir —</option>${lista.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select><div class="msg-err">Elige una opción</div></div>`;
 const numero = (id, rotulo) => `<div data-campo="${id}" data-num="1"><label for="${id}">${rotulo}</label><div class="num"><input id="${id}" inputmode="decimal" autocomplete="off" placeholder="Valor"><label class="na"><input type="checkbox" id="${id}_na"> N/A</label></div><div class="msg-err">Escribe el valor o marca N/A</div></div>`;
+// Marca / modelo / serie vienen del inventario: se muestran ya completos y solo se editan si hay que corregir.
+const dato = (id, rotulo, valor) => `<div><label for="${id}">${rotulo}</label><div class="fix"><input id="${id}" maxlength="60" value="${esc(valor)}"${valor ? ' readonly' : ''} placeholder="No está en el sistema">${valor ? `<button type="button" data-corregir="${id}">✏️</button>` : ''}</div></div>`;
+// En extractores, UMA y cortinas la capacidad del inventario es la potencia del motor ("1.5 HP", "870 W").
+const potenciaDe = (eq) => { const c = String(eq.capacidad || '').trim(); return !c || /^n\/?v$/i.test(c) || /btu/i.test(c) ? '' : c; };
 
 function abrirForm(eq) {
   if (!eq) return;
+  const fm = formatos[eq.formato];
+  if (!fm) { aviso('Este tipo de equipo no tiene formato de parámetros.'); return; }
   const app = $('#app');
+  const campos = fm.campos.map((c) => {
+    if (c.t === 'num') return numero('d_' + c.k, c.rotulo);
+    if (c.t === 'opcion') return select('d_' + c.k, c.rotulo, c.opciones);
+    return `<div><label for="d_${c.k}">${c.rotulo} <span class="sub">(opcional)</span></label><input id="d_${c.k}" maxlength="${c.max || 60}" autocomplete="off" value="${c.potencia ? esc(potenciaDe(eq)) : ''}"></div>`;
+  }).join('');
   app.innerHTML = `<div id="form">
-    ${bannerDemo()}<div class="top"><div><h1>${esc(eq.nombre)}</h1><div class="sub">${esc(eq.sede)} · ${esc(eq.area) || 'Sin ubicación'}</div></div><div id="pend"></div></div>
+    ${bannerDemo()}<div class="top"><div><h1>${esc(eq.nombre)}</h1><div class="sub">${esc(eq.sede)} · ${esc(eq.area) || 'Sin ubicación'} · ${esc(fm.titulo)}</div></div><div id="pend"></div></div>
 
-    <h2>1 · Información general</h2>
-    <div class="sub">La fecha y la hora se registran al guardar. El técnico responsable es quien tiene la sesión de Telegram: <b>${esc(tecnico.nombre)}</b>.</div>
-    <label for="supervisor">Supervisor a cargo</label><input id="supervisor" maxlength="80" value="${esc(LS.get('par_sup', ''))}" autocomplete="off">
+    <h2>1 · Datos del equipo</h2>
+    <div class="sub">Salen del inventario. La fecha y la hora se registran al guardar; el técnico es quien tiene la sesión de Telegram: <b>${esc(tecnico.nombre)}</b>.</div>
+    <div class="row"><div><label>Código</label><input value="${esc(eq.eqId)}" readonly></div><div><label>Tipo</label><input value="${esc(eq.tipo)}" readonly></div></div>
+    <div class="row">${dato('marca', 'Marca', eq.marca)}${dato('modelo', 'Modelo', eq.modelo)}</div>
+    ${dato('serie', 'Número de serie', eq.serie)}
+    <label for="os">N.º de OS <span class="sub">(opcional)</span></label><input id="os" maxlength="30" value="${esc(LS.get('par_os', ''))}" autocomplete="off">
 
-    <h2>2 · Datos del equipo</h2>
-    <div class="row"><div><label>TAG / Código</label><input value="${esc(eq.eqId)}" readonly></div><div><label>Tipo</label><input value="${esc(eq.tipo)}" readonly></div></div>
-    <div class="row"><div><label for="marca">Marca</label><input id="marca" maxlength="60" value="${esc(eq.marca)}"></div><div><label for="modelo">Modelo</label><input id="modelo" maxlength="60" value="${esc(eq.modelo)}"></div></div>
-    <div class="row"><div><label for="serie">Número de serie</label><input id="serie" maxlength="60" value="${esc(eq.serie)}"></div><div><label for="potencia">Potencia del motor (HP/kW)</label><input id="potencia" maxlength="40" value="${esc(eq.capacidad)}"></div></div>
+    <h2>2 · Parámetros eléctricos</h2>
+    <div data-campo="fases"><label>Fases</label><div class="seg"><input type="radio" name="fases" id="fases1" value="1PH"><label for="fases1">Monofásico (solo L1)</label><input type="radio" name="fases" id="fases3" value="3PH"><label for="fases3">Trifásico (L1-L2-L3)</label></div><div class="msg-err">Indica las fases</div></div>
+    ${LINEAS.map(([k, r]) => (k.endsWith('2') || k.endsWith('3') ? `<div class="trif">${numero(k, r)}</div>` : numero(k, r))).join('')}
 
-    <h2>3 · Parámetros eléctricos</h2>
-    <div data-campo="fases"><label>Fases</label><div class="seg"><input type="radio" name="fases" id="fases1" value="1PH"><label for="fases1">Monofásico (1PH)</label><input type="radio" name="fases" id="fases3" value="3PH"><label for="fases3">Trifásico (3PH)</label></div><div class="msg-err">Indica las fases</div></div>
-    ${numero('voltajeNominal', 'Voltaje nominal (V)')}
-    ${numero('amperajeNominal', 'Amperaje nominal (A)')}
-    ${numero('frecuencia', 'Frecuencia (Hz)')}
-    ${select('estadoTablero', 'Estado del tablero eléctrico', SEL.estado)}
-    ${select('estadoContactores', 'Estado de contactores', SEL.estado)}
-    ${numero('vL1L2', 'Voltaje medido L1-L2 (V)')}
-    <div class="trif">${numero('vL2L3', 'Voltaje medido L2-L3 (V)')}${numero('vL1L3', 'Voltaje medido L1-L3 (V)')}</div>
-    ${numero('aL1', 'Amperaje medido L1 (A)')}
-    <div class="trif">${numero('aL2', 'Amperaje medido L2 (A)')}${numero('aL3', 'Amperaje medido L3 (A)')}</div>
+    <h2>3 · ${esc(fm.titulo)}</h2>
+    ${campos}
 
-    <h2>4 · Estado y condiciones del sistema</h2>
-    ${select('transmision', 'Tipo de transmisión', SEL.transmision)}
-    ${select('filtros', 'Estado de filtros', SEL.filtros)}
-    ${select('fajas', 'Condición de fajas', SEL.estado)}
-    <label for="fajasMedida">Medida de la faja (M)</label><input id="fajasMedida" maxlength="40" placeholder="Opcional (ej: A55)">
-    ${select('poleas', 'Condición de poleas', SEL.estado)}
+    <h2>4 · Estado del equipo</h2>
+    <div data-campo="estado"><div class="seg">${ESTADOS_EQ.map(([v, t]) => `<input type="radio" name="estado" id="est_${v}" value="${v}"><label for="est_${v}">${t}</label>`).join('')}</div><div class="msg-err">Indica el estado</div></div>
 
-    <h2>5 · Observaciones y diagnóstico técnico</h2>
+    <h2>5 · Observaciones</h2>
     <textarea id="observaciones" maxlength="1000" placeholder="Escribe lo que encontraste"></textarea>
   </div>
   <div class="bar"><button class="sec" id="volver">← Volver</button><button class="main" id="guardar">Guardar registro</button></div>`;
@@ -251,6 +259,7 @@ function abrirForm(eq) {
   document.querySelectorAll('input[name=fases]').forEach((r) => { r.onchange = trif; });
   // marcar N/A deja el campo numérico vacío y deshabilitado
   document.querySelectorAll('.na input').forEach((cb) => { cb.onchange = () => { const i = $('#' + cb.id.replace('_na', '')); i.disabled = cb.checked; if (cb.checked) i.value = ''; }; });
+  document.querySelectorAll('[data-corregir]').forEach((b) => { b.onclick = () => { const i = $('#' + b.dataset.corregir); i.readOnly = false; i.focus(); b.remove(); }; });
   $('#volver').onclick = () => { filtro = ''; pintarLista(); window.scrollTo(0, 0); };
   $('#guardar').onclick = () => guardar(eq);
   window.scrollTo(0, 0);
@@ -267,19 +276,26 @@ function leerNumero(id) {
 
 function guardar(eq) {
   document.querySelectorAll('.err').forEach((n) => n.classList.remove('err'));
+  const fm = formatos[eq.formato];
   const fases = ($('input[name=fases]:checked') || {}).value || '';
   const tres = fases === '3PH';
   const faltan = [];
   const marcar = (campo) => { const n = $(`[data-campo="${campo}"]`); if (n) n.classList.add('err'); faltan.push(campo); };
   if (!fases) marcar('fases');
   const el = { fases };
-  for (const k of ['voltajeNominal', 'amperajeNominal', 'frecuencia', 'vL1L2', 'aL1', ...(tres ? ['vL2L3', 'vL1L3', 'aL2', 'aL3'] : [])]) {
+  for (const [k] of LINEAS) {
+    if (!tres && !['v1', 'a1'].includes(k)) continue;   // en monofásico solo va L1
     const v = leerNumero(k); if (v === null) marcar(k); else el[k] = v;
   }
-  for (const k of ['estadoTablero', 'estadoContactores']) { const v = $('#' + k).value; if (!v) marcar(k); else el[k] = v; }
-  const si = {};
-  for (const k of ['transmision', 'filtros', 'fajas', 'poleas']) { const v = $('#' + k).value; if (!v) marcar(k); else si[k] = v; }
-  si.fajasMedida = $('#fajasMedida').value.trim();
+  const datos = {};
+  for (const c of fm.campos) {
+    const id = 'd_' + c.k;
+    if (c.t === 'num') { const v = leerNumero(id); if (v === null) marcar(id); else datos[c.k] = v; }
+    else if (c.t === 'opcion') { const v = $('#' + id).value; if (!v) marcar(id); else datos[c.k] = v; }
+    else datos[c.k] = $('#' + id).value.trim();
+  }
+  const estado = ($('input[name=estado]:checked') || {}).value || '';
+  if (!estado) marcar('estado');
   if (faltan.length) {
     aviso('Faltan datos por completar (en rojo).');
     const primero = $(`[data-campo="${faltan[0]}"]`); if (primero) primero.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -290,15 +306,15 @@ function guardar(eq) {
     filtro = ''; pintarLista(); window.scrollTo(0, 0);
     return;
   }
-  const sup = $('#supervisor').value.trim();
-  LS.set('par_sup', sup);
+  const os = $('#os').value.trim();
+  LS.set('par_os', os);
   const registro = {
     id: 'PAR-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
     eqId: eq.eqId,
     capturadoEn: new Date().toISOString(),
-    supervisor: sup,
-    equipo: { marca: $('#marca').value.trim(), modelo: $('#modelo').value.trim(), serie: $('#serie').value.trim(), potencia: $('#potencia').value.trim() },
-    electrico: el, sistema: si,
+    os,
+    equipo: { marca: $('#marca').value.trim(), modelo: $('#modelo').value.trim(), serie: $('#serie').value.trim() },
+    electrico: el, datos, estado,
     observaciones: $('#observaciones').value.trim(),
   };
   guardarCola([...cola(), { registro, ts: Date.now() }]);

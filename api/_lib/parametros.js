@@ -1,11 +1,54 @@
-// Toma de parámetros de ventilación mecánica (extractores / inyectores) desde la Mini App de Telegram.
-// Reemplaza el formato impreso "FORMATO DE TOMA DE PARÁMETROS": el técnico lo llena en el celular y el
-// registro queda guardado en `mtto_parametros` (1 doc por registro). Este módulo es PURO (sin Firestore
-// ni red): la firma de Telegram y la validación se prueban sin servicios. El handler está en
-// api/parametros.js.
+// Toma de parámetros desde la Mini App de Telegram, con los 4 formatos de las hojas impresas de TOTTUS
+// (Split · Fan coil y UMA · Ventilación mecánica · Cortinas de aire). El técnico los llena en el celular y el
+// registro queda en `mtto_parametros` (1 doc por registro) con la MISMA estructura de columnas de esas hojas
+// de Excel, para exportarlo después sin transformar nada. Este módulo es PURO (sin Firestore ni red): la
+// firma de Telegram y la validación se prueban sin servicios. El handler está en api/parametros.js.
 import crypto from 'node:crypto';
 
-export const TIPOS = ['EXTRACTOR', 'INYECTOR'];
+// ── Formatos ────────────────────────────────────────────────────────────────────────────────
+// Una sola definición que usan el servidor (validar) y la Mini App (pintar el formulario): `inicio` se la manda.
+//   t: 'num'    → número o N/A (obligatorio: que no salga un registro sin medir por descuido)
+//   t: 'texto'  → texto libre, opcional (placa del motor, faja, medida...)
+//   t: 'opcion' → una de `opciones` (obligatorio)
+// `potencia: true` → se precarga la "Potencia del motor" con la capacidad del inventario (en extractores,
+// UMA y cortinas la capacidad ES la potencia del motor: 1.5 HP, 870 W...).
+export const OPCIONES_EXTRACTOR = [['AXIAL', 'Axial'], ['CENTRIFUGA', 'Centrífuga'], ['HUMO', 'Humo'], ['HONGO', 'Hongo'], ['CAJON', 'Cajón'], ['NA', 'N/A']];
+const POTENCIA = { k: 'potenciaMotor', t: 'texto', rotulo: 'Potencia del motor (hp o W)', max: 40, potencia: true };
+const MOTOR = { k: 'modeloSerieMotor', t: 'texto', rotulo: 'Modelo / serie del motor', max: 60 };
+const FAJA = { k: 'modeloCantFaja', t: 'texto', rotulo: 'Modelo / cantidad de faja', max: 40 };
+export const FORMATOS = {
+  SPLIT: {
+    titulo: 'Split',
+    tipos: ['SPLIT DECORATIVO', 'SPLIT CONSOLA', 'SPLIT DUCTO', 'SPLIT PORTATIL', 'UNIDAD EVAPORADORA', 'UNIDAD CONDENSADOR'],
+    campos: [
+      { k: 'presionBaja', t: 'num', rotulo: 'Presión de baja (psi)' },
+      { k: 'presionAlta', t: 'num', rotulo: 'Presión de alta (psi)' },
+      { k: 'tempSalidaAire', t: 'num', rotulo: 'Temperatura salida de aire (°C)' },
+    ],
+  },
+  FANCOIL_UMA: {
+    titulo: 'Fan coil y UMA',
+    tipos: ['FAN COIL', 'UMA'],
+    campos: [
+      POTENCIA, MOTOR, FAJA,
+      { k: 'tempEntradaAgua', t: 'num', rotulo: 'Temp. entrada de agua helada (°C)' },
+      { k: 'tempSalidaAgua', t: 'num', rotulo: 'Temp. salida de agua helada (°C)' },
+    ],
+  },
+  VENTILACION: {
+    titulo: 'Ventilación mecánica',
+    tipos: ['EXTRACTOR', 'INYECTOR'],
+    campos: [POTENCIA, MOTOR, FAJA, { k: 'tipoExtractor', t: 'opcion', rotulo: 'Tipo de extractor', opciones: OPCIONES_EXTRACTOR }],
+  },
+  CORTINA: {
+    titulo: 'Cortinas de aire',
+    tipos: ['CORTINA DE AIRE'],
+    campos: [{ k: 'medidaCortina', t: 'texto', rotulo: 'Medida de cortina', max: 30 }, POTENCIA, MOTOR],
+  },
+};
+export const TIPOS = [...new Set(Object.values(FORMATOS).flatMap((f) => f.tipos))];
+export const formatoDe = (tipo) => Object.keys(FORMATOS).find((k) => FORMATOS[k].tipos.includes(tipo)) || null;
+export const ESTADOS_EQ = ['OP', 'OO', 'FS'];   // Operativo · Operativo con observación · Fuera de funcionamiento
 
 // ── Telegram initData ───────────────────────────────────────────────────────────────────────
 // La Mini App manda `Telegram.WebApp.initData` (querystring firmado). Se valida igual que dice la
@@ -37,16 +80,12 @@ export function verificarInitData(initData, botToken, { ahora = Date.now(), maxE
 
 // ── Validación del registro ─────────────────────────────────────────────────────────────────
 // Los valores de las mediciones NO se juzgan (ni rangos ni "sobre el nominal"): lo que mide el técnico
-// es lo que se guarda. Solo se exige que cada campo aplicable tenga un número o se marque "N/A", para
-// que un registro no salga con campos sin medir por descuido.
+// es lo que se guarda. Solo se exige que cada medida aplicable tenga un número o se marque "N/A".
 const NUM_MAX = 100000;
 export const FASES = ['1PH', '3PH'];
-export const ESTADO = ['BUENO', 'REGULAR', 'MALO', 'NA'];
-export const ESTADO_FILTROS = ['BUENO', 'REGULAR', 'MALO', 'SIN_FILTRO', 'NA'];
-export const TRANSMISION = ['DIRECTA', 'FAJAS', 'ACOPLADA', 'NA'];
-
-const CAMPOS_NUM_BASE = ['voltajeNominal', 'amperajeNominal', 'frecuencia', 'vL1L2', 'aL1'];
-const CAMPOS_NUM_3PH = ['vL2L3', 'vL1L3', 'aL2', 'aL3'];
+// Las 6 líneas de la hoja: Voltaje L1-L2-L3 y Amperaje L1-L2-L3. En monofásico solo va L1.
+export const LINEAS_1PH = ['v1', 'a1'];
+export const LINEAS_3PH = ['v1', 'v2', 'v3', 'a1', 'a2', 'a3'];
 
 const texto = (v, max) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -73,36 +112,37 @@ export function validarRegistro(body, equipo, tecnico, ahora = Date.now()) {
   if (!body || typeof body !== 'object') return { ok: false, error: 'Registro vacío.' };
   if (!ID_REGISTRO.test(String(body.id || ''))) return { ok: false, error: 'Identificador del registro inválido.' };
   if (!equipo) return { ok: false, error: 'El equipo no existe en el inventario.' };
-  if (!TIPOS.includes(equipo.tipo)) return { ok: false, error: 'Este formato es solo para extractores e inyectores.' };
+  const formato = formatoDe(equipo.tipo);
+  if (!formato) return { ok: false, error: 'Este tipo de equipo no tiene formato de parámetros.' };
   if (!tecnico || !tecnico.id) return { ok: false, error: 'Técnico no identificado.' };
+  const def = FORMATOS[formato];
 
-  const el = body.electrico || {}, si = body.sistema || {}, eq = body.equipo || {};
+  const el = body.electrico || {}, dt = body.datos || {}, eq = body.equipo || {};
   if (!FASES.includes(el.fases)) return { ok: false, error: 'Indica si el equipo es monofásico o trifásico.' };
   const tres = el.fases === '3PH';
 
   const electrico = { fases: el.fases };
-  for (const k of [...CAMPOS_NUM_BASE, ...(tres ? CAMPOS_NUM_3PH : [])]) {
+  for (const k of LINEAS_3PH) {
+    if (!tres && !LINEAS_1PH.includes(k)) { electrico[k] = null; continue; }   // no aplica en monofásico
     const m = medida(el[k]);
     if (!m.ok) return { ok: false, error: `Falta un valor (o marcar N/A) en: ${k}.` };
     electrico[k] = m.valor;
   }
-  if (!tres) for (const k of CAMPOS_NUM_3PH) electrico[k] = null;   // no aplica en monofásico
 
-  for (const k of ['estadoTablero', 'estadoContactores']) {
-    if (!ESTADO.includes(el[k])) return { ok: false, error: `Falta indicar: ${k}.` };
-    electrico[k] = el[k];
+  const datos = {};
+  for (const c of def.campos) {
+    if (c.t === 'num') {
+      const m = medida(dt[c.k]);
+      if (!m.ok) return { ok: false, error: `Falta un valor (o marcar N/A) en: ${c.rotulo}.` };
+      datos[c.k] = m.valor;
+    } else if (c.t === 'opcion') {
+      if (!c.opciones.some(([v]) => v === dt[c.k])) return { ok: false, error: `Falta elegir: ${c.rotulo}.` };
+      datos[c.k] = dt[c.k];
+    } else {
+      datos[c.k] = texto(dt[c.k], c.max || 60);
+    }
   }
-
-  const sistema = {};
-  if (!TRANSMISION.includes(si.transmision)) return { ok: false, error: 'Falta el tipo de transmisión.' };
-  sistema.transmision = si.transmision;
-  if (!ESTADO_FILTROS.includes(si.filtros)) return { ok: false, error: 'Falta el estado de filtros.' };
-  sistema.filtros = si.filtros;
-  for (const k of ['fajas', 'poleas']) {
-    if (!ESTADO.includes(si[k])) return { ok: false, error: `Falta indicar: ${k}.` };
-    sistema[k] = si[k];
-  }
-  sistema.fajasMedida = texto(si.fajasMedida, 40);
+  if (!ESTADOS_EQ.includes(body.estado)) return { ok: false, error: 'Falta el estado del equipo (OP / OO / FS).' };
 
   // Hora de captura: la del teléfono si es razonable (el registro puede enviarse horas después por falta
   // de señal); si viene absurda se usa la del servidor y se marca.
@@ -118,21 +158,21 @@ export function validarRegistro(body, equipo, tecnico, ahora = Date.now()) {
     ok: true,
     doc: {
       id: body.id,
-      formato: 'VENTILACION_MECANICA',
-      version: 1,
+      formato,
+      version: 2,
       eqId: equipo.eqId,
-      tag: equipo.eqId,
       cliente: equipo.cliente,
       sede: equipo.sede,
       area: equipo.area,
       tipo: equipo.tipo,
       nombreEq: equipo.nombre,
-      // Identificación tal como la confirma el técnico (puede corregir lo que dice el inventario).
-      equipo: { marca: texto(eq.marca, 60), modelo: texto(eq.modelo, 60), serie: texto(eq.serie, 60), potencia: texto(eq.potencia, 40) },
+      // Marca / modelo / serie vienen del inventario; el técnico puede corregirlas y se guarda lo que confirma.
+      equipo: { marca: texto(eq.marca, 60), modelo: texto(eq.modelo, 60), serie: texto(eq.serie, 60) },
       electrico,
-      sistema,
+      datos,
+      estado: body.estado,
+      os: texto(body.os, 30),
       observaciones: texto(body.observaciones, 1000),
-      supervisor: texto(body.supervisor, 80),
       tecnicoId: tecnico.id,
       tecnicoNombre: tecnico.nombre || '',
       fecha, hora,
@@ -168,10 +208,11 @@ export async function procesar(body, initData, d) {
     }
     const sedes = [...por.entries()].map(([k, n]) => { const [cliente, sede] = JSON.parse(k); return { cliente, sede, n }; })
       .sort((a, b) => a.cliente.localeCompare(b.cliente, 'es') || a.sede.localeCompare(b.sede, 'es'));
-    return { status: 200, json: { tecnico: t, sedes } };
+    return { status: 200, json: { tecnico: t, sedes, formatos: FORMATOS } };
   }
   if (accion === 'equipos') {
-    const eqs = (await d.equipos()).filter((e) => e.cliente === body.cliente && e.sede === body.sede).sort(porNombre);
+    const eqs = (await d.equipos()).filter((e) => e.cliente === body.cliente && e.sede === body.sede)
+      .map((e) => ({ ...e, formato: formatoDe(e.tipo) })).sort(porNombre);
     return { status: 200, json: { equipos: eqs } };
   }
   if (accion === 'guardar') {
