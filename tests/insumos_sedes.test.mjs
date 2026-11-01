@@ -9,7 +9,7 @@ const t = (n, c, e = '') => { if (c) ok++; else { mal++; console.log('✗', n, e
 const a = html.indexOf('const CLIENTE_PENDIENTE');
 const b = html.indexOf('let maUser=null');
 t('existe armarSedes', a > 0 && b > a);
-const { armarSedes, CLIENTE_PENDIENTE } = new Function(`${html.slice(a, b)}\nreturn { armarSedes, CLIENTE_PENDIENTE };`)();
+const { armarSedes, CLIENTE_PENDIENTE, normalizarVisibles, filtrarSedes, textoFiltroSedes } = new Function(`${html.slice(a, b)}\nreturn { armarSedes, CLIENTE_PENDIENTE, normalizarVisibles, filtrarSedes, textoFiltroSedes };`)();
 
 const TIENDAS = [
   { sede: 'Miraflores', cliente: 'TOTTUS' }, { sede: 'MIRAFLORES', cliente: 'RIPLEY' },
@@ -42,6 +42,27 @@ const nombres = (l) => l.map((s) => s.sede).join('|');
 }
 t('sin datos no rompe', armarSedes([], []).length === 0 && armarSedes(undefined, undefined).length === 0);
 t('la carga usa armarSedes (y ya no arma las sedes a mano)', /sedes=armarSedes\(tiendasS\.docs\.map\(d=>d\.data\(\)\), instanciasData\);/.test(html));
+
+// ── filtro de sedes del tab «Por Sede» ──
+{
+  const L = [{ sede: 'ATOCONGO', cliente: 'RIPLEY' }, { sede: 'MIRAFLORES (TOTTUS)', cliente: 'TOTTUS' }, { sede: 'OFICINA', cliente: '-' }];
+  const nom = (l) => l.map((s) => s.sede).join('|');
+  t('sin filtro (null) se ven todas', nom(filtrarSedes(L, null)) === 'ATOCONGO|MIRAFLORES (TOTTUS)|OFICINA');
+  t('filtro: solo las elegidas', nom(filtrarSedes(L, ['MIRAFLORES (TOTTUS)', 'OFICINA'])) === 'MIRAFLORES (TOTTUS)|OFICINA');
+  t('filtro vacío: ninguna', filtrarSedes(L, []).length === 0);
+  t('conserva el orden de la lista, no el de la selección', nom(filtrarSedes(L, ['OFICINA', 'ATOCONGO'])) === 'ATOCONGO|OFICINA');
+  t('una sede elegida que ya no existe se ignora', nom(filtrarSedes(L, ['OFICINA', 'NO EXISTE'])) === 'OFICINA');
+  t('normalizar: marcar todas = sin filtro', normalizarVisibles(['ATOCONGO', 'MIRAFLORES (TOTTUS)', 'OFICINA'], L) === null);
+  t('normalizar: una parte se conserva', JSON.stringify(normalizarVisibles(['OFICINA'], L)) === '["OFICINA"]');
+  t('normalizar: "ninguna" elegida a propósito se respeta', JSON.stringify(normalizarVisibles([], L)) === '[]');
+  t('normalizar: lo guardado ya no existe (sede renombrada) → todas, no pantalla vacía', normalizarVisibles(['MIRAFLORES'], L) === null);
+  t('normalizar: descarta las que ya no existen pero conserva las vigentes', JSON.stringify(normalizarVisibles(['MIRAFLORES', 'OFICINA'], L)) === '["OFICINA"]');
+  t('normalizar: algo que no es lista (basura guardada) → todas', normalizarVisibles('x', L) === null && normalizarVisibles(undefined, L) === null);
+  t('texto del botón', textoFiltroSedes(null, L) === 'Todas las sedes' && textoFiltroSedes([], L) === 'Ninguna sede' && textoFiltroSedes(['OFICINA'], L) === 'OFICINA' && textoFiltroSedes(['OFICINA', 'ATOCONGO'], L) === '2 de 3 sedes');
+  t('la pestaña Por Sede dibuja solo las sedes filtradas', /const vistas = filtrarSedes\(sedes, sedesVisibles\);/.test(html) && /vistas\.forEach\(s=>\{if\(!byC\[s\.cliente\]\)byC\[s\.cliente\]=\[\];byC\[s\.cliente\]\.push\(s\.sede\);\}\);\n  let h=''/.test(html));
+  t('el filtro se recuerda en el navegador', /localStorage\.setItem\(LS_SEDES_VIS/.test(html) && /localStorage\.getItem\(LS_SEDES_VIS\)/.test(html));
+  t('el botón y el panel existen y la sede no va dentro de un handler JS', /id="btn-filtro-sedes"/.test(html) && /id="filtro-sedes-panel"/.test(html) && /data-sede-vis="\$\{escB\(n\)\}"/.test(html));
+}
 
 console.log(`${ok} ok · ${mal} mal`);
 process.exit(mal ? 1 : 0);
