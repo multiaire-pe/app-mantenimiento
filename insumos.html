@@ -475,7 +475,11 @@ tbody td{padding:9px 12px;vertical-align:middle}
     </div>
 
     <div class="tab-view" id="tab-stock">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <div style="position:relative">
+          <button class="btn btn-sm" id="btn-filtro-sedes" onclick="toggleFiltroSedes(event)" title="Elige qué sedes quieres ver">🏢 <span id="filtro-sedes-txt">Todas las sedes</span> ▾</button>
+          <div id="filtro-sedes-panel" onclick="event.stopPropagation()" style="display:none;position:absolute;z-index:50;top:100%;left:0;margin-top:4px;background:var(--surface);border:1.5px solid var(--border2);border-radius:8px;box-shadow:var(--shadow-lg);padding:10px;min-width:260px;max-width:92vw;max-height:60vh;overflow-y:auto"></div>
+        </div>
         <button class="btn btn-primary btn-sm" id="btn-transf-sede" style="display:none" onclick="openModalTransfSede()" title="Mover de una sede a otra todo lo que hay en ella, dejando afuera las excepciones">🔄 Transferencia masiva</button>
       </div>
       <div id="stock-sede-content"><div class="empty"><div class="empty-icon">⏳</div>Cargando...</div></div>
@@ -1524,6 +1528,22 @@ function armarSedes(tiendas, instancias) {
   return lista.sort((a, b) => a.sede.localeCompare(b.sede));
 }
 
+// ── Filtro de sedes del tab «Por Sede» (qué sedes quiero ver) ──
+// visibles: null = todas · array = solo esas. Funciones puras.
+function normalizarVisibles(visibles, lista) {
+  if (!Array.isArray(visibles)) return null;
+  const validas = new Set(lista.map((s) => s.sede));
+  const ok = visibles.filter((n) => validas.has(n));
+  if (visibles.length && !ok.length) return null;   // lo guardado ya no existe (sede renombrada): mejor mostrar todo que nada
+  return ok.length === lista.length ? null : ok;
+}
+const filtrarSedes = (lista, visibles) => (Array.isArray(visibles) ? lista.filter((s) => visibles.includes(s.sede)) : lista);
+function textoFiltroSedes(visibles, lista) {
+  if (!Array.isArray(visibles)) return 'Todas las sedes';
+  if (!visibles.length) return 'Ninguna sede';
+  return visibles.length === 1 ? visibles[0] : `${visibles.length} de ${lista.length} sedes`;
+}
+
 let maUser=null, catalogoData=[], movimientosData=[], stockData={}, sedes=[], personalData=[], paquetesData=[], instanciasData=[], instFotos={}, movFotos={}, catFotos={};
 let filteredCatalogo=[], currentMovTipo='SALIDA', editingInsumoId=null, editingPaqId=null, applyingPaqId=null, paqRowIdx=0;
 
@@ -2209,12 +2229,47 @@ async function resetStockItem(itemId,nombre){
   }catch(e){toast('Error: '+e.message,'err');}
 }
 
+const LS_SEDES_VIS = 'ins_sedes_vis_v1';
+let sedesVisibles = null;   // null = todas
+try { const g = JSON.parse(localStorage.getItem(LS_SEDES_VIS)); if (Array.isArray(g)) sedesVisibles = g; } catch (e) { /* sin almacenamiento: se ven todas */ }
+function guardarSedesVisibles() { try { localStorage.setItem(LS_SEDES_VIS, JSON.stringify(sedesVisibles)); } catch (e) { /* nada */ } }
+function toggleFiltroSedes(ev) {
+  if (ev) ev.stopPropagation();
+  const p = document.getElementById('filtro-sedes-panel');
+  const abrir = p.style.display === 'none';
+  p.style.display = abrir ? 'block' : 'none';
+  if (abrir) pintarFiltroSedes();
+}
+document.addEventListener('click', () => { const p = document.getElementById('filtro-sedes-panel'); if (p) p.style.display = 'none'; });
+function pintarFiltroSedes() {
+  const p = document.getElementById('filtro-sedes-panel');
+  if (!p) return;
+  const marcada = (n) => !Array.isArray(sedesVisibles) || sedesVisibles.includes(n);
+  const byC = {};
+  sedes.forEach((s) => { (byC[s.cliente] = byC[s.cliente] || []).push(s.sede); });
+  p.innerHTML = `<div style="display:flex;gap:6px;margin-bottom:8px"><button class="btn btn-sm" type="button" onclick="marcarSedesVisibles(true)">☑ Todas</button><button class="btn btn-sm" type="button" onclick="marcarSedesVisibles(false)">☐ Ninguna</button></div>`
+    + Object.entries(byC).map(([cli, ss]) => `<div class="sede-cliente-label" style="margin:8px 0 4px">${escB(cli === '-' ? 'MULTIAIRE' : cli)}</div>`
+      + ss.map((n) => `<label style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;cursor:pointer"><input type="checkbox" data-sede-vis="${escB(n)}" ${marcada(n) ? 'checked' : ''} style="width:15px;height:15px;flex-shrink:0">${escB(n)}</label>`).join('')).join('');
+}
+function marcarSedesVisibles(todas) { sedesVisibles = todas ? null : []; guardarSedesVisibles(); pintarFiltroSedes(); renderStockSede(); }
+document.addEventListener('change', (e) => {
+  const cb = e.target && e.target.matches && e.target.matches('#filtro-sedes-panel input[data-sede-vis]') ? e.target : null;
+  if (!cb) return;
+  const marcadas = [...document.querySelectorAll('#filtro-sedes-panel input[data-sede-vis]')].filter((x) => x.checked).map((x) => x.dataset.sedeVis);
+  sedesVisibles = marcadas.length === sedes.length ? null : marcadas;
+  guardarSedesVisibles();
+  renderStockSede();
+});
+
 function renderStockSede(){
   const c=document.getElementById('stock-sede-content');
+  sedesVisibles = normalizarVisibles(sedesVisibles, sedes);
+  const txtFiltro=document.getElementById('filtro-sedes-txt'); if(txtFiltro) txtFiltro.textContent = textoFiltroSedes(sedesVisibles, sedes);
+  const vistas = filtrarSedes(sedes, sedesVisibles);
   const btnTs=document.getElementById('btn-transf-sede');
   if(btnTs) btnTs.style.display = can('transferencia')===1 ? '' : 'none';
   const byC={};
-  sedes.forEach(s=>{if(!byC[s.cliente])byC[s.cliente]=[];byC[s.cliente].push(s.sede);});
+  vistas.forEach(s=>{if(!byC[s.cliente])byC[s.cliente]=[];byC[s.cliente].push(s.sede);});
   let h='';
   Object.entries(byC).forEach(([cliente,ss])=>{
     h+=`<div class="sede-cliente-label">${escB(cliente)}</div><div class="sede-stock-grid">`;
@@ -2254,7 +2309,7 @@ function renderStockSede(){
     });
     h+='</div>';
   });
-  c.innerHTML=h||'<div class="empty"><div class="empty-icon">📦</div>Sin stock por sede</div>';
+  c.innerHTML=h||(Array.isArray(sedesVisibles)&&!sedesVisibles.length?'<div class="empty"><div class="empty-icon">🏢</div>No hay sedes seleccionadas. Elígelas en «Sedes» (arriba).</div>':'<div class="empty"><div class="empty-icon">📦</div>Sin stock por sede</div>');
 }
 
 
