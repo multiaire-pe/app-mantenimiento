@@ -71,21 +71,26 @@ cambia lo que ven todos los técnicos.
 
 No requiere variables nuevas: usa `TELEGRAM_BOT_TOKEN` y `FIREBASE_SERVICE_ACCOUNT`, que ya existen.
 
-## Usarla ya, sin BotFather (comando oculto `/parametros`)
+## Disponible para todos, sin BotFather
 
-Mientras el botón global no esté en BotFather, el bot tiene el comando **`/parametros`** (no aparece en ninguna lista de
-comandos y solo funciona para colaboradores autorizados):
+La toma de parámetros está habilitada para **todo colaborador vinculado a Telegram** (no hay lista de permitidos). El botón
+**Parámetros** (junto al campo de texto) se pone solo en el menú **de cada chat** —Telegram permite un botón de menú por chat
+desde el propio bot con `setChatMenuButton`; no afecta a nadie más— en estos momentos:
 
-- **`/parametros`** → pone el botón **Parámetros** en el menú **de ese chat** (Telegram permite un botón de menú por chat desde
-  el propio bot con `setChatMenuButton`; no afecta a nadie más) y manda un mensaje con un botón que abre la Mini App en
-  **modo real: lo que se registra SE GUARDA** en `mtto_parametros` (se ve en Mantenimiento → 📋 Parámetros).
+- al **vincularse** (cuando el técnico comparte su contacto),
+- cada vez que escribe **`/menu`** o **`/start`**,
+- con el comando oculto **`/parametros`**, que además manda un mensaje con un botón para abrir la Mini App.
+
+Comandos (no aparecen en ninguna lista de comandos):
+
+- **`/parametros`** → repone el botón y abre la Mini App en **modo real: lo que se registra SE GUARDA** en `mtto_parametros`
+  (se ve en Mantenimiento → 📋 Parámetros).
 - **`/parametros demo`** → vista previa (`?demo=1`): se recorre y se valida todo igual, pero **no se guarda ni se envía nada**
   (aparece la barra amarilla 🧪).
-- **`/parametros quitar`** → devuelve el botón normal de ese chat.
+- **`/parametros quitar`** → quita el botón de ese chat (vuelve a ponerse con el próximo `/menu`).
 
-Quién puede usarlo: por defecto `PER942454` (Adrián). Para sumar más colaboradores, la variable de entorno
-`PARAMETROS_IDS` (ej. `PER009,PER781233`); la URL se puede cambiar con `PARAMETROS_URL`. Cuando se configure el botón
-global en BotFather, este comando deja de ser necesario.
+La URL se puede cambiar con la variable `PARAMETROS_URL`. Si algún día se configura el botón global en BotFather, el del chat
+sigue funcionando igual.
 
 ## Qué se guarda (`mtto_parametros`)
 

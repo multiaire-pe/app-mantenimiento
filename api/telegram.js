@@ -38,11 +38,11 @@ async function depsReales() {
       obsSes.getSesion(from), asisSes.getSesion(from), mtSes.getSesion(from),
     ])).some(Boolean),
     getModoTeclado: tecl.getModoTeclado, setModoTeclado: tecl.setModoTeclado,
-    // Vista previa de la Mini App de parámetros (comando oculto /parametros): solo para estos colaboradores
-    // (se pueden sumar con PARAMETROS_IDS="PER1,PER2"). No aparece en ninguna lista de comandos.
+    // Mini App de toma de parámetros: disponible para TODO colaborador vinculado a Telegram. El botón «Parámetros»
+    // se pone solo en el menú de su chat al vincularse y con /menu o /start (sin pasar por BotFather); /parametros
+    // lo repone, /parametros demo abre la vista previa sin guardar y /parametros quitar lo saca.
     parametros: {
       url: process.env.PARAMETROS_URL || 'https://multiaire-peru-app.vercel.app/parametros.html',
-      ids: ['PER942454', ...(process.env.PARAMETROS_IDS || '').split(',').map((x) => x.trim()).filter(Boolean)],
     },
     limpiarSesiones: (from) => Promise.all([
       obsSes.limpiarSesion(from), fotos.limpiarFotoPendiente(from),
@@ -185,6 +185,13 @@ export async function procesarUpdate(update, d) {
   }
   if (n.callbackId) d.tg.responderCallback(n.callbackId).catch(() => {});   // quita el "cargando" del botón
 
+  // Pone el botón «Parámetros» (Mini App, modo real) en el menú de ESTE chat. Es un extra: si falla no frena nada.
+  const ponerBotonParametros = async (chat) => {
+    if (!d.parametros || !d.tg.fijarBotonMenu) return;
+    try { await d.tg.fijarBotonMenu(chat, d.tg.botonWebApp('Parámetros', d.parametros.url)); }
+    catch (e) { console.error('[telegram] no pude poner el botón Parámetros:', e && e.message); }
+  };
+
   let escrituraIniciada = false;
   try {
     // ── Vinculación: el técnico comparte su contacto ────────────────────────────────────────
@@ -205,6 +212,7 @@ export async function procesarUpdate(update, d) {
         { reply_markup: d.tg.TECLADO_INICIO });
       await d.setModoTeclado(`tg${chatId}`, 'inicio').catch(() => {});
       await d.tg.enviarTexto(chatId, TXT_MENU);
+      await ponerBotonParametros(chatId);
       return;
     }
 
@@ -247,10 +255,11 @@ export async function procesarUpdate(update, d) {
       if (cmd === '/menu' || cmd === '/start') {
         await d.limpiarSesiones(from);
         await mostrarMenu();
+        await ponerBotonParametros(chatId);
       } else if (cmd === '/cancelar') {
         await d.limpiarSesiones(from);
         await mostrarMenu('❌ Cancelado. Lo que estabas haciendo no se guardó (lo que ya estaba guardado se mantiene).\n\n');
-      } else if (cmd === '/parametros' && d.parametros && d.parametros.ids.includes(tecnico.id)) {
+      } else if (cmd === '/parametros' && d.parametros) {
         // Toma de parámetros por Mini App, SIN esperar el botón global de BotFather. Pone el botón «Parámetros» en
         // el menú de ESTE chat (no afecta a nadie más) y manda un mensaje con un botón que la abre.
         //   /parametros          → modo REAL: los registros SE GUARDAN en `mtto_parametros`.
