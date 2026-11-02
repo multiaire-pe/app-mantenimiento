@@ -87,6 +87,19 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
   t('contacto propio: vincula', d.log.vinculos.length === 1 && d.log.vinculos[0][0] === 99);
   t('contacto propio: teclado de inicio + menú corto sin botones en línea', d.log.env.some((e) => e.e?.reply_markup?.k === 'inicio') && d.log.env.some((e) => /Elige una opción aquí abajo/.test(e.x || '')) && !d.log.env.some((e) => e.r?.botones));
 }
+{ // el botón «Parámetros» se pone SOLO en el chat de cada colaborador (sin BotFather): al vincularse y con /menu o /start
+  const v = mkDeps(); await procesarUpdate(msg({ contact: { phone_number: '51999', user_id: 99 } }, 99, 99), v);
+  t('al vincularse: queda el botón Parámetros (modo real) en SU chat', v.log.menu.length === 1 && v.log.menu[0].c === 99 && v.log.menu[0].b.type === 'web_app' && v.log.menu[0].b.text === 'Parámetros' && !/demo/.test(v.log.menu[0].b.web_app.url), JSON.stringify(v.log.menu));
+  for (const cmd of ['/menu', '/start']) {
+    const m = mkDeps(); await procesarUpdate(msg({ text: cmd }), m);
+    t(`${cmd}: deja el botón Parámetros en el chat`, m.log.menu.length === 1 && m.log.menu[0].c === 7 && m.log.menu[0].b.type === 'web_app' && !/demo/.test(m.log.menu[0].b.web_app.url), JSON.stringify(m.log.menu));
+  }
+  const f = mkDeps(); f.tg.fijarBotonMenu = async () => { throw new Error('telegram caído'); };
+  await procesarUpdate(msg({ text: '/menu' }), f);
+  t('si no se puede poner el botón, el menú sale igual', f.log.env.length === 1 && esMenuTg(f.log.env[0]), JSON.stringify(f.log.env));
+  const nv = mkDeps(); await procesarUpdate(msg({ text: '/menu' }, 99, 99), nv);
+  t('sin vincular no se le pone ningún botón', nv.log.menu.length === 0);
+}
 { // contacto propio con número desconocido
   const d = mkDeps(); await procesarUpdate(msg({ contact: { phone_number: '51000', user_id: 99 } }, 99, 99), d);
   t('número desconocido: avisa', /No encuentro ese número/.test(d.log.env[0].x));
@@ -236,9 +249,9 @@ const msg = (extra, chat = 7, uid = 7) => ({ update_id: Math.floor(Math.random()
     const v = mkDeps(); await procesarUpdate(msg({ text: txt }), v);
     t(`variante ${txt}`, v.log.menu.length === 1 && v.log.menu[0].b.type === 'web_app');
   }
-  // quien NO está permitido: el comando "no existe" y no se toca su menú (sigue siendo oculto)
-  const n = mkDeps({ parametros: { url: 'https://app.test/parametros.html', ids: ['OTRO'] } }); await procesarUpdate(msg({ text: '/parametros' }), n);
-  t('no permitido: "Ese comando no existe" y no se toca su botón de menú', n.log.menu.length === 0 && /no existe/.test(n.log.env[0].x), JSON.stringify(n.log.env));
+  // la toma de parámetros es para TODO colaborador vinculado: no hay lista de permitidos
+  const otro = mkDeps({ identificarPorTelegram: async () => ({ id: 'PER777', nombre: 'LUIS' }) }); await procesarUpdate(msg({ text: '/parametros' }), otro);
+  t('cualquier técnico vinculado puede usar /parametros (no solo el administrador)', otro.log.menu.length === 1 && otro.log.menu[0].b.type === 'web_app' && !/no existe/.test(otro.log.env[0].x), JSON.stringify(otro.log));
   const sin = mkDeps({ parametros: undefined }); await procesarUpdate(msg({ text: '/parametros' }), sin);
   t('sin configuración: tampoco existe', sin.log.menu.length === 0 && /no existe/.test(sin.log.env[0].x));
   // un técnico sin vincular no llega al comando
