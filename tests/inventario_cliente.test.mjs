@@ -80,7 +80,7 @@ t('"-" como cliente no vale (se trata como sin cliente)', !guion.ok && /varios c
 // ── el código del formulario usa todo esto ──
 t('saveItem usa resolverClienteGuardado y ya no deriva el cliente de la sede', /const rc=resolverClienteGuardado\(\{editando:editRow!==null/.test(html) && !/sedeCliente\[/.test(html));
 t('el cliente que se guarda sale de ese resultado', /const cliente_val=rc\.cliente;/.test(html));
-t('el formulario tiene el selector de cliente', /<select id="f_cliente">/.test(html));
+t('el formulario tiene el selector de cliente', /<select id="f_cliente"[ >]/.test(html));
 t('al elegir la sede del desplegable se propone el cliente del encabezado', /onPick\(h\?h\.textContent:''\)/.test(html) && /sddInit\('f_sede', \(cli\)=>refrescarClienteForm\(cli\)\)/.test(html));
 t('abrir "Editar" y "Nuevo" refrescan el selector', /document\.getElementById\('f_sede'\)\.value=r\.sede;refrescarClienteForm\(\)/.test(html) && /refrescarClienteForm\(\);\s*\n\s*document\.getElementById\('mov'\)\.classList\.add\('open'\)/.test(html));
 t('la lista de clientes por sede se alimenta de los datos y de maestros', /data\.forEach\(r=>registrarSedeCliente\(r\.sede,r\.cliente\)\)/.test(html) && /tiendas\.forEach\(t=>registrarSedeCliente\(t\.sede,t\.cliente\)\)/.test(html));
