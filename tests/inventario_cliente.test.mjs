@@ -53,6 +53,16 @@ t('editar un equipo sin cliente pide elegirlo', !sinCli.ok && /no tiene cliente/
 const sinCli2 = resolverClienteGuardado({ editando: true, clienteEquipo: '', clienteElegido: 'TOTTUS', sede: 'MIRAFLORES', clientesDeLaSede: mir });
 t('…y si lo elige, se guarda', sinCli2.ok && sinCli2.cliente === 'TOTTUS');
 
+// ── corregir el cliente de un equipo mal asignado (checkbox "Corregir el cliente") ──
+const corr = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: 'TOTTUS', sede: 'MIRAFLORES', clientesDeLaSede: mir, reasignar: true });
+t('reasignar=true en edición → manda el cliente elegido', corr.ok && corr.cliente === 'TOTTUS', JSON.stringify(corr));
+const corrVacio = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: '', sede: 'MIRAFLORES', clientesDeLaSede: mir, reasignar: true });
+t('reasignar=true sin elegir nada → conserva el del equipo', corrVacio.ok && corrVacio.cliente === 'RIPLEY');
+const corrAjeno = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: 'TOTTUS', sede: 'ATOCONGO', clientesDeLaSede: clientesDeSede('ATOCONGO'), reasignar: true });
+t('reasignar a un cliente que no tiene la sede → rechazado', !corrAjeno.ok);
+const sinFlag = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: 'TOTTUS', sede: 'MIRAFLORES', clientesDeLaSede: mir });
+t('sin reasignar sigue conservando el cliente', sinFlag.ok && sinFlag.cliente === 'RIPLEY');
+
 // ── crear ──
 const nuevoComp = resolverClienteGuardado({ editando: false, clienteEquipo: '', clienteElegido: '', sede: 'MIRAFLORES', clientesDeLaSede: mir });
 t('CREAR en sede compartida SIN elegir cliente → rechazado (no se adivina)', !nuevoComp.ok && /varios clientes/.test(nuevoComp.error), JSON.stringify(nuevoComp));
