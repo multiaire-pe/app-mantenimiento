@@ -1306,6 +1306,10 @@ function periodoSiguiente(periodo, anio) {
   const i = PERIODOS.indexOf(periodo);
   return i === PERIODOS.length-1 ? { periodo: PERIODOS[0], anio: anio+1 } : { periodo: PERIODOS[i+1], anio };
 }
+function periodoAnterior(periodo, anio) {
+  const i = PERIODOS.indexOf(periodo);
+  return i === 0 ? { periodo: PERIODOS[PERIODOS.length-1], anio: anio-1 } : { periodo: PERIODOS[i-1], anio };
+}
 function ordenPeriodo(anio, periodo) { return Number(anio)*6 + PERIODOS.indexOf(periodo); }
 
 // ── INIT ────────────────────────────────────────────────────────────────────
@@ -1453,8 +1457,9 @@ async function loadPeriodo() {
 }
 
 // Toggle "Usar este período para registros de WhatsApp" — solo aparece en la pestaña del
-// período del CALENDARIO y la SIGUIENTE (adelantarse más de un bimestre no tiene caso de uso
-// real y aumenta el riesgo de tocar el período equivocado). El puntero vive en
+// período del CALENDARIO, la SIGUIENTE (sede adelantada) y la ANTERIOR (sede atrasada, que aún cierra
+// el período pasado); moverse más de un bimestre no tiene caso de uso real y aumenta el riesgo de
+// tocar el período equivocado. El puntero vive en
 // `mtto_periodo_activo/{sede}` (mismo doc que lee `periodoEfectivo` en api/_lib/mtto.js):
 // solo puede haber UN período activo por sede, así que activarlo en uno desactiva cualquier
 // otro solo — no son dos banderas independientes que puedan quedar mal sincronizadas.
@@ -1467,7 +1472,9 @@ async function renderWspToggle() {
   const sig = periodoSiguiente(cal.periodo, cal.anio);
   const esActual = currentPeriodo === cal.periodo && Number(currentAnio) === cal.anio;
   const esSiguiente = currentPeriodo === sig.periodo && Number(currentAnio) === sig.anio;
-  if(!esActual && !esSiguiente){ grp.style.display='none'; return; }
+  const ant = periodoAnterior(cal.periodo, cal.anio);
+  const esAnterior = currentPeriodo === ant.periodo && Number(currentAnio) === ant.anio;
+  if(!esActual && !esSiguiente && !esAnterior){ grp.style.display='none'; return; }
   grp.style.display = '';
 
   let d = null;
@@ -1478,7 +1485,11 @@ async function renderWspToggle() {
   } catch(e) { /* si falla la lectura, se asume sin adelanto (default = calendario) */ }
   // Vigente = existe Y sigue por delante del calendario — misma regla que el bot: en cuanto
   // el calendario lo alcanza, el adelanto quedó obsoleto y el activo real vuelve a ser el de hoy.
-  const vigente = d && d.periodo && d.anio && ordenPeriodo(d.anio, d.periodo) > ordenPeriodo(cal.anio, cal.periodo);
+  // Atrasado = exactamente un bimestre antes (misma regla que `punteroVigente` del bot).
+  const oo = (d && d.periodo && d.anio && PERIODOS.includes(d.periodo)) ? ordenPeriodo(d.anio, d.periodo) : null;
+  const oc = ordenPeriodo(cal.anio, cal.periodo);
+  const vigente = oo !== null && (oo > oc || oo === oc - 1);
+  const atrasado = vigente && oo < oc;
   const activo = vigente ? (currentPeriodo === d.periodo && Number(currentAnio) === Number(d.anio)) : esActual;
 
   chk.checked = activo;
@@ -1487,8 +1498,10 @@ async function renderWspToggle() {
   // "ninguno prendido".
   chk.disabled = esActual || !MA.can('editar','mantenimiento');
   hint.textContent = esActual
-    ? (vigente ? `📌 WhatsApp está guardando en ${d.periodo} ${d.anio} (adelantado) — desactivalo desde esa pestaña para volver acá.` : '')
-    : (activo ? '📌 Los registros de WhatsApp de esta sede se guardan aquí.' : 'Activalo para adelantar los registros de WhatsApp a este período.');
+    ? (vigente ? `📌 WhatsApp está guardando en ${d.periodo} ${d.anio} (${atrasado ? 'atrasado' : 'adelantado'}) — desactivalo desde esa pestaña para volver acá.` : '')
+    : (activo ? '📌 Los registros de WhatsApp de esta sede se guardan aquí.'
+      : (esAnterior ? 'Activalo si esta sede aún está cerrando este período: los registros de WhatsApp seguirán cayendo aquí.'
+        : 'Activalo para adelantar los registros de WhatsApp a este período.'));
 }
 
 async function onToggleWspPeriodo(checked) {
