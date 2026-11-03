@@ -1,4 +1,4 @@
-// Escritura de marcajes en asistencia_registros (origen WHATSAPP).
+// Escritura de marcajes en asistencia_registros (origen WHATSAPP por compatibilidad; el canal real va en marcajeEntrada/Salida.canal).
 // Replica EXACTAMENTE el upsert de asistencia_multiaire.html:
 //   - 1 doc por (colabId, fecha); se localiza por query where fecha==fecha → find(colabId).
 //   - ENTRADA crea el doc (o completa uno existente sin entrada); SALIDA hace set({...existing,horaSalida}).
@@ -8,19 +8,27 @@
 import { getDb } from './firestore.js';
 import { fmtDistancia } from './geo.js';
 
+// Nombre del canal para los textos que ve el administrador. El bot es de Telegram (WhatsApp está apagado);
+// `MINIAPP` es el marcaje con cámara en vivo desde la Mini App de Telegram.
+const NOMBRE_CANAL = { MINIAPP: 'Mini App', TELEGRAM: 'Telegram' };
+
 // Nota humana (columna Comentario de la app) SOLO cuando hay algo que revisar; si el marcaje
 // es limpio (en el radio y en el plan), queda vacía como un registro normal.
-function notaMarca(ubic, fueraDePlan) {
+function notaMarca(ubic, fueraDePlan, canal) {
   const partes = [];
   if (fueraDePlan) partes.push('fuera de plan');
   if (ubic && ubic.valida === false) partes.push('sede sin coordenadas');
   else if (ubic && ubic.dentro === false && ubic.distancia != null) partes.push(`fuera de radio (${fmtDistancia(ubic.distancia)})`);
-  return partes.length ? `WhatsApp · ⚠️ ${partes.join(' · ')}` : '';
+  return partes.length ? `${NOMBRE_CANAL[canal] || NOMBRE_CANAL.TELEGRAM} · ⚠️ ${partes.join(' · ')}` : '';
 }
 
 // Objeto de evidencia de un marcaje (entrada o salida).
-function evidencia({ sede, ubic, fueraDePlan, horaExacta, ts }) {
+function evidencia({ sede, ubic, fueraDePlan, horaExacta, ts, canal, gesto, codigo, retoSeg, precision }) {
+  const extra = canal === 'MINIAPP'
+    ? { canal: 'MINIAPP', gesto: gesto || '', codigo: codigo || '', retoSeg: retoSeg ?? null, precision: precision ?? null }
+    : { canal: 'TELEGRAM' };
   return {
+    ...extra,
     sedeId: sede?.idTienda || sede?.id || '',
     sede: sede?.sede || sede?.tienda || '',
     cliente: sede?.cliente || '',
@@ -39,9 +47,9 @@ function evidencia({ sede, ubic, fueraDePlan, horaExacta, ts }) {
 // LÓGICA PURA (testeable): a partir del registro existente (o null) construye el doc a escribir.
 // Devuelve { data } o { error } con error ∈ ya_entrada | sin_entrada | ya_salida | salida_antes.
 export function construirRegistro(existing, m) {
-  const { tipo, tecnico, fecha, horaDecimal, horaExacta, ts, sede, ubic, fueraDePlan, turnoNocturno } = m;
-  const ev = evidencia({ sede, ubic, fueraDePlan, horaExacta, ts });
-  const nota = notaMarca(ubic, fueraDePlan);
+  const { tipo, tecnico, fecha, horaDecimal, horaExacta, ts, sede, ubic, fueraDePlan, turnoNocturno, canal, gesto, codigo, retoSeg, precision } = m;
+  const ev = evidencia({ sede, ubic, fueraDePlan, horaExacta, ts, canal, gesto, codigo, retoSeg, precision });
+  const nota = notaMarca(ubic, fueraDePlan, canal);
   const autor = `wa:${tecnico?.id || 'desconocido'}`;
 
   if (tipo === 'ENTRADA') {
@@ -147,8 +155,10 @@ export async function corregirSedeMarcaje({ colabId, fecha, tipo, sede, ubic, fu
   const campo = tipo === 'SALIDA' ? 'marcajeSalida' : 'marcajeEntrada';
   const actual = doc.data()[campo];
   if (!actual) return { ok: false, error: 'sin_marcaje' };
-  const ev = evidencia({ sede, ubic, fueraDePlan, horaExacta: actual.hora, ts: actual.ts });
+  // Conserva el canal y la evidencia del reto (gesto, código, precisión): solo cambia la sede.
+  const ev = evidencia({ sede, ubic, fueraDePlan, horaExacta: actual.hora, ts: actual.ts,
+    canal: actual.canal, gesto: actual.gesto, codigo: actual.codigo, retoSeg: actual.retoSeg, precision: actual.precision });
   await db.collection('asistencia_registros').doc(doc.id).set(
-    { [campo]: ev, observacion: notaMarca(ubic, fueraDePlan) }, { merge: true });
+    { [campo]: ev, observacion: notaMarca(ubic, fueraDePlan, actual.canal) }, { merge: true });
   return { ok: true, id: doc.id };
 }
