@@ -44,7 +44,6 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .user-menu-header{padding:10px 14px 6px;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
 /* LAYOUT */
 .app{display:flex;height:calc(100vh - 52px)}
-.sidebar{width:270px;min-width:270px;background:var(--surface);border-right:1.5px solid var(--border);display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto}
 .main{flex:1;min-width:0;overflow-y:auto;padding:24px}
 .sb-section{padding:12px 16px 8px;font-size:10px;font-weight:700;letter-spacing:.12em;color:var(--blue);text-transform:uppercase;border-bottom:1px solid var(--border)}
 .sb-body{padding:14px 16px}
@@ -110,7 +109,6 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 .badge-permiso{background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple-border)}
 .badge-vacaciones{background:var(--blue-pale);color:var(--blue);border:1px solid #c0d0ef}
 .badge-descanso-comp{background:var(--teal-bg);color:var(--teal);border:1px solid var(--teal-border)}
-.supervisor-mode .sidebar{display:none}
 .supervisor-mode #modal-edit-reg .btn-danger,.supervisor-mode #modal-edit-reg .btn-primary{display:none}
 .no-delete #modal-edit-reg .btn-danger{display:none}
 /* HISTORIAL */
@@ -199,7 +197,6 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
   .back-link{border-radius:8px}
   .main{padding:12px}
   .app{flex-direction:column;height:auto}
-  .sidebar{width:100%;min-width:unset;max-height:none;border-right:none;border-bottom:1.5px solid var(--border)}
   .colabs-grid{grid-template-columns:1fr}
   .stats-row{grid-template-columns:1fr 1fr}
   /* La tabla tiene 7 columnas; en móvil ocultamos Cargo(2) y Comentario(7) → quedan 5 visibles.
@@ -252,49 +249,6 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 </header>
 
 <div class="app">
-  <!-- SIDEBAR -->
-  <div class="sidebar">
-    <div class="sb-section">📋 Registrar Asistencia</div>
-    <div class="sb-body">
-
-      <div class="sb-label">Fecha</div>
-      <input type="date" class="sb-input" id="sidebar-fecha" onchange="onSidebarFechaChange()">
-
-      <div class="sb-label">Colaborador</div>
-      <select class="sb-input" id="reg-colab" onchange="selectColab(this.value)" style="margin-bottom:6px">
-        <option value="">— Seleccionar colaborador —</option>
-      </select>
-      <div id="colab-status" style="display:none;margin-bottom:10px"></div>
-
-      <div class="reg-hora-row">
-        <label>Hora:</label>
-        <select class="sb-input" id="reg-hora" style="margin-bottom:0;flex:1"></select>
-        <button class="btn btn-sm" onclick="setNowHora()" title="Hora actual">⟳</button>
-      </div>
-
-      <div class="field-group" style="margin-bottom:10px">
-        <div class="sb-label">Observación</div>
-        <input type="text" class="sb-input" id="reg-obs" placeholder="Opcional..." style="margin-bottom:0">
-      </div>
-
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">
-        <button class="btn btn-green btn-full" onclick="registrar('ENTRADA')">▶ Registrar Entrada</button>
-        <button class="btn btn-danger btn-full" onclick="registrar('SALIDA')">■ Registrar Salida</button>
-      </div>
-
-      <div style="border-top:1px solid var(--border);padding-top:10px">
-        <div class="sb-label">Estado especial</div>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
-          <button class="btn btn-sm" onclick="registrarEstado('F')" style="font-size:10px">✗ Falta</button>
-          <button class="btn btn-sm" onclick="registrarEstado('DC')" style="font-size:10px">😴 Desc. compensatorio</button>
-          <button class="btn btn-sm" onclick="registrarEstado('DM')" style="font-size:10px">🏥 Desc. médico</button>
-          <button class="btn btn-sm" onclick="registrarEstado('P')" style="font-size:10px">⚠️ Permiso</button>
-          <button class="btn btn-sm" onclick="registrarEstado('V')" style="font-size:10px">🏖️ Vacaciones</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- MAIN -->
   <div class="main">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -583,7 +537,6 @@ const DIAS_CORTO = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 // ── STATE ─────────────────────────────────────────────────────────────────────
 let maUser = null, maEmails = null;
 let allColabs = [];
-let selectedColabId = null;
 let todayRegs = [];
 let currentTab = 'hoy';
 let feriados = []; // ['YYYY-MM-DD',...]
@@ -703,8 +656,6 @@ document.addEventListener('click',e=>{const p=document.getElementById('user-pill
 async function init() {
   updateHoyDate();
   populateHoraSelects();
-  setNowHora();
-  setSidebarFechaToday();
   setDefaultRanges();
   try {
     await Promise.all([loadColabs(), loadFeriados()]);
@@ -736,22 +687,10 @@ function updateHoyDate(){document.getElementById('hoy-date').textContent=new Dat
 
 function populateHoraSelects() {
   const opts = '<option value="">—</option>' + HORA_SLOTS.map(s=>`<option value="${s}">${s}</option>`).join('');
-  ['reg-hora','edit-reg-entrada','edit-reg-salida'].forEach(id=>{
+  ['edit-reg-entrada','edit-reg-salida'].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.innerHTML=opts;
   });
-}
-
-function setNowHora() {
-  const now=new Date(),h=now.getHours(),m=now.getMinutes()<30?0:30;
-  const val=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
-  const sel=document.getElementById('reg-hora');
-  if(sel)sel.value=val;
-}
-
-function setSidebarFechaToday() {
-  const el=document.getElementById('sidebar-fecha');
-  if(el){el.value=todayKey();el.max=todayKey();}
 }
 
 function setDefaultRanges() {
@@ -803,7 +742,9 @@ function esDiaNoLaboral(fecha){return isDomingo(fecha)||isFeriado(fecha);}
 const SABADO_NUEVO_DESDE='2026-09-19';
 const AMANECIDA_DESDE='2026-10-19';
 function baseSabado(f){return f>=SABADO_NUEVO_DESDE?4:4.5;}
-function heAusencia(fecha){return new Date(fecha+'T12:00:00').getDay()===6?-baseSabado(fecha):-8;}
+// Falta o día laborable sin registro: -8 h de lunes a sábado (pedido de Adrián, 2026-11-03). El sábado antes descontaba
+// su jornada base (-4 / -4.5), pero la falta pesa igual todos los días; la base del sábado solo aplica al calcular H.E. de un día trabajado.
+function heAusencia(fecha){return -8;}
 // Días fuera del período laboral del colaborador (antes de fechaIngreso o después de fechaCese) no cuentan como ausencia/deuda
 function fueraDeVigencia(c,f){return(c.fechaIngreso&&f<c.fechaIngreso)||(c.fechaCese&&f>c.fechaCese);}
 
@@ -893,36 +834,9 @@ async function loadColabs() {
     const p=d.data();
     return{id:String(p.id||('PER'+String(i+1).padStart(3,'0'))).trim(),nombre:String(p.nombre||'').trim(),cargo:String(p.cargo||'TÉCNICO').trim(),activo:String(p.activo||'SI').trim().toUpperCase()!=='NO',fechaIngreso:String(p.fechaIngreso||'').trim(),fechaCese:String(p.fechaCese||'').trim(),regimenAsistencia:String(p.regimenAsistencia||'MARCA').trim().toUpperCase()};
   }).filter(p=>p.nombre&&p.regimenAsistencia!=='NO_MARCA').sort((a,b)=>a.nombre.localeCompare(b.nombre));
-  renderColabsGrid();
   populateColabSelects();
 }
 
-function renderColabsGrid() {
-  const sel=document.getElementById('reg-colab');
-  const activos=allColabs.filter(c=>c.activo);
-  sel.innerHTML='<option value="">— Seleccionar colaborador —</option>'+
-    activos.map(c=>`<option value="${c.id}"${c.id===selectedColabId?' selected':''}>${escHtml(c.nombre)} — ${escHtml(c.cargo)}</option>`).join('');
-  if(selectedColabId)selectColab(selectedColabId);
-}
-
-function selectColab(id) {
-  selectedColabId=id;
-  const el=document.getElementById('colab-status');
-  if(!el)return;
-  if(!id){el.style.display='none';return;}
-  const fecha=document.getElementById('sidebar-fecha').value||todayKey();
-  if(fecha!==todayKey()){el.style.display='none';return;}
-  const reg=todayRegs.find(r=>r.colabId===id);
-  if(!reg){el.innerHTML='<span style="font-size:11px;color:var(--muted2)">Sin registro hoy</span>';}
-  else if(reg.estado==='F'){el.innerHTML='<span class="badge badge-ausente">✗ Falta</span>';}
-  else if(reg.estado==='DC'){el.innerHTML='<span class="badge badge-descanso-comp">😴 Desc. compensatorio</span>';}
-  else if(reg.estado==='DM'){el.innerHTML='<span class="badge badge-dm">🏥 Desc. médico</span>';}
-  else if(reg.estado==='P'){el.innerHTML='<span class="badge badge-permiso">⚠️ Permiso</span>';}
-  else if(reg.estado==='V'){el.innerHTML='<span class="badge badge-vacaciones">🏖️ Vacaciones</span>';}
-  else if(reg.horaEntrada!=null&&reg.horaSalida==null){el.innerHTML=`<span class="badge badge-dentro">▶ Entrada: ${decimalToHora(reg.horaEntrada)}</span>`;}
-  else if(reg.horaEntrada!=null&&reg.horaSalida!=null){el.innerHTML=`<span class="badge badge-fuera">■ Salida: ${decimalToHora(reg.horaSalida)}</span>`;}
-  el.style.display='block';
-}
 function getEstadoHoy(colabId){const reg=todayRegs.find(r=>r.colabId===colabId);if(!reg)return null;if(reg.horaEntrada&&!reg.horaSalida)return'DENTRO';if(reg.horaEntrada&&reg.horaSalida)return'SALIO';return null;}
 
 function populateColabSelects() {
@@ -947,19 +861,12 @@ function renderColabsManagerList() {
 }
 
 // ── SIDEBAR FECHA ─────────────────────────────────────────────────────────────
-function onSidebarFechaChange() {
-  const fecha=document.getElementById('sidebar-fecha').value;
-  if(fecha>todayKey()){document.getElementById('sidebar-fecha').value=todayKey();toast('No se puede registrar en fechas futuras','err');return;}
-  if(selectedColabId)selectColab(selectedColabId);
-}
-
 // ── REGISTROS ────────────────────────────────────────────────────────────────
 async function loadTodayData() {
   const fecha=todayKey();
   const snap=await window.__db.collection('asistencia_registros').where('fecha','==',fecha).get();
   todayRegs=snap.docs.map(d=>({id:d.id,...d.data()}));
   renderTodayTable();
-  renderColabsGrid();
 }
 
 async function loadRegsByFecha(fecha) {
@@ -1009,66 +916,6 @@ function renderTodayTable() {
   document.getElementById('stat-fuera').textContent=salio;
   document.getElementById('stat-ausente').textContent=sinReg;
   document.getElementById('stat-total').textContent=activos.length;
-}
-
-async function registrar(tipo) {
-  if(!MA.can('editar','asistencia')){toast('Sin permisos','err');return;}
-  if(!selectedColabId){toast('Selecciona un colaborador primero','err');return;}
-  const colab=allColabs.find(c=>c.id===selectedColabId);
-  if(!colab)return;
-  const horaStr=document.getElementById('reg-hora').value;
-  if(!horaStr){toast('Indica la hora','err');return;}
-  const horaDecimal=horaToDecimal(horaStr);
-  const obs=document.getElementById('reg-obs').value.trim();
-  const fecha=document.getElementById('sidebar-fecha').value||todayKey();
-  if(fecha>todayKey()){toast('No se puede registrar en fechas futuras','err');return;}
-  const loading=document.getElementById('loading');
-  loading.classList.add('show');
-  try {
-    const regsDelDia=await loadRegsByFecha(fecha);
-    const existing=regsDelDia.find(r=>r.colabId===selectedColabId);
-    if(tipo==='ENTRADA'){
-      if(existing&&existing.horaEntrada!=null){loading.classList.remove('show');toast(`${colab.nombre} ya tiene entrada registrada (${decimalToHora(existing.horaEntrada)})`,'err');return;}
-      const data={colabId:selectedColabId,nombre:colab.nombre,cargo:colab.cargo||'',fecha,horaEntrada:horaDecimal,horaSalida:null,estado:'A',observacion:obs,heManual:false,horasExtra:null,registradoPor:maUser?.email||'',timestamp:new Date().toISOString()};
-      if(existing){await window.__db.collection('asistencia_registros').doc(existing.id).set({...existing,...data});}
-      else{const _id='AST-'+selectedColabId+'-'+fecha;await window.__db.collection('asistencia_registros').doc(_id).set({...data,id:_id});}
-      toast(`✓ Entrada registrada para ${colab.nombre}`,'ok');
-    } else {
-      if(!existing||existing.horaEntrada==null){loading.classList.remove('show');toast(`${colab.nombre} no tiene entrada registrada`,'err');return;}
-      if(existing.horaSalida!=null){loading.classList.remove('show');toast(`${colab.nombre} ya tiene salida registrada`,'err');return;}
-      if(horaDecimal<=existing.horaEntrada){loading.classList.remove('show');toast('La salida debe ser posterior a la entrada','err');return;}
-      await window.__db.collection('asistencia_registros').doc(existing.id).set({...existing,horaSalida:horaDecimal,observacion:obs||existing.observacion,timestamp:new Date().toISOString()});
-      toast(`✓ Salida registrada para ${colab.nombre}`,'ok');
-    }
-    document.getElementById('reg-obs').value='';
-    if(fecha===todayKey())await loadTodayData();
-    else renderColabsGrid();
-  } catch(e){toast('Error: '+e.message,'err');}
-  loading.classList.remove('show');
-}
-
-async function registrarEstado(estado) {
-  if(!MA.can('editar','asistencia')){toast('Sin permisos','err');return;}
-  if(!selectedColabId){toast('Selecciona un colaborador primero','err');return;}
-  const colab=allColabs.find(c=>c.id===selectedColabId);
-  if(!colab)return;
-  const fecha=document.getElementById('sidebar-fecha').value||todayKey();
-  if(fecha>todayKey()){toast('No se puede registrar en fechas futuras','err');return;}
-  const labels={F:'Falta',DC:'Descanso compensatorio',DM:'Descanso médico',P:'Permiso',V:'Vacaciones'};
-  if(!confirm(`¿Registrar "${labels[estado]}" para ${colab.nombre} el ${fecha}?`))return;
-  const loading=document.getElementById('loading');
-  loading.classList.add('show');
-  try {
-    const regsDelDia=await loadRegsByFecha(fecha);
-    const existing=regsDelDia.find(r=>r.colabId===selectedColabId);
-    const data={colabId:selectedColabId,nombre:colab.nombre,cargo:colab.cargo||'',fecha,horaEntrada:null,horaSalida:null,estado,observacion:labels[estado]||estado,heManual:false,horasExtra:null,registradoPor:maUser?.email||'',timestamp:new Date().toISOString()};
-    // DM/Permiso/Falta/Vacaciones/Desc. compensatorio ya no es asistencia → overwrite completo (descarta origen/evidencia del bot si la había), igual que saveEditReg al pasar a no-A.
-    if(existing){await window.__db.collection('asistencia_registros').doc(existing.id).set({...data,id:existing.id});}
-    else{const _id='AST-'+selectedColabId+'-'+fecha;await window.__db.collection('asistencia_registros').doc(_id).set({...data,id:_id});}
-    toast(`✓ ${colab.nombre} → ${labels[estado]}`,'ok');
-    if(fecha===todayKey())await loadTodayData();
-  } catch(e){toast('Error: '+e.message,'err');}
-  loading.classList.remove('show');
 }
 
 // ── EDITAR REGISTRO ───────────────────────────────────────────────────────────
@@ -1396,7 +1243,7 @@ async function loadVistaES() {
           estadoStr=reg.estado||'A';
           if(heVal!=null)totalHE+=heVal;
         } else if(f<=todayKey()){
-          // Solo días laborables sin registro → X / -8 (sábado: -4, ver heAusencia)
+          // Solo días laborables sin registro → X / -8 (lunes a sábado, ver heAusencia)
           estadoStr='X';heVal=heAusencia(f);heStr=heVal.toFixed(1);totalHE+=heVal;
         }
         const heColor=heVal==null?'':heVal<0?'color:var(--red);font-weight:700':heVal>0?'color:var(--orange);font-weight:700':'';
