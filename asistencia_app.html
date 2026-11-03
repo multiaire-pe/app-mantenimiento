@@ -78,7 +78,7 @@ button:disabled{opacity:.5}
 const API = '/api/asistencia_app';
 const tg = window.Telegram && window.Telegram.WebApp;
 const $ = (id) => document.getElementById(id);
-let reto = null, offsetMs = 0, stream = null, fix = null, watchId = null, timer = null, enviando = false;
+let reto = null, offsetMs = 0, stream = null, fix = null, timer = null, enviando = false;
 
 async function api(body) {
   const res = await fetch(API, {
@@ -104,6 +104,7 @@ function motivoCamara(e) {
     NotFoundError: 'El teléfono no encontró una cámara frontal.',
     NotReadableError: 'La cámara está ocupada por otra aplicación. Ciérrala e inténtalo de nuevo.',
     OverconstrainedError: 'La cámara no aceptó los ajustes pedidos.',
+    Tiempo: 'La cámara tardó demasiado en responder. Si apareció un aviso de permiso, tócalo, y luego toca «Reintentar cámara».',
     TypeError: 'Esta versión de Telegram no permite usar la cámara en las Mini Apps. Actualiza Telegram.',
   }[n] || 'No pude abrir la cámara.';
   return base + ' (' + n + (e && e.message ? ': ' + String(e.message).slice(0, 80) : '') + ')';
@@ -124,7 +125,8 @@ async function abrirCamara() {
   let ultimo = null;
   for (const c of intentos) {
     try {
-      stream = await navigator.mediaDevices.getUserMedia(c);
+      const pedido = navigator.mediaDevices.getUserMedia(c);
+      stream = await Promise.race([pedido, new Promise((_, rej) => setTimeout(() => rej({ name: 'Tiempo', message: 'la cámara no respondió' }), 25000))]);
       $('video').srcObject = stream;
       $('aviso-cam').classList.add('hidden');
       return true;
@@ -143,28 +145,63 @@ async function abrirCamara() {
   return false;
 }
 
-// ── Ubicación: se sigue el GPS mientras la pantalla está abierta y al tomar la foto se usa la lectura más fresca.
-function seguirUbicacion() {
-  if (!navigator.geolocation) { $('estado-ubic').textContent = '📍 Este teléfono no permite leer la ubicación.'; return; }
-  watchId = navigator.geolocation.watchPosition((p) => {
-    fix = { lat: p.coords.latitude, lng: p.coords.longitude, precision: p.coords.accuracy, ts: Date.now() };
-    const el = $('estado-ubic');
-    el.className = 'estado ok';
-    el.textContent = '📍 Ubicación lista (±' + Math.round(p.coords.accuracy) + ' m)';
-  }, () => {
-    const el = $('estado-ubic');
-    el.className = 'estado err';
-    el.textContent = '📍 No pude leer tu ubicación. Activa el GPS y dale permiso a Telegram.';
-  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
-}
-function ubicacionFresca() {
+// ── Ubicación. Dentro de una Mini App el `navigator.geolocation` del navegador suele ser rechazado: Telegram trae su
+// propio permiso (LocationManager, desde la versión 8.0) y es el que se usa primero. El del navegador queda de respaldo.
+const conTiempo = (promesa, ms) => Promise.race([promesa, new Promise((r) => setTimeout(() => r(null), ms))]);
+
+function ubicacionDeTelegram() {
   return new Promise((resolve) => {
-    if (fix && Date.now() - fix.ts < 15000) return resolve(fix);
+    const lm = tg && tg.LocationManager;
+    if (!lm || !tg.isVersionAtLeast || !tg.isVersionAtLeast('8.0')) return resolve(null);
+    const leer = () => lm.getLocation((d) => resolve(d ? { lat: d.latitude, lng: d.longitude, precision: d.horizontal_accuracy, ts: Date.now() } : null));
+    if (lm.isInited) leer(); else lm.init(leer);
+  });
+}
+function ubicacionDelNavegador() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, precision: p.coords.accuracy, ts: Date.now() }),
-      () => resolve(fix),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+      () => resolve(null),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 });
   });
+}
+async function leerUbicacion() {
+  return (await conTiempo(ubicacionDeTelegram(), 20000)) || (await ubicacionDelNavegador());
+}
+function pintarUbicacion() {
+  const el = $('estado-ubic');
+  if (fix) {
+    el.className = 'estado ok';
+    el.textContent = '📍 Ubicación lista (±' + Math.round(fix.precision || 0) + ' m)';
+    return;
+  }
+  el.className = 'estado err';
+  el.innerHTML = '';
+  el.append('📍 No pude leer tu ubicación. Dale permiso a Telegram (Ajustes del teléfono → Telegram → Ubicación) y activa el GPS. ');
+  const abrir = document.createElement('a');
+  abrir.href = '#'; abrir.textContent = 'Reintentar';
+  abrir.onclick = (ev) => { ev.preventDefault(); seguirUbicacion(); };
+  el.append(abrir);
+  if (tg && tg.LocationManager && tg.LocationManager.isInited && tg.LocationManager.isAccessRequested && !tg.LocationManager.isAccessGranted) {
+    el.append(' · ');
+    const aj = document.createElement('a');
+    aj.href = '#'; aj.textContent = 'Abrir permisos de Telegram';
+    aj.onclick = (ev) => { ev.preventDefault(); tg.LocationManager.openSettings(); };
+    el.append(aj);
+  }
+}
+async function seguirUbicacion() {
+  $('estado-ubic').className = 'estado';
+  $('estado-ubic').textContent = '📍 Buscando tu ubicación…';
+  fix = await leerUbicacion();
+  pintarUbicacion();
+}
+async function ubicacionFresca() {
+  if (fix && Date.now() - fix.ts < 15000) return fix;
+  const nueva = await leerUbicacion();
+  if (nueva) { fix = nueva; pintarUbicacion(); }
+  return nueva || fix;
 }
 
 function pintarReto() {
@@ -250,7 +287,6 @@ async function marcar() {
 function cerrarCamara() {
   if (stream) stream.getTracks().forEach((t) => t.stop());
   stream = null;
-  if (watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
 }
 
 (async function () {
@@ -263,8 +299,8 @@ function cerrarCamara() {
   $('btn-foto').onclick = marcar;
   $('btn-otro').onclick = iniciar;
   if (!(await iniciar())) return;
-  seguirUbicacion();
-  await abrirCamara();
+  await abrirCamara();     // primero la cámara y después la ubicación: dos avisos de permiso a la vez se pisan
+  await seguirUbicacion();
 })();
 </script>
 </body>
