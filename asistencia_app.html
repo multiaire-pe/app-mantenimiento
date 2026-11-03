@@ -23,7 +23,7 @@ h1{font-size:18px;margin:0}
 .cod{display:inline-block;margin-top:4px;padding:2px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--line);font-weight:700;letter-spacing:.08em}
 .visor{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:3/4;width:100%}
 .visor video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
-.visor .aviso{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#fff;font-size:14px}
+.visor .aviso{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;color:#fff;font-size:14px}
 .tips{color:var(--hint);font-size:13px;margin:10px 2px}
 .tips li{margin:3px 0}
 .estado{font-size:13px;margin:8px 2px;color:var(--hint)}
@@ -95,17 +95,52 @@ const pad = (n) => String(n).padStart(2, '0');
 function mostrarError(t) { $('error').textContent = t || ''; }
 
 // ── Cámara: SOLO en vivo. No hay selector de archivos en toda la página, así que no se puede elegir una foto de la galería.
+// Qué le pasó a la cámara, en palabras del técnico (y el código técnico al final, para poder diagnosticar).
+function motivoCamara(e) {
+  const n = (e && e.name) || 'Error';
+  const base = {
+    NotAllowedError: 'Telegram no te dejó usar la cámara. Revisa el permiso de cámara de Telegram y, si te lo pidió, toca «Permitir».',
+    SecurityError: 'Telegram bloqueó la cámara en esta pantalla.',
+    NotFoundError: 'El teléfono no encontró una cámara frontal.',
+    NotReadableError: 'La cámara está ocupada por otra aplicación. Ciérrala e inténtalo de nuevo.',
+    OverconstrainedError: 'La cámara no aceptó los ajustes pedidos.',
+    TypeError: 'Esta versión de Telegram no permite usar la cámara en las Mini Apps. Actualiza Telegram.',
+  }[n] || 'No pude abrir la cámara.';
+  return base + ' (' + n + (e && e.message ? ': ' + String(e.message).slice(0, 80) : '') + ')';
+}
+
 async function abrirCamara() {
   if (stream) return true;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 960 }, height: { ideal: 1280 } }, audio: false });
-    $('video').srcObject = stream;
-    $('aviso-cam').classList.add('hidden');
-    return true;
-  } catch (e) {
-    $('aviso-cam').textContent = 'No pude abrir la cámara. Dale permiso de cámara a Telegram en los ajustes del teléfono y vuelve a abrir esta pantalla.';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    $('aviso-cam').textContent = 'Esta versión de Telegram no permite usar la cámara en las Mini Apps. Actualiza Telegram. (sin mediaDevices)';
     return false;
   }
+  // Primero la cámara frontal con buena resolución; si el teléfono no acepta esos ajustes, se pide lo más simple.
+  const intentos = [
+    { video: { facingMode: 'user', width: { ideal: 960 }, height: { ideal: 1280 } }, audio: false },
+    { video: { facingMode: 'user' }, audio: false },
+    { video: true, audio: false },
+  ];
+  let ultimo = null;
+  for (const c of intentos) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(c);
+      $('video').srcObject = stream;
+      $('aviso-cam').classList.add('hidden');
+      return true;
+    } catch (e) {
+      ultimo = e;
+      if (e && e.name === 'NotAllowedError') break;   // permiso denegado: probar otros ajustes no cambia nada
+    }
+  }
+  $('aviso-cam').innerHTML = '';
+  const t = document.createElement('div');
+  t.textContent = motivoCamara(ultimo);
+  const b = document.createElement('button');
+  b.className = 'main'; b.style.marginTop = '12px'; b.textContent = 'Reintentar cámara';
+  b.onclick = async () => { $('aviso-cam').textContent = 'Abriendo la cámara…'; await abrirCamara(); };
+  $('aviso-cam').append(t, b);
+  return false;
 }
 
 // ── Ubicación: se sigue el GPS mientras la pantalla está abierta y al tomar la foto se usa la lectura más fresca.
