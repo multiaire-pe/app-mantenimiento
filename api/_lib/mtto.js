@@ -102,9 +102,20 @@ const ordenPeriodo = (anio, periodo) => Number(anio) * 6 + PERIODOS.indexOf(peri
 // Período efectivo de una sede para el bot: por defecto el del calendario, salvo que la app
 // tenga marcado un adelanto en `mtto_periodo_activo/{sede}` (botón "Usar este período para
 // registros de WhatsApp" de mantenimiento_multiaire.html) — y ese adelanto SOLO vale mientras
-// siga por delante del calendario. En cuanto el calendario natural lo alcanza o lo pasa, quedó
-// obsoleto: se ignora y se borra, para que la app no siga mostrando un "adelanto" que ya es,
-// sencillamente, el período de hoy (nadie tiene que acordarse de apagarlo).
+// siga por delante del calendario, o atrasado UN bimestre (sede que aún cierra el período anterior). En
+// cuanto el calendario natural lo alcanza, o lo deja más de un bimestre atrás, quedó obsoleto: se ignora y
+// se borra, para que la app no siga mostrando un puntero que ya es, sencillamente, el período de hoy
+// (nadie tiene que acordarse de apagarlo).
+// ¿El puntero `mtto_periodo_activo` sigue valiendo frente al calendario? Vale si está ADELANTADO (por
+// delante del calendario) o ATRASADO exactamente un bimestre (la sede aún cierra el período anterior).
+// Igual al calendario, o más de un bimestre atrás, quedó obsoleto. Pura: la prueba la ejecuta tal cual.
+export function punteroVigente(base, puntero) {
+  const { periodo, anio } = puntero || {};
+  if (!periodo || !anio || !PERIODOS.includes(periodo)) return false;
+  const o = ordenPeriodo(anio, periodo), c = ordenPeriodo(base.anio, base.periodo);
+  return o > c || o === c - 1;
+}
+
 export async function periodoEfectivo(sede, cliente) {
   const base = periodoLima();
   if (!sede) return base;
@@ -112,8 +123,8 @@ export async function periodoEfectivo(sede, cliente) {
   const snap = await ref.get();
   if (!snap.exists) return base;
   const { periodo, anio } = snap.data() || {};
-  if (periodo && anio && ordenPeriodo(anio, periodo) > ordenPeriodo(base.anio, base.periodo)) {
-    return { periodo, anio };
+  if (punteroVigente(base, { periodo, anio })) {
+    return { periodo, anio: Number(anio) };
   }
   await ref.delete().catch(() => {});
   return base;
