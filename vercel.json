@@ -17,6 +17,9 @@
     },
     "api/parametros.js": {
       "maxDuration": 30
+    },
+    "api/asistencia_app.js": {
+      "maxDuration": 30
     }
   },
   "redirects": [
