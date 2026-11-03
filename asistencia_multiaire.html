@@ -480,7 +480,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
         <input type="text" class="field-input" id="edit-reg-obs" placeholder="Opcional...">
       </div>
       <div class="field-group" id="edit-reg-evidencia" style="display:none">
-        <div class="field-label">📍 Evidencia de marcaje (WhatsApp)</div>
+        <div class="field-label">📍 Evidencia de marcaje</div>
         <div id="edit-reg-evidencia-body" style="display:flex;flex-direction:column;gap:10px"></div>
       </div>
     </div>
@@ -993,7 +993,7 @@ function renderTodayTable() {
     const _heVal=heStr!=='—'?parseFloat(heStr):null;
     const heColor=_heVal==null?'color:var(--muted)':_heVal<0?'color:var(--red);font-weight:700':_heVal>0?'color:var(--orange);font-weight:700':'color:var(--muted)';
     const manualBadge=heManual?'<span class="he-manual-badge">M</span>':'';
-    const waBadge=reg&&(reg.marcajeEntrada||reg.marcajeSalida||reg.origen==='WHATSAPP')?' <span title="Marcado por WhatsApp con ubicación y selfie" style="font-size:11px">📱</span>':'';
+    const waBadge=reg&&(reg.marcajeEntrada||reg.marcajeSalida||reg.origen==='WHATSAPP')?' <span title="Marcado con ubicación y selfie (bot o Mini App)" style="font-size:11px">📱</span>':'';
     return`<div class="table-row" onclick="openEditReg(${regId},'${c.id}','${escHtml(c.nombre)}','${escHtml(c.cargo||'')}','${todayKey()}')">
       <div style="font-size:13px;font-weight:600">${escHtml(c.nombre)}${waBadge}</div>
       <div style="overflow:hidden"><span class="badge" style="font-size:10px;background:var(--surface3);color:var(--muted2);border:1px solid var(--border);max-width:100%;overflow:hidden;text-overflow:ellipsis;display:inline-block" title="${escHtml(c.cargo||'')}">${escHtml(c.cargo||'—')}</span></div>
@@ -1141,6 +1141,13 @@ async function renderEvidencia(reg){
         ?`<span class="badge badge-dentro">✓ en la sede${dist!=null?` · ${dist} m`:''}</span>`
         :`<span class="badge badge-ausente">⚠️ fuera de radio${dist!=null?` · ${dist} m`:''}</span>`;
     const planBadge=m.fueraDePlan?' <span class="badge badge-permiso">⚠️ fuera de plan</span>':'';
+    // Canal del marcaje. Los de la Mini App llevan la evidencia del reto: el gesto que se le pidió, el código que
+    // debe verse pegado en la foto, los segundos que tardó y la precisión del GPS. Quien revisa compara esto con la foto.
+    const GESTOS_TXT={'mano-abierta':'✋ mano abierta','pulgar-arriba':'👍 pulgar arriba','paz':'✌️ signo de paz','un-dedo':'☝️ un dedo arriba','tres-dedos':'🤟 tres dedos','puno':'✊ puño cerrado','dos-manos':'🙌 dos manos arriba','ok':'👌 signo OK','saludo':'🤙 pulgar y meñique','nariz':'👃 dedo en la nariz'};
+    const canalTxt=m.canal==='MINIAPP'
+      ?`📸 Mini App (cámara en vivo)${m.gesto?` · gesto: ${escHtml(GESTOS_TXT[m.gesto]||m.gesto)}`:''}${m.codigo?` · código <b>${escHtml(m.codigo)}</b>`:''}${m.retoSeg!=null?` · ${escHtml(String(m.retoSeg))} s`:''}${m.precision!=null?` · GPS ±${escHtml(String(m.precision))} m`:''}`
+      :(m.canal==='TELEGRAM'?'💬 Bot de Telegram':'');
+    const canalHtml=canalTxt?`<div style="margin-top:2px;color:var(--muted2)">${canalTxt}</div>`:'';
     const mapa=(lat!=null&&lng!=null)?`<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" rel="noopener" style="text-decoration:none;font-size:12px">🗺️ ver ubicación</a>`:'';
     const selfie=foto?`<img src="${foto}" onclick="openSelfieLightbox(this.src)" style="width:64px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--border)">`:'<div style="width:64px;height:64px;border-radius:8px;background:var(--surface3);display:flex;align-items:center;justify-content:center;color:var(--muted2);font-size:11px">s/f</div>';
     return `<div style="display:flex;gap:10px;align-items:flex-start;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
@@ -1149,6 +1156,7 @@ async function renderEvidencia(reg){
         <div style="font-weight:700">${tipo==='ENTRADA'?'🟢 Entrada':'🔴 Salida'} ${m.hora?`· ${escHtml(m.hora)}`:''}</div>
         <div>🏪 ${escHtml(etiquetaSedeMarcaje(m))}${planBadge}</div>
         <div style="margin-top:2px">${geoBadge}</div>
+        ${canalHtml}
         ${mapa}
       </div>
     </div>`;

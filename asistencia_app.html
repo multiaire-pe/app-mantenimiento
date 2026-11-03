@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Marcar asistencia</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:var(--tg-theme-bg-color,#fff);--fg:var(--tg-theme-text-color,#1a1a1a);--hint:var(--tg-theme-hint-color,#6b7280);
+  --card:var(--tg-theme-secondary-bg-color,#f3f4f6);--btn:var(--tg-theme-button-color,#2563eb);--btnfg:var(--tg-theme-button-text-color,#fff);
+  --err:#dc2626;--ok:#16a34a;--line:rgba(127,127,127,.28);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:12px 14px 110px;min-height:100vh}
+h1{font-size:18px;margin:0}
+.sub{color:var(--hint);font-size:13px;margin-top:2px}
+.gesto{background:var(--card);border-radius:14px;padding:12px 14px;margin:12px 0;display:flex;gap:12px;align-items:center}
+.gesto .em{font-size:44px;line-height:1}
+.gesto b{display:block;font-size:16px}
+.gesto small{color:var(--hint)}
+.cod{display:inline-block;margin-top:4px;padding:2px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--line);font-weight:700;letter-spacing:.08em}
+.visor{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:3/4;width:100%}
+.visor video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.visor .aviso{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;color:#fff;font-size:14px}
+.tips{color:var(--hint);font-size:13px;margin:10px 2px}
+.tips li{margin:3px 0}
+.estado{font-size:13px;margin:8px 2px;color:var(--hint)}
+.estado.ok{color:var(--ok)}.estado.err{color:var(--err)}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line);display:flex;gap:10px}
+button{font:inherit;border:0;border-radius:12px;padding:14px;cursor:pointer}
+button.main{flex:2;background:var(--btn);color:var(--btnfg);font-weight:600}
+button.sec{flex:1;background:var(--card);color:var(--fg)}
+button:disabled{opacity:.5}
+.res{background:var(--card);border-radius:14px;padding:14px;margin:12px 0;white-space:pre-wrap}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Marcar asistencia</h1>
+  <div class="sub" id="quien">Cargando…</div>
+
+  <div id="vista-captura" class="hidden">
+    <div class="gesto">
+      <div class="em" id="g-emoji"></div>
+      <div>
+        <b id="g-texto"></b>
+        <small>Código de esta foto:</small> <span class="cod" id="g-cod"></span>
+      </div>
+    </div>
+    <div class="visor">
+      <video id="video" playsinline muted autoplay></video>
+      <div class="aviso" id="aviso-cam">Abriendo la cámara…</div>
+    </div>
+    <ul class="tips">
+      <li>Haz el gesto de arriba y que se vea tu cara.</li>
+      <li>Que se vea la tienda detrás de ti: fachada, letrero o tu zona de trabajo.</li>
+      <li>El código y la hora se pegan solos en la foto.</li>
+    </ul>
+    <div class="estado" id="estado-ubic">📍 Buscando tu ubicación…</div>
+    <div class="estado" id="venc"></div>
+  </div>
+
+  <div id="vista-resultado" class="hidden">
+    <div class="res" id="res-texto"></div>
+  </div>
+  <div class="estado err" id="error"></div>
+</div>
+
+<div class="bar">
+  <button class="sec" id="btn-otro" disabled>Pedir otro gesto</button>
+  <button class="main" id="btn-foto" disabled>📸 Tomar foto y marcar</button>
+</div>
+
+<script>
+const API = '/api/asistencia_app';
+const tg = window.Telegram && window.Telegram.WebApp;
+const $ = (id) => document.getElementById(id);
+let reto = null, offsetMs = 0, stream = null, fix = null, watchId = null, timer = null, enviando = false;
+
+async function api(body) {
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'tma ' + tg.initData },
+    body: JSON.stringify(body),
+  });
+  let json = {};
+  try { json = await res.json(); } catch (e) { /* respuesta sin cuerpo */ }
+  return { ok: res.ok, json };
+}
+const ahoraServidor = () => Date.now() + offsetMs;
+const pad = (n) => String(n).padStart(2, '0');
+function mostrarError(t) { $('error').textContent = t || ''; }
+
+// ── Cámara: SOLO en vivo. No hay selector de archivos en toda la página, así que no se puede elegir una foto de la galería.
+async function abrirCamara() {
+  if (stream) return true;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 960 }, height: { ideal: 1280 } }, audio: false });
+    $('video').srcObject = stream;
+    $('aviso-cam').classList.add('hidden');
+    return true;
+  } catch (e) {
+    $('aviso-cam').textContent = 'No pude abrir la cámara. Dale permiso de cámara a Telegram en los ajustes del teléfono y vuelve a abrir esta pantalla.';
+    return false;
+  }
+}
+
+// ── Ubicación: se sigue el GPS mientras la pantalla está abierta y al tomar la foto se usa la lectura más fresca.
+function seguirUbicacion() {
+  if (!navigator.geolocation) { $('estado-ubic').textContent = '📍 Este teléfono no permite leer la ubicación.'; return; }
+  watchId = navigator.geolocation.watchPosition((p) => {
+    fix = { lat: p.coords.latitude, lng: p.coords.longitude, precision: p.coords.accuracy, ts: Date.now() };
+    const el = $('estado-ubic');
+    el.className = 'estado ok';
+    el.textContent = '📍 Ubicación lista (±' + Math.round(p.coords.accuracy) + ' m)';
+  }, () => {
+    const el = $('estado-ubic');
+    el.className = 'estado err';
+    el.textContent = '📍 No pude leer tu ubicación. Activa el GPS y dale permiso a Telegram.';
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+}
+function ubicacionFresca() {
+  return new Promise((resolve) => {
+    if (fix && Date.now() - fix.ts < 15000) return resolve(fix);
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, precision: p.coords.accuracy, ts: Date.now() }),
+      () => resolve(fix),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  });
+}
+
+function pintarReto() {
+  $('g-emoji').textContent = reto.gesto.emoji;
+  $('g-texto').textContent = reto.gesto.texto;
+  $('g-cod').textContent = reto.codigo;
+  clearInterval(timer);
+  timer = setInterval(() => {
+    const seg = Math.max(0, Math.round((reto.venceMs - ahoraServidor()) / 1000));
+    $('venc').textContent = seg > 0 ? '⏱ Este gesto vale ' + Math.floor(seg / 60) + ':' + pad(seg % 60) + ' más.' : '⏱ El gesto venció. Toca «Pedir otro gesto».';
+    $('venc').className = 'estado' + (seg > 0 ? '' : ' err');
+    $('btn-foto').disabled = enviando || seg <= 0 || !stream;
+  }, 500);
+}
+
+async function iniciar() {
+  mostrarError('');
+  $('btn-foto').disabled = true; $('btn-otro').disabled = true;
+  const { ok, json } = await api({ accion: 'inicio' });
+  if (!ok) { $('quien').textContent = ''; mostrarError(json.error || 'No se pudo abrir.'); return false; }
+  offsetMs = json.ahoraMs - Date.now();
+  reto = json.reto;
+  const e = json.estado || {};
+  $('quien').textContent = json.nombre + (e.entrada ? ' · Entrada ' + e.entrada : '') + (e.salida ? ' · Salida ' + e.salida : '');
+  $('vista-captura').classList.remove('hidden');
+  pintarReto();
+  $('btn-otro').disabled = false;
+  return true;
+}
+
+// Pega la hora (del servidor) y el código en la foto: queda a la vista de quien revise.
+function capturar() {
+  const v = $('video');
+  const w = v.videoWidth, h = v.videoHeight;
+  const escala = Math.min(1, 720 / Math.max(w, h));
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * escala); c.height = Math.round(h * escala);
+  const ctx = c.getContext('2d');
+  ctx.drawImage(v, 0, 0, c.width, c.height);
+  const d = new Date(ahoraServidor());
+  const txt = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + '  ·  Código ' + reto.codigo;
+  ctx.fillStyle = 'rgba(0,0,0,.6)';
+  ctx.fillRect(0, c.height - 34, c.width, 34);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 18px system-ui, sans-serif';
+  ctx.fillText(txt, 10, c.height - 11);
+  return c.toDataURL('image/jpeg', 0.72).replace(/^data:image\/jpeg;base64,/, '');
+}
+
+async function marcar() {
+  if (enviando) return;
+  enviando = true; mostrarError('');
+  $('btn-foto').disabled = true; $('btn-otro').disabled = true;
+  $('btn-foto').textContent = 'Enviando…';
+  try {
+    const u = await ubicacionFresca();
+    if (!u) { mostrarError('No pude leer tu ubicación. Activa el GPS, da el permiso y vuelve a intentarlo.'); return; }
+    const foto = capturar();
+    const { ok, json } = await api({ accion: 'enviar', token: reto.token, foto, ubicacion: { lat: u.lat, lng: u.lng, precision: u.precision } });
+    if (!ok) {
+      mostrarError(json.error || 'No se pudo marcar.');
+      if (json.reiniciar) await iniciar();
+      return;
+    }
+    cerrarCamara();
+    $('vista-captura').classList.add('hidden');
+    $('vista-resultado').classList.remove('hidden');
+    $('res-texto').textContent = (json.mensajes && json.mensajes.length) ? json.mensajes.join('\n\n') : 'Listo. ✅';
+    $('btn-otro').classList.add('hidden');
+    $('btn-foto').textContent = 'Cerrar';
+    $('btn-foto').disabled = false;
+    $('btn-foto').onclick = () => tg.close();
+    clearInterval(timer);
+    return;
+  } catch (e) {
+    mostrarError('Falló la conexión. Revisa tu señal e inténtalo de nuevo.');
+  } finally {
+    enviando = false;
+    if ($('btn-foto').textContent === 'Enviando…') { $('btn-foto').textContent = '📸 Tomar foto y marcar'; $('btn-otro').disabled = false; }
+  }
+}
+
+function cerrarCamara() {
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  stream = null;
+  if (watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(watchId);
+}
+
+(async function () {
+  if (!tg || !tg.initData) {
+    $('quien').textContent = '';
+    mostrarError('Abre esta pantalla desde el bot de Telegram.');
+    return;
+  }
+  tg.ready(); tg.expand();
+  $('btn-foto').onclick = marcar;
+  $('btn-otro').onclick = iniciar;
+  if (!(await iniciar())) return;
+  seguirUbicacion();
+  await abrirCamara();
+})();
+</script>
+</body>
+</html>

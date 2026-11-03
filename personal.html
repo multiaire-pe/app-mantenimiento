@@ -473,6 +473,13 @@ tr:hover td{background:var(--surface2)}
             <option value="NO_MARCA">No marca (sin control)</option>
           </select>
         </div>
+        <div class="form-group" style="flex:0 0 290px">
+          <label class="form-label">Cómo marca (si marca)</label>
+          <select id="pers-asisModo" class="form-select">
+            <option value="CHAT">Por el bot o la Mini App</option>
+            <option value="APP">Solo por la Mini App (cámara en vivo)</option>
+          </select>
+        </div>
         <div class="form-group" id="pers-horfijo-entrada-wrap" style="flex:0 0 150px;display:none">
           <label class="form-label">Entrada (fija)</label>
           <input type="time" id="pers-horfijo-entrada" class="form-input" value="08:30">
@@ -1285,7 +1292,7 @@ function fillJefeSelect(excludeId){
 
 // ── MODAL: form fill / read ─────────────────────────────────────────────────────
 function setModalReadonly(ro){
-  const ids = ['pers-nombre','pers-tipoDoc','pers-numDoc','pers-codigo','pers-activo','pers-fechaNacimiento','pers-genero','pers-nacionalidad','pers-estadoCivil','pers-direccion','pers-emgNombre','pers-emgParentesco','pers-emgTelefono','pers-cargo','pers-area','pers-estadoLaboral','pers-fechaIngreso','pers-fechaCese','pers-tipoContrato','pers-sedeBase','pers-jefeId','pers-regimenAsist','pers-horfijo-entrada','pers-horfijo-salida','pers-rolOperativo','pers-vehiculo','pers-licTiene','pers-licCat','pers-licVence','pers-sueldo','pers-moneda','pers-periodicidad','pers-banco','pers-cuentaNumero','pers-cci','pers-notasConf','pers-notas','pers-comp-input'];
+  const ids = ['pers-nombre','pers-tipoDoc','pers-numDoc','pers-codigo','pers-activo','pers-fechaNacimiento','pers-genero','pers-nacionalidad','pers-estadoCivil','pers-direccion','pers-emgNombre','pers-emgParentesco','pers-emgTelefono','pers-cargo','pers-area','pers-estadoLaboral','pers-fechaIngreso','pers-fechaCese','pers-tipoContrato','pers-sedeBase','pers-jefeId','pers-regimenAsist','pers-asisModo','pers-horfijo-entrada','pers-horfijo-salida','pers-rolOperativo','pers-vehiculo','pers-licTiene','pers-licCat','pers-licVence','pers-sueldo','pers-moneda','pers-periodicidad','pers-banco','pers-cuentaNumero','pers-cci','pers-notasConf','pers-notas','pers-comp-input'];
   ids.forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled = ro; });
   document.querySelectorAll('#modal-pers .rep-row select, #modal-pers .rep-row input').forEach(el=>el.disabled=ro);
   ['pers-tel-add','pers-correo-add','pers-foto-up-lbl','pers-foto-cam-lbl'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display = ro?'none':''; });
@@ -1326,7 +1333,7 @@ function resetModal(){
   setVal('pers-cargo',''); setVal('pers-area',''); setVal('pers-estadoLaboral','ACTIVO');
   setVal('pers-fechaIngreso',''); setVal('pers-fechaCese',''); setVal('pers-tipoContrato','');
   setVal('pers-sedeBase',''); setVal('pers-rolOperativo',''); setVal('pers-vehiculo','');
-  setVal('pers-regimenAsist','MARCA'); setVal('pers-horfijo-entrada','08:30'); setVal('pers-horfijo-salida','18:00'); togglePersHorarioFijo();
+  setVal('pers-regimenAsist','MARCA'); setVal('pers-asisModo','CHAT'); setVal('pers-horfijo-entrada','08:30'); setVal('pers-horfijo-salida','18:00'); togglePersHorarioFijo();
   document.getElementById('pers-licTiene').checked = false;
   setVal('pers-licCat',''); setVal('pers-licVence',''); toggleLic();
   setVal('pers-notas','');
@@ -1375,6 +1382,7 @@ function openEditPers(id){
   setVal('pers-tipoContrato', p.tipoContrato); setVal('pers-sedeBase', p.sedeBase);
   setVal('pers-rolOperativo', p.rolOperativo); setVal('pers-vehiculo', p.vehiculo);
   setVal('pers-regimenAsist', p.regimenAsistencia || 'MARCA');
+  setVal('pers-asisModo', p.asistenciaSoloApp ? 'APP' : 'CHAT');
   const _hf = p.horarioFijo || {};
   setVal('pers-horfijo-entrada', _hf.entrada!=null ? decToHHMM(_hf.entrada) : '08:30');
   setVal('pers-horfijo-salida',  _hf.salida!=null  ? decToHHMM(_hf.salida)  : '18:00');
@@ -1661,6 +1669,7 @@ async function savePers(){
     sedeBase: val('pers-sedeBase').trim().toUpperCase(),
     jefeId: val('pers-jefeId'),
     regimenAsistencia: val('pers-regimenAsist'),
+    asistenciaSoloApp: val('pers-asisModo')==='APP',
     horarioFijo: val('pers-regimenAsist')==='FIJO'
       ? { entrada: hhmmToDec(val('pers-horfijo-entrada')), salida: hhmmToDec(val('pers-horfijo-salida')) }
       : null,
