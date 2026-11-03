@@ -742,7 +742,9 @@ function esDiaNoLaboral(fecha){return isDomingo(fecha)||isFeriado(fecha);}
 const SABADO_NUEVO_DESDE='2026-09-19';
 const AMANECIDA_DESDE='2026-10-19';
 function baseSabado(f){return f>=SABADO_NUEVO_DESDE?4:4.5;}
-function heAusencia(fecha){return new Date(fecha+'T12:00:00').getDay()===6?-baseSabado(fecha):-8;}
+// Falta o día laborable sin registro: -8 h de lunes a sábado (pedido de Adrián, 2026-11-03). El sábado antes descontaba
+// su jornada base (-4 / -4.5), pero la falta pesa igual todos los días; la base del sábado solo aplica al calcular H.E. de un día trabajado.
+function heAusencia(fecha){return -8;}
 // Días fuera del período laboral del colaborador (antes de fechaIngreso o después de fechaCese) no cuentan como ausencia/deuda
 function fueraDeVigencia(c,f){return(c.fechaIngreso&&f<c.fechaIngreso)||(c.fechaCese&&f>c.fechaCese);}
 
@@ -1241,7 +1243,7 @@ async function loadVistaES() {
           estadoStr=reg.estado||'A';
           if(heVal!=null)totalHE+=heVal;
         } else if(f<=todayKey()){
-          // Solo días laborables sin registro → X / -8 (sábado: -4, ver heAusencia)
+          // Solo días laborables sin registro → X / -8 (lunes a sábado, ver heAusencia)
           estadoStr='X';heVal=heAusencia(f);heStr=heVal.toFixed(1);totalHE+=heVal;
         }
         const heColor=heVal==null?'':heVal<0?'color:var(--red);font-weight:700':heVal>0?'color:var(--orange);font-weight:700':'';
