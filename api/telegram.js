@@ -44,6 +44,13 @@ async function depsReales() {
     parametros: {
       url: process.env.PARAMETROS_URL || 'https://multiaire-peru-app.vercel.app/parametros.html',
     },
+    // Mini App «Marcar asistencia»: cámara en vivo (sin galería) + ubicación + gesto al azar. A los colaboradores con
+    // `asistenciaSoloApp` (Personal → Marcaje de asistencia) el bot no les recibe ubicación ni selfie por el chat: les
+    // manda el botón que la abre. Cualquiera puede abrirla con /marcar.
+    asistenciaApp: {
+      url: process.env.ASISTENCIA_APP_URL || 'https://multiaire-peru-app.vercel.app/asistencia_app.html',
+    },
+    getSesionAsistencia: asisSes.getSesion,
     limpiarSesiones: (from) => Promise.all([
       obsSes.limpiarSesion(from), fotos.limpiarFotoPendiente(from),
       asisSes.limpiarSesion(from), mtSes.limpiarSesion(from),
@@ -192,6 +199,14 @@ export async function procesarUpdate(update, d) {
     catch (e) { console.error('[telegram] no pude poner el botón Parámetros:', e && e.message); }
   };
 
+  // Mensaje con el botón que abre la Mini App de marcaje.
+  const enviarBotonMarcar = (chat) => d.tg.enviarTexto(chat,
+    '📸 *Marcar asistencia*\n\nToca el botón de abajo. Se abre la cámara: haz el gesto que te pida, que se vea la tienda detrás de ti y la app toma tu ubicación sola.',
+    { reply_markup: { inline_keyboard: [[{ text: '📸 Marcar asistencia', web_app: { url: d.asistenciaApp.url } }]] } });
+  // ¿Este colaborador debe marcar solo por la Mini App y no hay un marcaje a medias en el chat? (Si la Mini App lo dejó
+  // esperando algo —p. ej. «¿en cuál sede estás?»— esa respuesta SÍ se recibe por el chat.)
+  const soloApp = async (tec) => !!(tec && tec.asistenciaSoloApp && d.asistenciaApp && !(await d.getSesionAsistencia(from)));
+
   let escrituraIniciada = false;
   try {
     // ── Vinculación: el técnico comparte su contacto ────────────────────────────────────────
@@ -259,6 +274,8 @@ export async function procesarUpdate(update, d) {
       } else if (cmd === '/cancelar') {
         await d.limpiarSesiones(from);
         await mostrarMenu('❌ Cancelado. Lo que estabas haciendo no se guardó (lo que ya estaba guardado se mantiene).\n\n');
+      } else if (cmd === '/marcar' && d.asistenciaApp) {
+        await enviarBotonMarcar(chatId);
       } else if (cmd === '/parametros' && d.parametros) {
         // Toma de parámetros por Mini App, SIN esperar el botón global de BotFather. Pone el botón «Parámetros» en
         // el menú de ESTE chat (no afecta a nadie más) y manda un mensaje con un botón que la abre.
@@ -327,6 +344,10 @@ export async function procesarUpdate(update, d) {
     if (flujo === 'hint-obs') {
       // Ya "entró" a Observación aunque todavía no haya sesión: se le ofrece Cancelar.
       await responderConTeclado(d, chatId, from, '📝 Descríbeme la observación: *sede*, *equipo* y el problema (puedes adjuntar una foto). Ej: "fuga de gas en el rooftop 6 de megaplaza".', 'flujo');
+      return;
+    }
+    if ((flujo === 'hint-asistencia' || flujo === 'asistencia') && await soloApp(tecnico)) {
+      await enviarBotonMarcar(chatId);
       return;
     }
     if (flujo === 'hint-asistencia') {
