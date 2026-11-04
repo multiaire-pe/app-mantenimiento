@@ -47,7 +47,6 @@ main{flex:1;padding:36px 24px 48px;max-width:960px;width:100%;margin:0 auto}
 .tag-blue{background:var(--blue-pale);color:var(--blue);border:1px solid #c0d0ef}
 .tag-orange{background:var(--orange-pale);color:var(--orange-dark);border:1px solid #f0c09a}
 .tag-gray{background:var(--surface3);color:var(--muted);border:1px solid var(--border)}
-.card-desc{font-size:12px;color:var(--text2);line-height:1.6;flex:1}
 .card-footer{display:flex;align-items:center;justify-content:space-between;margin-top:6px;padding-top:12px;border-top:1px solid var(--border)}
 .card-meta{font-family:var(--mono);font-size:10px;color:var(--muted)}
 .card-arrow{font-size:16px;color:var(--muted);transition:transform .2s,color .2s}
@@ -141,79 +140,66 @@ footer{border-top:1px solid var(--border);background:var(--surface);padding:14px
     <a class="card active-blue" data-app="inventario" href="inventario_multiaire.html">
       <div class="card-icon-wrap icon-blue">📦</div>
       <div class="card-title">Inv. Equipos <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Gestiona el inventario de equipos de aire acondicionado por sede. Agrega, edita y filtra equipos en tiempo real.</div>
       <div class="card-footer"><span class="card-meta">inventario</span><span class="card-arrow">→</span></div>
     </a>
     <a class="card active-orange" data-app="mantenimiento" href="mantenimiento_multiaire.html">
       <div class="card-icon-wrap icon-orange">🔧</div>
       <div class="card-title">Mantenimiento <span class="card-tag tag-orange">ACTIVA</span></div>
-      <div class="card-desc">Registra y gestiona tareas de mantenimiento preventivo y correctivo por equipo. Guarda historial de intervenciones.</div>
       <div class="card-footer"><span class="card-meta">mantenimiento</span><span class="card-arrow">→</span></div>
     </a>
     <a class="card active-blue" data-app="itinerario" href="itinerario.html">
       <div class="card-icon-wrap icon-blue">🗓️</div>
       <div class="card-title">Itinerario <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Planifica y gestiona los itinerarios diarios del equipo técnico por tienda y tipo de trabajo.</div>
       <div class="card-footer"><span class="card-meta">itinerario</span><span class="card-arrow">→</span></div>
     </a>
     <a id="card-insumos" class="card active-blue" data-app="insumos" href="insumos.html">
       <div class="card-icon-wrap icon-blue">🧰</div>
       <div class="card-title">Insumos <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Controla el stock central de insumos y herramientas. Registra entradas, salidas y transferencias entre sedes con historial completo.</div>
       <div class="card-footer"><span class="card-meta">insumos</span><span class="card-arrow">→</span></div>
     </a>
     <a id="card-asistencia" class="card active-blue" data-app="asistencia" href="asistencia_multiaire.html">
       <div class="card-icon-wrap icon-blue">🕐</div>
       <div class="card-title">Asistencia <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Registra entradas y salidas de colaboradores. Vista del día en tiempo real, historial filtrable y gestión del equipo.</div>
       <div class="card-footer"><span class="card-meta">asistencia</span><span class="card-arrow">→</span></div>
     </a>
     <a id="card-comprobantes" class="card active-blue" data-app="comprobantes" href="comprobantes.html">
       <div class="card-icon-wrap icon-blue">🧾</div>
       <div class="card-title">Rendición de Caja <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Fotografía facturas y boletas, extrae los datos automáticamente con IA (Gemini) y exporta a Excel.</div>
       <div class="card-footer"><span class="card-meta">comprobantes</span><span class="card-arrow">→</span></div>
     </a>
     <a id="card-proveedores" class="card active-blue" data-app="proveedores" href="proveedores.html">
       <div class="card-icon-wrap icon-blue">🏢</div>
       <div class="card-title">Proveedores <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Directorio de proveedores: RUC, razón social, rubro, contacto y condiciones de pago. Búsqueda, alta/edición y exportación a Excel.</div>
       <div class="card-footer"><span class="card-meta">proveedores</span><span class="card-arrow">→</span></div>
     </a>
     <a id="card-observaciones" class="card active-blue" data-app="observaciones" href="observaciones.html">
       <div class="card-icon-wrap icon-blue">📋</div>
       <div class="card-title">Observaciones <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Manta de observaciones de mantenimiento (Ripley): hallazgos por tienda y equipo, con estado, foto y exportación a Excel/PDF.</div>
       <div class="card-footer"><span class="card-meta">observaciones</span><span class="card-arrow">→</span></div>
     </a>
     <a id="card-personal" class="card active-blue" data-app="personal" href="personal.html">
       <div class="card-icon-wrap icon-blue">👥</div>
       <div class="card-title">Personal <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Expediente del personal: identidad, contacto multi-país (teléfonos y correos), datos laborales y operativos de cada colaborador. Búsqueda y exportación.</div>
       <div class="card-footer"><span class="card-meta">personal</span><span class="card-arrow">→</span></div>
     </a>
     <a id="card-clientes" class="card active-blue" data-app="clientes" href="clientes.html">
       <div class="card-icon-wrap icon-blue">🏢</div>
       <div class="card-title">Clientes <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Ficha de cada cliente como entidad: identidad, contrato/licitación, sus sedes con coordenadas y sus actividades de mantenimiento propias. Base para operatividad e itinerario.</div>
       <div class="card-footer"><span class="card-meta">clientes</span><span class="card-arrow">→</span></div>
     </a>
     <a id="card-informes" class="card active-blue" data-app="mantenimiento" href="informes.html">
       <div class="card-icon-wrap icon-blue">📄</div>
       <div class="card-title">Informes <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Arma el informe técnico del cliente por sede y período: alcance con la data técnica de cada equipo, observaciones y recomendaciones, y reporte fotográfico. Se descarga en Word para completar la carátula y el acta.</div>
       <div class="card-footer"><span class="card-meta">informes</span><span class="card-arrow">→</span></div>
     </a>
     <a id="card-operatividad" class="card active-blue" data-app="operatividad" href="operatividad.html">
       <div class="card-icon-wrap icon-blue">🚦</div>
       <div class="card-title">Operatividad <span class="card-tag tag-blue">ACTIVA</span></div>
-      <div class="card-desc">Estado de operatividad de cada equipo por sede y cliente. Semáforo de 5 niveles, promedio ponderado por criticidad e historial. Se alimenta del bot de WhatsApp tras cada observación.</div>
       <div class="card-footer"><span class="card-meta">operatividad</span><span class="card-arrow">→</span></div>
     </a>
     <a class="card active-orange" data-app="configuracion" href="configuracion.html">
       <div class="card-icon-wrap icon-orange">⚙️</div>
       <div class="card-title">Configuración <span class="card-tag tag-orange">ACTIVA</span></div>
-      <div class="card-desc">Gestiona tareas de mantenimiento por equipo, tiempos, pesos y permisos del sistema.</div>
       <div class="card-footer"><span class="card-meta">configuracion</span><span class="card-arrow">→</span></div>
     </a>
   </div>
