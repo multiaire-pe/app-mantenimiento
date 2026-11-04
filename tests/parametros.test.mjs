@@ -279,7 +279,7 @@ t('orden natural', ['Extractor 10', 'Extractor 2', 'Extractor 01'].sort((a, b) =
   t('el formulario sale de formatos[eq.formato].campos', /const fm = formatos\[eq\.formato\]/.test(html) && /fm\.campos\.map/.test(html));
   t('marca/modelo/serie se precargan del inventario', /dato\('marca', 'Marca', eq\.marca\)/.test(html) && /dato\('modelo', 'Modelo', eq\.modelo\)/.test(html) && /dato\('serie', 'Número de serie', eq\.serie\)/.test(html));
   t('…y SIEMPRE se pueden editar (vacíos o con datos): sin solo-lectura ni lápiz', !/readonly/.test(html.match(/const dato = [^\n]+/)[0]) && !/data-corregir/.test(html));
-  t('si difieren del inventario, el técnico lo ve en vivo', /aviso-corr/.test(html) && /i\.value\.trim\(\) !== String\(eq\[k\] \|\| ''\)\.trim\(\)/.test(html));
+  t('el técnico NO ve alerta por cambiar marca/modelo/serie (la alerta es del sistema, para quien revisa)', !/aviso-corr|Distinto del inventario/.test(html));
   t('cada equipo lleva su etiqueta: verde si hecho, rojo si falta, ámbar si está por enviar', /tag ok">✓ Hecho/.test(html) && /tag falta">Falta/.test(html) && /tag cola">📤 Por enviar/.test(html) && /e\.hecho \?/.test(html));
   t('la etiqueta sale de lo que tiene el servidor en el período (no de "hoy" en el teléfono)', !/par_hechos/.test(html) && /periodo = r\.periodo/.test(html));
   t('abrir un equipo ya hecho = editar: se rellena con su toma y el botón dice Actualizar', /rellenar\(eq\.registro\)/.test(html) && /Actualizar registro/.test(html) && /reemplaza<\/b> esa toma/.test(html));
