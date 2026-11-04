@@ -27,7 +27,27 @@ t('la "/" de la sede se guarda como "∕" (igual que Mantenimiento)', idDocMtto(
 t('una sede sin "/" no cambia', idDocMtto('ATOCONGO|SEP-OCT|2026') === 'ATOCONGO|SEP-OCT|2026');
 
 // ── el código usa esa selección donde corresponde ──
-t('preparar() lee el doc de Mantenimiento de la sede+período+año', /db\.collection\('mantenimiento'\)\.doc\(idDocMtto\(`\$\{sede\}\|\$\{periodo\}\|\$\{anio\}`\)\)\.get\(\)/.test(html));
+t('preparar() lee el doc de Mantenimiento con la clave EFECTIVA de la sede (sede compartida → "SEDE (CLIENTE)")', /db\.collection\('mantenimiento'\)\.doc\(idDocMtto\(`\$\{claveSede\}\|\$\{periodo\}\|\$\{anio\}`\)\)\.get\(\)/.test(html) && /const claveSede = sedeEfectiva\(sede, cliente\);/.test(html));
+t('las fotos se leen con la misma clave efectiva', /where\('clave', '==', `\$\{claveSede\}\|\$\{periodo\}\|\$\{anio\}`\)/.test(html));
+
+// ── sede compartida: la clave y las observaciones no se mezclan entre clientes ──
+const sedeFn = html.match(/const SEDES_COMPARTIDAS_PENDIENTES = [^\n]+\r?\nconst sedeEfectiva = [\s\S]*?: sede;/)?.[0];
+t('existe sedeEfectiva', !!sedeFn);
+const sedeEfectiva = new Function(`${sedeFn}; return sedeEfectiva;`)();
+t('RIPLEY en Miraflores → la sede tal cual', sedeEfectiva('MIRAFLORES', 'RIPLEY') === 'MIRAFLORES');
+t('TOTTUS en Miraflores → "MIRAFLORES (TOTTUS)"', sedeEfectiva('MIRAFLORES', 'TOTTUS') === 'MIRAFLORES (TOTTUS)');
+t('TOTTUS en Jockey Plaza → "JOCKEY PLAZA (TOTTUS)"', sedeEfectiva('JOCKEY PLAZA', 'TOTTUS') === 'JOCKEY PLAZA (TOTTUS)');
+t('una sede no compartida no cambia, sea cual sea el cliente', sedeEfectiva('ATOCONGO', 'TOTTUS') === 'ATOCONGO' && sedeEfectiva('ATOCONGO', 'RIPLEY') === 'ATOCONGO');
+t('sin cliente → la sede tal cual', sedeEfectiva('MIRAFLORES', '') === 'MIRAFLORES');
+const obsFn = html.match(/function obsEsDelCliente\(o, cliente, eqIdsDelCliente\) \{[\s\S]*?\n\}/)?.[0];
+t('existe obsEsDelCliente', !!obsFn);
+const obsEsDelCliente = new Function(`${obsFn}; return obsEsDelCliente;`)();
+const eqTottus = new Set(['MA-MIR-SDC-001']);
+t('observación de un equipo de Ripley NO entra al informe de Tottus (misma sede)', !obsEsDelCliente({ eqId: 'MA-MIR-SDC-009', sede: 'MIRAFLORES' }, 'TOTTUS', eqTottus));
+t('observación de un equipo de Tottus sí entra', obsEsDelCliente({ eqId: 'MA-MIR-SDC-001', sede: 'MIRAFLORES' }, 'TOTTUS', eqTottus));
+t('sin eqId se decide por el cliente del documento', obsEsDelCliente({ cliente: 'TOTTUS' }, 'TOTTUS', eqTottus) && !obsEsDelCliente({ cliente: 'RIPLEY' }, 'TOTTUS', eqTottus));
+t('sin eqId ni cliente (dato viejo) se conserva', obsEsDelCliente({}, 'RIPLEY', eqTottus));
+t('preparar() filtra las observaciones por cliente', /!obsEsDelCliente\(o, cliente, eqIdsDelCliente\)/.test(html));
 t('si falla esa lectura NO se asume "nada seleccionado" (va dentro del Promise.all/try)', /const \[ejSnap, foSnap, mtSnap\] = await Promise\.all\(\[/.test(html));
 t('el informe sale de equiposInforme (los seleccionados)', /const equiposInforme = equipos\.filter\(\(e\) => sel\.has\(e\.eq_id \|\| e\.id\)\)/.test(html));
 t('el DOCUMENTO usa solo los seleccionados', /const tipos = porTipo\(d\.equiposInforme\);\s*\n\s*const orden/.test(html));
