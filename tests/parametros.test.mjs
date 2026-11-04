@@ -3,7 +3,7 @@
 // Uso: node tests/parametros.test.mjs
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import { verificarInitData, validarRegistro, procesar, fechaHoraLima, porNombre, FORMATOS, TIPOS, formatoDe, LINEAS_3PH } from '../api/_lib/parametros.js';
+import { verificarInitData, validarRegistro, procesar, fechaHoraLima, porNombre, FORMATOS, TIPOS, formatoDe, LINEAS_3PH, idRegistro, rangoPeriodo, periodoDeFecha, cambiosEquipo, puedeBorrarParametros } from '../api/_lib/parametros.js';
 
 let ok = 0, mal = 0;
 const t = (n, c, e = '') => { if (c) ok++; else { mal++; console.log('✗', n, e); } };
@@ -82,7 +82,7 @@ const val = (mut, f = 'VENTILACION', eq = EQS[f], ahora = AHORA) => { const b = 
   const r = val();
   t('trifásico completo: válido', r.ok, JSON.stringify(r));
   const d = r.doc;
-  t('formato y versión', d.formato === 'VENTILACION' && d.version === 2);
+  t('formato y versión', d.formato === 'VENTILACION' && d.version === 3);
   t('números: acepta texto con coma y "NA"', d.electrico.v2 === 221.5 && d.electrico.a3 === 'NA' && d.electrico.v1 === 220);
   t('cliente/sede/área/tipo salen del inventario', d.cliente === 'TOTTUS' && d.sede === EQ.sede && d.area === EQ.area && d.tipo === 'EXTRACTOR' && d.eqId === EQ.eqId);
   t('marca/modelo/serie confirmadas por el técnico se guardan', d.equipo.marca === 'WEG' && d.equipo.serie === 'N/V' && d.equipo.modelo === '3~112M-04');
@@ -156,12 +156,22 @@ const INV = [
   { eqId: 'I1', nombre: 'Inyector 01', tipo: 'INYECTOR', cliente: 'RIPLEY', sede: 'ATOCONGO', area: 'C' },
   { ...EQS.SPLIT }, { ...EQS.FANCOIL_UMA }, { ...EQS.CORTINA },
 ];
+// Almacén en memoria con la MISMA regla de período del servidor real: las tomas nuevas traen periodo+anio; las viejas, solo fecha.
 function deps(over = {}) {
-  const log = { creados: [] };
+  const store = new Map();
+  const log = { guardados: [], borrados: [], store };
+  const delPeriodo = (r, periodo, anio) => {
+    if (r.periodo) return r.periodo === periodo && Number(r.anio) === Number(anio);
+    const g = rangoPeriodo(periodo, anio);
+    return r.fecha >= g.desde && r.fecha <= g.hasta;
+  };
   return { log, token: TOKEN, ahora: () => AHORA,
     identificar: async (id) => (id === 7 ? { id: 'PER003', nombre: 'ENRIQUE YARANGA' } : null),
     equipos: async () => INV,
-    crear: async (id, doc) => { if (log.creados.some((c) => c.id === id)) return 'duplicado'; log.creados.push(doc); return 'creado'; },
+    periodo: async () => ({ periodo: 'SEP-OCT', anio: 2026 }),
+    registros: async ({ cliente, sede, periodo, anio }) => [...store.values()].filter((r) => r.cliente === cliente && r.sede === sede && delPeriodo(r, periodo, anio)),
+    previos: async (eqId, periodo, anio) => [...store.values()].filter((r) => r.eqId === eqId && delPeriodo(r, periodo, anio)),
+    guardar: async (doc, borrar) => { log.guardados.push(doc); store.set(doc.id, doc); (borrar || []).forEach((id) => { store.delete(id); log.borrados.push(id); }); },
     ...over };
 }
 const INIT = firmar(auth());
@@ -185,14 +195,56 @@ const INIT = firmar(auth());
   const reg = base3();
   reg.cliente = 'OTRO'; reg.sede = 'OTRA'; reg.tecnicoId = 'PER999'; reg.area = 'X';   // intento de falsear lo que sale del inventario / la sesión
   const r = await procesar({ accion: 'guardar', registro: reg }, INIT, d);
-  t('guardar: ok', r.status === 200 && r.json.ok === true && r.json.duplicado === false, JSON.stringify(r));
-  const g = d.log.creados[0];
+  t('guardar: ok y es una toma NUEVA', r.status === 200 && r.json.ok === true && r.json.actualizado === false && r.json.periodo.periodo === 'SEP-OCT', JSON.stringify(r));
+  const g = d.log.guardados[0];
   t('lo que no debe fiarse del cliente sale del servidor', g && g.cliente === 'TOTTUS' && g.sede === 'DOMINICOS / T. VALLE' && g.area === 'SSHH CLIENTES PISO 2' && g.tecnicoId === 'PER003');
-  const otra = await procesar({ accion: 'guardar', registro: reg }, INIT, d);
-  t('reintento del mismo registro: ok y duplicado, sin crear otro', otra.status === 200 && otra.json.duplicado === true && d.log.creados.length === 1);
+  t('el id es determinístico (equipo|período|año) y el registro lleva su período', g.id === 'MA-DTV-EXT-001|SEP-OCT|2026' && g.periodo === 'SEP-OCT' && g.anio === 2026 && g.ediciones === 0 && g.creadoPor === 'ENRIQUE YARANGA', JSON.stringify(g.id));
+
+  // ── UNA sola toma por equipo y período: volver a enviarla la ACTUALIZA ──
+  const e2 = base3(); e2.estado = 'OP'; e2.id = 'PAR-1730000000001-zz11zz'; e2.capturadoEn = new Date(AHORA - 10e3).toISOString();
+  const r2 = await procesar({ accion: 'guardar', registro: e2 }, INIT, d);
+  t('enviar de nuevo el mismo equipo = edición (no crea otra)', r2.status === 200 && r2.json.actualizado === true && d.log.store.size === 1, JSON.stringify(r2));
+  const g2 = d.log.store.get('MA-DTV-EXT-001|SEP-OCT|2026');
+  t('la edición reemplaza los valores y guarda quién la hizo', g2.estado === 'OP' && g2.ediciones === 1 && g2.editadoPor === 'ENRIQUE YARANGA' && g2.creadoPor === 'ENRIQUE YARANGA');
+  const vieja = base3(); vieja.estado = 'FS'; vieja.id = 'PAR-1730000000002-yy22yy'; vieja.capturadoEn = new Date(AHORA - 120e3).toISOString();
+  const rv = await procesar({ accion: 'guardar', registro: vieja }, INIT, d);
+  t('un envío atrasado (cola del teléfono) no pisa una toma más nueva', rv.status === 200 && rv.json.obsoleto === true && d.log.store.get('MA-DTV-EXT-001|SEP-OCT|2026').estado === 'OP');
+
+  // ── el período sale del botón "Usar este período…" (periodo efectivo de la sede), no del calendario ni del teléfono ──
+  const dOtro = deps({ periodo: async () => ({ periodo: 'NOV-DIC', anio: 2026 }) });
+  const ro = await procesar({ accion: 'guardar', registro: base3() }, INIT, dOtro);
+  t('con la sede en otro período la toma va a ESE período', ro.json.periodo.periodo === 'NOV-DIC' && dOtro.log.guardados[0].id === 'MA-DTV-EXT-001|NOV-DIC|2026' && dOtro.log.guardados[0].periodo === 'NOV-DIC');
+
+  // ── una toma vieja (sin periodo) del mismo equipo y período se absorbe: queda UNA sola ──
+  const dl = deps();
+  dl.log.store.set('PAR-1730000000009-aa99aa', { id: 'PAR-1730000000009-aa99aa', eqId: EQS.SPLIT.eqId, cliente: 'TOTTUS', sede: 'LOS OLIVOS', fecha: '2026-09-20', capturadoEn: '2026-09-20T15:00:00.000Z', tecnicoNombre: 'LUIS CHAVEZ', estado: 'FS' });
+  const rl = await procesar({ accion: 'guardar', registro: base3('SPLIT') }, INIT, dl);
+  t('toma vieja del mismo equipo y período: se reemplaza y se borra la repetida', rl.json.actualizado === true && dl.log.store.size === 1 && dl.log.borrados.join() === 'PAR-1730000000009-aa99aa' && dl.log.store.has(idRegistro(EQS.SPLIT.eqId, 'SEP-OCT', 2026)));
+  t('…y conserva quién la tomó primero', dl.log.store.get(idRegistro(EQS.SPLIT.eqId, 'SEP-OCT', 2026)).creadoPor === 'LUIS CHAVEZ');
+
+  // ── lista de equipos: hecho / falta del período ──
+  const lista = await procesar({ accion: 'equipos', cliente: 'TOTTUS', sede: 'DOMINICOS / T. VALLE' }, INIT, d);
+  const porNom = Object.fromEntries(lista.json.equipos.map((x) => [x.nombre, x]));
+  t('equipos: el que ya tiene toma en el período sale "hecho"; los demás, no', porNom['Extractor 01'].hecho === true && porNom['Extractor 2'].hecho === false && porNom['Extractor 10'].hecho === false, JSON.stringify(lista.json.equipos.map((x) => [x.nombre, x.hecho])));
+  t('equipos: trae el período vigente de la sede', lista.json.periodo.periodo === 'SEP-OCT' && lista.json.periodo.anio === 2026);
+  t('equipos: el hecho trae su toma para reabrirla y editarla', porNom['Extractor 01'].registro.estado === 'OP' && porNom['Extractor 01'].registro.datos.tipoExtractor === 'CENTRIFUGA' && porNom['Extractor 2'].registro === null);
+  const listaOtro = await procesar({ accion: 'equipos', cliente: 'TOTTUS', sede: 'DOMINICOS / T. VALLE' }, INIT, { ...d, periodo: async () => ({ periodo: 'NOV-DIC', anio: 2026 }) });
+  t('equipos: si la sede cambia de período, todo vuelve a "falta" (la toma es del período)', listaOtro.json.equipos.every((x) => x.hecho === false));
+  t('equipos: una toma de OTRO cliente en la misma sede no cuenta', (await procesar({ accion: 'equipos', cliente: 'RIPLEY', sede: 'DOMINICOS / T. VALLE' }, INIT, d)).json.equipos.every((x) => !x.hecho));
+
+  // ── correcciones de marca/modelo/serie respecto al inventario ──
+  t('cambiosEquipo: igual al inventario → ninguno', Object.keys(cambiosEquipo({ marca: 'WEG', modelo: 'M1', serie: 'S1' }, { marca: 'WEG', modelo: ' M1 ', serie: 'S1' })).length === 0);
+  const comp = cambiosEquipo({ marca: '', modelo: 'M1', serie: 'S1' }, { marca: 'WEG', modelo: 'M1', serie: 'S1' });
+  t('cambiosEquipo: completar un dato vacío cuenta', Object.keys(comp).join() === 'marca' && comp.marca.antes === '' && comp.marca.despues === 'WEG');
+  const corr = cambiosEquipo({ marca: 'WEG', modelo: 'M1', serie: 'S1' }, { marca: 'WEG', modelo: 'M2', serie: '' });
+  t('cambiosEquipo: cambiar o borrar un dato cuenta', Object.keys(corr).join() === 'modelo,serie' && corr.modelo.antes === 'M1' && corr.modelo.despues === 'M2' && corr.serie.despues === '');
+  const gx = d.log.store.get('MA-DTV-EXT-001|SEP-OCT|2026');
+  t('el registro guarda lo que decía el inventario y qué campos cambiaron', gx.equipoInventario.marca === 'WEG' && gx.equipoInventario.modelo === 'M1' && Object.keys(gx.cambiosEquipo).join() === 'modelo,serie' && gx.cambiosEquipo.modelo.antes === 'M1' && gx.cambiosEquipo.modelo.despues === '3~112M-04', JSON.stringify(gx.cambiosEquipo));
+
   const mala = base3(); mala.id = 'PAR-1730000000000-zz99zz'; mala.electrico.a1 = '';
+  const nGuardados = d.log.guardados.length;
   const rm = await procesar({ accion: 'guardar', registro: mala }, INIT, d);
-  t('registro incompleto → 400 y no se crea', rm.status === 400 && /N\/A/.test(rm.json.error) && d.log.creados.length === 1, JSON.stringify(rm));
+  t('registro incompleto → 400 y no se escribe', rm.status === 400 && /N\/A/.test(rm.json.error) && d.log.guardados.length === nGuardados, JSON.stringify(rm));
   const inex = base3(); inex.id = 'PAR-1730000000000-qq11qq'; inex.eqId = 'NO-EXISTE';
   t('equipo inexistente → 400', (await procesar({ accion: 'guardar', registro: inex }, INIT, d)).status === 400);
   // un registro de cada formato, contra su equipo
@@ -203,6 +255,21 @@ const INIT = firmar(auth());
   }
   t('un registro de Split no se acepta con los datos de otro formato', (await procesar({ accion: 'guardar', registro: { ...base3('CORTINA'), id: 'PAR-1730000000099-xx00xx', eqId: EQS.SPLIT.eqId } }, INIT, d)).status === 400);
 }
+// ── períodos ──
+{
+  t('rango SEP-OCT 2026', JSON.stringify(rangoPeriodo('SEP-OCT', 2026)) === '{"desde":"2026-09-01","hasta":"2026-10-31"}');
+  t('rango NOV-DIC termina el 31/12', rangoPeriodo('NOV-DIC', 2026).hasta === '2026-12-31');
+  t('rango ENE-FEB de un año bisiesto', rangoPeriodo('ENE-FEB', 2028).hasta === '2028-02-29');
+  t('período desconocido → null', rangoPeriodo('XYZ', 2026) === null);
+  t('período de una fecha', periodoDeFecha('2026-10-27').periodo === 'SEP-OCT' && periodoDeFecha('2026-12-01').periodo === 'NOV-DIC' && periodoDeFecha('2026-01-15').periodo === 'ENE-FEB');
+  t('el id escapa la "/" del equipo', idRegistro('A/B', 'SEP-OCT', 2026) === 'A∕B|SEP-OCT|2026');
+}
+// ── quién puede borrar tomas desde la web ──
+{
+  t('ADMIN y SUPER_ADMIN pueden borrar', puedeBorrarParametros('a@x.com', { rol: 'ADMIN' }) && puedeBorrarParametros('a@x.com', { rol: 'SUPER_ADMIN' }));
+  t('SUPERVISOR, TECNICO o sin usuario no pueden', !puedeBorrarParametros('a@x.com', { rol: 'SUPERVISOR' }) && !puedeBorrarParametros('a@x.com', { rol: 'TECNICO' }) && !puedeBorrarParametros('a@x.com', null));
+  t('los super del sistema siempre pueden', puedeBorrarParametros('MarchenaAnguloJoseLuis@gmail.com', null) && puedeBorrarParametros('plataforma@multiaire.com.pe', undefined));
+}
 t('orden natural', ['Extractor 10', 'Extractor 2', 'Extractor 01'].sort((a, b) => porNombre({ nombre: a }, { nombre: b })).join() === 'Extractor 01,Extractor 2,Extractor 10');
 
 // ── la pantalla: se arma con los formatos del servidor y trae los datos del sistema ya completos ──
@@ -210,8 +277,13 @@ t('orden natural', ['Extractor 10', 'Extractor 2', 'Extractor 01'].sort((a, b) =
   const html = fs.readFileSync(new URL('../parametros.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   [...html.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].forEach((m, i) => { try { new Function(m[1]); ok++; } catch (e) { mal++; console.log('✗ script', i, e.message); } });
   t('el formulario sale de formatos[eq.formato].campos', /const fm = formatos\[eq\.formato\]/.test(html) && /fm\.campos\.map/.test(html));
-  t('marca/modelo/serie se precargan del inventario y quedan de solo lectura', /dato\('marca', 'Marca', eq\.marca\)/.test(html) && /dato\('modelo', 'Modelo', eq\.modelo\)/.test(html) && /dato\('serie', 'Número de serie', eq\.serie\)/.test(html) && /valor \? ' readonly' : ''/.test(html));
-  t('se pueden corregir con el lápiz', /data-corregir/.test(html) && /i\.readOnly = false/.test(html));
+  t('marca/modelo/serie se precargan del inventario', /dato\('marca', 'Marca', eq\.marca\)/.test(html) && /dato\('modelo', 'Modelo', eq\.modelo\)/.test(html) && /dato\('serie', 'Número de serie', eq\.serie\)/.test(html));
+  t('…y SIEMPRE se pueden editar (vacíos o con datos): sin solo-lectura ni lápiz', !/readonly/.test(html.match(/const dato = [^\n]+/)[0]) && !/data-corregir/.test(html));
+  t('si difieren del inventario, el técnico lo ve en vivo', /aviso-corr/.test(html) && /i\.value\.trim\(\) !== String\(eq\[k\] \|\| ''\)\.trim\(\)/.test(html));
+  t('cada equipo lleva su etiqueta: verde si hecho, rojo si falta, ámbar si está por enviar', /tag ok">✓ Hecho/.test(html) && /tag falta">Falta/.test(html) && /tag cola">📤 Por enviar/.test(html) && /e\.hecho \?/.test(html));
+  t('la etiqueta sale de lo que tiene el servidor en el período (no de "hoy" en el teléfono)', !/par_hechos/.test(html) && /periodo = r\.periodo/.test(html));
+  t('abrir un equipo ya hecho = editar: se rellena con su toma y el botón dice Actualizar', /rellenar\(eq\.registro\)/.test(html) && /Actualizar registro/.test(html) && /reemplaza<\/b> esa toma/.test(html));
+  t('la lista muestra el período y cuántos equipos ya tienen toma', /con toma<\/div>/.test(html));
   t('la potencia del motor se precarga con la capacidad (si no es BTU ni N/V)', /const potenciaDe = /.test(html) && /btu/i.test(html) && /c\.potencia \? esc\(potenciaDe\(eq\)\)/.test(html));
   t('las 3 líneas de voltaje y amperaje; en monofásico solo L1', /\['v1', 'Voltaje L1 \(V\)'\]/.test(html) && /\['a3', 'Amperaje L3 \(A\)'\]/.test(html) && /\['v1', 'a1'\]\.includes\(k\)/.test(html));
   t('estado OP / OO / FS', /OP · Operativo/.test(html) && /OO · Operativo con obs/.test(html) && /FS · Fuera de func/.test(html));
