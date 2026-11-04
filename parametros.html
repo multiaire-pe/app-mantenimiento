@@ -35,8 +35,6 @@ textarea{min-height:110px;resize:vertical}
 .tag.ok{background:#dcfce7;color:#166534}
 .tag.falta{background:#fee2e2;color:#991b1b}
 .tag.cola{background:#fef3c7;color:#92400e}
-.aviso-corr{font-size:12px;color:#b91c1c;margin-top:3px;display:none}
-.aviso-corr.on{display:block}
 .ya{background:#dcfce7;color:#166534;border-radius:10px;padding:8px 12px;font-size:13px;margin:8px 0}
 .row{display:flex;gap:10px}
 .row>*{flex:1;min-width:0}
@@ -227,9 +225,9 @@ const ESTADOS_EQ = [['OP', 'OP · Operativo'], ['OO', 'OO · Operativo con obs.'
 const LINEAS = [['v1', 'Voltaje L1 (V)'], ['v2', 'Voltaje L2 (V)'], ['v3', 'Voltaje L3 (V)'], ['a1', 'Amperaje L1 (A)'], ['a2', 'Amperaje L2 (A)'], ['a3', 'Amperaje L3 (A)']];
 const select = (id, rotulo, lista) => `<div data-campo="${id}"><label for="${id}">${rotulo}</label><select id="${id}"><option value="">— Elegir —</option>${lista.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select><div class="msg-err">Elige una opción</div></div>`;
 const numero = (id, rotulo) => `<div data-campo="${id}" data-num="1"><label for="${id}">${rotulo}</label><div class="num"><input id="${id}" inputmode="decimal" autocomplete="off" placeholder="Valor"><label class="na"><input type="checkbox" id="${id}_na"> N/A</label></div><div class="msg-err">Escribe el valor o marca N/A</div></div>`;
-// Marca / modelo / serie vienen del inventario y SIEMPRE se pueden editar (estén vacíos o con datos). Si el técnico los cambia, la toma queda
-// marcada en Mantenimiento con un punto rojo para que se revise el inventario.
-const dato = (id, rotulo, valor) => `<div><label for="${id}">${rotulo}</label><input id="${id}" maxlength="60" value="${esc(valor)}" placeholder="No está en el sistema" autocomplete="off"><div class="aviso-corr" id="${id}_corr">🔴 Distinto del inventario: se avisará para revisarlo</div></div>`;
+// Marca / modelo / serie vienen del inventario y SIEMPRE se pueden editar (estén vacíos o con datos). El técnico no ve ninguna alerta: si cambia
+// algo, la toma queda marcada en Mantenimiento con un punto rojo para que quien revisa decida si corrige el inventario.
+const dato = (id, rotulo, valor) => `<div><label for="${id}">${rotulo}</label><input id="${id}" maxlength="60" value="${esc(valor)}" placeholder="No está en el sistema" autocomplete="off"></div>`;
 // En extractores, UMA y cortinas la capacidad del inventario es la potencia del motor ("1.5 HP", "870 W").
 const potenciaDe = (eq) => { const c = String(eq.capacidad || '').trim(); return !c || /^n\/?v$/i.test(c) || /btu/i.test(c) ? '' : c; };
 
@@ -274,12 +272,6 @@ function abrirForm(eq) {
   document.querySelectorAll('input[name=fases]').forEach((r) => { r.onchange = trif; });
   // marcar N/A deja el campo numérico vacío y deshabilitado
   document.querySelectorAll('.na input').forEach((cb) => { cb.onchange = () => { const i = $('#' + cb.id.replace('_na', '')); i.disabled = cb.checked; if (cb.checked) i.value = ''; }; });
-  // aviso en vivo cuando marca/modelo/serie ya no coinciden con el inventario
-  ['marca', 'modelo', 'serie'].forEach((k) => {
-    const i = $('#' + k), av = $('#' + k + '_corr');
-    const ver = () => av.classList.toggle('on', i.value.trim() !== String(eq[k] || '').trim());
-    i.oninput = ver; ver();
-  });
   if (eq.hecho && eq.registro) rellenar(eq.registro);
   $('#volver').onclick = () => { filtro = ''; pintarLista(); window.scrollTo(0, 0); };
   $('#guardar').onclick = () => guardar(eq);
@@ -292,7 +284,6 @@ function rellenar(r) {
   const num = (id, v) => { const n = $('#' + id), na = $('#' + id + '_na'); if (!n || v == null) return; if (v === 'NA') { na.checked = true; n.value = ''; n.disabled = true; } else n.value = String(v); };
   const e = r.equipo || {};
   val('marca', e.marca); val('modelo', e.modelo); val('serie', e.serie);
-  ['marca', 'modelo', 'serie'].forEach((k) => { const n = $('#' + k); if (n.oninput) n.oninput(); });
   val('os', r.os); val('observaciones', r.observaciones);
   const el = r.electrico || {};
   if (el.fases) { const f = $(`input[name=fases][value=${el.fases}]`); if (f) { f.checked = true; f.onchange && f.onchange(); } }
