@@ -71,7 +71,10 @@ export default async function handler(req, res) {
       ahora: () => Date.now(),
       identificar: identificarPorTelegram,
       equipos,
-      crear,
+      periodo: periodoEfectivo,
+      registros,
+      previos,
+      guardar,
     });
     return res.status(r.status).json(r.json);
   } catch (e) {
