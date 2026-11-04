@@ -608,6 +608,20 @@ function seleccionadosDe(data) {
 }
 // La '/' de una sede (DOMINICOS / T. VALLE) rompe la ruta del doc: Mantenimiento la guarda con '∕'.
 const idDocMtto = (s) => String(s).replace(/\//g, '∕');
+// Misma regla que Mantenimiento/bot: en las sedes que RIPLEY y TOTTUS comparten por nombre, la clave de un
+// cliente que no es RIPLEY lleva el cliente entre paréntesis. Sin esto el informe de TOTTUS Miraflores leía
+// la selección y las fotos de RIPLEY Miraflores (mismo `MIRAFLORES|período|año`).
+const SEDES_COMPARTIDAS_PENDIENTES = new Set(['MIRAFLORES', 'JOCKEY PLAZA']);
+const sedeEfectiva = (sede, cliente) =>
+  (SEDES_COMPARTIDAS_PENDIENTES.has(sede) && cliente && cliente !== 'RIPLEY') ? `${sede} (${cliente})` : sede;
+
+// ¿Esta observación es del cliente del informe? Una sede compartida (MIRAFLORES) tiene observaciones de
+// RIPLEY y de TOTTUS con el mismo `sede`: se decide por el equipo (`eqId`, que es único) y, si no lo
+// trae, por el `cliente` del propio documento.
+function obsEsDelCliente(o, cliente, eqIdsDelCliente) {
+  if (o.eqId) return eqIdsDelCliente.has(o.eqId);
+  return o.cliente ? o.cliente === cliente : true;
+}
 
 // Junta todo lo que va a salir en el informe y lo muestra en pantalla ANTES de generar:
 // el usuario ve qué tiene y qué le falta sin abrir Word.
@@ -629,13 +643,16 @@ async function preparar() {
   document.getElementById('resumen').innerHTML = '<div class="cargando">Reuniendo datos…</div>';
 
   try {
+    const claveSede = sedeEfectiva(sede, cliente);
     const [ejSnap, foSnap, mtSnap] = await Promise.all([
       db.collection('mtto_ejecuciones').where('sede', '==', sede).where('periodo', '==', periodo).where('anio', '==', anio).get(),
-      db.collection('mantenimiento_fotos').where('clave', '==', `${sede}|${periodo}|${anio}`).get(),
-      db.collection('mantenimiento').doc(idDocMtto(`${sede}|${periodo}|${anio}`)).get(),
+      db.collection('mantenimiento_fotos').where('clave', '==', `${claveSede}|${periodo}|${anio}`).get(),
+      db.collection('mantenimiento').doc(idDocMtto(`${claveSede}|${periodo}|${anio}`)).get(),
     ]);
     // Si esta lectura falla se corta todo (catch de abajo): no se asume "nada seleccionado" en silencio.
     const sel = seleccionadosDe(mtSnap.exists ? mtSnap.data() : null);
+    // `mtto_ejecuciones` se consulta por sede SIN cliente, pero no mezcla clientes: todo se agrupa por
+    // `eq_id` y solo se lee para los equipos del informe (cliente+sede del inventario, ya seleccionados).
     ejecuciones = ejSnap.docs.map((d) => d.data());
     // Se descartan acá las que no son una imagen usable: si entraran, ocuparían uno de los
     // 3 cupos en el selector y recién se caerían al generar, dejando el informe con menos
@@ -644,8 +661,9 @@ async function preparar() {
 
     const equipos = inventario.filter((e) => e.cliente === cliente && e.sede === sede);
     const [m1, m2] = MESES_PERIODO[periodo];
+    const eqIdsDelCliente = new Set(equipos.map((e) => e.eq_id || e.id));
     const obsPeriodo = observaciones.filter((o) => {
-      if (o.sede !== sede) return false;
+      if (o.sede !== sede || !obsEsDelCliente(o, cliente, eqIdsDelCliente)) return false;
       const f = String(o.fecha || '');
       const mes = Number(f.slice(5, 7)), a = Number(f.slice(0, 4));
       return a === anio && (mes === m1 || mes === m2);
