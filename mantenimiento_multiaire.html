@@ -2625,7 +2625,7 @@ function parVistaFormato() {
   if (!recs.length) { toast('Selecciona al menos un registro', 'warn'); return; }
   const bloques = parBloques(recs);
   const css = `@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Calibri,Arial,sans-serif;font-size:10px;color:#000}
-  .hoja{page-break-after:always;padding:2px}.hoja:last-child{page-break-after:auto}
+  .hoja{page-break-after:always;break-after:page;page-break-inside:avoid;break-inside:avoid;height:190mm;overflow:hidden;padding:2px}.hoja:last-child{page-break-after:auto;break-after:auto}
   .cab{display:flex;align-items:center;gap:10px;margin-bottom:4px}.logo{width:90px}.logo img{width:90px}.tit{flex:1;text-align:center;font-size:15px;font-weight:700;color:#1F3864}
   .os{width:150px;border:2px solid #000;padding:6px;font-size:11px;height:44px}
   table{border-collapse:collapse;width:100%}td,th{border:1px solid #000}
