@@ -80,8 +80,10 @@ option{background:#fff}
 .tab-btn{padding:12px 16px;font-size:12px;font-weight:600;color:var(--muted2);background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;font-family:var(--font);transition:all .15s;white-space:nowrap}
 .tab-btn:hover{color:var(--accent)}
 .tab-btn.active{color:#1B3F8B;border-bottom-color:#F47920}
-.tab-sep{align-self:center;width:1px;height:20px;background:var(--border);margin:0 8px;flex-shrink:0}
-.tab-grp{align-self:center;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);padding:0 4px 0 8px;white-space:nowrap}
+.modo-seg{display:flex;align-self:center;flex-shrink:0;margin-right:14px;padding:3px;background:var(--surface3,#e9edf5);border-radius:8px}
+.modo-btn{padding:6px 12px;font-size:12px;font-weight:700;color:var(--muted2);background:none;border:none;border-radius:6px;cursor:pointer;font-family:var(--font);white-space:nowrap}
+.modo-btn.active{background:#fff;color:#1B3F8B;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.tab-grupo{display:flex;gap:2px}
 .sb-global-note{display:none;padding:8px 14px;font-size:11px;color:var(--muted2);background:var(--surface2,#f4f6fa);border-bottom:1px solid var(--border)}
 .sb-vista-global .sb-global-note{display:block}
 .sb-vista-global .sb-solo-sede{opacity:.4;pointer-events:none}
@@ -354,7 +356,7 @@ option{background:#fff}
 <div class="app">
   <div class="sidebar" id="sidebar">
     <div class="sb-section">Configuración</div>
-    <div class="sb-global-note">🌐 Vista global: la sede no aplica. El período sí se usa en el tab Global.</div>
+    <div class="sb-global-note">🌐 Vista de todas las sedes: la sede no aplica. El período sí se usa en el tab Resumen.</div>
 
     <div class="sb-group mant-edit-btn sb-solo-sede">
       <button class="btn" style="width:100%;justify-content:center" onclick="openActsEditor()" title="Quitarle o agregarle actividades a un equipo puntual. La plantilla del cliente se edita en la app de Clientes.">⚙️ Ajustar actividades por equipo</button>
@@ -414,15 +416,20 @@ option{background:#fff}
     </div>
 
     <div class="tab-nav" id="tabNav">
-      <span class="tab-grp" title="Dependen de la sede y el período elegidos en el panel izquierdo">Por sede</span>
-      <button class="tab-btn" onclick="switchTab('checklist')">📋 Checklist</button>
-      <button class="tab-btn" onclick="switchTab('dashboard')">📊 Dashboard</button>
-      <button class="tab-btn" onclick="switchTab('parametros')">📋 Parámetros</button>
-      <span class="tab-sep"></span>
-      <span class="tab-grp" title="Ven todas las sedes; no dependen de la sede del panel izquierdo">Global</span>
-      <button class="tab-btn active" onclick="switchTab('global')">🌐 Global</button>
-      <button class="tab-btn" onclick="switchTab('historial')">🕘 Historial</button>
-      <button class="tab-btn" onclick="switchTab('desempeno')">👷 Desempeño</button>
+      <div class="modo-seg" role="tablist" aria-label="Modo de vista">
+        <button class="modo-btn" id="modoSede" onclick="setModo('sede')" title="Checklist, Dashboard y Parámetros de la sede elegida en el panel izquierdo">🏢 Por sede</button>
+        <button class="modo-btn active" id="modoGlobal" onclick="setModo('global')" title="Resumen, Historial y Desempeño de todas las sedes (no dependen de la sede del panel izquierdo)">🌐 Todas las sedes</button>
+      </div>
+      <div class="tab-grupo" id="grpSede" style="display:none">
+        <button class="tab-btn" onclick="switchTab('checklist')">📋 Checklist</button>
+        <button class="tab-btn" onclick="switchTab('dashboard')">📊 Dashboard</button>
+        <button class="tab-btn" onclick="switchTab('parametros')">📋 Parámetros</button>
+      </div>
+      <div class="tab-grupo" id="grpGlobal">
+        <button class="tab-btn active" onclick="switchTab('global')">📈 Resumen</button>
+        <button class="tab-btn" onclick="switchTab('historial')">🕘 Historial</button>
+        <button class="tab-btn" onclick="switchTab('desempeno')">👷 Desempeño</button>
+      </div>
     </div>
 
     <div class="tab-view" id="tab-checklist">
@@ -2710,13 +2717,22 @@ async function parExportarExcel() {
   } catch (e) { toast('Error al generar el Excel: ' + e.message, 'err'); }
 }
 
-// Tabs que ven TODAS las sedes: no dependen de la sede del panel izquierdo (Global sí usa su período).
+// Tabs del modo "Todas las sedes": no dependen de la sede del panel izquierdo (Resumen sí usa su período).
 const TABS_GLOBALES = ['global','historial','desempeno'];
 function tabActivo(){ const v = document.querySelector('.tab-view.active'); return v ? v.id.replace('tab-','') : ''; }
+let _ultimoTabSede = 'checklist';   // al volver a "Por sede" se retoma el último tab que se usaba
+function setModo(m){
+  if(m === 'global'){ if(!TABS_GLOBALES.includes(tabActivo())) switchTab('global'); }
+  else if(TABS_GLOBALES.includes(tabActivo())) switchTab(_ultimoTabSede);
+}
 // Barra con el nombre de la sede y "Editar equipos": solo tiene sentido en un tab por sede con sede elegida.
 // El panel izquierdo se atenúa en los tabs globales para que no parezca que filtran.
 function aplicarVistaTabs(){
   const global = TABS_GLOBALES.includes(tabActivo());
+  document.getElementById('modoSede').classList.toggle('active', !global);
+  document.getElementById('modoGlobal').classList.toggle('active', global);
+  document.getElementById('grpSede').style.display = global ? 'none' : 'flex';
+  document.getElementById('grpGlobal').style.display = global ? 'flex' : 'none';
   const tb = document.getElementById('toolbar');
   if(tb) tb.style.display = (currentSede && !global) ? 'flex' : 'none';
   const sb = document.getElementById('sidebar');
@@ -2735,6 +2751,7 @@ function switchTab(tab) {
   const _tb = document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`);
   if(_tb) _tb.classList.add('active'); // "pendientes" ya no tiene tab-btn propio (se entra por el ＋ del header)
   document.getElementById('tab-'+tab).classList.add('active');
+  if(['checklist','dashboard','parametros'].includes(tab)) _ultimoTabSede = tab;
   aplicarVistaTabs();
   if(tab==='dashboard') renderDashboard();
   if(tab==='global') renderGlobal();

@@ -6,10 +6,15 @@ const html = fs.readFileSync(new URL('../mantenimiento_multiaire.html', import.m
 let ok = 0, mal = 0;
 const t = (n, c) => { if (c) ok++; else { mal++; console.log('✗', n); } };
 
-const nav = html.match(/<div class="tab-nav" id="tabNav"[^>]*>[\s\S]*?<\/div>/)?.[0] || '';
-t('la barra de tabs existe y NO arranca oculta', !!nav && !/display:none/.test(nav));
+const nav = html.slice(html.indexOf('<div class="tab-nav" id="tabNav"'), html.indexOf('<div class="tab-view" id="tab-checklist">'));
+t('la barra de tabs existe y NO arranca oculta', !!nav && !/id="tabNav"[^>]*display:none/.test(nav));
 const orden = [...nav.matchAll(/switchTab\('(\w+)'\)/g)].map((m) => m[1]);
-t('grupo por sede primero, luego los globales', orden.join() === 'checklist,dashboard,parametros,global,historial,desempeno', orden.join());
+t('seis tabs: tres por sede y tres de todas las sedes', orden.join() === 'checklist,dashboard,parametros,global,historial,desempeno', orden.join());
+t('interruptor de modo "Por sede | Todas las sedes"', /setModo\('sede'\)/.test(nav) && /setModo\('global'\)/.test(nav) && /Todas las sedes/.test(nav));
+t('arranca en el modo de todas las sedes (aún no hay sede)', /id="grpSede" style="display:none"/.test(nav) && /id="modoGlobal"/.test(nav));
+t('el tab Global se llama Resumen (no repite el nombre del grupo)', /📈 Resumen/.test(nav) && !/>🌐 Global</.test(nav));
+t('solo se ve el grupo de tabs del modo activo', /getElementById\('grpSede'\)\.style\.display = global \? 'none' : 'flex'/.test(html) && /getElementById\('grpGlobal'\)\.style\.display = global \? 'flex' : 'none'/.test(html));
+t('al volver a "Por sede" se retoma el último tab usado', /switchTab\(_ultimoTabSede\)/.test(html) && /_ultimoTabSede = tab;/.test(html));
 t('la vista inicial es Global (aún no hay sede)', /<div class="tab-view active" id="tab-global">/.test(html) && /<div class="tab-view" id="tab-checklist">/.test(html));
 
 t('los tabs globales están declarados', /const TABS_GLOBALES = \['global','historial','desempeno'\];/.test(html));
