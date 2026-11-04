@@ -10,8 +10,12 @@ const nav = html.slice(html.indexOf('<div class="tab-nav" id="tabNav"'), html.in
 t('la barra de tabs existe y NO arranca oculta', !!nav && !/id="tabNav"[^>]*display:none/.test(nav));
 const orden = [...nav.matchAll(/switchTab\('(\w+)'\)/g)].map((m) => m[1]);
 t('seis tabs: tres por sede y tres de todas las sedes', orden.join() === 'checklist,dashboard,parametros,global,historial,desempeno', orden.join());
-t('interruptor de modo "Por sede | Todas las sedes"', /setModo\('sede'\)/.test(nav) && /setModo\('global'\)/.test(nav) && /Todas las sedes/.test(nav));
-t('arranca en el modo de todas las sedes (aún no hay sede)', /id="grpSede" style="display:none"/.test(nav) && /id="modoGlobal"/.test(nav));
+const panel = html.slice(html.indexOf('<div class="sidebar" id="sidebar">'), html.indexOf('<div class="main">'));
+t('el interruptor "Por sede | Todas las sedes" vive en el panel izquierdo, no en la barra de tabs', /setModo\('sede'\)/.test(panel) && /setModo\('global'\)/.test(panel) && !/setModo/.test(nav));
+const ids = ['modoSede', 'selSede', 'selPeriodo', 'btnSelEq', 'openActsEditor'].map((k) => panel.indexOf(k));
+t('orden del panel: interruptor, sede, período, seleccionar equipos, ajustar actividades', ids.every((n) => n > 0) && ids.every((n, i) => !i || n > ids[i - 1]), ids.join());
+t('en "Todas las sedes" se OCULTA lo de la sede (queda interruptor + período)', /\.sb-vista-global \.sb-solo-sede\{display:none!important\}/.test(html) && !/id="selPeriodo"[^>]*sb-solo-sede/.test(panel) && /<div class="sb-label">Período<\/div>\s*<div class="periodo-grid">/.test(panel));
+t('arranca en el modo de todas las sedes (aún no hay sede)', /id="grpSede" style="display:none"/.test(nav) && /id="modoGlobal" onclick|class="modo-btn active" id="modoGlobal"/.test(panel));
 t('el tab Global se llama Resumen (no repite el nombre del grupo)', /📈 Resumen/.test(nav) && !/>🌐 Global</.test(nav));
 t('solo se ve el grupo de tabs del modo activo', /getElementById\('grpSede'\)\.style\.display = global \? 'none' : 'flex'/.test(html) && /getElementById\('grpGlobal'\)\.style\.display = global \? 'flex' : 'none'/.test(html));
 t('al volver a "Por sede" se retoma el último tab usado', /switchTab\(_ultimoTabSede\)/.test(html) && /_ultimoTabSede = tab;/.test(html));
@@ -20,7 +24,7 @@ t('la vista inicial es Global (aún no hay sede)', /<div class="tab-view active"
 t('los tabs globales están declarados', /const TABS_GLOBALES = \['global','historial','desempeno'\];/.test(html));
 t('renderMain y showEmpty ya no esconden/muestran la barra de tabs', !/getElementById\('tabNav'\)\.style/.test(html));
 t('la barra de sede solo se ve con sede y fuera de un tab global', /tb\.style\.display = \(currentSede && !global\) \? 'flex' : 'none'/.test(html));
-t('el panel izquierdo se atenúa en los tabs globales', /sb\.classList\.toggle\('sb-vista-global', global\)/.test(html) && /\.sb-vista-global \.sb-solo-sede\{opacity:\.4;pointer-events:none\}/.test(html));
+t('el panel cambia de modo según el tab activo', /sb\.classList\.toggle\('sb-vista-global', global\)/.test(html));
 t('el período NO se atenúa (Global lo usa)', !/id="selPeriodo"[^>]*sb-solo-sede/.test(html) && /<div class="sb-label">Período<\/div>/.test(html));
 t('elegir una sede desde un tab global lleva al checklist', /if\(TABS_GLOBALES\.includes\(tabActivo\(\)\)\) switchTab\('checklist'\);/.test(html));
 t('Global usa el período del panel aunque no haya sede', /const perG = document\.getElementById\('selPeriodo'\)\.value, anioG = document\.getElementById\('selAnio'\)\.value;/.test(html));
