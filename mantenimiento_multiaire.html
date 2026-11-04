@@ -80,13 +80,11 @@ option{background:#fff}
 .tab-btn{padding:12px 16px;font-size:12px;font-weight:600;color:var(--muted2);background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;font-family:var(--font);transition:all .15s;white-space:nowrap}
 .tab-btn:hover{color:var(--accent)}
 .tab-btn.active{color:#1B3F8B;border-bottom-color:#F47920}
-.modo-seg{display:flex;align-self:center;flex-shrink:0;margin-right:14px;padding:3px;background:var(--surface3,#e9edf5);border-radius:8px}
-.modo-btn{padding:6px 12px;font-size:12px;font-weight:700;color:var(--muted2);background:none;border:none;border-radius:6px;cursor:pointer;font-family:var(--font);white-space:nowrap}
+.modo-seg{display:flex;padding:3px;background:var(--surface3,#e9edf5);border-radius:8px}
+.modo-btn{flex:1;padding:7px 8px;font-size:12px;font-weight:700;color:var(--muted2);background:none;border:none;border-radius:6px;cursor:pointer;font-family:var(--font);white-space:nowrap}
 .modo-btn.active{background:#fff;color:#1B3F8B;box-shadow:0 1px 3px rgba(0,0,0,.15)}
 .tab-grupo{display:flex;gap:2px}
-.sb-global-note{display:none;padding:8px 14px;font-size:11px;color:var(--muted2);background:var(--surface2,#f4f6fa);border-bottom:1px solid var(--border)}
-.sb-vista-global .sb-global-note{display:block}
-.sb-vista-global .sb-solo-sede{opacity:.4;pointer-events:none}
+.sb-vista-global .sb-solo-sede{display:none!important}
 .tab-view{display:none;flex:1;overflow-y:auto;padding:16px}
 .chk-search{position:sticky;top:-16px;z-index:5;display:flex;align-items:center;gap:8px;background:var(--bg);padding:8px 0 10px;margin-bottom:2px}
 .chk-search input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-family:var(--font);font-size:14px;background:var(--surface);color:var(--accent);-webkit-appearance:none;appearance:none}
@@ -356,10 +354,12 @@ option{background:#fff}
 <div class="app">
   <div class="sidebar" id="sidebar">
     <div class="sb-section">Configuración</div>
-    <div class="sb-global-note">🌐 Vista de todas las sedes: la sede no aplica. El período sí se usa en el tab Resumen.</div>
 
-    <div class="sb-group mant-edit-btn sb-solo-sede">
-      <button class="btn" style="width:100%;justify-content:center" onclick="openActsEditor()" title="Quitarle o agregarle actividades a un equipo puntual. La plantilla del cliente se edita en la app de Clientes.">⚙️ Ajustar actividades por equipo</button>
+    <div class="sb-group">
+      <div class="modo-seg" role="tablist" aria-label="Modo de vista">
+        <button class="modo-btn" id="modoSede" onclick="setModo('sede')" title="Checklist, Dashboard y Parámetros de la sede elegida">🏢 Por sede</button>
+        <button class="modo-btn active" id="modoGlobal" onclick="setModo('global')" title="Resumen, Historial y Desempeño de todas las sedes">🌐 Todas las sedes</button>
+      </div>
     </div>
 
     <div class="sb-group sb-solo-sede">
@@ -392,17 +392,21 @@ option{background:#fff}
       <div id="wspPeriodoHint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
     </div>
 
+    <div class="sb-actions sb-solo-sede">
+      <button class="btn btn-primary btn-block mant-edit-btn" onclick="openSelEquipos()" id="btnSelEq" disabled>
+        ＋ Seleccionar equipos
+      </button>
+    </div>
+
+    <div class="sb-group mant-edit-btn sb-solo-sede">
+      <button class="btn" style="width:100%;justify-content:center" onclick="openActsEditor()" title="Quitarle o agregarle actividades a un equipo puntual. La plantilla del cliente se edita en la app de Clientes.">⚙️ Ajustar actividades por equipo</button>
+    </div>
+
     <div class="status-bar sb-solo-sede" id="statusBar" style="display:none">
       <div class="sb-label" style="margin-bottom:8px">Progreso del período</div>
       <div class="status-row"><div class="status-dot green"></div> Completados <span class="status-count" id="cntGreen">0</span></div>
       <div class="status-row"><div class="status-dot yellow"></div> Incompletos <span class="status-count" id="cntYellow">0</span></div>
       <div class="status-row"><div class="status-dot red"></div> No realizados <span class="status-count" id="cntRed">0</span></div>
-    </div>
-
-    <div class="sb-actions sb-solo-sede">
-      <button class="btn btn-primary btn-block mant-edit-btn" onclick="openSelEquipos()" id="btnSelEq" disabled>
-        ＋ Seleccionar equipos
-      </button>
     </div>
   </div>
 
@@ -416,10 +420,6 @@ option{background:#fff}
     </div>
 
     <div class="tab-nav" id="tabNav">
-      <div class="modo-seg" role="tablist" aria-label="Modo de vista">
-        <button class="modo-btn" id="modoSede" onclick="setModo('sede')" title="Checklist, Dashboard y Parámetros de la sede elegida en el panel izquierdo">🏢 Por sede</button>
-        <button class="modo-btn active" id="modoGlobal" onclick="setModo('global')" title="Resumen, Historial y Desempeño de todas las sedes (no dependen de la sede del panel izquierdo)">🌐 Todas las sedes</button>
-      </div>
       <div class="tab-grupo" id="grpSede" style="display:none">
         <button class="tab-btn" onclick="switchTab('checklist')">📋 Checklist</button>
         <button class="tab-btn" onclick="switchTab('dashboard')">📊 Dashboard</button>
@@ -2726,7 +2726,7 @@ function setModo(m){
   else if(TABS_GLOBALES.includes(tabActivo())) switchTab(_ultimoTabSede);
 }
 // Barra con el nombre de la sede y "Editar equipos": solo tiene sentido en un tab por sede con sede elegida.
-// El panel izquierdo se atenúa en los tabs globales para que no parezca que filtran.
+// En el modo "Todas las sedes" el panel izquierdo solo muestra el interruptor y el período (lo demás se oculta).
 function aplicarVistaTabs(){
   const global = TABS_GLOBALES.includes(tabActivo());
   document.getElementById('modoSede').classList.toggle('active', !global);
