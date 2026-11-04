@@ -358,7 +358,7 @@ option{background:#fff}
     <div class="sb-group">
       <div class="modo-seg" role="tablist" aria-label="Modo de vista">
         <button class="modo-btn" id="modoSede" onclick="setModo('sede')" title="Checklist, Dashboard y Parámetros de la sede elegida">🏢 Por sede</button>
-        <button class="modo-btn active" id="modoGlobal" onclick="setModo('global')" title="Resumen, Historial y Desempeño de todas las sedes">🌐 Todas las sedes</button>
+        <button class="modo-btn active" id="modoGlobal" onclick="setModo('global')" title="Resumen, Historial y Desempeño de todas las sedes">🌐 Global</button>
       </div>
     </div>
 
@@ -385,21 +385,10 @@ option{background:#fff}
     </div>
 
     <div class="sb-group mant-edit-btn sb-solo-sede" id="wspPeriodoGroup" style="display:none">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;margin:0">
+      <label id="wspPeriodoLabel" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;margin:0">
         <input type="checkbox" id="chkWspPeriodo" onchange="onToggleWspPeriodo(this.checked)">
-        <span>Usar este período para registros de WhatsApp</span>
+        <span>Usar este período para registros de Telegram</span>
       </label>
-      <div id="wspPeriodoHint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
-    </div>
-
-    <div class="sb-actions sb-solo-sede">
-      <button class="btn btn-primary btn-block mant-edit-btn" onclick="openSelEquipos()" id="btnSelEq" disabled>
-        ＋ Seleccionar equipos
-      </button>
-    </div>
-
-    <div class="sb-group mant-edit-btn sb-solo-sede">
-      <button class="btn" style="width:100%;justify-content:center" onclick="openActsEditor()" title="Quitarle o agregarle actividades a un equipo puntual. La plantilla del cliente se edita en la app de Clientes.">⚙️ Ajustar actividades por equipo</button>
     </div>
 
     <div class="status-bar sb-solo-sede" id="statusBar" style="display:none">
@@ -407,6 +396,13 @@ option{background:#fff}
       <div class="status-row"><div class="status-dot green"></div> Completados <span class="status-count" id="cntGreen">0</span></div>
       <div class="status-row"><div class="status-dot yellow"></div> Incompletos <span class="status-count" id="cntYellow">0</span></div>
       <div class="status-row"><div class="status-dot red"></div> No realizados <span class="status-count" id="cntRed">0</span></div>
+    </div>
+
+    <div class="sb-actions sb-solo-sede">
+      <button class="btn btn-primary btn-block mant-edit-btn" onclick="openSelEquipos()" id="btnSelEq" disabled>
+        ＋ Seleccionar equipos
+      </button>
+      <button class="btn btn-block mant-edit-btn" style="justify-content:center" onclick="openActsEditor()" title="Quitarle o agregarle actividades a un equipo puntual. La plantilla del cliente se edita en la app de Clientes.">⚙️ Ajustar actividades por equipo</button>
     </div>
   </div>
 
@@ -472,12 +468,7 @@ option{background:#fff}
 
     <div class="tab-view" id="tab-desempeno">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-        <select id="dsp-periodo" onchange="renderDesempeno()" style="max-width:150px">
-          <option value="ENE-FEB">Ene – Feb</option><option value="MAR-ABR">Mar – Abr</option>
-          <option value="MAY-JUN">May – Jun</option><option value="JUL-AGO">Jul – Ago</option>
-          <option value="SEP-OCT">Sep – Oct</option><option value="NOV-DIC">Nov – Dic</option>
-        </select>
-        <select id="dsp-anio" onchange="renderDesempeno()" style="max-width:110px"></select>
+        <span id="dsp-ctx" style="font-size:12px;font-weight:700"></span>
         <select id="dsp-sede" onchange="renderDesempenoFiltrado()" style="max-width:200px"><option value="">Todas las sedes</option></select>
         <select id="dsp-tipo" onchange="renderDesempenoFiltrado()" style="max-width:180px"><option value="">Todos los tipos</option></select>
         <select id="dsp-tecnico" onchange="renderDesempenoFiltrado()" style="max-width:200px"><option value="">Todos los técnicos</option></select>
@@ -1413,7 +1404,9 @@ function onSedeChange() {
 
 function onPeriodoChange() {
   if(currentSede) loadPeriodo();
-  else if(tabActivo()==='global') renderGlobal();   // sin sede, el período solo mueve el tab Global
+  // Resumen y Desempeño usan el período del panel, con o sin sede elegida
+  if(tabActivo()==='global') renderGlobal();
+  if(tabActivo()==='desempeno') renderDesempeno();
 }
 // Parámetros y Dashboard no cuelgan de renderMain cuando no hay sede: se vuelven a pintar al cambiar el panel
 function refrescarTabSede(){ if(tabActivo()==='parametros') renderParametros(); if(tabActivo()==='dashboard') renderDashboard(); }
@@ -1471,10 +1464,10 @@ async function loadPeriodo() {
   renderMain();
   loadFotosCounts();  // badges 📷 del período (async, pinta al llegar)
   loadPlanBadges();   // badges 🗓 de actividades planificadas en el itinerario
-  renderWspToggle();  // toggle "usar este período para WhatsApp" (async, pinta al llegar)
+  renderWspToggle();  // toggle "usar este período para Telegram" (async, pinta al llegar)
 }
 
-// Toggle "Usar este período para registros de WhatsApp" — solo aparece en la pestaña del
+// Toggle "Usar este período para registros de Telegram" — solo aparece en la pestaña del
 // período del CALENDARIO, la SIGUIENTE (sede adelantada) y la ANTERIOR (sede atrasada, que aún cierra
 // el período pasado); moverse más de un bimestre no tiene caso de uso real y aumenta el riesgo de
 // tocar el período equivocado. El puntero vive en
@@ -1484,7 +1477,7 @@ async function loadPeriodo() {
 async function renderWspToggle() {
   const grp = document.getElementById('wspPeriodoGroup');
   const chk = document.getElementById('chkWspPeriodo');
-  const hint = document.getElementById('wspPeriodoHint');
+  const lbl = document.getElementById('wspPeriodoLabel');
   if(!currentSede || !currentPeriodo || !currentAnio){ grp.style.display='none'; return; }
   const cal = periodoCalendario();
   const sig = periodoSiguiente(cal.periodo, cal.anio);
@@ -1515,11 +1508,12 @@ async function renderWspToggle() {
   // (apagando el adelanto ahí). Mantener un solo lugar para desactivar evita el estado raro de
   // "ninguno prendido".
   chk.disabled = esActual || !MA.can('editar','mantenimiento');
-  hint.textContent = esActual
-    ? (vigente ? `📌 WhatsApp está guardando en ${d.periodo} ${d.anio} (${atrasado ? 'atrasado' : 'adelantado'}) — desactivalo desde esa pestaña para volver acá.` : '')
-    : (activo ? '📌 Los registros de WhatsApp de esta sede se guardan aquí.'
-      : (esAnterior ? 'Activalo si esta sede aún está cerrando este período: los registros de WhatsApp seguirán cayendo aquí.'
-        : 'Activalo para adelantar los registros de WhatsApp a este período.'));
+  // el aviso ya no ocupa lugar en el panel: aparece solo al pasar el cursor sobre la opción
+  lbl.title = esActual
+    ? (vigente ? `📌 Telegram está guardando en ${d.periodo} ${d.anio} (${atrasado ? 'atrasado' : 'adelantado'}) — desactívalo desde esa pestaña para volver acá.` : 'Los registros de Telegram de esta sede se guardan en el período del calendario.')
+    : (activo ? '📌 Los registros de Telegram de esta sede se guardan aquí.'
+      : (esAnterior ? 'Actívalo si esta sede aún está cerrando este período: los registros de Telegram seguirán cayendo aquí.'
+        : 'Actívalo para adelantar los registros de Telegram a este período.'));
 }
 
 async function onToggleWspPeriodo(checked) {
@@ -1530,10 +1524,10 @@ async function onToggleWspPeriodo(checked) {
   try {
     if(checked){
       await setDoc(ref, { periodo: currentPeriodo, anio: Number(currentAnio), actualizadoPor: _by, actualizadoAt: new Date().toISOString() });
-      toast('Registros de WhatsApp de ' + currentSede + ' → ' + currentPeriodo + ' ' + currentAnio, 'ok');
+      toast('Registros de Telegram de ' + currentSede + ' → ' + currentPeriodo + ' ' + currentAnio, 'ok');
     } else {
       await deleteDoc(ref);
-      toast('Registros de WhatsApp de ' + currentSede + ' vuelven al período del calendario', 'ok');
+      toast('Registros de Telegram de ' + currentSede + ' vuelven al período del calendario', 'ok');
     }
   } catch(e) { toast('No se pudo actualizar', 'err'); }
   renderWspToggle();
@@ -2717,7 +2711,7 @@ async function parExportarExcel() {
   } catch (e) { toast('Error al generar el Excel: ' + e.message, 'err'); }
 }
 
-// Tabs del modo "Todas las sedes": no dependen de la sede del panel izquierdo (Resumen sí usa su período).
+// Tabs del modo "Global": no dependen de la sede del panel izquierdo (Resumen sí usa su período).
 const TABS_GLOBALES = ['global','historial','desempeno'];
 function tabActivo(){ const v = document.querySelector('.tab-view.active'); return v ? v.id.replace('tab-','') : ''; }
 let _ultimoTabSede = 'checklist';   // al volver a "Por sede" se retoma el último tab que se usaba
@@ -2726,7 +2720,7 @@ function setModo(m){
   else if(TABS_GLOBALES.includes(tabActivo())) switchTab(_ultimoTabSede);
 }
 // Barra con el nombre de la sede y "Editar equipos": solo tiene sentido en un tab por sede con sede elegida.
-// En el modo "Todas las sedes" el panel izquierdo solo muestra el interruptor y el período (lo demás se oculta).
+// En el modo "Global" el panel izquierdo solo muestra el interruptor y el período (lo demás se oculta).
 function aplicarVistaTabs(){
   const global = TABS_GLOBALES.includes(tabActivo());
   document.getElementById('modoSede').classList.toggle('active', !global);
@@ -3133,21 +3127,13 @@ function renderHistorialLogFiltrado(){
 let _dspEjec = [];
 let _dspReq = 0;   // token anti-carrera: descarta respuestas de una consulta ya superada
 function _dspFmtH(min){ return min >= 60 ? (min/60).toFixed(1).replace(/\.0$/,'') + ' h' : (min||0) + ' min'; }
-function _dspInit(){
-  const sa = document.getElementById('dsp-anio');
-  if(sa.options.length) return;
-  const y = new Date().getFullYear();
-  for(let i=y-1;i<=y+1;i++){ const o=document.createElement('option'); o.value=i; o.textContent=i; if(i===y)o.selected=true; sa.appendChild(o); }
-  const m = new Date().getMonth();
-  const per = ['ENE-FEB','ENE-FEB','MAR-ABR','MAR-ABR','MAY-JUN','MAY-JUN','JUL-AGO','JUL-AGO','SEP-OCT','SEP-OCT','NOV-DIC','NOV-DIC'];
-  document.getElementById('dsp-periodo').value = per[m];
-}
 async function renderDesempeno(){
-  _dspInit();
   const req = ++_dspReq;
   const cont = document.getElementById('dsp-content');
-  const periodo = document.getElementById('dsp-periodo').value;
-  const anio = Number(document.getElementById('dsp-anio').value);
+  // el período es el del panel izquierdo (no hay selector propio)
+  const periodo = document.getElementById('selPeriodo').value;
+  const anio = Number(document.getElementById('selAnio').value);
+  document.getElementById('dsp-ctx').textContent = periodo + ' ' + anio;
   cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando desempeño…</div>';
   try{
     const snap = await window.__db.collection('mtto_ejecuciones')
