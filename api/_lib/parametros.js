@@ -106,9 +106,36 @@ export function fechaHoraLima(ms) {
 
 export const ID_REGISTRO = /^PAR-[A-Za-z0-9-]{8,64}$/;
 
+// ── Una sola toma por equipo y período ──
+// El id del documento es DETERMINÍSTICO (equipo + período + año): guardar de nuevo el mismo equipo en el mismo período
+// cae sobre el mismo documento y lo ACTUALIZA, así nunca hay dos tomas del mismo equipo. El período lo decide el servidor
+// (el del botón "Usar este período…" de Mantenimiento), no el teléfono.
+export const PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
+export const idRegistro = (eqId, periodo, anio) => `${String(eqId).replace(/\//g, '∕')}|${periodo}|${anio}`;
+export function periodoDeFecha(fecha) {   // 'YYYY-MM-DD' → { periodo, anio }
+  const [a, m] = String(fecha).split('-').map(Number);
+  return { periodo: PERIODOS[Math.floor((m - 1) / 2)], anio: a };
+}
+export function rangoPeriodo(periodo, anio) {   // → { desde, hasta } 'YYYY-MM-DD' (para los registros viejos, que no traen `periodo`)
+  const i = PERIODOS.indexOf(periodo), y = Number(anio);
+  if (i < 0 || !Number.isFinite(y)) return null;
+  const m1 = i * 2 + 1, m2 = m1 + 1, dos = (n) => String(n).padStart(2, '0');
+  return { desde: `${y}-${dos(m1)}-01`, hasta: `${y}-${dos(m2)}-${dos(new Date(Date.UTC(y, m2, 0)).getUTCDate())}` };
+}
+// Marca / modelo / serie que el técnico escribió y NO coinciden con el inventario → { campo: { antes, despues } }
+export function cambiosEquipo(inventario, enviado) {
+  const c = {};
+  for (const k of ['marca', 'modelo', 'serie']) {
+    const a = texto(inventario && inventario[k], 60), b = texto(enviado && enviado[k], 60);
+    if (a !== b) c[k] = { antes: a, despues: b };
+  }
+  return c;
+}
+
 // body: lo que manda la Mini App · equipo: ficha del inventario · tecnico: {id,nombre}
 // Devuelve { ok:true, doc } o { ok:false, error }.
-export function validarRegistro(body, equipo, tecnico, ahora = Date.now()) {
+// ctx (opcional): { periodo: {periodo, anio}, previo: documento ya guardado de este equipo en este período }
+export function validarRegistro(body, equipo, tecnico, ahora = Date.now(), ctx = {}) {
   if (!body || typeof body !== 'object') return { ok: false, error: 'Registro vacío.' };
   if (!ID_REGISTRO.test(String(body.id || ''))) return { ok: false, error: 'Identificador del registro inválido.' };
   if (!equipo) return { ok: false, error: 'El equipo no existe en el inventario.' };
@@ -153,13 +180,19 @@ export function validarRegistro(body, equipo, tecnico, ahora = Date.now()) {
     capturado = recibido; horaCliente = false;
   }
   const { fecha, hora } = fechaHoraLima(capturado);
+  const per = ctx.periodo || periodoDeFecha(fecha);
+  const previo = ctx.previo || null;
+  const equipoEnviado = { marca: texto(eq.marca, 60), modelo: texto(eq.modelo, 60), serie: texto(eq.serie, 60) };
+  const nombre = tecnico.nombre || '';
 
   return {
     ok: true,
     doc: {
-      id: body.id,
+      id: idRegistro(equipo.eqId, per.periodo, per.anio),
+      periodo: per.periodo,
+      anio: Number(per.anio),
       formato,
-      version: 2,
+      version: 3,
       eqId: equipo.eqId,
       cliente: equipo.cliente,
       sede: equipo.sede,
@@ -167,7 +200,11 @@ export function validarRegistro(body, equipo, tecnico, ahora = Date.now()) {
       tipo: equipo.tipo,
       nombreEq: equipo.nombre,
       // Marca / modelo / serie vienen del inventario; el técnico puede corregirlas y se guarda lo que confirma.
-      equipo: { marca: texto(eq.marca, 60), modelo: texto(eq.modelo, 60), serie: texto(eq.serie, 60) },
+      equipo: equipoEnviado,
+      // Lo que decía el inventario al guardar y qué campos se corrigieron/completaron: Mantenimiento los marca con un punto
+      // rojo para que quien revisa decida si corrige el inventario. No se toca el inventario desde acá.
+      equipoInventario: { marca: texto(equipo.marca, 60), modelo: texto(equipo.modelo, 60), serie: texto(equipo.serie, 60) },
+      cambiosEquipo: cambiosEquipo(equipo, equipoEnviado),
       electrico,
       datos,
       estado: body.estado,
@@ -181,8 +218,35 @@ export function validarRegistro(body, equipo, tecnico, ahora = Date.now()) {
       horaCliente,
       diferido: recibido - capturado > 2 * 60 * 1000,   // se envió más de 2 min después de capturarlo
       origen: 'MINIAPP',
+      // Primera toma y ediciones: volver a enviar el mismo equipo en el mismo período lo ACTUALIZA, no crea otro.
+      creadoEn: previo ? (previo.creadoEn || previo.recibidoEn || new Date(recibido).toISOString()) : new Date(recibido).toISOString(),
+      creadoPor: previo ? (previo.creadoPor || previo.tecnicoNombre || nombre) : nombre,
+      ediciones: previo ? (Number(previo.ediciones) || 0) + 1 : 0,
+      ...(previo ? { editadoEn: new Date(recibido).toISOString(), editadoPor: nombre } : {}),
     },
   };
+}
+
+// Registro más reciente por equipo (si hubiera duplicados viejos, gana el último capturado).
+export function ultimoPorEquipo(registros) {
+  const m = new Map();
+  for (const r of registros || []) {
+    const a = m.get(r.eqId);
+    if (!a || String(r.capturadoEn || '') > String(a.capturadoEn || '')) m.set(r.eqId, r);
+  }
+  return m;
+}
+// Lo que la Mini App necesita para reabrir una toma ya hecha y editarla.
+const paraEditar = (r) => ({
+  fecha: r.fecha, hora: r.hora, tecnicoNombre: r.tecnicoNombre || '', ediciones: Number(r.ediciones) || 0,
+  equipo: r.equipo || {}, electrico: r.electrico || {}, datos: r.datos || {}, estado: r.estado || '', os: r.os || '', observaciones: r.observaciones || '',
+});
+
+// ¿Puede borrar tomas desde la web? ADMIN y SUPER_ADMIN (ver firestore.rules: isAdmin).
+export const SUPER_EMAILS = ['marchenaangulojoseluis@gmail.com', 'plataforma@multiaire.com.pe'];
+export function puedeBorrarParametros(email, usuario) {
+  if (SUPER_EMAILS.includes(String(email || '').toLowerCase())) return true;
+  return !!usuario && ['ADMIN', 'SUPER_ADMIN'].includes(usuario.rol);
 }
 
 // Orden natural por nombre ("Extractor 2" antes que "Extractor 10").
@@ -190,7 +254,10 @@ export const porNombre = (a, b) => String(a.nombre || '').localeCompare(String(b
 
 // Lógica del endpoint con dependencias inyectadas (testeable sin Vercel ni Firestore):
 //  d.token · d.ahora() · d.identificar(chatId) → {id,nombre}|null · d.equipos() → [{eqId,...}]
-//  d.crear(id, doc) → 'creado' | 'duplicado'
+//  d.periodo(sede, cliente) → { periodo, anio }   (el efectivo: respeta "Usar este período para registros de Telegram")
+//  d.registros({ cliente, sede, periodo, anio }) → [doc]   (las tomas de ese período, nuevas y viejas)
+//  d.previos(eqId, periodo, anio) → [doc]   (las de ese equipo en ese período)
+//  d.guardar(doc, borrarIds) → escribe el doc (set) y borra los duplicados viejos
 export async function procesar(body, initData, d) {
   const v = verificarInitData(initData, d.token, { ahora: d.ahora() });
   if (!v.ok) return { status: 401, json: { error: 'Sesión de Telegram no válida. Ciérralo y ábrelo de nuevo desde el bot.', motivo: v.motivo } };
@@ -211,17 +278,26 @@ export async function procesar(body, initData, d) {
     return { status: 200, json: { tecnico: t, sedes, formatos: FORMATOS } };
   }
   if (accion === 'equipos') {
-    const eqs = (await d.equipos()).filter((e) => e.cliente === body.cliente && e.sede === body.sede)
-      .map((e) => ({ ...e, formato: formatoDe(e.tipo) })).sort(porNombre);
-    return { status: 200, json: { equipos: eqs } };
+    const lista = (await d.equipos()).filter((e) => e.cliente === body.cliente && e.sede === body.sede);
+    const per = await d.periodo(body.sede, body.cliente);
+    const hechos = ultimoPorEquipo(await d.registros({ cliente: body.cliente, sede: body.sede, periodo: per.periodo, anio: per.anio }));
+    const eqs = lista.map((e) => ({ ...e, formato: formatoDe(e.tipo), hecho: hechos.has(e.eqId), registro: hechos.has(e.eqId) ? paraEditar(hechos.get(e.eqId)) : null })).sort(porNombre);
+    return { status: 200, json: { equipos: eqs, periodo: per } };
   }
   if (accion === 'guardar') {
     const eqs = await d.equipos();
     const equipo = eqs.find((e) => e.eqId === (body.registro && body.registro.eqId));
-    const r = validarRegistro(body.registro, equipo, t, d.ahora());
+    // Solo se necesita el período para armar el id; con un equipo inexistente validarRegistro responde el error.
+    const per = equipo ? await d.periodo(equipo.sede, equipo.cliente) : null;
+    const existentes = equipo ? await d.previos(equipo.eqId, per.periodo, per.anio) : [];
+    const idNuevo = equipo ? idRegistro(equipo.eqId, per.periodo, per.anio) : '';
+    const previo = existentes.find((x) => x.id === idNuevo) || ultimoPorEquipo(existentes).get(equipo && equipo.eqId) || null;
+    const r = validarRegistro(body.registro, equipo, t, d.ahora(), per ? { periodo: per, previo } : {});
     if (!r.ok) return { status: 400, json: { error: r.error } };
-    const estado = await d.crear(r.doc.id, r.doc);
-    return { status: 200, json: { ok: true, duplicado: estado === 'duplicado' } };
+    // Un envío viejo que llega tarde (cola del teléfono) no pisa una toma más nueva.
+    if (previo && String(previo.capturadoEn || '') > r.doc.capturadoEn) return { status: 200, json: { ok: true, obsoleto: true, periodo: per } };
+    await d.guardar(r.doc, existentes.filter((x) => x.id !== r.doc.id).map((x) => x.id));
+    return { status: 200, json: { ok: true, actualizado: !!previo, periodo: per } };
   }
   return { status: 400, json: { error: 'Acción desconocida.' } };
 }

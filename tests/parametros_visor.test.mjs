@@ -96,7 +96,18 @@ t('el Excel se nombra por período', /a\.download = `Parametros \$\{periodoTxt\}
 t('lee mtto_parametros por rango de fecha (sin índice compuesto)', /collection\('mtto_parametros'\)\.where\('fecha', '>=', desde\)\.where\('fecha', '<=', hasta\)/.test(html));
 t('exportar exige permiso', /async function parExportarExcel\(\) \{\s*\n\s*if \(!MA\.can\('exportar', 'mantenimiento'\)\)/.test(html));
 t('ExcelJS cargado desde cdnjs', /cdnjs\.cloudflare\.com\/ajax\/libs\/exceljs\/4\.4\.0\/exceljs\.min\.js/.test(html));
-t('los datos de Firestore se escapan en la lista y la vista', /<td><b>\$\{_actEsc\(r\.nombreEq \|\| r\.eqId\)\}<\/b>/.test(html) && /<b>\$\{_actEsc\(r\.tecnicoNombre/.test(html) === false && /const e = _actEsc;/.test(html));
+t('los datos de Firestore se escapan en la lista y la vista', /<b>\$\{_actEsc\(r\.nombreEq \|\| r\.eqId\)\}<\/b>/.test(html) && /<b>\$\{_actEsc\(r\.tecnicoNombre/.test(html) === false && /const e = _actEsc;/.test(html));
+
+// ── Mantenimiento → Parámetros: una toma por equipo, punto rojo de correcciones y eliminar ──
+t('lee las tomas por período (nuevas) y por fecha (viejas, sin período)', /where\('periodo', '==', currentPeriodo\)\.where\('anio', '==', Number\(currentAnio\)\)/.test(html) && /filter\(\(r\) => !r\.periodo\)/.test(html));
+t('si quedara un equipo repetido, se muestra la toma más reciente', /ult\.set\(r\.eqId, r\)/.test(html) && /String\(r\.capturadoEn \|\| ''\) > String\(a\.capturadoEn \|\| ''\)/.test(html));
+t('punto rojo cuando el técnico corrigió marca/modelo/serie, con el detalle en el tooltip', /_parCambios\(r\)\.length \?/.test(html) && /color:#d92d20/.test(html) && /function _parCambiosTxt\(r\)/.test(html));
+t('el detalle muestra antes → después de cada campo corregido', /El técnico corrigió datos del equipo/.test(html) && /cambiosEquipo\[k\]\.antes/.test(html));
+t('filtro "Solo con correcciones"', /function parToggleCorr/.test(html) && /\(!_parSoloCorr \|\| _parCambios\(r\)\.length\)/.test(html));
+t('eliminar: botón por fila, en el detalle y "Eliminar seleccionados", solo para administradores', /data-par-del/.test(html) && /parEliminar\(_parSeleccionados\(\)/.test(html) && /parEliminar\(\['\$\{_actEsc\(r\.id\)\}'\]\)/.test(html) && (html.match(/MA\.isAdmin\(\) \?/g) || []).length >= 3);
+t('eliminar pasa por el servidor con el token de Firebase y pide confirmación', /fetch\('\/api\/parametros_borrar'/.test(html) && /Authorization: 'Bearer ' \+ await user\.getIdToken\(\)/.test(html) && /if \(!confirm\(/.test(html));
+t('tras eliminar se quita de la lista sin recargar', /_parRecs = _parRecs\.filter\(\(r\) => !ids\.includes\(r\.id\)\)/.test(html));
+t('se muestra cuántas veces se actualizó una toma', /Number\(r\.ediciones\) > 0/.test(html));
 
 console.log(`${ok} ok · ${mal} mal`);
 process.exit(mal ? 1 : 0);
