@@ -80,6 +80,11 @@ option{background:#fff}
 .tab-btn{padding:12px 16px;font-size:12px;font-weight:600;color:var(--muted2);background:none;border:none;border-bottom:3px solid transparent;cursor:pointer;font-family:var(--font);transition:all .15s;white-space:nowrap}
 .tab-btn:hover{color:var(--accent)}
 .tab-btn.active{color:#1B3F8B;border-bottom-color:#F47920}
+.modo-seg{display:flex;padding:3px;background:var(--surface3,#e9edf5);border-radius:8px}
+.modo-btn{flex:1;padding:7px 8px;font-size:12px;font-weight:700;color:var(--muted2);background:none;border:none;border-radius:6px;cursor:pointer;font-family:var(--font);white-space:nowrap}
+.modo-btn.active{background:#fff;color:#1B3F8B;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.tab-grupo{display:flex;gap:2px}
+.sb-vista-global .sb-solo-sede{display:none!important}
 .tab-view{display:none;flex:1;overflow-y:auto;padding:16px}
 .chk-search{position:sticky;top:-16px;z-index:5;display:flex;align-items:center;gap:8px;background:var(--bg);padding:8px 0 10px;margin-bottom:2px}
 .chk-search input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;font-family:var(--font);font-size:14px;background:var(--surface);color:var(--accent);-webkit-appearance:none;appearance:none}
@@ -350,11 +355,14 @@ option{background:#fff}
   <div class="sidebar" id="sidebar">
     <div class="sb-section">Configuración</div>
 
-    <div class="sb-group mant-edit-btn">
-      <button class="btn" style="width:100%;justify-content:center" onclick="openActsEditor()" title="Quitarle o agregarle actividades a un equipo puntual. La plantilla del cliente se edita en la app de Clientes.">⚙️ Ajustar actividades por equipo</button>
+    <div class="sb-group">
+      <div class="modo-seg" role="tablist" aria-label="Modo de vista">
+        <button class="modo-btn" id="modoSede" onclick="setModo('sede')" title="Checklist, Dashboard y Parámetros de la sede elegida">🏢 Por sede</button>
+        <button class="modo-btn active" id="modoGlobal" onclick="setModo('global')" title="Resumen, Historial y Desempeño de todas las sedes">🌐 Global</button>
+      </div>
     </div>
 
-    <div class="sb-group">
+    <div class="sb-group sb-solo-sede">
       <div class="sb-label">Sede</div>
       <select id="selSede" onchange="onSedeChange()">
         <option value="">— Seleccionar sede —</option>
@@ -376,25 +384,25 @@ option{background:#fff}
       </div>
     </div>
 
-    <div class="sb-group mant-edit-btn" id="wspPeriodoGroup" style="display:none">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;margin:0">
+    <div class="sb-group mant-edit-btn sb-solo-sede" id="wspPeriodoGroup" style="display:none">
+      <label id="wspPeriodoLabel" style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;margin:0">
         <input type="checkbox" id="chkWspPeriodo" onchange="onToggleWspPeriodo(this.checked)">
-        <span>Usar este período para registros de WhatsApp</span>
+        <span>Usar este período para registros de Telegram</span>
       </label>
-      <div id="wspPeriodoHint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
     </div>
 
-    <div class="status-bar" id="statusBar" style="display:none">
+    <div class="status-bar sb-solo-sede" id="statusBar" style="display:none">
       <div class="sb-label" style="margin-bottom:8px">Progreso del período</div>
       <div class="status-row"><div class="status-dot green"></div> Completados <span class="status-count" id="cntGreen">0</span></div>
       <div class="status-row"><div class="status-dot yellow"></div> Incompletos <span class="status-count" id="cntYellow">0</span></div>
       <div class="status-row"><div class="status-dot red"></div> No realizados <span class="status-count" id="cntRed">0</span></div>
     </div>
 
-    <div class="sb-actions">
+    <div class="sb-actions sb-solo-sede">
       <button class="btn btn-primary btn-block mant-edit-btn" onclick="openSelEquipos()" id="btnSelEq" disabled>
         ＋ Seleccionar equipos
       </button>
+      <button class="btn btn-block mant-edit-btn" style="justify-content:center" onclick="openActsEditor()" title="Quitarle o agregarle actividades a un equipo puntual. La plantilla del cliente se edita en la app de Clientes.">⚙️ Ajustar actividades por equipo</button>
     </div>
   </div>
 
@@ -407,16 +415,20 @@ option{background:#fff}
       <button class="btn btn-sm mant-edit-btn" style="margin-left:auto" onclick="openSelEquipos()">✎ Editar equipos</button>
     </div>
 
-    <div class="tab-nav" id="tabNav" style="display:none">
-      <button class="tab-btn active" onclick="switchTab('checklist')">📋 Checklist</button>
-      <button class="tab-btn" onclick="switchTab('dashboard')">📊 Dashboard</button>
-      <button class="tab-btn" onclick="switchTab('global')">🌐 Global</button>
-      <button class="tab-btn" onclick="switchTab('historial')">🕘 Historial</button>
-      <button class="tab-btn" onclick="switchTab('desempeno')">👷 Desempeño</button>
-      <button class="tab-btn" onclick="switchTab('parametros')">📋 Parámetros</button>
+    <div class="tab-nav" id="tabNav">
+      <div class="tab-grupo" id="grpSede" style="display:none">
+        <button class="tab-btn" onclick="switchTab('checklist')">📋 Checklist</button>
+        <button class="tab-btn" onclick="switchTab('dashboard')">📊 Dashboard</button>
+        <button class="tab-btn" onclick="switchTab('parametros')">📋 Parámetros</button>
+      </div>
+      <div class="tab-grupo" id="grpGlobal">
+        <button class="tab-btn active" onclick="switchTab('global')">📈 Resumen</button>
+        <button class="tab-btn" onclick="switchTab('historial')">🕘 Historial</button>
+        <button class="tab-btn" onclick="switchTab('desempeno')">👷 Desempeño</button>
+      </div>
     </div>
 
-    <div class="tab-view active" id="tab-checklist">
+    <div class="tab-view" id="tab-checklist">
       <div id="chkSearchBar" class="chk-search" style="display:none">
         <span class="chk-search-ico">🔍</span>
         <input type="search" id="chkSearch" placeholder="Buscar equipo o área (ej. comedor, extractor 04, MA-ATO…)" autocomplete="off" oninput="onBuscarChecklist(this.value)">
@@ -440,7 +452,7 @@ option{background:#fff}
       <div id="hl-list" style="display:flex;flex-direction:column;gap:6px"></div>
     </div>
 
-    <div class="tab-view" id="tab-global">
+    <div class="tab-view active" id="tab-global">
       <div id="global-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px"></div>
     </div>
 
@@ -456,12 +468,7 @@ option{background:#fff}
 
     <div class="tab-view" id="tab-desempeno">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-        <select id="dsp-periodo" onchange="renderDesempeno()" style="max-width:150px">
-          <option value="ENE-FEB">Ene – Feb</option><option value="MAR-ABR">Mar – Abr</option>
-          <option value="MAY-JUN">May – Jun</option><option value="JUL-AGO">Jul – Ago</option>
-          <option value="SEP-OCT">Sep – Oct</option><option value="NOV-DIC">Nov – Dic</option>
-        </select>
-        <select id="dsp-anio" onchange="renderDesempeno()" style="max-width:110px"></select>
+        <span id="dsp-ctx" style="font-size:12px;font-weight:700"></span>
         <select id="dsp-sede" onchange="renderDesempenoFiltrado()" style="max-width:200px"><option value="">Todas las sedes</option></select>
         <select id="dsp-tipo" onchange="renderDesempenoFiltrado()" style="max-width:180px"><option value="">Todos los tipos</option></select>
         <select id="dsp-tecnico" onchange="renderDesempenoFiltrado()" style="max-width:200px"><option value="">Todos los técnicos</option></select>
@@ -472,13 +479,7 @@ option{background:#fff}
 
     <div class="tab-view" id="tab-parametros">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-        <select id="par-periodo" onchange="renderParametros()" style="max-width:150px">
-          <option value="ENE-FEB">Ene – Feb</option><option value="MAR-ABR">Mar – Abr</option>
-          <option value="MAY-JUN">May – Jun</option><option value="JUL-AGO">Jul – Ago</option>
-          <option value="SEP-OCT">Sep – Oct</option><option value="NOV-DIC">Nov – Dic</option>
-        </select>
-        <select id="par-anio" onchange="renderParametros()" style="max-width:110px"></select>
-        <select id="par-sede" onchange="renderParametrosFiltrado(true)" style="max-width:200px"><option value="">Todas las sedes</option></select>
+        <span id="par-ctx" style="font-size:12px;font-weight:700"></span>
         <select id="par-tipo" onchange="renderParametrosFiltrado(true)" style="max-width:180px"><option value="">Todos los tipos</option></select>
         <button class="btn btn-sm" onclick="renderParametros()" title="Recargar">↻</button>
       </div>
@@ -1038,7 +1039,8 @@ async function renderGlobal(){
     const eqIdx = {};
     // el `cliente` es obligatorio: actividadesDe resuelve la plantilla por `cliente|tipo`
     invSnap.docs.forEach(d => { const r=d.data(); if(r.eq_id) eqIdx[r.eq_id] = { eq_id:r.eq_id, tipo:r.tipo||'', sede:r.sede||'', cliente:r.cliente||'' }; });
-    const sufijo = '|' + currentPeriodo + '|' + currentAnio;
+    const perG = document.getElementById('selPeriodo').value, anioG = document.getElementById('selAnio').value;
+    const sufijo = '|' + perG + '|' + anioG;
     let html = '';
     const docs = mSnap.docs.filter(d => (d.data().clave || d.id).endsWith(sufijo))
       .sort((a,b) => (a.data().clave||a.id).localeCompare(b.data().clave||b.id));
@@ -1077,7 +1079,7 @@ async function renderGlobal(){
       });
       // % de avance ponderado de la sede (idéntico al globalPct del Dashboard), no el conteo de equipos completos
       const tot = ids.length, pct = totalPeso ? Math.round(totalAvance/totalPeso) : 0;
-      html += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'
+      html += '<div onclick="irASede(this.dataset.sede)" data-sede="'+_actEsc(sede)+'" title="Abrir el checklist de esta sede" style="cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px">'
         + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:700;flex:1">'+_actEsc(sede)+'</span>'
         + '<span style="font-size:12px;font-weight:700;color:'+(pct===100?'var(--green,#0a4)':pct>0?'#cc8800':'var(--red,#c33)')+'">'+pct+'%</span></div>'
         + '<div style="font-size:11px;color:var(--muted2)">'+tot+' equipos · 🟢 '+g+' · 🟡 '+y+' · 🔴 '+rr+'</div></div>';
@@ -1390,7 +1392,9 @@ async function loadInventario() {
 function onSedeChange() {
   currentSede = document.getElementById('selSede').value;
   chkBusqueda = ''; { const i = document.getElementById('chkSearch'); if(i) i.value = ''; const x = document.getElementById('chkSearchX'); if(x) x.style.display = 'none'; }   // otra sede = búsqueda nueva
-  if(!currentSede){ showEmpty(); return; }
+  if(!currentSede){ showEmpty(); refrescarTabSede(); return; }
+  // elegir una sede es pedir ver ESA sede: si estabas en un tab global, pasa al checklist
+  if(TABS_GLOBALES.includes(tabActivo())) switchTab('checklist');
   sedeEquipos = equiposDeClaveSede(currentSede);
   document.getElementById('btnSelEq').disabled = false;
   currentUpdatedAt = null; currentUpdatedBy = null;
@@ -1398,7 +1402,14 @@ function onSedeChange() {
   loadPeriodo();
 }
 
-function onPeriodoChange() { if(currentSede) loadPeriodo(); }
+function onPeriodoChange() {
+  if(currentSede) loadPeriodo();
+  // Resumen y Desempeño usan el período del panel, con o sin sede elegida
+  if(tabActivo()==='global') renderGlobal();
+  if(tabActivo()==='desempeno') renderDesempeno();
+}
+// Parámetros y Dashboard no cuelgan de renderMain cuando no hay sede: se vuelven a pintar al cambiar el panel
+function refrescarTabSede(){ if(tabActivo()==='parametros') renderParametros(); if(tabActivo()==='dashboard') renderDashboard(); }
 
 // "Última actualización" del sidebar RETIRADA (2026-07-04, pedido del usuario):
 // la bitácora del tab Historial la reemplaza con detalle por evento.
@@ -1453,10 +1464,10 @@ async function loadPeriodo() {
   renderMain();
   loadFotosCounts();  // badges 📷 del período (async, pinta al llegar)
   loadPlanBadges();   // badges 🗓 de actividades planificadas en el itinerario
-  renderWspToggle();  // toggle "usar este período para WhatsApp" (async, pinta al llegar)
+  renderWspToggle();  // toggle "usar este período para Telegram" (async, pinta al llegar)
 }
 
-// Toggle "Usar este período para registros de WhatsApp" — solo aparece en la pestaña del
+// Toggle "Usar este período para registros de Telegram" — solo aparece en la pestaña del
 // período del CALENDARIO, la SIGUIENTE (sede adelantada) y la ANTERIOR (sede atrasada, que aún cierra
 // el período pasado); moverse más de un bimestre no tiene caso de uso real y aumenta el riesgo de
 // tocar el período equivocado. El puntero vive en
@@ -1466,7 +1477,7 @@ async function loadPeriodo() {
 async function renderWspToggle() {
   const grp = document.getElementById('wspPeriodoGroup');
   const chk = document.getElementById('chkWspPeriodo');
-  const hint = document.getElementById('wspPeriodoHint');
+  const lbl = document.getElementById('wspPeriodoLabel');
   if(!currentSede || !currentPeriodo || !currentAnio){ grp.style.display='none'; return; }
   const cal = periodoCalendario();
   const sig = periodoSiguiente(cal.periodo, cal.anio);
@@ -1497,11 +1508,12 @@ async function renderWspToggle() {
   // (apagando el adelanto ahí). Mantener un solo lugar para desactivar evita el estado raro de
   // "ninguno prendido".
   chk.disabled = esActual || !MA.can('editar','mantenimiento');
-  hint.textContent = esActual
-    ? (vigente ? `📌 WhatsApp está guardando en ${d.periodo} ${d.anio} (${atrasado ? 'atrasado' : 'adelantado'}) — desactivalo desde esa pestaña para volver acá.` : '')
-    : (activo ? '📌 Los registros de WhatsApp de esta sede se guardan aquí.'
-      : (esAnterior ? 'Activalo si esta sede aún está cerrando este período: los registros de WhatsApp seguirán cayendo aquí.'
-        : 'Activalo para adelantar los registros de WhatsApp a este período.'));
+  // el aviso ya no ocupa lugar en el panel: aparece solo al pasar el cursor sobre la opción
+  lbl.title = esActual
+    ? (vigente ? `📌 Telegram está guardando en ${d.periodo} ${d.anio} (${atrasado ? 'atrasado' : 'adelantado'}) — desactívalo desde esa pestaña para volver acá.` : 'Los registros de Telegram de esta sede se guardan en el período del calendario.')
+    : (activo ? '📌 Los registros de Telegram de esta sede se guardan aquí.'
+      : (esAnterior ? 'Actívalo si esta sede aún está cerrando este período: los registros de Telegram seguirán cayendo aquí.'
+        : 'Actívalo para adelantar los registros de Telegram a este período.'));
 }
 
 async function onToggleWspPeriodo(checked) {
@@ -1512,10 +1524,10 @@ async function onToggleWspPeriodo(checked) {
   try {
     if(checked){
       await setDoc(ref, { periodo: currentPeriodo, anio: Number(currentAnio), actualizadoPor: _by, actualizadoAt: new Date().toISOString() });
-      toast('Registros de WhatsApp de ' + currentSede + ' → ' + currentPeriodo + ' ' + currentAnio, 'ok');
+      toast('Registros de Telegram de ' + currentSede + ' → ' + currentPeriodo + ' ' + currentAnio, 'ok');
     } else {
       await deleteDoc(ref);
-      toast('Registros de WhatsApp de ' + currentSede + ' vuelven al período del calendario', 'ok');
+      toast('Registros de Telegram de ' + currentSede + ' vuelven al período del calendario', 'ok');
     }
   } catch(e) { toast('No se pudo actualizar', 'err'); }
   renderWspToggle();
@@ -1553,8 +1565,7 @@ function renderMain() {
   const sel = Object.keys(seleccionados).filter(k => seleccionados[k]);
   if(!currentSede){ showEmpty(); return; }
 
-  document.getElementById('toolbar').style.display = 'flex';
-  document.getElementById('tabNav').style.display = 'flex';
+  aplicarVistaTabs();
   document.getElementById('btnPendQuick').style.display = 'flex'; // igual que el tab-nav: sin gate de permiso ni de selección
   document.getElementById('toolbarTitle').textContent = currentSede;
   document.getElementById('toolbarSub').textContent = currentPeriodo + ' ' + currentAnio + ' · ' + sel.length + ' equipos seleccionados';
@@ -1638,6 +1649,7 @@ function renderMain() {
   // refresh dashboard if visible
   if(document.getElementById('tab-dashboard').classList.contains('active')) renderDashboard();
   if(document.getElementById('tab-pendientes').classList.contains('active')) renderPendientes();
+  if(document.getElementById('tab-parametros').classList.contains('active')) renderParametros();
   updateStatusBar([stats.green, stats.yellow, stats.red]);
 }
 
@@ -2200,6 +2212,10 @@ function pctColor(p) { return p===100?'green':p>0?'yellow':'red'; }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function renderDashboard() {
+  if(!currentSede){
+    document.getElementById('dashContent').innerHTML = `<div class="empty"><div class="empty-icon">📊</div><h3>Dashboard</h3><p>Selecciona una sede y período para ver el avance.</p></div>`;
+    return;
+  }
   const sel = sedeEquipos.filter(e => seleccionados[e.eq_id]);
   if(!sel.length) {
     document.getElementById('dashContent').innerHTML = `<div class="empty"><div class="empty-icon">📊</div><h3>Sin datos</h3><p>Selecciona equipos primero desde el Checklist.</p></div>`;
@@ -2427,28 +2443,27 @@ function parRangoPeriodo(periodo, anio) {
 
 // ── Pantalla ──
 let _parRecs = [], _parSel = new Set(), _parReq = 0;
-function _parInit() {
-  const sa = document.getElementById('par-anio');
-  if (sa.options.length) return;
-  const hoy = new Date(Date.now() - 5 * 3600e3), y = hoy.getUTCFullYear();
-  for (let i = y - 1; i <= y + 1; i++) { const o = document.createElement('option'); o.value = i; o.textContent = i; if (i === y) o.selected = true; sa.appendChild(o); }
-  document.getElementById('par-periodo').value = PAR_PERIODOS[Math.floor(hoy.getUTCMonth() / 2)];   // el período en curso
-}
+// Los parámetros son de UNA sede y UN período: salen del panel izquierdo (no tienen selectores propios).
 async function renderParametros() {
-  _parInit();
   const req = ++_parReq;
   const cont = document.getElementById('par-content');
-  const rango = parRangoPeriodo(document.getElementById('par-periodo').value, document.getElementById('par-anio').value);
+  const ctx = document.getElementById('par-ctx');
+  if (!currentSede) {
+    if (ctx) ctx.textContent = '';
+    _parRecs = []; _parSel = new Set();
+    cont.innerHTML = '<div class="empty"><div class="empty-icon">📋</div><h3>Parámetros</h3><p>Selecciona una sede y un período en el panel izquierdo para ver sus parámetros.</p></div>';
+    return;
+  }
+  if (ctx) ctx.textContent = currentSede + ' · ' + currentPeriodo + ' ' + currentAnio;
+  const rango = parRangoPeriodo(currentPeriodo, currentAnio);
   if (!rango) { cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Elige el período.</div>'; return; }
   const { desde, hasta } = rango;
   cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando parámetros…</div>';
   try {
     const snap = await window.__db.collection('mtto_parametros').where('fecha', '>=', desde).where('fecha', '<=', hasta).get();
     if (req !== _parReq) return;   // llegó una consulta más nueva
-    _parRecs = snap.docs.map((d) => d.data());
-    const sedes = [...new Set(_parRecs.map((r) => r.sede).filter(Boolean))].sort();
-    const sel = document.getElementById('par-sede'), cur = sel.value;
-    sel.innerHTML = '<option value="">Todas las sedes</option>' + sedes.map((s) => `<option value="${_actEsc(s)}"${s === cur ? ' selected' : ''}>${_actEsc(s)}</option>`).join('');
+    // la sede del panel es la clave efectiva (MIRAFLORES (TOTTUS) en sedes compartidas): se compara igual
+    _parRecs = snap.docs.map((d) => d.data()).filter((r) => sedeEfectiva(r.sede, r.cliente) === currentSede);
     const tipos = [...new Set(_parRecs.map((r) => r.tipo).filter(Boolean))].sort();
     const st = document.getElementById('par-tipo'), curT = st.value;
     st.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map((x) => `<option value="${_actEsc(x)}"${x === curT ? ' selected' : ''}>${_actEsc(x)}</option>`).join('');
@@ -2457,8 +2472,8 @@ async function renderParametros() {
   } catch (e) { cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: ' + _actEsc(e.message) + '</div>'; }
 }
 function _parFiltrados() {
-  const sede = document.getElementById('par-sede').value, tipo = document.getElementById('par-tipo').value;
-  return _parRecs.filter((r) => (!sede || r.sede === sede) && (!tipo || r.tipo === tipo))
+  const tipo = document.getElementById('par-tipo').value;
+  return _parRecs.filter((r) => (!tipo || r.tipo === tipo))
     .sort((a, b) => String(b.capturadoEn || '').localeCompare(String(a.capturadoEn || '')));
 }
 function renderParametrosFiltrado(todos) {
@@ -2467,7 +2482,7 @@ function renderParametrosFiltrado(todos) {
   if (todos) _parSel = new Set(lista.map((r) => r.id));
   else _parSel = new Set([..._parSel].filter((id) => lista.some((r) => r.id === id)));
   if (!lista.length) {
-    cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:14px">No hay registros de parámetros en ese período. Los técnicos los toman desde el bot de Telegram (botón <b>Parámetros</b>).</div>';
+    cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:14px">No hay registros de parámetros de esta sede en este período. Los técnicos los toman desde el bot de Telegram (botón <b>Parámetros</b>).</div>';
     return;
   }
   const nSel = lista.filter((r) => _parSel.has(r.id)).length;
@@ -2686,7 +2701,7 @@ async function parExportarExcel() {
     const usados = new Set();
     parBloques(recs).forEach((b) => parHojaExcel(wb, b, logoId, _parNombreHoja(b, usados)));
     const buf = await wb.xlsx.writeBuffer();
-    const periodoTxt = document.getElementById('par-periodo').value + ' ' + document.getElementById('par-anio').value;
+    const periodoTxt = currentPeriodo + ' ' + currentAnio;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     a.download = `Parametros ${periodoTxt}.xlsx`;
@@ -2696,12 +2711,42 @@ async function parExportarExcel() {
   } catch (e) { toast('Error al generar el Excel: ' + e.message, 'err'); }
 }
 
+// Tabs del modo "Global": no dependen de la sede del panel izquierdo (Resumen sí usa su período).
+const TABS_GLOBALES = ['global','historial','desempeno'];
+function tabActivo(){ const v = document.querySelector('.tab-view.active'); return v ? v.id.replace('tab-','') : ''; }
+let _ultimoTabSede = 'checklist';   // al volver a "Por sede" se retoma el último tab que se usaba
+function setModo(m){
+  if(m === 'global'){ if(!TABS_GLOBALES.includes(tabActivo())) switchTab('global'); }
+  else if(TABS_GLOBALES.includes(tabActivo())) switchTab(_ultimoTabSede);
+}
+// Barra con el nombre de la sede y "Editar equipos": solo tiene sentido en un tab por sede con sede elegida.
+// En el modo "Global" el panel izquierdo solo muestra el interruptor y el período (lo demás se oculta).
+function aplicarVistaTabs(){
+  const global = TABS_GLOBALES.includes(tabActivo());
+  document.getElementById('modoSede').classList.toggle('active', !global);
+  document.getElementById('modoGlobal').classList.toggle('active', global);
+  document.getElementById('grpSede').style.display = global ? 'none' : 'flex';
+  document.getElementById('grpGlobal').style.display = global ? 'flex' : 'none';
+  const tb = document.getElementById('toolbar');
+  if(tb) tb.style.display = (currentSede && !global) ? 'flex' : 'none';
+  const sb = document.getElementById('sidebar');
+  if(sb) sb.classList.toggle('sb-vista-global', global);
+}
+function irASede(sede){
+  const sel = document.getElementById('selSede');
+  if(![...sel.options].some(o => o.value === sede)) return;
+  sel.value = sede;
+  onSedeChange();
+  switchTab('checklist');
+}
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.tab-view').forEach(v=>v.classList.remove('active'));
-  const _tb = document.querySelector(`.tab-btn[onclick*="${tab}"]`);
+  const _tb = document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`);
   if(_tb) _tb.classList.add('active'); // "pendientes" ya no tiene tab-btn propio (se entra por el ＋ del header)
   document.getElementById('tab-'+tab).classList.add('active');
+  if(['checklist','dashboard','parametros'].includes(tab)) _ultimoTabSede = tab;
+  aplicarVistaTabs();
   if(tab==='dashboard') renderDashboard();
   if(tab==='global') renderGlobal();
   if(tab==='historial') renderHistorialLog();
@@ -3082,21 +3127,13 @@ function renderHistorialLogFiltrado(){
 let _dspEjec = [];
 let _dspReq = 0;   // token anti-carrera: descarta respuestas de una consulta ya superada
 function _dspFmtH(min){ return min >= 60 ? (min/60).toFixed(1).replace(/\.0$/,'') + ' h' : (min||0) + ' min'; }
-function _dspInit(){
-  const sa = document.getElementById('dsp-anio');
-  if(sa.options.length) return;
-  const y = new Date().getFullYear();
-  for(let i=y-1;i<=y+1;i++){ const o=document.createElement('option'); o.value=i; o.textContent=i; if(i===y)o.selected=true; sa.appendChild(o); }
-  const m = new Date().getMonth();
-  const per = ['ENE-FEB','ENE-FEB','MAR-ABR','MAR-ABR','MAY-JUN','MAY-JUN','JUL-AGO','JUL-AGO','SEP-OCT','SEP-OCT','NOV-DIC','NOV-DIC'];
-  document.getElementById('dsp-periodo').value = per[m];
-}
 async function renderDesempeno(){
-  _dspInit();
   const req = ++_dspReq;
   const cont = document.getElementById('dsp-content');
-  const periodo = document.getElementById('dsp-periodo').value;
-  const anio = Number(document.getElementById('dsp-anio').value);
+  // el período es el del panel izquierdo (no hay selector propio)
+  const periodo = document.getElementById('selPeriodo').value;
+  const anio = Number(document.getElementById('selAnio').value);
+  document.getElementById('dsp-ctx').textContent = periodo + ' ' + anio;
   cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando desempeño…</div>';
   try{
     const snap = await window.__db.collection('mtto_ejecuciones')
@@ -3500,7 +3537,6 @@ function exportChecklist() {
 function showEmpty() {
   { const b = document.getElementById('chkSearchBar'); if(b) b.style.display = 'none'; }
   document.getElementById('toolbar').style.display = 'none';
-  document.getElementById('tabNav').style.display = 'none';
   document.getElementById('btnPendQuick').style.display = 'none';
   document.getElementById('statusBar').style.display = 'none';
   document.getElementById('wspPeriodoGroup').style.display = 'none';
@@ -3656,7 +3692,7 @@ function maVerify(payload,save){
     if(ov){ov.style.display='none';document.body.style.overflow='';}
     maRenderPill();maLogAccess(email);
     if(!MA.can('editar','mantenimiento'))document.body.classList.add('mant-readonly'); // técnico: solo lectura
-    Promise.all([loadTareas(), loadInventario()]); // Load after auth
+    Promise.all([loadTareas(), loadInventario()]).then(() => { aplicarVistaTabs(); if(tabActivo()==='global') renderGlobal(); }); // Load after auth; sin sede se abre en la vista Global
   }).catch(function(){
     if(ldEl)ldEl.classList.remove('show');
     if(errEl){errEl.textContent='Error verificando. Intenta de nuevo.';errEl.classList.add('show');}

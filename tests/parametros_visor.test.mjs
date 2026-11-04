@@ -90,7 +90,7 @@ const cols = (f) => PAR_FORMATOS[f].cols;
 }
 // ── la pantalla ──
 t('pestaña Parámetros y su vista', /switchTab\('parametros'\)/.test(html) && /id="tab-parametros"/.test(html) && /if\(tab==='parametros'\) renderParametros\(\);/.test(html));
-t('filtros: período + año, sede y tipo de equipo (sin fechas sueltas ni "formato")', /id="par-periodo"/.test(html) && /id="par-anio"/.test(html) && /id="par-sede"/.test(html) && /id="par-tipo"/.test(html) && !/id="par-desde"|id="par-hasta"|id="par-formato"/.test(html));
+t('Parámetros es por sede y período del panel izquierdo: solo filtra por tipo (sin selectores propios de período/año/sede)', /id="par-tipo"/.test(html) && !/id="par-periodo"|id="par-anio"|id="par-sede"/.test(html) && /sedeEfectiva\(r\.sede, r\.cliente\) === currentSede/.test(html) && !/id="par-desde"|id="par-hasta"|id="par-formato"/.test(html));
 t('el filtro de tipo usa el tipo del equipo del registro', /\(!tipo \|\| r\.tipo === tipo\)/.test(html));
 t('el Excel se nombra por período', /a\.download = `Parametros \$\{periodoTxt\}\.xlsx`/.test(html));
 t('lee mtto_parametros por rango de fecha (sin índice compuesto)', /collection\('mtto_parametros'\)\.where\('fecha', '>=', desde\)\.where\('fecha', '<=', hasta\)/.test(html));
