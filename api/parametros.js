@@ -7,7 +7,8 @@
 // POST /api/parametros   { accion: 'inicio' | 'equipos' | 'guardar', ... }
 import { getDb } from './_lib/firestore.js';
 import { identificarPorTelegram } from './_lib/identidad.js';
-import { procesar, TIPOS } from './_lib/parametros.js';
+import { procesar, TIPOS, rangoPeriodo } from './_lib/parametros.js';
+import { periodoEfectivo } from './_lib/mtto.js';
 
 const CACHE_MS = 5 * 60 * 1000;
 let _cache = null, _cacheAt = 0;
@@ -28,16 +29,30 @@ async function equipos() {
   return _cache;
 }
 
-// create() falla si el id ya existe: un reintento del mismo registro (la Mini App reenvía lo que quedó
-// en el teléfono) no lo duplica. Código 6 = ALREADY_EXISTS.
-async function crear(id, doc) {
-  try {
-    await getDb().collection('mtto_parametros').doc(id).create(doc);
-    return 'creado';
-  } catch (e) {
-    if (e && (e.code === 6 || /already exists/i.test(e.message || ''))) return 'duplicado';
-    throw e;
-  }
+// ── Tomas de un equipo en un período: las nuevas (traen `periodo`+`anio`) y las viejas de antes de esta regla (solo
+// traen `fecha`, se reconocen por el rango del bimestre). Un solo criterio para listar y para no dejar duplicados. ──
+const col = () => getDb().collection('mtto_parametros');
+const docs = (snap) => snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+
+async function registros({ cliente, sede, periodo, anio }) {
+  const nuevos = docs(await col().where('periodo', '==', periodo).where('anio', '==', Number(anio)).get());
+  const rango = rangoPeriodo(periodo, anio);
+  const viejos = rango ? docs(await col().where('fecha', '>=', rango.desde).where('fecha', '<=', rango.hasta).get()).filter((r) => !r.periodo) : [];
+  return [...nuevos, ...viejos].filter((r) => r.cliente === cliente && r.sede === sede);
+}
+
+async function previos(eqId, periodo, anio) {
+  const todos = docs(await col().where('eqId', '==', eqId).get());
+  const rango = rangoPeriodo(periodo, anio);
+  return todos.filter((r) => (r.periodo ? (r.periodo === periodo && Number(r.anio) === Number(anio)) : (rango && r.fecha >= rango.desde && r.fecha <= rango.hasta)));
+}
+
+// set() sobre el id determinístico: crea o ACTUALIZA. Los duplicados viejos del mismo equipo y período se borran en el mismo lote.
+async function guardar(doc, borrarIds) {
+  const db = getDb(), batch = db.batch();
+  batch.set(col().doc(doc.id), doc);
+  for (const id of borrarIds || []) batch.delete(col().doc(id));
+  await batch.commit();
 }
 
 export default async function handler(req, res) {

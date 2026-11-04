@@ -2460,10 +2460,20 @@ async function renderParametros() {
   const { desde, hasta } = rango;
   cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando parámetros…</div>';
   try {
-    const snap = await window.__db.collection('mtto_parametros').where('fecha', '>=', desde).where('fecha', '<=', hasta).get();
+    // Las tomas nuevas llevan `periodo`+`anio` (el período efectivo al guardar, que puede no coincidir con las fechas del bimestre si la sede
+    // va adelantada o atrasada); las viejas no, y se reconocen por la fecha.
+    const [sNuevas, sViejas] = await Promise.all([
+      window.__db.collection('mtto_parametros').where('periodo', '==', currentPeriodo).where('anio', '==', Number(currentAnio)).get(),
+      window.__db.collection('mtto_parametros').where('fecha', '>=', desde).where('fecha', '<=', hasta).get(),
+    ]);
     if (req !== _parReq) return;   // llegó una consulta más nueva
     // la sede del panel es la clave efectiva (MIRAFLORES (TOTTUS) en sedes compartidas): se compara igual
-    _parRecs = snap.docs.map((d) => d.data()).filter((r) => sedeEfectiva(r.sede, r.cliente) === currentSede);
+    const todas = [...sNuevas.docs.map((d) => ({ ...d.data(), id: d.id })), ...sViejas.docs.map((d) => ({ ...d.data(), id: d.id })).filter((r) => !r.periodo)]
+      .filter((r) => sedeEfectiva(r.sede, r.cliente) === currentSede);
+    // una sola toma por equipo: si quedara alguna repetida de antes, se muestra la más reciente
+    const ult = new Map();
+    todas.forEach((r) => { const a = ult.get(r.eqId); if (!a || String(r.capturadoEn || '') > String(a.capturadoEn || '')) ult.set(r.eqId, r); });
+    _parRecs = [...ult.values()];
     const tipos = [...new Set(_parRecs.map((r) => r.tipo).filter(Boolean))].sort();
     const st = document.getElementById('par-tipo'), curT = st.value;
     st.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map((x) => `<option value="${_actEsc(x)}"${x === curT ? ' selected' : ''}>${_actEsc(x)}</option>`).join('');
@@ -2471,9 +2481,13 @@ async function renderParametros() {
     renderParametrosFiltrado(true);
   } catch (e) { cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: ' + _actEsc(e.message) + '</div>'; }
 }
+// Campos de marca/modelo/serie que el técnico escribió distintos del inventario (punto rojo en la lista)
+const _parCambios = (r) => Object.keys(r.cambiosEquipo || {});
+let _parSoloCorr = false;
+function parToggleCorr(v) { _parSoloCorr = !!v; renderParametrosFiltrado(true); }
 function _parFiltrados() {
   const tipo = document.getElementById('par-tipo').value;
-  return _parRecs.filter((r) => (!tipo || r.tipo === tipo))
+  return _parRecs.filter((r) => (!tipo || r.tipo === tipo) && (!_parSoloCorr || _parCambios(r).length))
     .sort((a, b) => String(b.capturadoEn || '').localeCompare(String(a.capturadoEn || '')));
 }
 function renderParametrosFiltrado(todos) {
@@ -2493,7 +2507,9 @@ function renderParametrosFiltrado(todos) {
       <span style="font-size:12px;color:var(--muted)"><b id="par-nsel">${nSel}</b> de ${lista.length} seleccionados</span>
       <button class="btn btn-sm" onclick="parSeleccionar(true)">☑ Todos</button>
       <button class="btn btn-sm" onclick="parSeleccionar(false)">☐ Ninguno</button>
+      <label style="font-size:12px;display:flex;align-items:center;gap:5px;cursor:pointer" title="Tomas donde el técnico corrigió o completó marca, modelo o serie respecto al inventario"><input type="checkbox" ${_parSoloCorr ? 'checked' : ''} onchange="parToggleCorr(this.checked)"> <span style="color:#d92d20">●</span> Solo con correcciones (${_parRecs.filter((r) => _parCambios(r).length).length})</label>
       <span style="flex:1"></span>
+      ${MA.isAdmin() ? '<button class="btn btn-sm" style="color:#b42318;border-color:#f3b4ad" onclick="parEliminar(_parSeleccionados().map((r) => r.id))" title="Elimina las tomas seleccionadas">🗑 Eliminar seleccionados</button>' : ''}
       <button class="btn btn-sm" onclick="parVistaFormato()" title="Ver los seleccionados en el formato de la hoja impresa (se puede imprimir o guardar como PDF)">👁 Ver formato / PDF</button>
       ${puedeExp ? '<button class="btn btn-sm btn-primary" onclick="parExportarExcel()" title="Excel con el diseño de las hojas de parámetros de TOTTUS">⬇ Excel</button>' : ''}
     </div>
@@ -2502,12 +2518,38 @@ function renderParametrosFiltrado(todos) {
       <tbody>${lista.map((r) => `<tr style="border-top:1px solid var(--border)">
         <td><input type="checkbox" data-par-id="${_actEsc(r.id)}" ${_parSel.has(r.id) ? 'checked' : ''}></td>
         <td style="white-space:nowrap">${_actEsc(_parFechaTxt(r.fecha))} ${_actEsc(r.hora || '')}${r.diferido ? ' <span title="Se envió después de capturarlo (sin señal)">📶</span>' : ''}</td>
-        <td><b>${_actEsc(r.nombreEq || r.eqId)}</b><div style="font-size:10px;color:var(--muted2)">${_actEsc(r.eqId)} · ${_actEsc(r.sede)}</div></td>
+        <td>${_parCambios(r).length ? `<span title="${_actEsc(_parCambiosTxt(r))}" style="color:#d92d20;font-size:14px;cursor:help">●</span> ` : ''}<b>${_actEsc(r.nombreEq || r.eqId)}</b>${Number(r.ediciones) > 0 ? ' <span title="Esta toma se actualizó ' + Number(r.ediciones) + ' vez/veces" style="font-size:10px;color:var(--muted2)">✎' + Number(r.ediciones) + '</span>' : ''}<div style="font-size:10px;color:var(--muted2)">${_actEsc(r.eqId)} · ${_actEsc(r.sede)}</div></td>
         <td>${_actEsc(r.area || '')}</td>
         <td>${_actEsc((PAR_FORMATOS[r.formato] || {}).hoja || r.formato || '')}</td>
         <td>${_actEsc(r.tecnicoNombre || '')}</td>
         <td>${badge(r.estado)}</td>
-        <td><button class="btn btn-sm" data-par-ver="${_actEsc(r.id)}">Ver</button></td></tr>`).join('')}</tbody></table></div>`;
+        <td style="white-space:nowrap"><button class="btn btn-sm" data-par-ver="${_actEsc(r.id)}">Ver</button>${MA.isAdmin() ? ` <button class="btn btn-sm" style="color:#b42318" title="Eliminar esta toma" data-par-del="${_actEsc(r.id)}">🗑</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+}
+// "marca: «» → «WEG» · serie: «123» → «124»" para el tooltip del punto rojo
+function _parCambiosTxt(r) {
+  const c = r.cambiosEquipo || {};
+  return 'Corrección del equipo (revisa el inventario): ' + Object.keys(c).map((k) => k + ': «' + (c[k].antes || 'vacío') + '» → «' + (c[k].despues || 'vacío') + '»').join(' · ');
+}
+
+// Elimina tomas (solo ADMIN/SUPER_ADMIN; pasa por el servidor: las reglas no dejan borrar desde el navegador)
+async function parEliminar(ids) {
+  if (!MA.isAdmin()) { toast('Solo un administrador puede eliminar tomas', 'err'); return; }
+  ids = [...new Set(ids || [])];
+  if (!ids.length) { toast('No hay tomas seleccionadas', 'err'); return; }
+  const ejemplo = _parRecs.filter((r) => ids.includes(r.id)).slice(0, 3).map((r) => r.nombreEq || r.eqId).join(', ');
+  if (!confirm('¿Eliminar ' + ids.length + ' toma(s) de parámetros' + (ejemplo ? ' (' + ejemplo + (ids.length > 3 ? '…' : '') + ')' : '') + '?\n\nEl equipo volverá a figurar como pendiente. No se puede deshacer.')) return;
+  try {
+    const user = window.__auth && window.__auth.currentUser;
+    if (!user) throw new Error('Sesión no válida. Vuelve a iniciar sesión.');
+    const res = await fetch('/api/parametros_borrar', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await user.getIdToken() }, body: JSON.stringify({ ids }) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || ('Error ' + res.status));
+    _parRecs = _parRecs.filter((r) => !ids.includes(r.id));
+    _parSel = new Set([..._parSel].filter((id) => !ids.includes(id)));
+    document.querySelectorAll('div[style*="position:fixed"][style*="z-index:9000"]').forEach((n) => n.remove());
+    renderParametrosFiltrado(false);
+    toast('✓ ' + j.borrados + ' toma(s) eliminada(s)', 'ok');
+  } catch (e) { toast('No se pudo eliminar: ' + e.message, 'err'); }
 }
 document.addEventListener('change', (e) => {
   const cb = e.target && e.target.matches && e.target.matches('#par-content input[data-par-id]') ? e.target : null;
@@ -2518,6 +2560,8 @@ document.addEventListener('change', (e) => {
 document.addEventListener('click', (e) => {
   const b = e.target && e.target.closest ? e.target.closest('#par-content [data-par-ver]') : null;
   if (b) parDetalle(b.dataset.parVer);
+  const d = e.target && e.target.closest ? e.target.closest('#par-content [data-par-del]') : null;
+  if (d) parEliminar([d.dataset.parDel]);
 });
 function parSeleccionar(todos) { renderParametrosFiltrado(false); _parSel = todos ? new Set(_parFiltrados().map((r) => r.id)) : new Set(); renderParametrosFiltrado(false); }
 function _parSeleccionados() { return _parFiltrados().filter((r) => _parSel.has(r.id)); }
@@ -2535,6 +2579,9 @@ function parDetalle(id) {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><div><div style="font-size:15px;font-weight:700">${_actEsc(r.nombreEq || r.eqId)}</div><div style="color:var(--muted2)">${_actEsc(r.sede)} · ${_actEsc(r.area || '')} · ${_actEsc(def ? def.hoja : r.formato)}</div></div><button class="btn btn-sm" onclick="this.closest('div[style*=fixed]').remove()">✕</button></div>
       <table style="margin-top:10px;border-collapse:collapse">${fila('Fecha y hora', _parFechaTxt(r.fecha) + ' ' + (r.hora || ''))}${fila('Técnico', r.tecnicoNombre || '')}${fila('N.º OS', r.os || '—')}${fila('Estado', (r.estado || '') + ' · ' + (PAR_ESTADO_TXT[r.estado] || ''))}
       ${fila('Marca / modelo / serie', [e.marca, e.modelo, e.serie].filter(Boolean).join(' · ') || '—')}${fila('Fases', r.electrico ? r.electrico.fases : '')}${detalle.join('')}${fila('Observaciones', r.observaciones || '—')}</table>
+      ${_parCambios(r).length ? `<div style="margin-top:10px;border:1px solid #f3b4ad;background:#fef3f2;border-radius:8px;padding:8px 10px"><div style="font-weight:700;color:#b42318;margin-bottom:4px">● El técnico corrigió datos del equipo — revisa el inventario</div>${_parCambios(r).map((k) => `<div>${_actEsc(k)}: <span style="color:var(--muted2)">${_actEsc((r.cambiosEquipo[k].antes) || 'vacío')}</span> → <b>${_actEsc((r.cambiosEquipo[k].despues) || 'vacío')}</b></div>`).join('')}</div>` : ''}
+      ${Number(r.ediciones) > 0 ? `<div style="margin-top:8px;color:var(--muted2)">✎ Actualizada ${Number(r.ediciones)} vez/veces · última por ${_actEsc(r.editadoPor || r.tecnicoNombre || '')}${r.creadoPor ? ' · tomada por primera vez por ' + _actEsc(r.creadoPor) : ''}</div>` : ''}
+      ${MA.isAdmin() ? `<div style="margin-top:12px"><button class="btn btn-sm" style="color:#b42318;border-color:#f3b4ad" onclick="parEliminar(['${_actEsc(r.id)}'])">🗑 Eliminar esta toma</button></div>` : ''}
       ${r.diferido ? '<div style="margin-top:8px;color:var(--muted2)">📶 Se capturó sin señal y se envió después.</div>' : ''}
     </div></div>`;
   document.body.insertAdjacentHTML('beforeend', html);
