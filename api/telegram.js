@@ -28,7 +28,7 @@ async function depsReales() {
     identificarPorTelegram: ident.identificarPorTelegram, vincularTelegram: ident.vincularTelegram,
     tg, manejarMensaje: conv.manejarMensaje, guardarObservacion: esc.guardarObservacion,
     notificarSupervisores: av.notificarSupervisores, decidirFlujo: rout.decidirFlujo,
-    manejarAsistencia: asis.manejarAsistencia, manejarMtto: mt.manejarMtto,
+    manejarAsistencia: asis.manejarAsistencia, manejarMtto: mt.manejarMtto, reclamarAlbum: mt.reclamarAlbum,
     MENU_TEXTO: mt.MENU_TEXTO, MENU_BOTONES: mt.MENU_BOTONES, getSesionMtto: mtSes.getSesion,
     // Corta CUALQUIER conversación a medias (observación + su foto pendiente, asistencia + su selfie,
     // mantenimiento). Lo usan /menu y /cancelar: sin esto, lo que el técnico toque después se
@@ -142,6 +142,7 @@ function paraTelegram(d, resp) {
   return out;
 }
 
+const TXT_FOTOS_TARDE = '⚠️ *Algunas fotos NO se guardaron.* Llegaron cuando el registro ya estaba cerrado.' + '\n\n' + 'Revisa cuántas quedaron en el sistema y, si faltan, abre de nuevo el registro del equipo (*Mantenimiento*) y envíalas otra vez.';
 const TXT_TECLADO_FLUJO = 'Para salir de lo que estés haciendo, toca *❌ Cancelar* aquí abajo 👇';
 const TXT_TECLADO_INICIO = '👇 Cuando quieras empezar otra cosa, elige una opción aquí abajo.';
 const tecladoDe = (d, modo) => (modo === 'flujo' ? d.tg.TECLADO_FLUJO : d.tg.TECLADO_INICIO);
@@ -362,6 +363,19 @@ export async function procesarUpdate(update, d) {
     if (flujo === 'asistencia') {
       const resp = await d.manejarAsistencia({ tecnico, from, texto, ubicacion, imagenB64, mime });
       await responderConTeclado(d, chatId, from, resp);
+      return;
+    }
+
+    // Fotos de un álbum que llegan SIN una sesión de mantenimiento viva (p. ej. después de FIN o CANCELAR) no deben
+    // abrir una observación por cada foto: Gemini lee la sede del sello de la foto y el bot repreguntaba el
+    // tipo de equipo una vez por foto (reporte en vivo, 2026-11-06). Si el álbum ya fue atendido —por el flujo
+    // de mantenimiento o por otra foto de este mismo álbum— estas fotos NO se guardaron: se avisa UNA sola vez
+    // (el técnico no debe creer que subió todo) y las demás fotos del álbum no repiten el aviso.
+    if (n.tipo === 'image' && n.grupo && d.reclamarAlbum && !(await d.reclamarAlbum(from, n.grupo))) {
+      console.log('[telegram] foto de un álbum ya atendido, no se guarda:', n.grupo);
+      if (await d.reclamarAlbum(from, `aviso_${n.grupo}`)) {
+        await d.tg.enviarTexto(chatId, TXT_FOTOS_TARDE);
+      }
       return;
     }
 
