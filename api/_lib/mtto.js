@@ -532,16 +532,9 @@ async function guardarFoto(ses, tecnico, imagenB64, mime, grupo = null) {
 }
 
 // ── Álbum de fotos ──────────────────────────────────────────────────────────────────────────
-// Cuando el técnico manda varias fotos juntas, Telegram las entrega como mensajes SEPARADOS que
-// comparten un media_group_id, y cada uno llega a una invocación distinta (en paralelo). Si cada
-// una contestaba "Foto N guardada", salían 3 mensajes y parecía que el bot solo sabe recibir de a
-// una. Ahora todas guardan su foto, pero responde UNA sola: la primera en reclamar el álbum
-// espera un momento a que las demás terminen de guardarse y confirma el total.
-// Cada foto se descarga de Telegram y se escribe en Firestore por separado: con 3 fotos pesadas 3 s no
-// alcanzaban (el bot dijo "1 foto cargada" y otras llegaron después). La líder espera y vuelve a contar
-// hasta que el total deje de crecer (máx. REVISIONES_ALBUM esperas extra; con 30 s de límite sobra).
-export const ESPERA_ALBUM_MS = 2500;
-export const REVISIONES_ALBUM = 4;
+// Telegram entrega cada foto de un álbum como un mensaje separado (comparten media_group_id). La confirmación
+// única con el total correcto la arma el canal (api/_lib/lote_fotos.js: un mensaje que se edita); acá solo se
+// reclama el álbum para que, si las fotos llegan cuando el registro ya se cerró, se avise UNA vez (api/telegram.js).
 
 // create() es atómico: solo una invocación lo logra. Va en wa_mensajes (la colección de marcas de
 // idempotencia, transitoria). Si Firestore falla, se asume líder: mejor un mensaje de más que ninguno.
@@ -556,33 +549,6 @@ export async function reclamarAlbum(from, grupo) {
     console.error('[mtto] no se pudo reclamar el álbum:', e?.message);
     return true;
   }
-}
-
-async function contarFotosGrupo(ses, tarea, grupo) {
-  const { periodo, anio } = periodoDeSesion(ses);
-  const snap = await getDb().collection('mantenimiento_fotos')
-    .where('clave', '==', `${sedeEfectiva(ses.sede, ses.cliente)}|${periodo}|${anio}`)
-    .where('eq_id', '==', ses.eqId)
-    .where('grupo', '==', String(grupo))
-    .select('tarea').get();
-  return snap.docs.filter((d) => d.data().tarea === tarea).length;
-}
-
-// Lógica pura (todo inyectado) para poder probarla sin Firestore ni esperas reales.
-// Devuelve null si NO es el líder del álbum: su foto ya se guardó y otra invocación responde.
-export async function respuestaAlbum({ lider, esperar, contar, tarea, siguiente, botones }) {
-  if (!(await lider())) return null;
-  await esperar();
-  let k = await contar();
-  for (let i = 0; i < REVISIONES_ALBUM; i++) {   // ¿siguen llegando fotos del mismo álbum?
-    await esperar();
-    const k2 = await contar();
-    if (k2 === k) break;
-    k = k2;
-  }
-  k = Math.max(1, k);
-  const que = k === 1 ? '1 foto cargada' : `${k} fotos cargadas`;
-  return { texto: `✅ ${que} para *${tarea}*. Envía más${siguiente} o *FIN*.`, botones };
 }
 
 // ── Motor del flujo ───────────────────────────────────────────────────────────
@@ -696,16 +662,10 @@ export async function manejarMtto({ tecnico, from, texto, imagenB64, mime, onWri
       if (onWriteStart) onWriteStart();   // idempotencia: la foto se escribe una sola vez
       await guardarFoto(ses, tecnico, imagenB64, mime, grupoFoto);
       const tarea = (ses.hechas || [])[ses.fotoPos];
-      if (grupoFoto) {
-        return respuestaAlbum({
-          lider: () => reclamarAlbum(from, grupoFoto),
-          esperar: () => new Promise((r) => setTimeout(r, ESPERA_ALBUM_MS)),
-          contar: () => contarFotosGrupo(ses, tarea, grupoFoto),
-          tarea, siguiente: ', *SIGUIENTE*', botones: FOTOS_BOTONES,
-        });
-      }
       const n = await contarFotos(ses, tarea);
-      return { texto: `📷 Foto ${n} guardada para *${tarea}*. Envía otra, *SIGUIENTE* o *FIN*.`, botones: FOTOS_BOTONES };
+      // `textoLote(n)` deja que el canal (Telegram) edite UN solo mensaje con el total a medida que llegan las fotos.
+      const textoLote = (k) => `✅ ${k === 1 ? '1 foto cargada' : `${k} fotos cargadas`} para *${tarea}*. Envía más, *SIGUIENTE* o *FIN*.`;
+      return { texto: textoLote(n), botones: FOTOS_BOTONES, fotoCount: n, textoLote, loteClave: `${ses.inicio}|${tarea}` };
     }
     if (/(^|\s)(siguiente|listo|next)(\s|$)/.test(t)) {
       ses.fotoPos += 1;
