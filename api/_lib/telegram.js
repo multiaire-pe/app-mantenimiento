@@ -127,6 +127,14 @@ export const responderCallback = (callbackId) => llamar('answerCallbackQuery', {
 export const quitarBotones = (chatId, messageId) =>
   llamar('editMessageReplyMarkup', { chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } });
 
+// Corrige el texto (y los botones) de un mensaje ya enviado. Se usa para que la confirmación de varias fotos sea UN
+// mensaje cuyo total sube a medida que llegan. "message is not modified" (mismo texto) es un 400 inofensivo.
+export const editarTexto = (chatId, messageId, texto, botones) =>
+  llamar('editMessageText', {
+    chat_id: chatId, message_id: messageId, text: htmlDeWa(String(texto == null ? '' : texto).slice(0, LIMITE)), parse_mode: 'HTML',
+    ...(botones ? { reply_markup: tecladoInline(botones.map((b) => ({ id: b.id, text: b.title }))) } : {}),
+  });
+
 // Mismo contrato que `enviarRespuesta` de whatsapp.js. Si el teclado falla, el técnico igual
 // recibe la pregunta como texto: repetir una PREGUNTA es inofensivo.
 export async function enviarRespuestaTg(chatId, resp) {
