@@ -92,9 +92,16 @@ function deps(resp) {
   const d1 = huerfana(async () => true);
   await procesarUpdate({ update_id: 10, ...foto({ media_group_id: 'ZZ' }) }, d1);
   t('álbum sin sesión: la primera foto sí sigue su camino', d1.llamadasObs === 1);
-  const d2 = huerfana(async () => false);
+  // álbum ya atendido: la 1ª foto tardía AVISA (una vez) que no se guardó; las siguientes callan
+  const marcas = new Set(); const reclamar = async (from, g) => { const k = from + g; if (k.includes('ZZ') && !k.includes('aviso')) return false; if (marcas.has(k)) return false; marcas.add(k); return true; };
+  const enviados = [];
+  const tardia = () => { const d = huerfana(reclamar); d.tg.enviarTexto = async (c, x) => { enviados.push(x); return true; }; return d; };
+  const d2 = tardia(), d2b = tardia(), d2c = tardia();
   await procesarUpdate({ update_id: 11, ...foto({ media_group_id: 'ZZ' }) }, d2);
-  t('álbum ya atendido: la foto se ignora en silencio', d2.llamadasObs === 0 && d2.log.env.length === 0);
+  await procesarUpdate({ update_id: 13, ...foto({ media_group_id: 'ZZ' }) }, d2b);
+  await procesarUpdate({ update_id: 14, ...foto({ media_group_id: 'ZZ' }) }, d2c);
+  t('álbum ya atendido: no abre observación', d2.llamadasObs === 0 && d2b.llamadasObs === 0 && d2c.llamadasObs === 0);
+  t('álbum ya atendido: avisa UNA sola vez que no se guardaron', enviados.length === 1 && /NO se guardaron/.test(enviados[0]), JSON.stringify(enviados));
   const d3 = huerfana(async () => false);
   await procesarUpdate({ update_id: 12, ...foto() }, d3);
   t('foto suelta sin sesión: sigue como observación', d3.llamadasObs === 1);
