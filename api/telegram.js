@@ -16,19 +16,19 @@ import crypto from 'node:crypto';
 // Cada dependencia se importa dinámicamente la primera vez: el módulo se puede importar en un
 // test sin arrastrar firebase-admin, y `procesarUpdate` recibe `deps` inyectables.
 async function depsReales() {
-  const [idem, ident, tg, conv, esc, av, rout, asis, mt, mtSes, obsSes, asisSes, fotos, tecl] = await Promise.all([
+  const [idem, ident, tg, conv, esc, av, rout, asis, mt, mtSes, obsSes, asisSes, fotos, tecl, lf] = await Promise.all([
     import('./_lib/idempotencia.js'), import('./_lib/identidad.js'), import('./_lib/telegram.js'),
     import('./_lib/conversacion.js'), import('./_lib/escritura.js'), import('./_lib/avisos.js'),
     import('./_lib/router.js'), import('./_lib/asistencia.js'), import('./_lib/mtto.js'),
     import('./_lib/mtto_sesiones.js'), import('./_lib/sesiones.js'), import('./_lib/asistencia_sesiones.js'),
-    import('./_lib/fotos.js'), import('./_lib/teclado.js'),
+    import('./_lib/fotos.js'), import('./_lib/teclado.js'), import('./_lib/lote_fotos.js'),
   ]);
   return {
     yaProcesado: idem.yaProcesado, liberarMensaje: idem.liberarMensaje,
     identificarPorTelegram: ident.identificarPorTelegram, vincularTelegram: ident.vincularTelegram,
     tg, manejarMensaje: conv.manejarMensaje, guardarObservacion: esc.guardarObservacion,
     notificarSupervisores: av.notificarSupervisores, decidirFlujo: rout.decidirFlujo,
-    manejarAsistencia: asis.manejarAsistencia, manejarMtto: mt.manejarMtto, reclamarAlbum: mt.reclamarAlbum,
+    manejarAsistencia: asis.manejarAsistencia, manejarMtto: mt.manejarMtto, reclamarAlbum: mt.reclamarAlbum, confirmarFotos: lf.confirmarFotos,
     MENU_TEXTO: mt.MENU_TEXTO, MENU_BOTONES: mt.MENU_BOTONES, getSesionMtto: mtSes.getSesion,
     // Corta CUALQUIER conversación a medias (observación + su foto pendiente, asistencia + su selfie,
     // mantenimiento). Lo usan /menu y /cancelar: sin esto, lo que el técnico toque después se
@@ -357,6 +357,15 @@ export async function procesarUpdate(update, d) {
     }
     if (flujo === 'mtto') {
       const resp = await d.manejarMtto({ tecnico, from, texto, imagenB64, mime, grupoFoto: n.grupo || null, onWriteStart: () => { escrituraIniciada = true; } });
+      // Varias fotos seguidas = UN mensaje de confirmación cuyo total se va corrigiendo (no uno por foto).
+      if (resp && resp.fotoCount != null && d.confirmarFotos) {
+        await d.confirmarFotos({
+          from, clave: resp.loteClave, n: resp.fotoCount, texto: resp.textoLote,
+          enviar: async (txt) => { const r = await d.tg.enviarBotonesDetalle(chatId, txt, resp.botones); return r && r.ok && r.result ? r.result.message_id : null; },
+          editar: (id, txt) => d.tg.editarTexto(chatId, id, txt, resp.botones),
+        });
+        return;
+      }
       await responderConTeclado(d, chatId, from, resp);
       return;
     }

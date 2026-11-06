@@ -1,43 +1,61 @@
-// Varias fotos juntas (álbum de Telegram) = UNA sola respuesta. Uso: node tests/mtto_album.test.mjs
-import { respuestaAlbum, ESPERA_ALBUM_MS } from '../api/_lib/mtto.js';
+// Varias fotos seguidas = UN solo mensaje de confirmación que se corrige con el total. Uso: node tests/mtto_album.test.mjs
+import { decidirLote, confirmarFotos } from '../api/_lib/lote_fotos.js';
 import { normalizarUpdate, procesarUpdate } from '../api/telegram.js';
 
 let ok = 0, mal = 0;
 const t = (n, c, e = '') => { if (c) ok++; else { mal++; console.log('✗', n, e); } };
-const BOT = [{ id: 'siguiente', title: 'S' }];
 
-// ── respuestaAlbum: las 3 fotos del álbum llegan "en paralelo"; solo la líder contesta ──
+// ── lógica pura de la ráfaga ──
 {
-  const reclamado = new Set(); const eventos = []; let guardadas = 0;
-  const invocacion = (nombre) => respuestaAlbum({
-    lider: async () => { if (reclamado.has('G1')) return false; reclamado.add('G1'); eventos.push(nombre + ':lider'); return true; },
-    esperar: async () => { eventos.push(nombre + ':espera'); await new Promise((r) => setTimeout(r, 20)); },
-    contar: async () => { eventos.push(nombre + ':cuenta'); return guardadas; },
-    tarea: 'Mantenimiento integral', siguiente: ', *SIGUIENTE*', botones: BOT,
+  const a = decidirLote(null, { clave: 'S|X', n: 1, ahora: 1000 });
+  t('primera foto: envía mensaje nuevo', a.accion === 'enviar' && a.total === 1);
+  const b = decidirLote({ clave: 'S|X', ts: 1000, n: 1, msgId: 55 }, { clave: 'S|X', n: 3, ahora: 2000 });
+  t('foto siguiente: edita el mismo mensaje con el total', b.accion === 'editar' && b.msgId === 55 && b.total === 3);
+  const c = decidirLote({ clave: 'S|X', ts: 1000, n: 5, msgId: 55 }, { clave: 'S|X', n: 3, ahora: 2000 });
+  t('el total nunca baja (conteo atrasado de otra invocación)', c.total === 5);
+  t('pasó la ventana: mensaje nuevo', decidirLote({ clave: 'S|X', ts: 1000, n: 5, msgId: 55 }, { clave: 'S|X', n: 6, ahora: 1000 + 31000 }).accion === 'enviar');
+  t('otra actividad u otro registro: mensaje nuevo', decidirLote({ clave: 'S|X', ts: 1000, n: 5, msgId: 55 }, { clave: 'S|Y', n: 1, ahora: 1500 }).accion === 'enviar');
+}
+
+// ── confirmarFotos con un almacén en memoria (con transacción simulada) ──
+function mundo() {
+  let doc = null; const enviados = [], editados = [];
+  const almacen = {
+    reclamar: async (_f, d) => { const r = decidirLote(doc, d); doc = { ...r.nuevo }; return r; },
+    leer: async () => doc, fijarMsg: async (_f, id) => { doc = { ...doc, msgId: id }; },
+  };
+  let idSig = 100;
+  const base = (clave, n, ahora) => ({
+    from: 'tg1', clave, n, texto: (k) => `${k} fotos`, almacen, ahora, esperar: async () => {},
+    enviar: async (x) => { enviados.push(x); return idSig++; }, editar: async (id, x) => { editados.push([id, x]); },
   });
-  // cada invocación primero guarda su foto (aquí: suma 1) y luego pregunta por el líder
-  const lanzar = async (nombre) => { guardadas++; return invocacion(nombre); };
-  const [a, b, c] = await Promise.all([lanzar('f1'), lanzar('f2'), lanzar('f3')]);
-  const respuestas = [a, b, c].filter(Boolean);
-  t('álbum de 3: contesta UNA sola vez', respuestas.length === 1, JSON.stringify([a, b, c]));
-  t('el mensaje dice 3 fotos', /3 fotos cargadas/.test(respuestas[0]?.texto || ''), respuestas[0]?.texto);
-  t('menciona la actividad', /Mantenimiento integral/.test(respuestas[0]?.texto));
-  t('incluye SIGUIENTE y FIN', /SIGUIENTE/.test(respuestas[0].texto) && /FIN/.test(respuestas[0].texto));
-  t('mantiene los botones', respuestas[0].botones === BOT);
-  const lider = eventos.find((e) => e.endsWith(':lider')).split(':')[0];
-  const iEspera = eventos.indexOf(lider + ':espera'), iCuenta = eventos.indexOf(lider + ':cuenta');
-  t('la líder espera ANTES de contar (y sí espera)', iEspera >= 0 && iCuenta >= 0 && iEspera < iCuenta, JSON.stringify(eventos));
-  t('las que no son líder no esperan ni cuentan', eventos.filter((e) => !e.startsWith(lider)).every((e) => !/espera|cuenta/.test(e)));
+  return { enviados, editados, base };
 }
 {
-  const r = await respuestaAlbum({ lider: async () => true, esperar: async () => {}, contar: async () => 1, tarea: 'X', siguiente: '', botones: BOT });
-  t('1 sola foto: singular', /1 foto cargada/.test(r.texto) && !/fotos/.test(r.texto), r.texto);
-  const r0 = await respuestaAlbum({ lider: async () => true, esperar: async () => {}, contar: async () => 0, tarea: 'X', siguiente: '', botones: BOT });
-  t('conteo 0 (lectura atrasada) nunca dice 0 fotos', /1 foto cargada/.test(r0.texto), r0.texto);
-  t('no líder → null', (await respuestaAlbum({ lider: async () => false, esperar: async () => { throw new Error('no debe esperar'); }, contar: async () => 9, tarea: 'X', siguiente: '', botones: BOT })) === null);
-  t('sin SIGUIENTE cuando no hay más actividades', !/SIGUIENTE/.test(r.texto));
+  // 11 fotos una por una (Telegram parte en 10 + 1): UN mensaje enviado y el resto ediciones; termina en 11
+  const w = mundo();
+  for (let i = 1; i <= 11; i++) await confirmarFotos(w.base('S|X', i, 1000 + i * 500));
+  t('11 fotos seguidas: UN solo mensaje enviado', w.enviados.length === 1, JSON.stringify(w.enviados));
+  t('el mensaje termina diciendo 11', w.editados.at(-1)[1] === '11 fotos', JSON.stringify(w.editados.at(-1)));
+  t('todas las ediciones apuntan al mismo mensaje', w.editados.every(([id]) => id === 100));
 }
-t('la espera es razonable (1-8 s)', ESPERA_ALBUM_MS >= 1000 && ESPERA_ALBUM_MS <= 8000, String(ESPERA_ALBUM_MS));
+{
+  // en paralelo: la 2ª llega cuando la 1ª aún no registró el id de su mensaje → espera y luego edita
+  const w = mundo(); let intentos = 0;
+  const b1 = w.base('S|X', 1, 1000), b2 = w.base('S|X', 2, 1001);
+  const enviar1 = b1.enviar; b1.enviar = async (x) => { await new Promise((r) => setTimeout(r, 30)); return enviar1(x); };
+  b2.esperar = async () => { intentos++; await new Promise((r) => setTimeout(r, 20)); };
+  await Promise.all([confirmarFotos(b1), confirmarFotos(b2)]);
+  t('en paralelo: sigue siendo UN mensaje', w.enviados.length === 1, JSON.stringify(w.enviados));
+  t('en paralelo: la segunda esperó el id y editó con el total', w.editados.length >= 1 && w.editados.at(-1)[1] === '2 fotos' && intentos >= 1, JSON.stringify(w.editados));
+}
+{
+  // dos ráfagas separadas (más de 30 s): dos mensajes
+  const w = mundo();
+  await confirmarFotos(w.base('S|X', 1, 1000));
+  await confirmarFotos(w.base('S|X', 2, 1000 + 40000));
+  t('ráfagas separadas: un mensaje por ráfaga', w.enviados.length === 2);
+}
 
 // ── Telegram: el media_group_id llega hasta el flujo de mtto ──
 const priv = { id: 7, type: 'private' };
@@ -72,14 +90,14 @@ function deps(resp) {
   t('respuesta null: no manda mensaje', d.log.env.every((r) => !r || r === null) && !d.log.env.some((r) => r && r.texto));
 }
 
-// ── La líder sigue esperando mientras lleguen más fotos (caso real: contó 1 de 3 a los 3 s) ──
+// ── Telegram: la respuesta con total de fotos pasa por confirmarFotos (un mensaje editable), no por un envío por foto ──
 {
-  let llegadas = [1, 2, 3, 3], i = 0, esperas = 0;
-  const r = await respuestaAlbum({ lider: async () => true, esperar: async () => { esperas++; }, contar: async () => llegadas[Math.min(i++, llegadas.length - 1)], tarea: 'X', siguiente: '', botones: BOT });
-  t('espera a que el total deje de crecer: dice 3 fotos', /3 fotos cargadas/.test(r.texto), r.texto);
-  t('no espera de más cuando ya es estable', esperas <= 4, String(esperas));
-  const r2 = await respuestaAlbum({ lider: async () => true, esperar: async () => {}, contar: async () => 2, tarea: 'X', siguiente: '', botones: BOT });
-  t('total estable: 2 fotos', /2 fotos cargadas/.test(r2.texto), r2.texto);
+  const resp = { texto: '✅ 1 foto cargada', botones: [{ id: 'fin', title: 'Fin' }], fotoCount: 1, textoLote: (k) => `${k} fotos`, loteClave: 'S|X' };
+  const d = deps(resp); const llamadas = [];
+  d.confirmarFotos = async (a) => { llamadas.push(a); };
+  await procesarUpdate({ update_id: 30, ...foto({ media_group_id: 'AA' }) }, d);
+  t('mtto con total de fotos usa confirmarFotos', llamadas.length === 1 && llamadas[0].n === 1 && llamadas[0].clave === 'S|X');
+  t('no manda además el mensaje por foto', d.log.env.length === 0);
 }
 
 // ── Fotos de álbum SIN sesión de mantenimiento (después de FIN): no abren una observación por foto ──
