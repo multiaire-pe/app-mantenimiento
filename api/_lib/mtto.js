@@ -537,11 +537,15 @@ async function guardarFoto(ses, tecnico, imagenB64, mime, grupo = null) {
 // una contestaba "Foto N guardada", salían 3 mensajes y parecía que el bot solo sabe recibir de a
 // una. Ahora todas guardan su foto, pero responde UNA sola: la primera en reclamar el álbum
 // espera un momento a que las demás terminen de guardarse y confirma el total.
-export const ESPERA_ALBUM_MS = 3000;
+// Cada foto se descarga de Telegram y se escribe en Firestore por separado: con 3 fotos pesadas 3 s no
+// alcanzaban (el bot dijo "1 foto cargada" y otras llegaron después). La líder espera y vuelve a contar
+// hasta que el total deje de crecer (máx. REVISIONES_ALBUM esperas extra; con 30 s de límite sobra).
+export const ESPERA_ALBUM_MS = 2500;
+export const REVISIONES_ALBUM = 4;
 
 // create() es atómico: solo una invocación lo logra. Va en wa_mensajes (la colección de marcas de
 // idempotencia, transitoria). Si Firestore falla, se asume líder: mejor un mensaje de más que ninguno.
-async function reclamarAlbum(from, grupo) {
+export async function reclamarAlbum(from, grupo) {
   try {
     await getDb().collection('wa_mensajes').doc(`alb_${from}_${grupo}`).create({
       procesadoEn: new Date().toISOString(), type: 'album_mtto', from,
@@ -569,7 +573,14 @@ async function contarFotosGrupo(ses, tarea, grupo) {
 export async function respuestaAlbum({ lider, esperar, contar, tarea, siguiente, botones }) {
   if (!(await lider())) return null;
   await esperar();
-  const k = Math.max(1, await contar());
+  let k = await contar();
+  for (let i = 0; i < REVISIONES_ALBUM; i++) {   // ¿siguen llegando fotos del mismo álbum?
+    await esperar();
+    const k2 = await contar();
+    if (k2 === k) break;
+    k = k2;
+  }
+  k = Math.max(1, k);
   const que = k === 1 ? '1 foto cargada' : `${k} fotos cargadas`;
   return { texto: `✅ ${que} para *${tarea}*. Envía más${siguiente} o *FIN*.`, botones };
 }

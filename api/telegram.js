@@ -28,7 +28,7 @@ async function depsReales() {
     identificarPorTelegram: ident.identificarPorTelegram, vincularTelegram: ident.vincularTelegram,
     tg, manejarMensaje: conv.manejarMensaje, guardarObservacion: esc.guardarObservacion,
     notificarSupervisores: av.notificarSupervisores, decidirFlujo: rout.decidirFlujo,
-    manejarAsistencia: asis.manejarAsistencia, manejarMtto: mt.manejarMtto,
+    manejarAsistencia: asis.manejarAsistencia, manejarMtto: mt.manejarMtto, reclamarAlbum: mt.reclamarAlbum,
     MENU_TEXTO: mt.MENU_TEXTO, MENU_BOTONES: mt.MENU_BOTONES, getSesionMtto: mtSes.getSesion,
     // Corta CUALQUIER conversación a medias (observación + su foto pendiente, asistencia + su selfie,
     // mantenimiento). Lo usan /menu y /cancelar: sin esto, lo que el técnico toque después se
@@ -362,6 +362,15 @@ export async function procesarUpdate(update, d) {
     if (flujo === 'asistencia') {
       const resp = await d.manejarAsistencia({ tecnico, from, texto, ubicacion, imagenB64, mime });
       await responderConTeclado(d, chatId, from, resp);
+      return;
+    }
+
+    // Fotos de un álbum que llegan SIN una sesión de mantenimiento viva (p. ej. después de FIN o CANCELAR) no deben
+    // abrir una observación por cada foto: Gemini lee la sede del sello de la foto y el bot repreguntaba el
+    // tipo de equipo una vez por foto (reporte en vivo, 2026-11-06). Si el álbum ya fue atendido —por el flujo
+    // de mantenimiento o por otra foto de este mismo álbum— estas se descartan en silencio.
+    if (n.tipo === 'image' && n.grupo && d.reclamarAlbum && !(await d.reclamarAlbum(from, n.grupo))) {
+      console.log('[telegram] foto de un álbum ya atendido, se ignora:', n.grupo);
       return;
     }
 

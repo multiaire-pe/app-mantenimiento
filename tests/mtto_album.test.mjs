@@ -72,5 +72,33 @@ function deps(resp) {
   t('respuesta null: no manda mensaje', d.log.env.every((r) => !r || r === null) && !d.log.env.some((r) => r && r.texto));
 }
 
+// ── La líder sigue esperando mientras lleguen más fotos (caso real: contó 1 de 3 a los 3 s) ──
+{
+  let llegadas = [1, 2, 3, 3], i = 0, esperas = 0;
+  const r = await respuestaAlbum({ lider: async () => true, esperar: async () => { esperas++; }, contar: async () => llegadas[Math.min(i++, llegadas.length - 1)], tarea: 'X', siguiente: '', botones: BOT });
+  t('espera a que el total deje de crecer: dice 3 fotos', /3 fotos cargadas/.test(r.texto), r.texto);
+  t('no espera de más cuando ya es estable', esperas <= 4, String(esperas));
+  const r2 = await respuestaAlbum({ lider: async () => true, esperar: async () => {}, contar: async () => 2, tarea: 'X', siguiente: '', botones: BOT });
+  t('total estable: 2 fotos', /2 fotos cargadas/.test(r2.texto), r2.texto);
+}
+
+// ── Fotos de álbum SIN sesión de mantenimiento (después de FIN): no abren una observación por foto ──
+{
+  const huerfana = (reclamar) => {
+    const d = deps(null); d.decidirFlujo = async () => 'observaciones'; d.reclamarAlbum = reclamar;
+    d.llamadasObs = 0; d.manejarMensaje = async () => { d.llamadasObs++; return 'x'; };
+    return d;
+  };
+  const d1 = huerfana(async () => true);
+  await procesarUpdate({ update_id: 10, ...foto({ media_group_id: 'ZZ' }) }, d1);
+  t('álbum sin sesión: la primera foto sí sigue su camino', d1.llamadasObs === 1);
+  const d2 = huerfana(async () => false);
+  await procesarUpdate({ update_id: 11, ...foto({ media_group_id: 'ZZ' }) }, d2);
+  t('álbum ya atendido: la foto se ignora en silencio', d2.llamadasObs === 0 && d2.log.env.length === 0);
+  const d3 = huerfana(async () => false);
+  await procesarUpdate({ update_id: 12, ...foto() }, d3);
+  t('foto suelta sin sesión: sigue como observación', d3.llamadasObs === 1);
+}
+
 console.log(`${ok} ok · ${mal} mal`);
 process.exit(mal ? 1 : 0);
