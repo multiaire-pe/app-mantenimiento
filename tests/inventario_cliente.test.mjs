@@ -90,5 +90,9 @@ t('al elegir la sede del desplegable se propone el cliente del encabezado', /onP
 t('abrir "Editar" y "Nuevo" refrescan el selector', /document\.getElementById\('f_sede'\)\.value=r\.sede;refrescarClienteForm\(\)/.test(html) && /refrescarClienteForm\(\);\s*\n\s*document\.getElementById\('mov'\)\.classList\.add\('open'\)/.test(html));
 t('la lista de clientes por sede se alimenta de los datos y de maestros', /data\.forEach\(r=>registrarSedeCliente\(r\.sede,r\.cliente\)\)/.test(html) && /tiendas\.forEach\(t=>registrarSedeCliente\(t\.sede,t\.cliente\)\)/.test(html));
 
+// la ficha se separa en bloques con `.bloque` (no `.sec`: esa clase ya existe para encabezados y encogía/corría los campos)
+t('la ficha usa .bloque (4 campos) y ninguno usa la clase .sec', (html.match(/<div class="fgg bloque">/g) || []).length === 4 && !/class="fgg sec"/.test(html));
+t('los campos de la ficha conservan el tamaño original (sin relleno propio)', !/\.fg2 select,\.fg2 input\[type=text\]\{/.test(html));
+
 console.log(`${ok} ok · ${mal} mal`);
 process.exit(mal ? 1 : 0);
