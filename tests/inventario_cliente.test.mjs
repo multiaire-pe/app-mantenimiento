@@ -34,7 +34,12 @@ t('sede desconocida → ninguno', clientesDeSede('NO EXISTE').length === 0);
 // ── EL BUG: editar un equipo de Tottus en la sede compartida ──
 const mir = clientesDeSede('MIRAFLORES');
 const edit = resolverClienteGuardado({ editando: true, clienteEquipo: 'TOTTUS', clienteElegido: 'RIPLEY', sede: 'MIRAFLORES', clientesDeLaSede: mir });
-t('EDITAR conserva el cliente del equipo aunque el formulario traiga otro', edit.ok && edit.cliente === 'TOTTUS', JSON.stringify(edit));
+t('EDITAR guarda lo que diga el selector (cambiarlo a mano es válido; guardar pide confirmación)', edit.ok && edit.cliente === 'RIPLEY', JSON.stringify(edit));
+// …y lo que evita el bug original (el formulario arrastraba el cliente del filtro): al abrir la ficha el selector arranca
+// con el cliente del equipo, y un valor viejo solo se respeta si el usuario lo tocó en ESTA edición.
+t('al abrir la ficha de edición se reinicia el "tocado" del selector de cliente', /editRow=row;document\.getElementById\('f_cliente'\)\.dataset\.tocado='';/.test(html));
+t('solo un cambio manual del selector se conserva al refrescar', /if\(eq&&sel\.dataset\.tocado&&opciones\.includes\(prev\)\) valor=prev;\s*else if\(actual&&actual!=='-'\) valor=actual;/.test(html) && /id="f_cliente"[^>]*onchange="this\.dataset\.tocado=1"/.test(html));
+t('ya no existe el botón "Corregir cliente"', !/f_reasignar|Corregir cliente/.test(html));
 const edit2 = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: '', sede: 'MIRAFLORES', clientesDeLaSede: mir });
 t('EDITAR un equipo de Ripley también conserva su cliente', edit2.ok && edit2.cliente === 'RIPLEY');
 // cambiar el área (u otro campo) no toca el cliente: con cualquiera de las dos órdenes de carga
@@ -53,15 +58,15 @@ t('editar un equipo sin cliente pide elegirlo', !sinCli.ok && /no tiene cliente/
 const sinCli2 = resolverClienteGuardado({ editando: true, clienteEquipo: '', clienteElegido: 'TOTTUS', sede: 'MIRAFLORES', clientesDeLaSede: mir });
 t('…y si lo elige, se guarda', sinCli2.ok && sinCli2.cliente === 'TOTTUS');
 
-// ── corregir el cliente de un equipo mal asignado (checkbox "Corregir el cliente") ──
-const corr = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: 'TOTTUS', sede: 'MIRAFLORES', clientesDeLaSede: mir, reasignar: true });
-t('reasignar=true en edición → manda el cliente elegido', corr.ok && corr.cliente === 'TOTTUS', JSON.stringify(corr));
-const corrVacio = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: '', sede: 'MIRAFLORES', clientesDeLaSede: mir, reasignar: true });
-t('reasignar=true sin elegir nada → conserva el del equipo', corrVacio.ok && corrVacio.cliente === 'RIPLEY');
-const corrAjeno = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: 'TOTTUS', sede: 'ATOCONGO', clientesDeLaSede: clientesDeSede('ATOCONGO'), reasignar: true });
-t('reasignar a un cliente que no tiene la sede → rechazado', !corrAjeno.ok);
-const sinFlag = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: 'TOTTUS', sede: 'MIRAFLORES', clientesDeLaSede: mir });
-t('sin reasignar sigue conservando el cliente', sinFlag.ok && sinFlag.cliente === 'RIPLEY');
+// ── corregir el cliente de un equipo mal asignado (se cambia a mano en el selector, sin checkbox) ──
+const corr = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: 'TOTTUS', sede: 'MIRAFLORES', clientesDeLaSede: mir });
+t('editar y elegir otro cliente de la sede → manda el elegido', corr.ok && corr.cliente === 'TOTTUS', JSON.stringify(corr));
+const corrVacio = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: '', sede: 'MIRAFLORES', clientesDeLaSede: mir });
+t('editar sin elegir nada → conserva el del equipo', corrVacio.ok && corrVacio.cliente === 'RIPLEY');
+const corrAjeno = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: 'TOTTUS', sede: 'ATOCONGO', clientesDeLaSede: clientesDeSede('ATOCONGO') });
+t('pasarlo a un cliente que no tiene la sede → rechazado', !corrAjeno.ok);
+const sinCambio = resolverClienteGuardado({ editando: true, clienteEquipo: 'RIPLEY', clienteElegido: 'RIPLEY', sede: 'MIRAFLORES', clientesDeLaSede: mir });
+t('el selector con el mismo cliente → sigue igual', sinCambio.ok && sinCambio.cliente === 'RIPLEY');
 
 // ── crear ──
 const nuevoComp = resolverClienteGuardado({ editando: false, clienteEquipo: '', clienteElegido: '', sede: 'MIRAFLORES', clientesDeLaSede: mir });
