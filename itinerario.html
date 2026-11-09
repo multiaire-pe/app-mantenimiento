@@ -745,7 +745,7 @@ function renderItinerario(iti, bloques, fecha) {
           : '<button class="btn iti-confirm-btn" onclick="confirmarVersion()" title="Marcar esta versión como final para poder enviarla a los técnicos">✓ Confirmar versión</button>')}
         ${!MA.isAdmin() ? '' : `<button class="btn iti-export" onclick="verHistorialEnvios('${escI(iti.id)}')" title="Ver el historial de envíos de este itinerario">🕘 Historial</button>`}
         <button class="btn btn-danger iti-del" onclick="openDeleteModal()" title="Eliminar">🗑 Eliminar</button>
-        <button class="btn btn-primary iti-edit" onclick="editarItinerario()">✏️ Editar / Nueva versión</button>
+        <button class="btn btn-primary iti-edit" onclick="editarItinerario()" title="${iti.confirmado ? 'La versión está confirmada: editar crea una versión nueva' : 'Borrador: los cambios se guardan en esta misma versión'}">${iti.confirmado ? '✏️ Nueva versión' : '✏️ Editar'}</button>
       </div>
     </div>
     ${iti.obsGenerales ? `<div class="obs-box"><div class="obs-label">Anotaciones generales</div>${escI(iti.obsGenerales)}</div>` : ''}
@@ -955,10 +955,10 @@ function renderPlanChips(){
   });
 }
 // Una versión CONFIRMADA queda sellada: no se asignan/quitan actividades manualmente sobre ella
-// (para cambiarlas hay que "✏️ Editar / Nueva versión" → v+1 en borrador). El barrido de ejecución
+// (para cambiarlas hay que "✏️ Nueva versión" → v+1 en borrador). El barrido de ejecución
 // NO pasa por acá, así que las actividades ya hechas siguen saliendo del plan en automático.
 function _versionSellada(){ return !!(currentIti && currentIti.confirmado); }
-function _avisoSellada(){ toast('🔒 Versión confirmada. Usá "✏️ Editar / Nueva versión" para cambiar las actividades.', 'err'); }
+function _avisoSellada(){ toast('🔒 Versión confirmada. Usá "✏️ Nueva versión" para cambiar las actividades.', 'err'); }
 // Revalida el sello contra Firestore justo antes de escribir: cubre el caso colaborativo
 // (Adrián confirma la versión en otra pestaña mientras acá seguía como borrador en memoria).
 // Contrato: devuelve true SOLO si se confirmó que la versión sigue siendo un borrador editable;
@@ -1022,6 +1022,45 @@ function _resolverSede(tiendaCruda, sedesInv){
 // planificar en las 2 sedes compartidas — el mismo bug de fondo que ese fix vino a resolver, pero
 // en el itinerario en vez del checklist (hallazgo del review 2026-09-02).
 const SEDES_COMPARTIDAS_PENDIENTES = new Set(['MIRAFLORES', 'JOCKEY PLAZA']);
+
+// Al editar un borrador EN LA MISMA versión, las actividades de mtto ya asignadas siguen en esa versión pero el nº de
+// bloque pudo cambiar (se agregó, quitó o reordenó un bloque). Se remapea nBloque por sede (primer bloque de esa sede,
+// igual que _migrarPlanAVersionNueva). Las asignadas a una sede que ya no está en el itinerario se pueden quitar del
+// plan (quedan pendientes para re-asignar); si no, se dejan tal cual.
+async function _reajustarPlanMismaVersion(idIti, version, bloques){
+  try{
+    const { getDocs, collection, writeBatch, doc } = window.__fb;
+    const planSnap = await window.__db.collection('mtto_plan').where('itiId','==',idIti).get();
+    const planes = planSnap.docs.filter(pd => Number(pd.data().itiVersion ?? 1) === Number(version));
+    if(!planes.length) return;
+    const invS = await getDocs(collection(window.__db, 'inventario'));
+    const sedesInv = new Set(invS.docs.map(d => (d.data().sede||'').toUpperCase()).filter(Boolean));
+    const sedeABloque = {};
+    bloques.forEach((b, i) => {
+      const s = _resolverSede(b.tienda, sedesInv);
+      if(s && sedeABloque[s] == null) sedeABloque[s] = i + 1;
+    });
+    const cambiar = [], huerfanas = [];
+    planes.forEach(pd => {
+      const nB = sedeABloque[_resolverSede(pd.data().sede, sedesInv)];
+      if(nB == null) huerfanas.push(pd.id);
+      else if(Number(pd.data().nBloque) !== nB) cambiar.push({ id: pd.id, nBloque: nB });
+    });
+    for(let i=0;i<cambiar.length;i+=450){
+      const batch = writeBatch(window.__db);
+      cambiar.slice(i, i+450).forEach(m => batch.update(doc(window.__db, 'mtto_plan', m.id), { nBloque: m.nBloque }));
+      await batch.commit();
+    }
+    if(huerfanas.length && confirm(huerfanas.length+' actividad(es) de mantenimiento estaban asignadas a una sede que ya no está en este itinerario.\n\n¿Quitarlas del plan? (quedarán pendientes para asignar de nuevo)')){
+      for(let i=0;i<huerfanas.length;i+=450){
+        const batch = writeBatch(window.__db);
+        huerfanas.slice(i, i+450).forEach(id => batch.delete(doc(window.__db, 'mtto_plan', id)));
+        await batch.commit();
+      }
+    }
+    if(cambiar.length) toast('🔄 '+cambiar.length+' actividad(es) de mtto siguieron a su sede en el borrador', 'ok');
+  }catch(e){ console.warn('[itinerario] no se pudo reajustar el plan de mtto', e); toast('El borrador se guardó, pero no se pudo reajustar el plan de mantenimiento.', 'err'); }
+}
 
 // Etapa 3b — al crear una versión NUEVA de un itinerario ya existente, ofrecer MOVER las
 // actividades de mtto asignadas en la versión anterior a la nueva, remapeando el bloque por
@@ -1456,6 +1495,9 @@ async function loadFechaForEdit(fecha, d) {
     window.bloquesPersonal[i] = slots.length ? slots : [''];
   });
   if (!bloques.length) window.bloquesPersonal[0] = [''];
+  if (res.itinerario && currentIti && currentIti.id === res.itinerario.id && Number(currentIti.version) === Number(res.itinerario.version)) {
+    currentIti.confirmado = !!res.itinerario.confirmado;   // los re-render del formulario (agregar/quitar bloque) usan currentIti
+  }
   renderModal(fecha, d, res.itinerario);
 }
 
@@ -1548,10 +1590,14 @@ function newBloque() {
 
 function renderModal(fecha, d, iti) {
   if (!window.bloquesPersonal) window.bloquesPersonal = {};
-  const version = iti ? iti.version + 1 : 1;
+  // Regla de versiones: mientras la versión es un BORRADOR (sin confirmar) las ediciones se guardan en esa misma versión
+  // (corregir no crea versiones). Solo si ya está CONFIRMADA, editar es un cambio al plan ya acordado → versión nueva.
+  const enPlace = !!(iti && !iti.confirmado);
+  const version = iti ? (enPlace ? Number(iti.version) : Number(iti.version) + 1) : 1;
   const diaStr = DIAS[d.getDay()];
   const idIti = iti ? iti.id : `ITI-${fecha.replace(/-/g,'')}-001`;
-  document.getElementById('modal-title').textContent = iti ? `Nueva versión (v${version}) — ${diaStr}` : `Nuevo itinerario — ${diaStr}`;
+  document.getElementById('modal-title').textContent = !iti ? `Nuevo itinerario — ${diaStr}`
+    : (enPlace ? `Editar borrador (v${version}) — ${diaStr}` : `Nueva versión (v${version}) — ${diaStr}`);
 
   // Build tienda options grouped by cliente
     const byClienteT = {};
@@ -1645,6 +1691,7 @@ function renderModal(fecha, d, iti) {
     + '<button class="btn btn-orange iti-edit" onclick="addBloque()" style="width:100%;margin-top:4px">+ Agregar bloque</button>'
     + '<input type="hidden" id="modal-fecha" value="' + fecha + '">'
     + '<input type="hidden" id="modal-version" value="' + version + '">'
+    + '<input type="hidden" id="modal-inplace" value="' + (enPlace ? '1' : '') + '">'
     + '<input type="hidden" id="modal-id-iti" value="' + idIti + '">'
     + '<input type="hidden" id="modal-dia" value="' + diaStr + '">';
 
@@ -1698,6 +1745,7 @@ async function saveItinerario() {
   const idIti = document.getElementById('modal-id-iti').value;
   const dia = document.getElementById('modal-dia').value;
   const obsGenerales = document.getElementById('obs-generales').value;
+  const enPlace = !!document.getElementById('modal-inplace')?.value;   // edición de un borrador: se reescribe la misma versión
 
   // Validación (Council): un bloque sin tienda se guardaba y el bot lo ignoraba en silencio
   for (let i = 0; i < editBloques.length; i++) {
@@ -1749,7 +1797,27 @@ async function saveItinerario() {
   document.getElementById('savingInd').classList.add('show');
 
   try {
-    const { writeBatch, doc, collection: col3, setDoc } = window.__fb;
+    const { writeBatch, doc, collection: col3, setDoc, getDoc } = window.__fb;
+    // Edición en la misma versión: justo antes de escribir se revalida que SIGA sin confirmar (otra persona pudo
+    // confirmarla/enviarla mientras se editaba) — sobrescribir una versión confirmada cambiaría lo que ya se acordó.
+    let totalAntes = 0;
+    if (enPlace) {
+      let previa = null;
+      try { previa = await getDoc(doc(window.__db, 'bd_itinerarios', idIti+'_v'+version)); }
+      catch (e) {
+        toast('No se pudo verificar si la versión sigue sin confirmar. Reintenta.', 'err');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Guardar itinerario'; }
+        document.getElementById('savingInd').classList.remove('show');
+        return;
+      }
+      if (previa.exists && previa.data().confirmado) {
+        toast('🔒 Esa versión se confirmó mientras la editabas. Cierra y usa "Nueva versión" para cambiarla.', 'err');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '💾 Guardar itinerario'; }
+        document.getElementById('savingInd').classList.remove('show');
+        return;
+      }
+      totalAntes = previa.exists ? (Number(previa.data().totalBloques) || 0) : 0;
+    }
     const batch = writeBatch(window.__db);
     batch.set(doc(window.__db, 'bd_itinerarios', idIti+'_v'+version), {
       id:idIti, version, fecha, dia, obsGenerales, estado:'ACTUALIZADO',
@@ -1769,13 +1837,18 @@ async function saveItinerario() {
         usuario:maUser?.email||'sistema'
       });
     });
+    // Si el borrador quedó con menos bloques, los sobrantes de la misma versión se borran (si no, resucitan al recargar)
+    for (let n = bloques.length + 1; n <= totalAntes; n++) {
+      batch.delete(doc(window.__db, 'bd_bloques', idIti+'_v'+version+'_b'+String(n).padStart(3,'0')));
+    }
     await batch.commit();
-    toast('Itinerario guardado ✓', 'ok');
+    toast(enPlace ? 'Borrador actualizado ✓' : 'Itinerario guardado ✓', 'ok');
     closeModal();
     // Etapa 3b: si esto creó una versión NUEVA (v≥2) de un itinerario existente, ofrecer mover
     // las actividades de mtto de la versión anterior a la nueva ANTES de recargar la vista
     // (así el toast de la migración queda como el último visible y loadFecha trae los chips ya migrados).
-    if (version >= 2) { await _migrarPlanAVersionNueva(idIti, version, bloques); }
+    if (enPlace) { await _reajustarPlanMismaVersion(idIti, version, bloques); }
+    else if (version >= 2) { await _migrarPlanAVersionNueva(idIti, version, bloques); }
     await loadFecha(fecha);
     const { getDocs, collection } = window.__fb;
     const iSnap = await getDocs(collection(window.__db, 'bd_itinerarios'));
