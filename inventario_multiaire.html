@@ -86,7 +86,8 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:8px;width:600px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:28px}
 .modal h2{font-size:15px;font-weight:600;margin-bottom:18px}
 .fg2{display:grid;grid-template-columns:1fr 1fr;gap:18px 14px}
-.fg2 select,.fg2 input[type=text]{padding:10px 10px;font-size:13px}   /* campos más altos en la ficha de equipo */
+.fg2 select,.fg2 input[type=text]{padding:10px 10px;font-size:13px}
+@media(min-width:769px){.fg2 .sec{margin-top:12px}}   /* separa la ficha en 3 bloques: ubicación · datos · extras (sin títulos) */   /* campos más altos en la ficha de equipo */
 .fgg{display:flex;flex-direction:column;gap:4px}
 .fgg.full{grid-column:1/-1}
 .placa-grid{display:flex;flex-wrap:wrap;gap:8px}
@@ -297,12 +298,12 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
       <div class="fgg"><label>Sede *</label><div class="sdd-wrap"><input type="text" id="f_sede" placeholder="Escribe para buscar la sede..." autocomplete="off"><div class="sdd" id="dd_f_sede"></div></div></div>
       <div class="fgg"><label>Tipo *</label><select id="f_equipo" onchange="onTipoChange()"><option value="">Seleccionar tipo...</option></select><input type="text" id="f_equipo_otro" placeholder="Nombre del tipo nuevo" style="display:none;margin-top:6px"></div>
       <div class="fgg"><label>Marca</label><input type="text" id="f_marca" list="dl_marca" placeholder="Ej: Midea"><datalist id="dl_marca"></datalist></div>
-      <div class="fgg"><label>Descripción *</label><input type="text" id="f_desc" placeholder="Ej: AA Fan Coil 16"></div>
-      <div class="fgg"><label>Modelo</label><input type="text" id="f_modelo" placeholder="Ej: MKT3H-400"></div>
+      <div class="fgg sec"><label>Descripción *</label><input type="text" id="f_desc" placeholder="Ej: AA Fan Coil 16"></div>
+      <div class="fgg sec"><label>Modelo</label><input type="text" id="f_modelo" placeholder="Ej: MKT3H-400"></div>
       <div class="fgg"><label>Área / Ubicación</label><input type="text" id="f_area" placeholder="Ej: Almacén, Azotea..."></div>
       <div class="fgg"><label>Serie</label><input type="text" id="f_serie" placeholder="Número de serie"></div>
-      <div class="fgg"><label>Código de tienda</label><input type="text" id="f_codigoTienda" placeholder="Código propio del cliente (si lo usa)"></div>
-      <div class="fgg"><label>Capacidad</label><input type="text" id="f_capacidad" placeholder="Ej: 24000 BTU · 130 TN · 2000 CFM"></div>
+      <div class="fgg sec"><label>Código de tienda</label><input type="text" id="f_codigoTienda" placeholder="Código propio del cliente (si lo usa)"></div>
+      <div class="fgg sec"><label>Capacidad</label><input type="text" id="f_capacidad" placeholder="Ej: 24000 BTU · 130 TN · 2000 CFM"></div>
       <div class="fgg"><label>Fotos del equipo <span id="placa_cnt" style="text-transform:none;letter-spacing:0"></span></label>
         <div class="placa-grid" id="placa_grid"></div>
         <label class="btn placa-add">📷 Agregar fotos<input type="file" id="placa_input" accept="image/*" multiple style="display:none" onchange="onPlacaFiles(this)"></label>
