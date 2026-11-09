@@ -184,3 +184,28 @@ window.MA = (function () {
     hookAuth(40);
   } catch (e) { /* sin history/sessionStorage (iframe sandbox): URL tal cual */ }
 })();
+
+// ── Las ventanas (modales) no se cierran si el clic nace dentro y se suelta afuera ────────────────────
+// Al seleccionar texto en un campo y soltar el mouse FUERA de la ventana, el navegador dispara el `click` sobre
+// el ancestro común: el fondo oscuro. Los modales de todas las páginas cierran con
+// `onclick="if(event.target===this)cerrar()"`, así que se cerraban y se perdía lo escrito. Aquí, en captura y
+// antes que cualquiera de esos handlers, se descarta ese clic: solo cierra si el botón se PRESIONÓ también en el
+// fondo. Un fondo = elemento `position:fixed` que cubre casi toda la pantalla (así un botón flotante con un
+// ícono adentro no se ve afectado).
+(function () {
+  if (typeof document === 'undefined' || !document.addEventListener) return;
+  var presionado = null;
+  function esFondo(el) {
+    try {
+      if (!el || el === document.body || el === document.documentElement || el.nodeType !== 1) return false;
+      if (getComputedStyle(el).position !== 'fixed') return false;
+      return el.offsetWidth >= window.innerWidth * 0.9 && el.offsetHeight >= window.innerHeight * 0.9;
+    } catch (e) { return false; }
+  }
+  document.addEventListener('mousedown', function (e) { presionado = e.target; }, true);
+  document.addEventListener('click', function (e) {
+    var inicio = presionado; presionado = null;
+    if (!inicio || e.target === inicio || !e.target.contains || !e.target.contains(inicio)) return;
+    if (esFondo(e.target)) { e.stopImmediatePropagation(); e.preventDefault(); }
+  }, true);
+})();
