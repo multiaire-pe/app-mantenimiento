@@ -9,7 +9,7 @@ const t = (n, c) => { if (c) ok++; else { mal++; console.log('✗', n); } };
 const nav = html.slice(html.indexOf('<div class="tab-nav" id="tabNav"'), html.indexOf('<div class="tab-view" id="tab-checklist">'));
 t('la barra de tabs existe y NO arranca oculta', !!nav && !/id="tabNav"[^>]*display:none/.test(nav));
 const orden = [...nav.matchAll(/switchTab\('(\w+)'\)/g)].map((m) => m[1]);
-t('seis tabs: tres por sede y tres de todas las sedes', orden.join() === 'checklist,dashboard,parametros,global,historial,desempeno', orden.join());
+t('siete tabs: tres por sede y cuatro de todas las sedes', orden.join() === 'checklist,dashboard,parametros,global,historial,desempeno,programacion', orden.join());
 const panel = html.slice(html.indexOf('<div class="sidebar" id="sidebar">'), html.indexOf('<div class="main">'));
 t('el interruptor "Por sede | Global" vive en el panel izquierdo, no en la barra de tabs', /setModo\('sede'\)/.test(panel) && /setModo\('global'\)/.test(panel) && !/setModo/.test(nav));
 t('el interruptor dice "Global" (no "Todas las sedes")', /id="modoGlobal"[^>]*>🌐 Global<\/button>/.test(panel));
@@ -22,7 +22,7 @@ t('solo se ve el grupo de tabs del modo activo', /getElementById\('grpSede'\)\.s
 t('al volver a "Por sede" se retoma el último tab usado', /switchTab\(_ultimoTabSede\)/.test(html) && /_ultimoTabSede = tab;/.test(html));
 t('la vista inicial es Global (aún no hay sede)', /<div class="tab-view active" id="tab-global">/.test(html) && /<div class="tab-view" id="tab-checklist">/.test(html));
 
-t('los tabs globales están declarados', /const TABS_GLOBALES = \['global','historial','desempeno'\];/.test(html));
+t('los tabs globales están declarados', /const TABS_GLOBALES = \['global','historial','desempeno','programacion'\];/.test(html));
 t('renderMain y showEmpty ya no esconden/muestran la barra de tabs', !/getElementById\('tabNav'\)\.style/.test(html));
 t('la barra de sede solo se ve con sede y fuera de un tab global', /tb\.style\.display = \(currentSede && !global\) \? 'flex' : 'none'/.test(html));
 t('el panel cambia de modo según el tab activo', /sb\.classList\.toggle\('sb-vista-global', global\)/.test(html));
@@ -39,7 +39,7 @@ t('Historial y Desempeño conservan sus filtros propios (sede, tipo, técnico)',
 
 t('Desempeño: sin selector propio de período, usa el del panel', !/id="dsp-periodo"|id="dsp-anio"/.test(html) && /const periodo = document\.getElementById\('selPeriodo'\)\.value;/.test(html));
 t('cambiar el período repinta Resumen y Desempeño', /if\(tabActivo\(\)==='global'\) renderGlobal\(\);\s*if\(tabActivo\(\)==='desempeno'\) renderDesempeno\(\);/.test(html));
-t('el orden de los tabs globales es Resumen, Historial, Desempeño', orden.slice(3).join() === 'global,historial,desempeno');
+t('el orden de los tabs globales es Resumen, Historial, Desempeño, Programación', orden.slice(3).join() === 'global,historial,desempeno,programacion');
 t('"Usar este período..." dice Telegram y el aviso es solo tooltip', /Usar este período para registros de Telegram/.test(panel) && !/wspPeriodoHint/.test(html) && /lbl\.title = /.test(html) && !/registros de WhatsApp de '/.test(html));
 t('los dos botones quedan abajo (sb-actions con margin-top:auto) tras el progreso', /\.sb-actions\{[^}]*margin-top:auto/.test(html));
 console.log(`${ok} ok · ${mal} mal`);

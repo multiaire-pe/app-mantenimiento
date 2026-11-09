@@ -90,6 +90,9 @@ service cloud.firestore {
     // toma de parámetros de ventilación (Mini App de Telegram): la escribe SOLO el backend (admin SDK,
     // tras validar la firma de Telegram); desde el navegador solo se lee.
     match /mtto_parametros/{doc}         { allow read: if authorized(); allow write: if false; }
+    // programación de visitas por sede (Gantt, pestaña Programación de Mantenimiento): todos la ven; solo ADMIN/SUPER
+    // la crean, mueven o borran (programar es decisión de gestión, no de quien registra el mantenimiento).
+    match /mtto_programacion/{doc}       { allow read: if authorized(); allow create, update: if isAdmin(); allow delete: if isAdmin(); }
     // registro de envíos del itinerario por técnico (WhatsApp): lo escribe el backend (admin SDK);
     // lo lee el HISTORIAL (solo ADMIN — el doc guarda snapshots del mensaje + auditoría de quién
     // envió qué); import de backup = super. Log inmutable para no-super.
