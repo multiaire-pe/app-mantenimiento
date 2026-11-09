@@ -110,7 +110,9 @@ export function mensajesPorTecnico(bloques, planes, opts = {}) {
       const grupo = acts.filter((p) => esGrupo(p));
       texto += `\n\n━━━━━━━━━━━━\n🏪 *${sinRipley(b.tienda)}*`;
       const hi = hhmm(b.horaInicio), hf = hhmm(b.horaFin);
-      if (hi || hf) texto += `\n⏰ ${hi}${hf ? ` – ${hf}` : ''}`;
+      // fin < inicio = turno de amanecida: termina al día siguiente (fracciones del día, ver hhmm)
+      const amanece = hi && hf && Number(b.horaInicio) > 0 && Number(b.horaFin) < Number(b.horaInicio);
+      if (hi || hf) texto += `\n⏰ ${hi}${hf ? ` – ${hf}` : ''}${amanece ? ' (día siguiente)' : ''}`;
       if (!acts.length && b.detalle) texto += `\n📝 ${b.detalle}`;
       if (indiv.length) { texto += `\n🔧 *Tus actividades:*${bloqueActs(indiv)}`; nTareas += indiv.length; }
       if (grupo.length) {
