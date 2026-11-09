@@ -305,10 +305,32 @@ option{background:#fff}
 
 .back-link{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.7);text-decoration:none;padding:3px 10px;border:1px solid rgba(255,255,255,.2);border-radius:8px;white-space:nowrap;transition:all .15s}
 .back-link:hover{color:#fff;border-color:rgba(255,255,255,.5)}
+/* TAB Programación (Gantt) */
+.prg-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+.prg-row{display:grid;min-height:34px;border-bottom:1px solid var(--border)}
+.prg-row:last-child{border-bottom:none}
+.prg-lbl{grid-column:1;grid-row:1;position:sticky;left:0;z-index:3;background:var(--surface);padding:6px 10px;font-size:12px;font-weight:600;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;min-width:0}
+.prg-lbl small{font-weight:500;color:var(--muted2);font-size:10px}
+.prg-d{grid-row:1;border-right:1px solid #eef1f8;font-size:10px;text-align:center;color:var(--muted2);line-height:1.25}
+.prg-d.dom{background:#f3f5fa}
+.prg-d.hoy{background:#fff1e0}
+.prg-head .prg-d{padding:3px 0}
+.prg-head .prg-d b{display:block;color:var(--accent);font-size:11px}
+.prg-mes{grid-row:1;font-size:11px;font-weight:700;color:var(--accent);padding:5px 8px;border-right:1px solid var(--border);background:#f6f8fd}
+.prg-grp{font-size:11px;font-weight:700;color:#1B3F8B;background:#eef3fc;padding:5px 10px;letter-spacing:.4px;position:sticky;left:0}
+.prg-bar{grid-row:1;z-index:2;margin:5px 1px;border-radius:6px;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;cursor:default;padding:0 4px}
+.prg-edit .prg-bar,.prg-edit .prg-d.cl{cursor:pointer}
+.prg-leg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted2);margin-top:10px;align-items:center}
+.prg-leg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px;vertical-align:-2px}
+.prg-form label{display:block;font-size:11px;font-weight:600;color:var(--muted2);margin:10px 0 4px}
+.prg-form input,.prg-form select,.prg-form textarea{width:100%}
+.prg-aviso{font-size:12px;color:#b45309;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:8px 10px;margin-top:10px;display:none}
+.prg-err{font-size:12px;color:#b91c1c;margin-top:10px;display:none}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="firebase-config.js"></script>
 <script src="auth-guard.js"></script>
+<script src="programacion.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
@@ -425,6 +447,7 @@ option{background:#fff}
         <button class="tab-btn active" onclick="switchTab('global')">📈 Resumen</button>
         <button class="tab-btn" onclick="switchTab('historial')">🕘 Historial</button>
         <button class="tab-btn" onclick="switchTab('desempeno')">👷 Desempeño</button>
+        <button class="tab-btn" onclick="switchTab('programacion')">📅 Programación</button>
       </div>
     </div>
 
@@ -477,6 +500,18 @@ option{background:#fff}
       <div id="dsp-content"></div>
     </div>
 
+    <div class="tab-view" id="tab-programacion">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <span id="prg-ctx" style="font-size:12px;font-weight:700"></span>
+        <select id="prg-cliente" onchange="renderProgramacionFiltrado()" style="max-width:180px"><option value="">Todos los clientes</option></select>
+        <select id="prg-cuad" onchange="renderProgramacionFiltrado()" style="max-width:190px"><option value="">Todas las cuadrillas</option><option value="1">Cuadrilla 1</option><option value="2">Cuadrilla 2</option><option value="-">Sin programar</option></select>
+        <span id="prg-resumen" style="font-size:11px;color:var(--muted2)"></span>
+        <button class="btn btn-sm" onclick="renderProgramacion()" title="Recargar">↻</button>
+        <button class="btn btn-sm btn-primary" id="prg-nuevo" style="margin-left:auto;display:none" onclick="abrirProgramacion()">＋ Programar visita</button>
+      </div>
+      <div id="prg-content"></div>
+    </div>
+
     <div class="tab-view" id="tab-parametros">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
         <span id="par-ctx" style="font-size:12px;font-weight:700"></span>
@@ -511,6 +546,35 @@ option{background:#fff}
       <div style="font-size:11px;color:var(--muted2);align-self:center;margin-right:auto"><span id="selCount">0</span> equipos seleccionados</div>
       <button class="btn" onclick="closeSelEquipos()">Cancelar</button>
       <button class="btn btn-primary" onclick="saveEquipoSelection()">Guardar selección</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PROGRAMAR VISITA -->
+<div class="overlay" id="overlayPrg" onclick="if(event.target===this)cerrarProgramacion()">
+  <div class="modal" style="width:460px">
+    <div class="modal-head">
+      <div><h2 id="prg-titulo">Programar visita</h2><div style="font-size:11px;color:var(--muted2);margin-top:2px" id="prg-sub">—</div></div>
+      <button class="btn btn-sm" onclick="cerrarProgramacion()">✕</button>
+    </div>
+    <div class="modal-body prg-form">
+      <label for="prg-sede">Sede</label>
+      <select id="prg-sede"></select>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1"><label for="prg-desde">Desde</label><input type="date" id="prg-desde"></div>
+        <div style="flex:1"><label for="prg-hasta">Hasta</label><input type="date" id="prg-hasta"></div>
+      </div>
+      <label for="prg-cuadrilla">Cuadrilla</label>
+      <select id="prg-cuadrilla"><option value="">Sin asignar</option><option value="1">Cuadrilla 1</option><option value="2">Cuadrilla 2</option></select>
+      <label for="prg-notas">Notas (opcional)</label>
+      <textarea id="prg-notas" rows="2" placeholder="Ej. entrar de noche, coordinar con administración…"></textarea>
+      <div class="prg-aviso" id="prg-aviso"></div>
+      <div class="prg-err" id="prg-err"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="prg-del" style="margin-right:auto;color:#b91c1c;display:none" onclick="eliminarProgramacion()">Eliminar</button>
+      <button class="btn" onclick="cerrarProgramacion()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarProgramacion()">Guardar</button>
     </div>
   </div>
 </div>
@@ -1407,6 +1471,7 @@ function onPeriodoChange() {
   // Resumen y Desempeño usan el período del panel, con o sin sede elegida
   if(tabActivo()==='global') renderGlobal();
   if(tabActivo()==='desempeno') renderDesempeno();
+  if(tabActivo()==='programacion') renderProgramacion();
 }
 // Parámetros y Dashboard no cuelgan de renderMain cuando no hay sede: se vuelven a pintar al cambiar el panel
 function refrescarTabSede(){ if(tabActivo()==='parametros') renderParametros(); if(tabActivo()==='dashboard') renderDashboard(); }
@@ -2758,8 +2823,149 @@ async function parExportarExcel() {
   } catch (e) { toast('Error al generar el Excel: ' + e.message, 'err'); }
 }
 
+// ── TAB PROGRAMACIÓN (Gantt de visitas por sede) ───────────────────────────────────────────────────
+// Colección mtto_programacion (1 doc por visita: cliente, sede, periodo, anio, desde, hasta, cuadrilla, notas).
+// Lógica pura en programacion.js (window.PROG). El período es el del panel izquierdo. Solo ADMIN/SUPER crean,
+// editan o borran (igual que las reglas de Firestore); el resto la ve en solo lectura.
+let _prgVis = [];
+let _prgReq = 0;
+let _prgEditId = null;
+const PRG_COLOR = { '1': '#1B3F8B', '2': '#F47920', '': '#8a9ab8' };
+function _prgPuedeEditar(){ return MA.isAdmin(); }
+function _prgHoy(){ return new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function _prgPer(){ return { periodo: document.getElementById('selPeriodo').value, anio: Number(document.getElementById('selAnio').value) }; }
+async function renderProgramacion(){
+  const req = ++_prgReq;
+  const { periodo, anio } = _prgPer();
+  document.getElementById('prg-ctx').textContent = periodo + ' ' + anio;
+  document.getElementById('prg-nuevo').style.display = _prgPuedeEditar() ? '' : 'none';
+  const cont = document.getElementById('prg-content');
+  cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando programación…</div>';
+  try{
+    const snap = await window.__db.collection('mtto_programacion').where('periodo','==',periodo).where('anio','==',anio).get();
+    if(req !== _prgReq) return;
+    _prgVis = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const sel = document.getElementById('prg-cliente'); const cur = sel.value;
+    const clientes = [...new Set(allEquipos.map(e => e.cliente).filter(Boolean))].sort();
+    sel.innerHTML = '<option value="">Todos los clientes</option>' + clientes.map(c => '<option value="'+_actEsc(c)+'"'+(c===cur?' selected':'')+'>'+_actEsc(c)+'</option>').join('');
+    renderProgramacionFiltrado();
+  }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:#c33;padding:10px">Error: '+_actEsc(e.message)+'</div>'; }
+}
+function renderProgramacionFiltrado(){
+  const cont = document.getElementById('prg-content');
+  const { periodo, anio } = _prgPer();
+  const dias = PROG.diasDelPeriodo(periodo, anio);
+  const cliente = document.getElementById('prg-cliente').value;
+  const cuad = document.getElementById('prg-cuad').value;
+  const rows = PROG.filas(allEquipos, _prgVis, { cliente, cuadrilla: cuad });
+  const sinProg = PROG.filas(allEquipos, _prgVis, { cliente, cuadrilla: '-' }).length;
+  document.getElementById('prg-resumen').textContent = _prgVis.length + ' visita(s) · ' + sinProg + ' sede(s) sin programar';
+  if(!rows.length){ cont.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><h3>Sin sedes</h3><p>No hay sedes para este filtro.</p></div>'; return; }
+  const editar = _prgPuedeEditar();
+  const hoy = _prgHoy();
+  const cols = 'grid-template-columns:170px repeat(' + dias.length + ',28px)';
+  // las sedes viajan por índice de fila (no por texto en el onclick): evita problemas de comillas en nombres
+  window._prgFilas = rows;
+  const celdas = (ri) => dias.map((f, i) => {
+    const cls = 'prg-d' + (PROG.dow(f) === 0 ? ' dom' : '') + (f === hoy ? ' hoy' : '') + (editar ? ' cl' : '');
+    return '<div class="'+cls+'" style="grid-column:'+(i+2)+'"'+(editar ? ' onclick="abrirProgramacionFila('+ri+',\''+f+'\')"' : '')+'></div>';
+  }).join('');
+  const meses = []; dias.forEach((f, i) => { const m = f.slice(0,7); if(!meses.length || meses[meses.length-1].m !== m) meses.push({ m, ini: i, n: 0 }); meses[meses.length-1].n++; });
+  const NM = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','setiembre','octubre','noviembre','diciembre'];
+  let html = '<div class="prg-wrap'+(editar?' prg-edit':'')+'"><div style="width:max-content;min-width:100%">';
+  html += '<div class="prg-row" style="'+cols+'"><div class="prg-lbl"></div>' +
+    meses.map(x => '<div class="prg-mes" style="grid-column:'+(x.ini+2)+' / span '+x.n+'">'+NM[Number(x.m.slice(5))-1]+'</div>').join('') + '</div>';
+  html += '<div class="prg-row prg-head" style="'+cols+'"><div class="prg-lbl">Sede</div>' +
+    dias.map((f, i) => '<div class="prg-d'+(PROG.dow(f)===0?' dom':'')+(f===hoy?' hoy':'')+'" style="grid-column:'+(i+2)+'"><b>'+Number(f.slice(8))+'</b>'+'DLMMJVS'[PROG.dow(f)]+'</div>').join('') + '</div>';
+  let grp = null;
+  rows.forEach((r, ri) => {
+    if(!cliente && r.cliente !== grp){ grp = r.cliente; html += '<div class="prg-grp">'+_actEsc(grp)+'</div>'; }
+    const barras = r.visitas.map(v => {
+      const t = PROG.tramo(v, dias); if(!t) return '';
+      const d1 = Number(v.desde.slice(8)), d2 = Number(v.hasta.slice(8));
+      const tip = (v.cuadrilla ? 'Cuadrilla '+v.cuadrilla : 'Sin cuadrilla')+' · '+v.desde+' → '+v.hasta+(v.notas ? ' · '+v.notas : '');
+      return '<div class="prg-bar" title="'+_actEsc(tip)+'" style="grid-column:'+(t.ini+2)+' / span '+t.n+';background:'+PRG_COLOR[v.cuadrilla || '']+'"'+(editar?' onclick="abrirProgramacion(\''+v.id+'\')"':'')+'>'+(v.cuadrilla?'C'+v.cuadrilla+' · ':'')+(d1===d2?d1:d1+'–'+d2)+'</div>';
+    }).join('');
+    html += '<div class="prg-row" style="'+cols+'"><div class="prg-lbl">'+_actEsc(r.sede)+'<small>'+_actEsc(r.cliente)+(r.visitas.length?'':' · sin programar')+'</small></div>' + celdas(ri) + barras + '</div>';
+  });
+  html += '</div></div>';
+  html += '<div class="prg-leg"><span><i style="background:'+PRG_COLOR['1']+'"></i>Cuadrilla 1</span><span><i style="background:'+PRG_COLOR['2']+'"></i>Cuadrilla 2</span><span><i style="background:'+PRG_COLOR['']+'"></i>Sin cuadrilla</span><span><i style="background:#fff1e0;border:1px solid #f3d3a8"></i>Hoy</span><span><i style="background:#f3f5fa;border:1px solid #dde3f0"></i>Domingo</span>'+(editar?'<span>· Toca un día vacío para programar, o una barra para editarla.</span>':'')+'</div>';
+  cont.innerHTML = html;
+}
+function abrirProgramacionFila(ri, dia){
+  const r = (window._prgFilas || [])[ri]; if(!r) return;
+  abrirProgramacion(null, r.cliente, r.sede, dia);
+}
+function abrirProgramacion(id, cliente, sede, dia){
+  if(!_prgPuedeEditar()){ toast('Sin permisos','err'); return; }
+  const { periodo, anio } = _prgPer();
+  const v = id ? _prgVis.find(x => x.id === id) : null;
+  if(id && !v) return;
+  _prgEditId = id || null;
+  const pares = []; const vistos = new Set();
+  allEquipos.forEach(e => { const k = e.cliente+'|'+e.sede; if(e.cliente && e.sede && !vistos.has(k)){ vistos.add(k); pares.push({ k, cliente: e.cliente, sede: e.sede }); } });
+  pares.sort((a,b) => a.cliente.localeCompare(b.cliente) || a.sede.localeCompare(b.sede));
+  const actual = v ? v.cliente+'|'+v.sede : (cliente ? cliente+'|'+sede : '');
+  document.getElementById('prg-sede').innerHTML = (actual ? '' : '<option value="">Elige la sede…</option>') +
+    pares.map(p => '<option value="'+_actEsc(p.k)+'"'+(p.k===actual?' selected':'')+'>'+_actEsc(p.sede)+' · '+_actEsc(p.cliente)+'</option>').join('');
+  const dias = PROG.diasDelPeriodo(periodo, anio);
+  ['prg-desde','prg-hasta'].forEach(i => { const el = document.getElementById(i); el.min = dias[0]; el.max = dias[dias.length-1]; });
+  document.getElementById('prg-desde').value = v ? v.desde : (dia || '');
+  document.getElementById('prg-hasta').value = v ? v.hasta : (dia || '');
+  document.getElementById('prg-cuadrilla').value = v ? (v.cuadrilla || '') : '';
+  document.getElementById('prg-notas').value = v ? (v.notas || '') : '';
+  document.getElementById('prg-titulo').textContent = v ? 'Editar visita' : 'Programar visita';
+  document.getElementById('prg-sub').textContent = periodo + ' ' + anio;
+  document.getElementById('prg-del').style.display = v ? '' : 'none';
+  document.getElementById('prg-aviso').style.display = 'none';
+  document.getElementById('prg-err').style.display = 'none';
+  document.getElementById('overlayPrg').classList.add('open');
+}
+function cerrarProgramacion(){ document.getElementById('overlayPrg').classList.remove('open'); _prgEditId = null; }
+async function guardarProgramacion(){
+  if(!_prgPuedeEditar()){ toast('Sin permisos','err'); return; }
+  const { periodo, anio } = _prgPer();
+  const [cliente, ...rs] = (document.getElementById('prg-sede').value || '').split('|');
+  const v = { id: _prgEditId, cliente: cliente || '', sede: rs.join('|'), periodo, anio,
+    desde: document.getElementById('prg-desde').value, hasta: document.getElementById('prg-hasta').value,
+    cuadrilla: document.getElementById('prg-cuadrilla').value, notas: document.getElementById('prg-notas').value.trim() };
+  const err = PROG.validarVisita(v, periodo, anio);
+  const eEl = document.getElementById('prg-err');
+  if(err){ eEl.textContent = err; eEl.style.display = 'block'; return; }
+  eEl.style.display = 'none';
+  const ch = PROG.choques(_prgVis, v);
+  if(ch.length){
+    const txt = 'La cuadrilla ' + v.cuadrilla + ' ya está en ' + ch.map(x => x.sede + ' (' + x.desde.slice(5) + ' → ' + x.hasta.slice(5) + ')').join(', ') + ' en esos días.';
+    if(!confirm(txt + '\n\n¿Guardar igual?')) return;
+  }
+  let by = ''; try{ by = firebase.auth().currentUser.email || ''; }catch(e){}
+  const now = new Date().toISOString();
+  const data = { cliente: v.cliente, sede: v.sede, periodo, anio, desde: v.desde, hasta: v.hasta, cuadrilla: v.cuadrilla, notas: v.notas, updatedAt: now, updatedBy: by };
+  try{
+    if(_prgEditId){
+      await window.__db.collection('mtto_programacion').doc(_prgEditId).set(data, { merge: true });
+      _prgVis = _prgVis.map(x => x.id === _prgEditId ? { ...x, ...data } : x);
+    }else{
+      data.createdAt = now; data.createdBy = by;
+      const ref = await window.__db.collection('mtto_programacion').add(data);
+      _prgVis.push({ id: ref.id, ...data });
+    }
+    cerrarProgramacion(); renderProgramacionFiltrado(); toast('✓ Visita guardada','ok');
+  }catch(e){ toast('No se pudo guardar: ' + e.message, 'err'); }
+}
+async function eliminarProgramacion(){
+  if(!_prgPuedeEditar() || !_prgEditId) return;
+  const v = _prgVis.find(x => x.id === _prgEditId); if(!v) return;
+  if(!confirm('¿Eliminar la visita de ' + v.sede + ' (' + v.desde + ' → ' + v.hasta + ')?')) return;
+  try{
+    await window.__db.collection('mtto_programacion').doc(_prgEditId).delete();
+    _prgVis = _prgVis.filter(x => x.id !== _prgEditId);
+    cerrarProgramacion(); renderProgramacionFiltrado(); toast('Visita eliminada','ok');
+  }catch(e){ toast('No se pudo eliminar: ' + e.message, 'err'); }
+}
+
 // Tabs del modo "Global": no dependen de la sede del panel izquierdo (Resumen sí usa su período).
-const TABS_GLOBALES = ['global','historial','desempeno'];
+const TABS_GLOBALES = ['global','historial','desempeno','programacion'];
 function tabActivo(){ const v = document.querySelector('.tab-view.active'); return v ? v.id.replace('tab-','') : ''; }
 let _ultimoTabSede = 'checklist';   // al volver a "Por sede" se retoma el último tab que se usaba
 function setModo(m){
@@ -2798,6 +3004,7 @@ function switchTab(tab) {
   if(tab==='global') renderGlobal();
   if(tab==='historial') renderHistorialLog();
   if(tab==='desempeno') renderDesempeno();
+  if(tab==='programacion') renderProgramacion();
   if(tab==='parametros') renderParametros();
   if(tab==='pendientes') renderPendientes();
 }
