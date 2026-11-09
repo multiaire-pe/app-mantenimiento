@@ -124,6 +124,7 @@ header{background:var(--blue);padding:0 24px;height:52px;display:flex;align-item
 /* HORARIO */
 .horario-badge{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:600}
 .horario-badge span{color:var(--muted)}
+.horario-badge .amanecida-tag{font-family:var(--font);font-size:10px;font-weight:700;color:#5b4bb7;background:#eeeafd;border:1px solid #d3cbf5;border-radius:10px;padding:1px 7px}
 
 /* EMPTY */
 .empty-iti{text-align:center;padding:60px 20px;color:var(--muted2)}
@@ -603,6 +604,15 @@ function fmtHora(decimal) {
   return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
 }
 
+// Un turno de amanecida termina "al día siguiente": la hora fin es MENOR que la de inicio (22:00 → 06:00). Se
+// guarda igual (fracción del día) y la tarjeta/el mensaje lo marcan. Terminar justo a las 00:00 es horaFin = 0, que
+// fmtHora() trata como "sin dato" → para el fin se usa fmtHoraFin().
+function esAmanecida(b) {
+  const hi = Number(b.horaInicio), hf = Number(b.horaFin);
+  return Number.isFinite(hi) && Number.isFinite(hf) && hi > 0 && hf < hi;
+}
+function fmtHoraFin(b) { return (Number(b.horaFin) === 0 && Number(b.horaInicio) > 0) ? '00:00' : fmtHora(b.horaFin); }
+
 function horaToDecimal(str) {
   const [h, m] = str.split(':').map(Number);
   return (h * 60 + m) / 1440;
@@ -775,7 +785,7 @@ function renderBloqueCard(b, i) {
       <div class="bloque-body">
         <div class="bloque-field">
           <div class="bloque-field-label">Horario</div>
-          <div class="horario-badge">${fmtHora(b.horaInicio)} <span>→</span> ${fmtHora(b.horaFin)}</div>
+          <div class="horario-badge">${fmtHora(b.horaInicio)} <span>→</span> ${fmtHoraFin(b)}${esAmanecida(b) ? ' <span class="amanecida-tag" title="Turno de amanecida: termina al día siguiente">🌙 día sig.</span>' : ''}</div>
         </div>
         <div class="bloque-field">
           <div class="bloque-field-label">Personal</div>
@@ -1484,7 +1494,7 @@ async function loadFechaForEdit(fecha, d) {
   editBloques = bloques.length ? bloques.map(b => ({
     idTienda: b.idTienda, tienda: b.tienda, cliente: b.cliente,
     idGrupo: b.idGrupo, grupo: b.grupo,
-    horaInicio: fmtHora(b.horaInicio), horaFin: fmtHora(b.horaFin),
+    horaInicio: fmtHora(b.horaInicio), horaFin: fmtHoraFin(b),
     detalle: b.detalle,
     estado: b.estado || 'PROGRAMADO'
   })) : [newBloque()];
@@ -1569,7 +1579,7 @@ async function confirmarCopiarItinerario() {
   editBloques = res.bloques.map(b => ({
     idTienda: b.idTienda, tienda: b.tienda, cliente: b.cliente,
     idGrupo: b.idGrupo, grupo: b.grupo,
-    horaInicio: fmtHora(b.horaInicio), horaFin: fmtHora(b.horaFin),
+    horaInicio: fmtHora(b.horaInicio), horaFin: fmtHoraFin(b),
     detalle: b.detalle,
     estado: 'PROGRAMADO'   // un día copiado empieza sin ejecutar, aunque el origen ya estuviera COMPLETADO/CANCELADO
   }));
@@ -1662,8 +1672,8 @@ function renderModal(fecha, d, iti) {
     const gOpts = '<option value="">' + (b.idGrupo ? '' : 'Seleccionar...') + '</option>'
       + maestros.grupos.map(g => '<option value="' + g.id + '"' + (g.id===b.idGrupo?' selected':'') + '>' + g.grupo + '</option>').join('');
     html += '<div class="form-group"><div class="form-label">Grupo / Tipo</div><select class="form-select" id="bf-grupo-' + i + '">' + gOpts + '</select></div>';
-    html += '<div class="form-group"><div class="form-label">Hora inicio</div><input type="time" class="form-input" id="bf-hi-' + i + '" value="' + (b.horaInicio||'08:30') + '"></div>';
-    html += '<div class="form-group"><div class="form-label">Hora fin</div><input type="time" class="form-input" id="bf-hf-' + i + '" value="' + (b.horaFin||'18:00') + '"></div>';
+    html += '<div class="form-group"><div class="form-label">Hora inicio</div><input type="time" class="form-input" id="bf-hi-' + i + '" value="' + (b.horaInicio||'08:30') + '" oninput="avisoAmanecida(' + i + ')"></div>';
+    html += '<div class="form-group"><div class="form-label">Hora fin <span id="bf-amanecida-' + i + '" style="font-weight:600;color:#5b4bb7;text-transform:none;letter-spacing:0;' + (((b.horaFin||'18:00') < (b.horaInicio||'08:30')) ? '' : 'display:none') + '">🌙 amanecida: termina al día siguiente</span></div><input type="time" class="form-input" id="bf-hf-' + i + '" value="' + (b.horaFin||'18:00') + '" oninput="avisoAmanecida(' + i + ')"></div>';
     html += '<div class="form-group"><div class="form-label">Estado</div><select class="form-select" id="bf-estado-' + i + '">';
     html += '<option value="PROGRAMADO"' + ((b.estado||'PROGRAMADO')==='PROGRAMADO'?' selected':'') + '>PROGRAMADO</option>';
     html += '<option value="EN CURSO"' + (b.estado==='EN CURSO'?' selected':'') + '>EN CURSO</option>';
@@ -1700,6 +1710,13 @@ function renderModal(fecha, d, iti) {
   const saveBtnEl = document.querySelector('#modal-iti .modal-foot .btn-primary');
   if (saveBtnEl) { saveBtnEl.disabled = false; saveBtnEl.textContent = '💾 Guardar itinerario'; }
   document.getElementById('modal-iti').classList.add('open');
+}
+
+// Muestra/oculta el aviso de amanecida al cambiar inicio o fin (fin < inicio = termina al día siguiente)
+function avisoAmanecida(i) {
+  const hi = document.getElementById('bf-hi-' + i)?.value || '', hf = document.getElementById('bf-hf-' + i)?.value || '';
+  const el = document.getElementById('bf-amanecida-' + i);
+  if (el) el.style.display = (hi && hf && hf < hi) ? '' : 'none';
 }
 
 // muestra/oculta el input de zona libre cuando el selector está en "Otro…"
@@ -1754,7 +1771,8 @@ async function saveItinerario() {
     const hFin = document.getElementById(`bf-hf-${i}`)?.value || '';
     if (!tSel || !tSel.value) { toast(`El bloque ${i+1} no tiene zona de trabajo seleccionada`, 'err'); return; }
     if (tSel.value === '__OTRO__' && !(document.getElementById(`bf-tienda-otro-${i}`)?.value || '').trim()) { toast(`El bloque ${i+1} tiene "Otra zona" sin escribir`, 'err'); return; }
-    if (hIni && hFin && hFin <= hIni) { toast(`El bloque ${i+1} tiene horario inválido (fin ≤ inicio)`, 'err'); return; }
+    // fin < inicio = turno de amanecida (termina al día siguiente): válido. Solo se rechaza inicio = fin.
+    if (hIni && hFin && hFin === hIni) { toast(`El bloque ${i+1} tiene la misma hora de inicio y de fin`, 'err'); return; }
   }
 
   // Collect bloques
