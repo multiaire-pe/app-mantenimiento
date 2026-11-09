@@ -292,21 +292,21 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
   <div class="modal">
     <h2 id="mtitle">Nuevo equipo</h2>
     <div class="fg2">
+      <div class="fgg"><label>Cliente *</label><div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px"><select id="f_cliente" style="flex:1 1 100%;min-width:0"><option value="">— Elige la sede primero —</option></select><label id="f_reasignar_wrap" style="display:none;white-space:nowrap;font-size:11px;font-weight:500;text-transform:none;letter-spacing:0;cursor:pointer"><input type="checkbox" id="f_reasignar" onchange="refrescarClienteForm()" style="width:auto;margin-right:6px">Corregir cliente</label></div></div>
       <div class="fgg"><label>Sede *</label><div class="sdd-wrap"><input type="text" id="f_sede" placeholder="Escribe para buscar la sede..." autocomplete="off"><div class="sdd" id="dd_f_sede"></div></div></div>
       <div class="fgg"><label>Tipo *</label><select id="f_equipo" onchange="onTipoChange()"><option value="">Seleccionar tipo...</option></select><input type="text" id="f_equipo_otro" placeholder="Nombre del tipo nuevo" style="display:none;margin-top:6px"></div>
-      <div class="fgg"><label>Cliente *</label><div style="display:flex;align-items:center;gap:10px"><select id="f_cliente" style="flex:1;min-width:0"><option value="">— Elige la sede primero —</option></select><label id="f_reasignar_wrap" style="display:none;white-space:nowrap;font-size:11px;font-weight:500;text-transform:none;letter-spacing:0;cursor:pointer"><input type="checkbox" id="f_reasignar" onchange="refrescarClienteForm()" style="width:auto;margin-right:6px">Corregir cliente</label></div></div>
-      <div class="fgg full"><label>Descripción *</label><input type="text" id="f_desc" placeholder="Ej: AA Fan Coil 16"></div>
-      <div class="fgg full"><label>Área / Ubicación</label><input type="text" id="f_area" placeholder="Ej: Almacén, Azotea..."></div>
       <div class="fgg"><label>Marca</label><input type="text" id="f_marca" list="dl_marca" placeholder="Ej: Midea"><datalist id="dl_marca"></datalist></div>
+      <div class="fgg"><label>Descripción *</label><input type="text" id="f_desc" placeholder="Ej: AA Fan Coil 16"></div>
       <div class="fgg"><label>Modelo</label><input type="text" id="f_modelo" placeholder="Ej: MKT3H-400"></div>
+      <div class="fgg"><label>Área / Ubicación</label><input type="text" id="f_area" placeholder="Ej: Almacén, Azotea..."></div>
       <div class="fgg"><label>Serie</label><input type="text" id="f_serie" placeholder="Número de serie"></div>
-      <div class="fgg"><label>Capacidad</label><input type="text" id="f_capacidad" placeholder="Ej: 24000 BTU · 130 TN · 2000 CFM"></div>
       <div class="fgg"><label>Código de tienda</label><input type="text" id="f_codigoTienda" placeholder="Código propio del cliente (si lo usa)"></div>
-      <div class="fgg full"><button type="button" class="btn btn-sm" id="cm_btn" onclick="togComentarios()" style="align-self:flex-start">💬 Comentarios <span id="cm_cnt"></span> ▸</button></div>
-      <div class="fgg full"><label>Fotos de la placa <span id="placa_cnt" style="text-transform:none;letter-spacing:0"></span></label>
+      <div class="fgg"><label>Capacidad</label><input type="text" id="f_capacidad" placeholder="Ej: 24000 BTU · 130 TN · 2000 CFM"></div>
+      <div class="fgg"><label>Fotos del equipo <span id="placa_cnt" style="text-transform:none;letter-spacing:0"></span></label>
         <div class="placa-grid" id="placa_grid"></div>
         <label class="btn placa-add">📷 Agregar fotos<input type="file" id="placa_input" accept="image/*" multiple style="display:none" onchange="onPlacaFiles(this)"></label>
       </div>
+      <div class="fgg"><label>Comentarios</label><button type="button" class="btn btn-sm" id="cm_btn" onclick="togComentarios()" style="align-self:flex-start">💬 Comentarios <span id="cm_cnt"></span> ▸</button></div>
     </div>
     <div class="ma">
       <button class="btn" onclick="cm()">Cancelar</button>
