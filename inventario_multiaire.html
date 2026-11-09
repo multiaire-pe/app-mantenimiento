@@ -292,7 +292,7 @@ input[type=checkbox]{accent-color:var(--blue);width:14px;height:14px}
   <div class="modal">
     <h2 id="mtitle">Nuevo equipo</h2>
     <div class="fg2">
-      <div class="fgg"><label>Cliente *</label><div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px"><select id="f_cliente" style="flex:1 1 100%;min-width:0"><option value="">— Elige la sede primero —</option></select><label id="f_reasignar_wrap" style="display:none;white-space:nowrap;font-size:11px;font-weight:500;text-transform:none;letter-spacing:0;cursor:pointer"><input type="checkbox" id="f_reasignar" onchange="refrescarClienteForm()" style="width:auto;margin-right:6px">Corregir cliente</label></div></div>
+      <div class="fgg"><label>Cliente *</label><div><select id="f_cliente" style="width:100%;min-width:0" onchange="this.dataset.tocado=1"><option value="">— Elige la sede primero —</option></select></div></div>
       <div class="fgg"><label>Sede *</label><div class="sdd-wrap"><input type="text" id="f_sede" placeholder="Escribe para buscar la sede..." autocomplete="off"><div class="sdd" id="dd_f_sede"></div></div></div>
       <div class="fgg"><label>Tipo *</label><select id="f_equipo" onchange="onTipoChange()"><option value="">Seleccionar tipo...</option></select><input type="text" id="f_equipo_otro" placeholder="Nombre del tipo nuevo" style="display:none;margin-top:6px"></div>
       <div class="fgg"><label>Marca</label><input type="text" id="f_marca" list="dl_marca" placeholder="Ej: Midea"><datalist id="dl_marca"></datalist></div>
@@ -366,9 +366,10 @@ const clientesDeSede=(sede)=>[...(sedeClientes[sede]||[])].sort();
 // ¿Qué cliente se guarda? Al EDITAR se conserva el del equipo (el cliente no se reasigna por tocar otro
 // campo). Al CREAR sale de la elección explícita del formulario (obligatoria si la sede es compartida).
 // Siempre debe ser un cliente que tenga esa sede. Función pura: la prueba la ejecuta tal cual.
-// `reasignar` = el usuario marcó "Corregir el cliente" (solo existe en sedes compartidas): ahí manda su elección.
-function resolverClienteGuardado({editando,clienteEquipo,clienteElegido,sede,clientesDeLaSede,reasignar}){
-  const c=String(editando?((reasignar&&clienteElegido)||clienteEquipo||clienteElegido||''):(clienteElegido||'')).trim();
+// Al editar, el selector arranca con el cliente del equipo y se puede cambiar a mano (solo hay a qué cliente
+// pasarlo en una sede compartida); guardar pide confirmación si cambió. Sin elección, se conserva el del equipo.
+function resolverClienteGuardado({editando,clienteEquipo,clienteElegido,sede,clientesDeLaSede}){
+  const c=String(editando?(clienteElegido||clienteEquipo||''):(clienteElegido||'')).trim();
   if(!c||c==='-'){
     return {ok:false,error: editando
       ? 'Este equipo no tiene cliente: elígelo antes de guardar.'
@@ -686,7 +687,8 @@ async function cargarSedesMaestros(){
   }catch(e){ /* fallback: el dropdown del form ya trae las sedes de los datos (pf) */ }
 }
 
-// Cliente del formulario. EDITAR: el del equipo, bloqueado (no se reasigna por tocar otro campo).
+// Cliente del formulario. EDITAR: arranca con el del equipo y se puede cambiar si la sede tiene más de un cliente
+// (sede compartida); si no, es el único y queda fijo. Lo elegido a mano se respeta al seguir editando otros campos.
 // CREAR: los clientes de esa sede; si es uno solo se fija, si hay varios se elige (se propone el del
 // encabezado bajo el que se eligió la sede o el del filtro de la lista, pero nunca se adivina).
 function refrescarClienteForm(preferido){
@@ -697,22 +699,16 @@ function refrescarClienteForm(preferido){
   const actual=eq?String(eq.cliente||'').trim():'';
   const prev=sel.value;
   const opciones=sede?clientesDeSede(sede):[];
-  // Corregir el cliente: solo editando y en una sede compartida (si no, no hay a qué cliente pasarlo).
-  const wrap=document.getElementById('f_reasignar_wrap'), chk=document.getElementById('f_reasignar');
-  const puedeReasignar=!!(eq&&actual&&actual!=='-'&&opciones.length>1);
-  wrap.style.display=puedeReasignar?'':'none';
-  if(!puedeReasignar) chk.checked=false;
-  const reasignando=chk.checked;
   if(actual&&actual!=='-'&&!opciones.includes(actual)) opciones.unshift(actual);   // se ve siempre; guardar lo valida
   let valor='';
-  if(reasignando&&opciones.includes(prev)) valor=prev;
+  if(eq&&sel.dataset.tocado&&opciones.includes(prev)) valor=prev;
   else if(actual&&actual!=='-') valor=actual;
   else if(opciones.length===1) valor=opciones[0];
   else valor=[preferido,prev,document.getElementById('fCliente').value].find(c=>c&&opciones.includes(c))||'';
   sel.innerHTML=(opciones.length===1&&valor?'':'<option value="">'+(sede?'— Elegir cliente —':'— Elige la sede primero —')+'</option>')
     +opciones.map(c=>'<option value="'+esc(c)+'">'+esc(c)+'</option>').join('');
   sel.value=valor;
-  sel.disabled=(actual&&actual!=='-'&&!reasignando)||opciones.length<=1;
+  sel.disabled=opciones.length<=1;
 }
 
 // Selector de tipo del formulario: los tipos del inventario + la escapatoria para dar de alta el
@@ -836,6 +832,7 @@ async function openNew(){
   if(!MA.can('editar','inventario')){toast('Sin permisos','err');return;}
   placaFotos=[];placaBorrar=[];placaCargando=false;_placaEq=null;renderPlaca();
   editRow=null;
+  document.getElementById('f_cliente').dataset.tocado='';
   document.getElementById('mtitle').textContent='Nuevo equipo';
   document.getElementById('sbtn').textContent='Guardar';
   ['sede','equipo','desc','area','marca','modelo','serie','capacidad','codigoTienda'].forEach(f=>{
@@ -848,7 +845,7 @@ async function openNew(){
   refrescarClienteForm();
   document.getElementById('mov').classList.add('open');
 }
-function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('f_reasignar').checked=false;document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;refrescarClienteForm();fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('f_capacidad').value=r.capacidad||'';document.getElementById('f_codigoTienda').value=r.codigoTienda||'';comentariosForm=(r.comentarios||[]).map(c=>({...c}));renderComentarios();togComentarios(false);placaFotos=[];placaBorrar=[];renderPlaca();cargarPlacaEq(r.eq_id);document.getElementById('mov').classList.add('open');}
+function editItem(row){const r=data.find(x=>x.row===row);if(!r)return;cargarSedesMaestros();editRow=row;document.getElementById('f_cliente').dataset.tocado='';document.getElementById('mtitle').textContent='Editar equipo';document.getElementById('sbtn').textContent='Guardar cambios';document.getElementById('f_sede').value=r.sede;refrescarClienteForm();fillTipoForm(r.equipo);document.getElementById('f_desc').value=r.descripcion;document.getElementById('f_area').value=r.area;document.getElementById('f_marca').value=r.marca;document.getElementById('f_modelo').value=r.modelo;document.getElementById('f_serie').value=r.serie;document.getElementById('f_capacidad').value=r.capacidad||'';document.getElementById('f_codigoTienda').value=r.codigoTienda||'';comentariosForm=(r.comentarios||[]).map(c=>({...c}));renderComentarios();togComentarios(false);placaFotos=[];placaBorrar=[];renderPlaca();cargarPlacaEq(r.eq_id);document.getElementById('mov').classList.add('open');}
 function cm(){togComentarios(false);document.getElementById('mov').classList.remove('open');}
 
 async function saveItem(){
@@ -869,7 +866,7 @@ async function saveItem(){
   // acá (antes de tocar el botón) con un mensaje claro, en vez de crearlo huérfano y que el técnico
   // lo descubra en el techo. Antes se le inventaba 'RIPLEY', que le daría las actividades de OTRO cliente.
   const eqEdit=editRow!==null?data.find(x=>x.row===editRow):null;
-  const rc=resolverClienteGuardado({editando:editRow!==null,clienteEquipo:eqEdit?eqEdit.cliente:'',clienteElegido:document.getElementById('f_cliente').value,sede,clientesDeLaSede:clientesDeSede(sede),reasignar:document.getElementById('f_reasignar').checked});
+  const rc=resolverClienteGuardado({editando:editRow!==null,clienteEquipo:eqEdit?eqEdit.cliente:'',clienteElegido:document.getElementById('f_cliente').value,sede,clientesDeLaSede:clientesDeSede(sede)});
   if(!rc.ok){toast(rc.error,'err');return;}
   const cliente_val=rc.cliente;
   if(eqEdit&&eqEdit.cliente&&eqEdit.cliente!=='-'&&cliente_val!==eqEdit.cliente&&!confirm('Vas a pasar este equipo de '+eqEdit.cliente+' a '+cliente_val+'. ¿Confirmas?')) return;
