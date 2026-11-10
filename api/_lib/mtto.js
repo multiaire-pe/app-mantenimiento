@@ -89,8 +89,13 @@ const FOTOS_BOTONES = [
 
 // Período bimestral vigente en Lima (mismo esquema de la app de mantenimiento).
 const PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
-export function periodoLima(base = Date.now()) {
+// Clientes con visita TRIMESTRAL (hoy TOTTUS): trabajan con T1..T4 (ene-mar … oct-dic) en vez de bimestres.
+// Mismo criterio que CLIENTES_TRIMESTRALES de mantenimiento_multiaire.html — si cambia uno, cambia el otro.
+const CLIENTES_TRIMESTRALES = new Set(['TOTTUS']);
+export const esClienteTrimestral = (cliente) => CLIENTES_TRIMESTRALES.has(String(cliente || '').toUpperCase());
+export function periodoLima(base = Date.now(), cliente = '') {
   const [anio, mes] = hoyLima(base).split('-').map(Number);
+  if (esClienteTrimestral(cliente)) return { periodo: 'T' + (Math.floor((mes - 1) / 3) + 1), anio };
   return { periodo: PERIODOS[Math.floor((mes - 1) / 2)], anio };
 }
 
@@ -117,8 +122,10 @@ export function punteroVigente(base, puntero) {
 }
 
 export async function periodoEfectivo(sede, cliente) {
-  const base = periodoLima();
+  const base = periodoLima(Date.now(), cliente);
   if (!sede) return base;
+  // El adelanto/atraso manual (`mtto_periodo_activo`) es un mecanismo bimestral: un cliente trimestral va siempre por calendario.
+  if (esClienteTrimestral(cliente)) return base;
   const ref = getDb().collection('mtto_periodo_activo').doc(idDoc(sedeEfectiva(sede, cliente)));
   const snap = await ref.get();
   if (!snap.exists) return base;
@@ -134,7 +141,7 @@ export async function periodoEfectivo(sede, cliente) {
 // `intentarResolver`), para que la confirmación, el registro y las fotos de UNA misma
 // conversación nunca puedan quedar repartidos en dos períodos. Si faltara (sesión viva desde
 // antes de este cambio) cae al del calendario.
-const periodoDeSesion = (ses) => (ses && ses.periodo && ses.anio) ? { periodo: ses.periodo, anio: ses.anio } : periodoLima();
+const periodoDeSesion = (ses) => (ses && ses.periodo && ses.anio) ? { periodo: ses.periodo, anio: ses.anio } : periodoLima(Date.now(), ses && ses.cliente);
 
 // "1,3 y 5" / "todas" / "ninguna" → índices 0-based válidos (únicos, ordenados)
 export function parseSeleccion(texto, n) {
@@ -318,7 +325,7 @@ function resumenConfirma(ses) {
   const { periodo, anio } = periodoDeSesion(ses);
   // Si el período de la sesión no es el del calendario es porque hay un adelanto activo — se
   // lo decimos al técnico para que no le extrañe ver un período "futuro" en la confirmación.
-  const cal = periodoLima();
+  const cal = periodoLima(Date.now(), ses.cliente);
   const adelantado = periodo !== cal.periodo || anio !== cal.anio;
   const hechas = ses.marcadas.map((i) => `✅ ${ses.actividades[i]}`).join('\n');
   const texto = `📋 *Confirma el registro*\n❄️ ${etiquetaSes(ses)}\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\nPeríodo: ${periodo} ${anio}${adelantado ? ' (adelantado)' : ''}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
