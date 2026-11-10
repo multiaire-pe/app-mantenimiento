@@ -93,6 +93,8 @@ service cloud.firestore {
     // programación de visitas por sede (Gantt, pestaña Programación de Mantenimiento): todos la ven; solo ADMIN/SUPER
     // la crean, mueven o borran (programar es decisión de gestión, no de quien registra el mantenimiento).
     match /mtto_programacion/{doc}       { allow read: if authorized(); allow create, update: if isAdmin(); allow delete: if isAdmin(); }
+    // Definición de períodos de clientes con visita trimestral (TOTTUS): doc `CLIENTE|AÑO|Tn` con los meses que abarca.
+    match /mtto_periodos/{doc}           { allow read: if authorized(); allow create, update: if isAdmin(); allow delete: if isAdmin(); }
     // registro de envíos del itinerario por técnico (WhatsApp): lo escribe el backend (admin SDK);
     // lo lee el HISTORIAL (solo ADMIN — el doc guarda snapshots del mensaje + auditoría de quién
     // envió qué); import de backup = super. Log inmutable para no-super.

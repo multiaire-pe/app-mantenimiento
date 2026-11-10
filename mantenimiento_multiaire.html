@@ -407,8 +407,10 @@ option{background:#fff}
           <option value="SEP-OCT">Sep – Oct</option>
           <option value="NOV-DIC">Nov – Dic</option>
         </select>
-        <select id="selAnio" onchange="onPeriodoChange()"></select>
+        <select id="selAnio" onchange="onAnioChange()"></select>
       </div>
+      <div id="periodoHint" style="display:none;font-size:11px;color:var(--muted2);margin-top:6px;line-height:1.4"></div>
+      <button class="btn btn-sm" id="btnNuevoPeriodo" style="display:none;margin-top:6px;width:100%;justify-content:center" onclick="abrirNuevoPeriodo()" title="Crear el siguiente período de este cliente y elegir los meses que abarca">＋ Crear período</button>
     </div>
 
     <div class="sb-group mant-edit-btn sb-solo-sede" id="wspPeriodoGroup" style="display:none">
@@ -508,7 +510,9 @@ option{background:#fff}
     <div class="tab-view" id="tab-programacion">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
         <span id="prg-ctx" style="font-size:12px;font-weight:700"></span>
-        <select id="prg-cliente" onchange="renderProgramacionFiltrado()" style="max-width:180px"><option value="">Todos los clientes</option></select>
+        <select id="prg-cliente" onchange="renderProgramacion()" style="max-width:180px"><option value="">Todos los clientes</option></select>
+        <select id="prg-periodo" onchange="renderProgramacion()" style="display:none;max-width:170px" title="Período de este cliente"></select>
+        <button class="btn btn-sm" id="prg-per-mas" style="display:none" onclick="abrirNuevoPeriodo(document.getElementById('prg-cliente').value)" title="Crear el siguiente período de este cliente">＋</button>
         <select id="prg-cuad" onchange="renderProgramacionFiltrado()" style="max-width:190px"><option value="">Todas las cuadrillas</option><option value="1">Cuadrilla 1</option><option value="2">Cuadrilla 2</option><option value="-">Sin programar</option></select>
         <span id="prg-resumen" style="font-size:11px;color:var(--muted2)"></span>
         <button class="btn btn-sm" onclick="renderProgramacion()" title="Recargar">↻</button>
@@ -551,6 +555,31 @@ option{background:#fff}
       <div style="font-size:11px;color:var(--muted2);align-self:center;margin-right:auto"><span id="selCount">0</span> equipos seleccionados</div>
       <button class="btn" onclick="closeSelEquipos()">Cancelar</button>
       <button class="btn btn-primary" onclick="saveEquipoSelection()">Guardar selección</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CREAR PERÍODO (clientes con períodos definibles: TOTTUS) -->
+<div class="overlay" id="overlayPer" onclick="if(event.target===this)cerrarNuevoPeriodo()">
+  <div class="modal" style="width:420px">
+    <div class="modal-head">
+      <div><h2>Crear período</h2><div style="font-size:11px;color:var(--muted2);margin-top:2px" id="per-sub">—</div></div>
+      <button class="btn btn-sm" onclick="cerrarNuevoPeriodo()">✕</button>
+    </div>
+    <div class="modal-body prg-form">
+      <label for="per-nombre">Período</label>
+      <input id="per-nombre" readonly>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1"><label for="per-mi">Mes inicial</label><select id="per-mi"></select></div>
+        <div style="flex:1"><label for="per-mf">Mes final</label><select id="per-mf"></select></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted2)">Puede ser un solo mes o varios consecutivos, dentro del mismo año.</div>
+      <div id="per-lista" style="font-size:11px;color:var(--muted2)"></div>
+      <div class="prg-err" id="per-err"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="cerrarNuevoPeriodo()">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarPeriodo()">Crear</button>
     </div>
   </div>
 </div>
@@ -1383,36 +1412,62 @@ function periodoAnterior(periodo, anio) {
 }
 function ordenPeriodo(anio, periodo) { return Number(anio)*6 + PERIODOS.indexOf(periodo); }
 
-// ── Clientes con visita TRIMESTRAL (hoy TOTTUS) ─────────────────────────────────────────────
-// RIPLEY sigue con los 6 bimestres de siempre (sin cambios). Un cliente trimestral trabaja con
-// T1..T4 (ene-mar, abr-jun, jul-sep, oct-dic); las fechas concretas de cada sede dentro del
-// trimestre se eligen en la pestaña Programación (mtto_programacion, mismo modelo de visitas).
-// Los bimestres siguen disponibles para ese cliente como "histórico": antes de este modelo los
-// registros de TOTTUS se guardaron con período bimestral y no hay que perderlos de vista.
-const PERIODOS_TRIM = ['T1','T2','T3','T4'];
-const TRIM_ROTULO = { T1:'Trim 1 · Ene – Mar', T2:'Trim 2 · Abr – Jun', T3:'Trim 3 · Jul – Sep', T4:'Trim 4 · Oct – Dic' };
+// ── Clientes con períodos DEFINIBLES (hoy TOTTUS) ───────────────────────────────────────────
+// RIPLEY sigue con los 6 bimestres de siempre (sin cambios). Un cliente con períodos definibles trabaja con
+// T1, T2… que un admin crea con el botón ＋ (colección `mtto_periodos`, doc `CLIENTE|AÑO|Tn` con el mes inicial y
+// el final, de 1 a N meses consecutivos dentro del año). Lógica pura en programacion.js (window.PROG).
+// Las fechas de cada visita dentro del período se eligen en la pestaña Programación (mtto_programacion).
+// Mientras los datos de TOTTUS sigan guardados con su clave bimestral vieja, T1 2026 LEE de ahí (PROG.ALIAS_LEGACY):
+// `currentPeriodo` es siempre la clave bajo la que están los DATOS, y el selector muestra el nombre nuevo.
 const BIM_ROTULO = { 'ENE-FEB':'Ene – Feb', 'MAR-ABR':'Mar – Abr', 'MAY-JUN':'May – Jun', 'JUL-AGO':'Jul – Ago', 'SEP-OCT':'Sep – Oct', 'NOV-DIC':'Nov – Dic' };
-const CLIENTES_TRIMESTRALES = new Set(['TOTTUS']);
+const NOMBRE_MES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const CLIENTES_TRIMESTRALES = new Set(['TOTTUS']);   // mismo criterio en api/_lib/mtto.js (lo cubre un test)
 const esClienteTrimestral = c => CLIENTES_TRIMESTRALES.has(c);
 let currentCliente = 'RIPLEY';
-function periodoCalendarioDeCliente(cliente, d = new Date()){
-  return esClienteTrimestral(cliente)
-    ? { periodo: PERIODOS_TRIM[Math.floor(d.getMonth()/3)], anio: d.getFullYear() }
-    : periodoCalendario(d);
+let _clienteMultiple = false;   // ¿hay más de un cliente? (con uno solo el selector no se muestra)
+let PERIODOS_DEF = [];          // docs de mtto_periodos (los precargados viven en PROG.DEFAULT_PERIODOS)
+async function cargarPeriodosDef(){
+  try{ const snap = await window.__db.collection('mtto_periodos').get(); PERIODOS_DEF = snap.docs.map(d => d.data()); }
+  catch(e){ PERIODOS_DEF = []; }   // sin reglas desplegadas o sin conexión: quedan solo los precargados
 }
-// Rellena selPeriodo según el cliente activo y deja elegido el período en curso (o el que ya estaba, si sigue siendo válido).
-function poblarPeriodos(){
+const _hoyISO = () => new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+const rotuloMeses = d => NOMBRE_MES[d.mesInicio-1] + (d.mesFin > d.mesInicio ? ' – ' + NOMBRE_MES[d.mesFin-1] : '');
+const defPeriodo = (cliente, anio, periodo) => PROG.periodosDe(PERIODOS_DEF, cliente, anio).find(d => d.periodo === periodo) || null;
+// Clave bajo la que están guardados los DATOS del período elegido (T1 de TOTTUS 2026 → SEP-OCT mientras no se migre)
+function periodoDatosSel(periodo, anio){
+  return esClienteTrimestral(currentCliente) && /^Td+$/.test(periodo) ? PROG.periodoDatos(currentCliente, Number(anio), periodo) : periodo;
+}
+const enVistaGlobal = () => TABS_GLOBALES.includes(tabActivo());
+// Rellena selPeriodo: RIPLEY y la vista Global, solo meses; un cliente con períodos definibles, solo T1, T2… del año elegido.
+function poblarPeriodos(global = enVistaGlobal()){
   const sel = document.getElementById('selPeriodo');
   const previo = sel.value;
+  const anio = Number(document.getElementById('selAnio').value) || new Date().getFullYear();
   const opt = (v, t) => `<option value="${v}">${t}</option>`;
-  if(esClienteTrimestral(currentCliente)){
-    sel.innerHTML = PERIODOS_TRIM.map(p => opt(p, TRIM_ROTULO[p])).join('')
-      + '<optgroup label="Bimestres (histórico)">' + PERIODOS.map(p => opt(p, BIM_ROTULO[p])).join('') + '</optgroup>';
+  if(esClienteTrimestral(currentCliente) && !global){
+    const lista = PROG.periodosDe(PERIODOS_DEF, currentCliente, anio);
+    sel.innerHTML = lista.length ? lista.map(d => opt(d.periodo, d.periodo)).join('') : '<option value="">— sin períodos —</option>';
+    const vig = PROG.periodoDeFecha(PERIODOS_DEF, currentCliente, _hoyISO());
+    const defecto = (vig && vig.anio === anio) ? vig.periodo : (lista[0] ? lista[0].periodo : '');
+    sel.value = [...sel.options].some(o => o.value === previo) ? previo : defecto;
   } else {
     sel.innerHTML = PERIODOS.map(p => opt(p, BIM_ROTULO[p])).join('');
+    sel.value = [...sel.options].some(o => o.value === previo) ? previo : periodoCalendario().periodo;
   }
-  const valido = [...sel.options].some(o => o.value === previo);
-  sel.value = valido ? previo : periodoCalendarioDeCliente(currentCliente).periodo;
+  actualizarPeriodoUI(global);
+}
+// Nota bajo el selector (qué meses abarca el período) y botón ＋ (solo admin, solo cliente con períodos definibles, solo por sede)
+function actualizarPeriodoUI(global = enVistaGlobal()){
+  const tri = esClienteTrimestral(currentCliente) && !global;
+  const hint = document.getElementById('periodoHint'), btn = document.getElementById('btnNuevoPeriodo');
+  const anio = Number(document.getElementById('selAnio').value), per = document.getElementById('selPeriodo').value;
+  const d = tri ? defPeriodo(currentCliente, anio, per) : null;
+  if(d){
+    const dato = PROG.periodoDatos(currentCliente, anio, per);
+    hint.textContent = rotuloMeses(d) + ' ' + anio + (dato !== per ? ' · datos guardados como ' + dato : '');
+    hint.style.display = '';
+  } else hint.style.display = 'none';
+  btn.style.display = (tri && MA.isAdmin()) ? '' : 'none';
 }
 // Sedes del cliente activo → selSede (valor = clave efectiva, ver sedeEfectiva)
 function poblarSedes(){
@@ -1432,7 +1487,12 @@ function poblarClientes(){
   sel.innerHTML = clientes.map(c => `<option value="${c}">${c}</option>`).join('');
   if(!clientes.includes(currentCliente)) currentCliente = clientes.includes('RIPLEY') ? 'RIPLEY' : (clientes[0] || 'RIPLEY');
   sel.value = currentCliente;
-  document.getElementById('grpCliente').style.display = clientes.length > 1 ? '' : 'none';   // con un solo cliente, igual que antes
+  _clienteMultiple = clientes.length > 1;   // con un solo cliente, igual que antes: no se muestra
+  aplicarVistaCliente();
+}
+// El filtro de cliente es de la vista "Por sede": en Global (todas las sedes) no aparece.
+function aplicarVistaCliente(global = enVistaGlobal()){
+  document.getElementById('grpCliente').style.display = (_clienteMultiple && !global) ? '' : 'none';
 }
 function onClienteChange(){
   currentCliente = document.getElementById('selCliente').value;
@@ -1444,6 +1504,47 @@ function onClienteChange(){
   document.getElementById('selSede').value = '';
   onSedeChange();
   onPeriodoChange();
+}
+function onAnioChange(){ poblarPeriodos(); onPeriodoChange(); }
+
+// ── Crear un período (＋) ──
+let _perCliente = '';
+function abrirNuevoPeriodo(cliente){
+  if(!MA.isAdmin()){ toast('Sin permisos','err'); return; }
+  _perCliente = cliente || currentCliente;
+  if(!esClienteTrimestral(_perCliente)){ toast('Este cliente trabaja con los períodos de siempre (meses).','err'); return; }
+  const anio = Number(document.getElementById('selAnio').value);
+  const lista = PROG.periodosDe(PERIODOS_DEF, _perCliente, anio);
+  document.getElementById('per-nombre').value = PROG.siguienteNombre(PERIODOS_DEF, _perCliente, anio);
+  document.getElementById('per-sub').textContent = _perCliente + ' · ' + anio;
+  const meses = NOMBRE_MES.map((m, i) => `<option value="${i+1}">${m}</option>`).join('');
+  const sugerido = lista.length ? Math.min(12, lista[lista.length-1].mesFin + 1) : 1;   // el mes siguiente al último período
+  ['per-mi','per-mf'].forEach(id => { const el = document.getElementById(id); el.innerHTML = meses; el.value = String(sugerido); });
+  document.getElementById('per-lista').textContent = lista.length ? 'Ya definidos: ' + lista.map(d => d.periodo + ' (' + rotuloMeses(d) + ')').join(' · ') : '';
+  document.getElementById('per-err').style.display = 'none';
+  document.getElementById('overlayPer').classList.add('open');
+}
+function cerrarNuevoPeriodo(){ document.getElementById('overlayPer').classList.remove('open'); }
+async function guardarPeriodo(){
+  if(!MA.isAdmin()){ toast('Sin permisos','err'); return; }
+  const anio = Number(document.getElementById('selAnio').value);
+  const n = { cliente: _perCliente, anio, periodo: document.getElementById('per-nombre').value,
+    mesInicio: Number(document.getElementById('per-mi').value), mesFin: Number(document.getElementById('per-mf').value) };
+  const err = PROG.validarPeriodoNuevo(PERIODOS_DEF, n);
+  const eEl = document.getElementById('per-err');
+  if(err){ eEl.textContent = err; eEl.style.display = 'block'; return; }
+  eEl.style.display = 'none';
+  let by = ''; try{ by = firebase.auth().currentUser.email || ''; }catch(e){}
+  const data = { ...n, createdAt: new Date().toISOString(), createdBy: by };
+  try{
+    await window.__db.collection('mtto_periodos').doc(`${n.cliente}|${n.anio}|${n.periodo}`).set(data);
+    PERIODOS_DEF.push(data);
+    cerrarNuevoPeriodo();
+    poblarPeriodos();
+    if(enVistaGlobal() && tabActivo()==='programacion'){ renderProgramacion(); }
+    else { document.getElementById('selPeriodo').value = n.periodo; actualizarPeriodoUI(); onPeriodoChange(); }
+    toast('✓ Período ' + n.periodo + ' creado','ok');
+  }catch(e){ toast('No se pudo crear: ' + e.message, 'err'); }
 }
 
 // ── INIT ────────────────────────────────────────────────────────────────────
@@ -1493,6 +1594,7 @@ async function loadInventario() {
     // Cliente → Sede → Período. Las sedes se muestran solo del cliente activo (poblarSedes);
     // value = clave EFECTIVA (sedeEfectiva): para RIPLEY o sedes no compartidas, la sede tal cual
     // (sin cambios); para un cliente no-RIPLEY en sede compartida, "SEDE (CLIENTE)" — clave propia.
+    await cargarPeriodosDef();
     poblarClientes();
     poblarSedes();
     poblarPeriodos();
@@ -1519,6 +1621,7 @@ function onSedeChange() {
 }
 
 function onPeriodoChange() {
+  actualizarPeriodoUI();
   if(currentSede) loadPeriodo();
   // Resumen y Desempeño usan el período del panel, con o sin sede elegida
   if(tabActivo()==='global') renderGlobal();
@@ -1533,8 +1636,10 @@ function refrescarTabSede(){ if(tabActivo()==='parametros') renderParametros(); 
 function renderLastUpdated() {}
 
 async function loadPeriodo() {
-  currentPeriodo = document.getElementById('selPeriodo').value;
   currentAnio = document.getElementById('selAnio').value;
+  currentPeriodo = periodoDatosSel(document.getElementById('selPeriodo').value, currentAnio);   // T1 de TOTTUS 2026 → SEP-OCT (sus datos)
+  actualizarPeriodoUI();
+  if(!currentPeriodo){ showEmpty(); return; }   // cliente sin períodos creados ese año
   const key = currentSede + '|' + currentPeriodo + '|' + currentAnio;
 
   // SIEMPRE leer de Firestore: el BOT (y otros usuarios) escriben este mismo doc y el
@@ -2552,10 +2657,10 @@ function parBloques(recs) {
 
 const PAR_PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
 // 'SEP-OCT' + 2026 → { desde: '2026-09-01', hasta: '2026-10-31' } (los registros se guardan con `fecha` YYYY-MM-DD, hora de Lima)
-function parRangoPeriodo(periodo, anio) {
-  const b = PAR_PERIODOS.indexOf(periodo), tr = ['T1','T2','T3','T4'].indexOf(periodo), y = Number(anio);   // bimestre o trimestre (T1-T4, clientes trimestrales)
-  if ((b < 0 && tr < 0) || !Number.isFinite(y)) return null;
-  const m1 = b >= 0 ? b * 2 + 1 : tr * 3 + 1, m2 = b >= 0 ? m1 + 1 : m1 + 2;
+function parRangoPeriodo(periodo, anio, def) {
+  const b = PAR_PERIODOS.indexOf(periodo), y = Number(anio);   // bimestre fijo, o un período T1, T2… (`def` = su definición)
+  if (!Number.isFinite(y) || (b < 0 && !(def && def.periodo === periodo))) return null;
+  const m1 = b >= 0 ? b * 2 + 1 : def.mesInicio, m2 = b >= 0 ? m1 + 1 : def.mesFin;
   const ultimo = new Date(Date.UTC(y, m2, 0)).getUTCDate();
   const dos = (n) => String(n).padStart(2, '0');
   return { desde: `${y}-${dos(m1)}-01`, hasta: `${y}-${dos(m2)}-${dos(ultimo)}` };
@@ -2575,7 +2680,7 @@ async function renderParametros() {
     return;
   }
   if (ctx) ctx.textContent = currentSede + ' · ' + currentPeriodo + ' ' + currentAnio;
-  const rango = parRangoPeriodo(currentPeriodo, currentAnio);
+  const rango = parRangoPeriodo(currentPeriodo, currentAnio, defPeriodo(currentCliente, Number(currentAnio), currentPeriodo));
   if (!rango) { cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Elige el período.</div>'; return; }
   const { desde, hasta } = rango;
   cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando parámetros…</div>';
@@ -2889,29 +2994,61 @@ let _prgClienteForzado = null;
 const PRG_COLOR = { '1': '#1B3F8B', '2': '#F47920', '': '#8a9ab8' };
 function _prgPuedeEditar(){ return MA.isAdmin(); }
 function _prgHoy(){ return new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10); }
-function _prgPer(){ return { periodo: document.getElementById('selPeriodo').value, anio: Number(document.getElementById('selAnio').value) }; }
+// Período de la pestaña: el del panel izquierdo (meses) o, si el filtro de cliente es uno con períodos definibles, el
+// suyo (T1, T2…, que se elige en la propia pestaña) con su definición `def` (los meses que abarca).
+function _prgPer(){
+  const anio = Number(document.getElementById('selAnio').value);
+  const cli = document.getElementById('prg-cliente').value;
+  if(esClienteTrimestral(cli)){
+    const periodo = document.getElementById('prg-periodo').value;
+    return { periodo, anio, def: defPeriodo(cli, anio, periodo) };
+  }
+  return { periodo: document.getElementById('selPeriodo').value, anio, def: null };
+}
+function poblarPrgPeriodos(){
+  const cli = document.getElementById('prg-cliente').value;
+  const sel = document.getElementById('prg-periodo'), mas = document.getElementById('prg-per-mas');
+  const tri = esClienteTrimestral(cli);
+  sel.style.display = tri ? '' : 'none';
+  mas.style.display = (tri && _prgPuedeEditar()) ? '' : 'none';
+  if(!tri) return;
+  const anio = Number(document.getElementById('selAnio').value);
+  const lista = PROG.periodosDe(PERIODOS_DEF, cli, anio), previo = sel.value;
+  sel.innerHTML = lista.length ? lista.map(d => `<option value="${d.periodo}">${d.periodo} · ${rotuloMeses(d)}</option>`).join('') : '<option value="">Sin períodos</option>';
+  const vig = PROG.periodoDeFecha(PERIODOS_DEF, cli, _hoyISO());
+  sel.value = [...sel.options].some(o => o.value === previo) ? previo : ((vig && vig.anio === anio) ? vig.periodo : (lista[0] ? lista[0].periodo : ''));
+}
 async function renderProgramacion(){
   const req = ++_prgReq;
+  // clientes del filtro (no depende de la consulta); al cambiar el cliente del panel izquierdo arranca filtrado a ese cliente
+  const selC = document.getElementById('prg-cliente');
+  const cur = _prgClienteForzado !== null ? _prgClienteForzado : selC.value; _prgClienteForzado = null;
+  const clientes = [...new Set(allEquipos.map(e => e.cliente).filter(Boolean))].sort();
+  selC.innerHTML = '<option value="">Todos los clientes</option>' + clientes.map(c => '<option value="'+_actEsc(c)+'"'+(c===cur?' selected':'')+'>'+_actEsc(c)+'</option>').join('');
+  selC.value = clientes.includes(cur) ? cur : '';
+  poblarPrgPeriodos();
   const { periodo, anio } = _prgPer();
-  document.getElementById('prg-ctx').textContent = periodo + ' ' + anio;
+  document.getElementById('prg-ctx').textContent = (periodo || 'Sin período') + ' ' + anio;
   document.getElementById('prg-nuevo').style.display = _prgPuedeEditar() ? '' : 'none';
   const cont = document.getElementById('prg-content');
+  if(!periodo){
+    _prgVis = [];
+    document.getElementById('prg-resumen').textContent = '';
+    cont.innerHTML = '<div class="empty"><div class="empty-icon">📅</div><h3>Sin períodos en ' + anio + '</h3><p>Crea el primero con el botón ＋ junto al período.</p></div>';
+    return;
+  }
   cont.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:10px">Cargando programación…</div>';
   try{
     const snap = await window.__db.collection('mtto_programacion').where('periodo','==',periodo).where('anio','==',anio).get();
     if(req !== _prgReq) return;
     _prgVis = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // al cambiar el cliente del panel izquierdo, el Gantt arranca filtrado a ese cliente (se puede volver a "Todos")
-    const sel = document.getElementById('prg-cliente'); const cur = _prgClienteForzado !== null ? _prgClienteForzado : sel.value; _prgClienteForzado = null;
-    const clientes = [...new Set(allEquipos.map(e => e.cliente).filter(Boolean))].sort();
-    sel.innerHTML = '<option value="">Todos los clientes</option>' + clientes.map(c => '<option value="'+_actEsc(c)+'"'+(c===cur?' selected':'')+'>'+_actEsc(c)+'</option>').join('');
     renderProgramacionFiltrado();
   }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:#c33;padding:10px">Error: '+_actEsc(e.message)+'</div>'; }
 }
 function renderProgramacionFiltrado(){
   const cont = document.getElementById('prg-content');
-  const { periodo, anio } = _prgPer();
-  const dias = PROG.diasDelPeriodo(periodo, anio);
+  const { periodo, anio, def } = _prgPer();
+  const dias = PROG.diasDelPeriodo(periodo, anio, def);
   const cliente = document.getElementById('prg-cliente').value;
   const cuad = document.getElementById('prg-cuad').value;
   const rows = PROG.filas(allEquipos, _prgVis, { cliente, cuadrilla: cuad });
@@ -2955,7 +3092,7 @@ function abrirProgramacionFila(ri, dia){
 }
 function abrirProgramacion(id, cliente, sede, dia){
   if(!_prgPuedeEditar()){ toast('Sin permisos','err'); return; }
-  const { periodo, anio } = _prgPer();
+  const { periodo, anio, def } = _prgPer();
   const v = id ? _prgVis.find(x => x.id === id) : null;
   if(id && !v) return;
   _prgEditId = id || null;
@@ -2965,7 +3102,7 @@ function abrirProgramacion(id, cliente, sede, dia){
   const actual = v ? v.cliente+'|'+v.sede : (cliente ? cliente+'|'+sede : '');
   document.getElementById('prg-sede').innerHTML = (actual ? '' : '<option value="">Elige la sede…</option>') +
     pares.map(p => '<option value="'+_actEsc(p.k)+'"'+(p.k===actual?' selected':'')+'>'+_actEsc(p.sede)+' · '+_actEsc(p.cliente)+'</option>').join('');
-  const dias = PROG.diasDelPeriodo(periodo, anio);
+  const dias = PROG.diasDelPeriodo(periodo, anio, def);
   ['prg-desde','prg-hasta'].forEach(i => { const el = document.getElementById(i); el.min = dias[0]; el.max = dias[dias.length-1]; });
   document.getElementById('prg-desde').value = v ? v.desde : (dia || '');
   document.getElementById('prg-hasta').value = v ? v.hasta : (dia || '');
@@ -2981,12 +3118,15 @@ function abrirProgramacion(id, cliente, sede, dia){
 function cerrarProgramacion(){ document.getElementById('overlayPrg').classList.remove('open'); _prgEditId = null; }
 async function guardarProgramacion(){
   if(!_prgPuedeEditar()){ toast('Sin permisos','err'); return; }
-  const { periodo, anio } = _prgPer();
+  const { periodo, anio, def } = _prgPer();
   const [cliente, ...rs] = (document.getElementById('prg-sede').value || '').split('|');
   const v = { id: _prgEditId, cliente: cliente || '', sede: rs.join('|'), periodo, anio,
     desde: document.getElementById('prg-desde').value, hasta: document.getElementById('prg-hasta').value,
     cuadrilla: document.getElementById('prg-cuadrilla').value, notas: document.getElementById('prg-notas').value.trim() };
-  const err = PROG.validarVisita(v, periodo, anio);
+  // un cliente con períodos definibles se programa en SUS períodos (T1, T2…), y los demás en los meses de siempre
+  const err = esClienteTrimestral(v.cliente) !== /^Td+$/.test(periodo)
+    ? (esClienteTrimestral(v.cliente) ? 'Esta sede se programa en sus períodos (T1, T2…): filtra el cliente ' + v.cliente + ' y elige su período.' : 'Esta sede se programa por meses: cambia el filtro de cliente y usa el período del panel izquierdo.')
+    : PROG.validarVisita(v, periodo, anio, def);
   const eEl = document.getElementById('prg-err');
   if(err){ eEl.textContent = err; eEl.style.display = 'block'; return; }
   eEl.style.display = 'none';
@@ -3041,7 +3181,14 @@ function aplicarVistaTabs(){
   if(tb) tb.style.display = (currentSede && !global) ? 'flex' : 'none';
   const sb = document.getElementById('sidebar');
   if(sb) sb.classList.toggle('sb-vista-global', global);
+  aplicarVistaCliente(global);
+  if(_periodosEnGlobal !== global){   // los períodos del selector cambian con la vista (Global: meses · Por sede: los del cliente)
+    _periodosEnGlobal = global;
+    poblarPeriodos(global);
+    if(!global && currentSede) loadPeriodo();
+  }
 }
+let _periodosEnGlobal = null;
 function irASede(sede){
   const sel = document.getElementById('selSede');
   if(![...sel.options].some(o => o.value === sede)) return;

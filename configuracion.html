@@ -250,6 +250,7 @@ main{flex:1;padding:32px 24px 48px;max-width:960px;width:100%;margin:0 auto}
             <div class="backup-file"><span></span>mtto_ejecuciones.csv</div>
             <div class="backup-file"><span></span>mtto_parametros.csv</div>
             <div class="backup-file"><span></span>mtto_programacion.csv</div>
+            <div class="backup-file"><span></span>mtto_periodos.csv</div>
             <div class="backup-file"><span></span>itinerario_envios.csv</div>
             <div class="backup-file"><span></span>insumos_catalogo.csv</div>
             <div class="backup-file"><span></span>insumos_instancias.csv</div>
@@ -660,7 +661,7 @@ async function exportBackup() {
 
   try {
     // Leer todo directo de Firestore
-    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoActPerSnap, mttoFotoSnap, invFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap, cliCliSnap, verifSnap, verifFotoSnap, mttoParSnap, mttoProgSnap] = await Promise.all([
+    const [asistSnap, persSnap, confidSnap, eventosSnap, docsSnap, tienSnap, gruSnap, ferSnap, itiSnap, bloqSnap, invSnap, maintSnap, usersSnap, tareasSnap, insCatSnap, insInstSnap, insPkgSnap, insMovSnap, insFotoSnap, insMovFotoSnap, insCatFotoSnap, provSnap, compSnap, mEquSnap, mObsSnap, mObsFotoSnap, mGuiaSnap, asisFotoSnap, mttoActSnap, mttoActPerSnap, mttoFotoSnap, invFotoSnap, mttoLogSnap, mttoPlanSnap, mttoEjecSnap, itiEnvSnap, comprobSnap, comprobFotoSnap, opEvSnap, critSnap, cliCliSnap, verifSnap, verifFotoSnap, mttoParSnap, mttoProgSnap, mttoPerDefSnap] = await Promise.all([
       window.__db.collection('asistencia_registros').get(),
       window.__db.collection('maestros_personal').get(),
       window.__db.collection('personal_confidencial').get(),
@@ -706,6 +707,7 @@ async function exportBackup() {
       window.__db.collection('insumos_verificaciones_fotos').get(),
       window.__db.collection('mtto_parametros').get(),
       window.__db.collection('mtto_programacion').get(),
+      window.__db.collection('mtto_periodos').get(),
     ]);
 
     const zip = new JSZip();
@@ -973,6 +975,13 @@ async function exportBackup() {
     });
     zip.file('mtto_programacion.csv', [mttoProgHeaders.join(','), ...mttoProgRows].join('\n'));
 
+    // 14e4. Mantenimiento — definición de períodos de clientes trimestrales (TOTTUS): 1 doc `CLIENTE|AÑO|Tn`
+    const mttoPerDefRows = mttoPerDefSnap.docs.map(d => {
+      const r = d.data();
+      return [d.id, r.cliente||'', r.anio||'', r.periodo||'', JSON.stringify(r)].map(escapeCSV).join(',');
+    });
+    zip.file('mtto_periodos.csv', [['ID','CLIENTE','ANIO','PERIODO','DATA'].join(','), ...mttoPerDefRows].join('\n'));
+
     // 14f. Mantenimiento — plan de actividades en el itinerario (doc chico → JSON)
     const mttoPlanHeaders = ['ID','FECHA','DATA'];
     const mttoPlanRows = mttoPlanSnap.docs.map(d => {
@@ -1194,7 +1203,7 @@ async function confirmImport() {
   // el archivo, así que elegir un ZIP viejo con "Reemplazar todo" marcado ya borraba datos
   // aunque después se cancelara. Ahora ocurre recién tras el confirm().
   if (mode === 'replace') {
-    const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mtto_actividades_periodo', 'mantenimiento_fotos', 'inventario_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad', 'maestros_clientes', 'insumos_verificaciones', 'insumos_verificaciones_fotos', 'mtto_parametros', 'mtto_programacion'];
+    const NUEVAS = ['compras', 'mtto_actividades_equipo', 'mtto_actividades_periodo', 'mantenimiento_fotos', 'inventario_fotos', 'mtto_log', 'mtto_plan', 'mtto_ejecuciones', 'itinerario_envios', 'insumos_catalogo_fotos', 'comprobantes', 'comprobantes_fotos', 'operatividad_eventos', 'maestros_criticidad', 'maestros_clientes', 'insumos_verificaciones', 'insumos_verificaciones_fotos', 'mtto_parametros', 'mtto_programacion', 'mtto_periodos'];
     for (const colN of NUEVAS) {
       if (pendingImport.files[colN + '.csv']) continue;   // la trae: su import ya reemplaza
       const _exN = await window.__db.collection(colN).get();
@@ -1641,6 +1650,13 @@ async function confirmImport() {
       const rows = parseCSV(pendingImport.files['mtto_parametros.csv']);
       await batchWrite('mtto_parametros', rows, r => { const data=JSON.parse(r.DATA||'{}'); delete data.id; return {_docId:r.ID, ...data}; });
       addLog('✓ Tomas de parámetros importadas (' + rows.length + ' registros)', 'ok');
+    }
+
+    if (pendingImport.files['mtto_periodos.csv']) {
+      addLog('🗓️ Importando períodos de clientes trimestrales...', 'info');
+      const rows = parseCSV(pendingImport.files['mtto_periodos.csv']);
+      await batchWrite('mtto_periodos', rows, r => { const data=JSON.parse(r.DATA||'{}'); delete data.id; return {_docId:r.ID, ...data}; });
+      addLog('✓ Períodos importados (' + rows.length + ' registros)', 'ok');
     }
 
     if (pendingImport.files['mtto_programacion.csv']) {
