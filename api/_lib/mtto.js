@@ -89,13 +89,41 @@ const FOTOS_BOTONES = [
 
 // Período bimestral vigente en Lima (mismo esquema de la app de mantenimiento).
 const PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
-// Clientes con visita TRIMESTRAL (hoy TOTTUS): trabajan con T1..T4 (ene-mar … oct-dic) en vez de bimestres.
-// Mismo criterio que CLIENTES_TRIMESTRALES de mantenimiento_multiaire.html — si cambia uno, cambia el otro.
+// Clientes con períodos DEFINIBLES (hoy TOTTUS): en vez de bimestres trabajan con T1, T2… que un admin crea en la app
+// (colección `mtto_periodos`: `CLIENTE|AÑO|Tn` = {cliente, anio, periodo, mesInicio, mesFin}, meses 1-12).
+// Esta lógica ESPEJA la de programacion.js (periodosDe/periodoDeFecha/DEFAULT_PERIODOS/ALIAS_LEGACY) — si cambia
+// una, cambia la otra (tests/periodo_trimestral.test.mjs compara ambas).
 const CLIENTES_TRIMESTRALES = new Set(['TOTTUS']);
 export const esClienteTrimestral = (cliente) => CLIENTES_TRIMESTRALES.has(String(cliente || '').toUpperCase());
-export function periodoLima(base = Date.now(), cliente = '') {
-  const [anio, mes] = hoyLima(base).split('-').map(Number);
-  if (esClienteTrimestral(cliente)) return { periodo: 'T' + (Math.floor((mes - 1) / 3) + 1), anio };
+// T1 2026 de TOTTUS viene precargado como sep-oct (donde ya están sus datos)…
+export const DEFAULT_PERIODOS = [{ cliente: 'TOTTUS', anio: 2026, periodo: 'T1', mesInicio: 9, mesFin: 10 }];
+// …y mientras esos datos sigan guardados con la clave bimestral vieja, el bot escribe/lee con ella (así no se parte
+// el período en dos). Cuando se migren, se quita esta línea (y la de programacion.js).
+export const ALIAS_LEGACY = { 'TOTTUS|2026|T1': 'SEP-OCT' };
+const numT = (p) => Number(String(p).replace(/^T/, ''));
+export function periodosDe(defs, cliente, anio) {
+  const m = new Map();
+  for (const d of [...DEFAULT_PERIODOS, ...(defs || [])]) {
+    if (String(d.cliente).toUpperCase() === String(cliente).toUpperCase() && Number(d.anio) === Number(anio)) m.set(`${d.cliente}|${d.anio}|${d.periodo}`, { ...d, anio: Number(d.anio) });
+  }
+  return [...m.values()].sort((a, b) => a.mesInicio - b.mesInicio || numT(a.periodo) - numT(b.periodo));
+}
+// Período que rige en una fecha: el que contiene su mes; si ninguno, el último que ya empezó; si no, el primero.
+export function periodoDeFechaDef(defs, cliente, fecha) {
+  const anio = Number(String(fecha).slice(0, 4)), mes = Number(String(fecha).slice(5, 7));
+  const lista = periodosDe(defs, cliente, anio);
+  if (!lista.length) return null;
+  return lista.find((d) => mes >= d.mesInicio && mes <= d.mesFin) || [...lista].reverse().find((d) => d.mesInicio <= mes) || lista[0];
+}
+export function periodoLima(base = Date.now(), cliente = '', defs = []) {
+  const hoy = hoyLima(base);
+  const [anio, mes] = hoy.split('-').map(Number);
+  if (esClienteTrimestral(cliente)) {
+    const d = periodoDeFechaDef(defs, cliente, hoy);
+    // sin ningún período definido para ese año: T1 (el admin lo crea en la app; hasta entonces no hay nada más que usar)
+    const periodo = d ? d.periodo : 'T1';
+    return { periodo: ALIAS_LEGACY[`${String(cliente).toUpperCase()}|${anio}|${periodo}`] || periodo, anio };
+  }
   return { periodo: PERIODOS[Math.floor((mes - 1) / 2)], anio };
 }
 
@@ -121,11 +149,20 @@ export function punteroVigente(base, puntero) {
   return o > c || o === c - 1;
 }
 
+// Definiciones de períodos de un cliente trimestral (las que creó un admin en la app). Si no se pueden leer, queda solo lo precargado.
+async function defsDeCliente(cliente) {
+  try {
+    const snap = await getDb().collection('mtto_periodos').where('cliente', '==', String(cliente).toUpperCase()).get();
+    return snap.docs.map((d) => d.data());
+  } catch (e) { return []; }
+}
+
 export async function periodoEfectivo(sede, cliente) {
+  // Un cliente con períodos definibles va por las fechas de SUS períodos: el adelanto/atraso manual
+  // (`mtto_periodo_activo`) es un mecanismo bimestral y no aplica.
+  if (esClienteTrimestral(cliente)) return periodoLima(Date.now(), cliente, await defsDeCliente(cliente));
   const base = periodoLima(Date.now(), cliente);
   if (!sede) return base;
-  // El adelanto/atraso manual (`mtto_periodo_activo`) es un mecanismo bimestral: un cliente trimestral va siempre por calendario.
-  if (esClienteTrimestral(cliente)) return base;
   const ref = getDb().collection('mtto_periodo_activo').doc(idDoc(sedeEfectiva(sede, cliente)));
   const snap = await ref.get();
   if (!snap.exists) return base;
@@ -326,7 +363,8 @@ function resumenConfirma(ses) {
   // Si el período de la sesión no es el del calendario es porque hay un adelanto activo — se
   // lo decimos al técnico para que no le extrañe ver un período "futuro" en la confirmación.
   const cal = periodoLima(Date.now(), ses.cliente);
-  const adelantado = periodo !== cal.periodo || anio !== cal.anio;
+  // (en un cliente con períodos definibles no hay adelanto manual: su período sale de las fechas que definió el admin)
+  const adelantado = !esClienteTrimestral(ses.cliente) && (periodo !== cal.periodo || anio !== cal.anio);
   const hechas = ses.marcadas.map((i) => `✅ ${ses.actividades[i]}`).join('\n');
   const texto = `📋 *Confirma el registro*\n❄️ ${etiquetaSes(ses)}\n🏪 ${ses.sede} · 🔖 ${ses.eqId}\nPeríodo: ${periodo} ${anio}${adelantado ? ' (adelantado)' : ''}\n\n${hechas}\n\n¿Guardo? Responde *SÍ* para guardar, *NO* para corregir o *CANCELAR* para salir.`;
   return { texto, botones: CONFIRMA_BOTONES };

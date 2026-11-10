@@ -69,15 +69,34 @@ t('reglas: todos leen, solo ADMIN escribe', /match \/mtto_programacion\/\{doc\}\
 const conf = leer('configuracion.html');
 t('el backup incluye mtto_programacion (export, import y lista)', /mtto_programacion\.csv/.test(conf) && (conf.match(/mtto_programacion/g) || []).length >= 4);
 
-// ── trimestres (clientes de visita trimestral: TOTTUS)
+// ── períodos definibles (TOTTUS): T1, T2… con los meses que un admin elige
 {
-  t('T1 2026 = ene-mar (90 días)', PROG.diasDelPeriodo('T1', 2026).length === 90 && PROG.diasDelPeriodo('T1', 2026)[0] === '2026-01-01' && PROG.diasDelPeriodo('T1', 2026).at(-1) === '2026-03-31');
-  t('T1 de año bisiesto = 91 días', PROG.diasDelPeriodo('T1', 2028).length === 91);
-  t('T4 2026 = oct-dic', PROG.diasDelPeriodo('T4', 2026)[0] === '2026-10-01' && PROG.diasDelPeriodo('T4', 2026).at(-1) === '2026-12-31');
+  const d1 = PROG.DEFAULT_PERIODOS.find((d) => d.cliente === 'TOTTUS');
+  t('T1 2026 de TOTTUS viene precargado como sep-oct', d1 && d1.periodo === 'T1' && d1.anio === 2026 && d1.mesInicio === 9 && d1.mesFin === 10);
+  t('T1 sep-oct = 61 días', PROG.diasDelPeriodo('T1', 2026, d1).length === 61 && PROG.diasDelPeriodo('T1', 2026, d1)[0] === '2026-09-01');
+  t('sin definición, un T no tiene días', PROG.diasDelPeriodo('T1', 2026).length === 0);
   t('el bimestre sigue igual (SEP-OCT 61 días)', PROG.diasDelPeriodo('SEP-OCT', 2026).length === 61);
-  t('período desconocido → sin días', PROG.diasDelPeriodo('T5', 2026).length === 0 && PROG.mesesDelPeriodo('XYZ').length === 0);
-  t('visita TOTTUS válida dentro de T4', PROG.validarVisita({ cliente: 'TOTTUS', sede: 'MALL DEL SUR', desde: '2026-11-03', hasta: '2026-11-05', cuadrilla: '1' }, 'T4', 2026) === '');
-  t('visita fuera del trimestre se rechaza', PROG.validarVisita({ cliente: 'TOTTUS', sede: 'MALL DEL SUR', desde: '2026-09-28', hasta: '2026-10-02' }, 'T4', 2026) !== '');
+  const nov = { cliente: 'TOTTUS', anio: 2026, periodo: 'T2', mesInicio: 11, mesFin: 12 };
+  t('visita válida dentro del T2 definido', PROG.validarVisita({ cliente: 'TOTTUS', sede: 'MALL DEL SUR', desde: '2026-11-03', hasta: '2026-11-05' }, 'T2', 2026, nov) === '');
+  t('visita fuera de los meses del período se rechaza', PROG.validarVisita({ cliente: 'TOTTUS', sede: 'MALL DEL SUR', desde: '2026-10-28', hasta: '2026-11-02' }, 'T2', 2026, nov) !== '');
+  t('un mes solo también es un período (nov)', PROG.diasDelPeriodo('T3', 2026, { periodo: 'T3', mesInicio: 11, mesFin: 11 }).length === 30);
+  const defs = [nov];
+  const l = PROG.periodosDe(defs, 'TOTTUS', 2026);
+  t('periodosDe junta lo precargado y lo guardado, ordenado', l.map((d) => d.periodo).join() === 'T1,T2');
+  t('otro cliente u otro año no tiene períodos', PROG.periodosDe(defs, 'RIPLEY', 2026).length === 0 && PROG.periodosDe(defs, 'TOTTUS', 2027).length === 0);
+  t('un guardado pisa al precargado (misma clave)', PROG.periodosDe([{ cliente: 'TOTTUS', anio: 2026, periodo: 'T1', mesInicio: 8, mesFin: 10 }], 'TOTTUS', 2026)[0].mesInicio === 8);
+  t('siguiente nombre', PROG.siguienteNombre(defs, 'TOTTUS', 2026) === 'T3' && PROG.siguienteNombre([], 'TOTTUS', 2027) === 'T1');
+  t('vigente: dentro del período', PROG.periodoDeFecha(defs, 'TOTTUS', '2026-12-10').periodo === 'T2' && PROG.periodoDeFecha(defs, 'TOTTUS', '2026-09-15').periodo === 'T1');
+  t('vigente: en un hueco usa el último que ya empezó', PROG.periodoDeFecha([], 'TOTTUS', '2026-11-10').periodo === 'T1');
+  t('vigente: antes del primero usa el primero; sin períodos → null', PROG.periodoDeFecha([], 'TOTTUS', '2026-03-10').periodo === 'T1' && PROG.periodoDeFecha([], 'TOTTUS', '2027-03-10') === null);
+  const ok1 = (m1, m2, p = 'T2') => PROG.validarPeriodoNuevo([], { cliente: 'TOTTUS', anio: 2026, periodo: p, mesInicio: m1, mesFin: m2 });
+  t('período nuevo válido (nov-dic)', ok1(11, 12) === '');
+  t('rechaza fin antes del inicio', ok1(12, 11) !== '');
+  t('rechaza meses fuera de 1-12', ok1(0, 3) !== '' && ok1(11, 13) !== '');
+  t('rechaza cruzarse con T1 (sep-oct)', ok1(10, 11) !== '' && ok1(8, 9) !== '' && ok1(1, 12) !== '');
+  t('rechaza repetir el nombre', ok1(1, 2, 'T1') !== '');
+  t('acepta pegado al anterior (nov) y antes (ene-ago)', ok1(11, 11) === '' && ok1(1, 8) === '');
+  t('T1 2026 de TOTTUS lee de SEP-OCT; lo demás queda igual', PROG.periodoDatos('TOTTUS', 2026, 'T1') === 'SEP-OCT' && PROG.periodoDatos('TOTTUS', 2026, 'T2') === 'T2' && PROG.periodoDatos('RIPLEY', 2026, 'SEP-OCT') === 'SEP-OCT');
 }
 
 console.log(`${ok} ok · ${mal} mal`);
