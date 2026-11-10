@@ -117,9 +117,9 @@ export function periodoDeFecha(fecha) {   // 'YYYY-MM-DD' → { periodo, anio }
   return { periodo: PERIODOS[Math.floor((m - 1) / 2)], anio: a };
 }
 export function rangoPeriodo(periodo, anio) {   // → { desde, hasta } 'YYYY-MM-DD' (para los registros viejos, que no traen `periodo`)
-  const i = PERIODOS.indexOf(periodo), y = Number(anio);
-  if (i < 0 || !Number.isFinite(y)) return null;
-  const m1 = i * 2 + 1, m2 = m1 + 1, dos = (n) => String(n).padStart(2, '0');
+  const b = PERIODOS.indexOf(periodo), t = ['T1', 'T2', 'T3', 'T4'].indexOf(periodo), y = Number(anio);   // bimestre o trimestre (T1-T4, clientes trimestrales)
+  if ((b < 0 && t < 0) || !Number.isFinite(y)) return null;
+  const m1 = b >= 0 ? b * 2 + 1 : t * 3 + 1, m2 = b >= 0 ? m1 + 1 : m1 + 2, dos = (n) => String(n).padStart(2, '0');
   return { desde: `${y}-${dos(m1)}-01`, hasta: `${y}-${dos(m2)}-${dos(new Date(Date.UTC(y, m2, 0)).getUTCDate())}` };
 }
 // Marca / modelo / serie que el técnico escribió y NO coinciden con el inventario → { campo: { antes, despues } }

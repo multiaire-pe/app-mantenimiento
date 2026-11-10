@@ -262,6 +262,7 @@ const INIT = firmar(auth());
   t('rango ENE-FEB de un año bisiesto', rangoPeriodo('ENE-FEB', 2028).hasta === '2028-02-29');
   t('período desconocido → null', rangoPeriodo('XYZ', 2026) === null);
   t('período de una fecha', periodoDeFecha('2026-10-27').periodo === 'SEP-OCT' && periodoDeFecha('2026-12-01').periodo === 'NOV-DIC' && periodoDeFecha('2026-01-15').periodo === 'ENE-FEB');
+  t('rango T4 2026 (trimestre)', JSON.stringify(rangoPeriodo('T4', 2026)) === '{"desde":"2026-10-01","hasta":"2026-12-31"}' && rangoPeriodo('T1', 2028).hasta === '2028-03-31');
   t('el id escapa la "/" del equipo', idRegistro('A/B', 'SEP-OCT', 2026) === 'A∕B|SEP-OCT|2026');
 }
 // ── quién puede borrar tomas desde la web ──

@@ -384,6 +384,11 @@ option{background:#fff}
       </div>
     </div>
 
+    <div class="sb-group" id="grpCliente" style="display:none">
+      <div class="sb-label">Cliente</div>
+      <select id="selCliente" onchange="onClienteChange()"></select>
+    </div>
+
     <div class="sb-group sb-solo-sede">
       <div class="sb-label">Sede</div>
       <select id="selSede" onchange="onSedeChange()">
@@ -1378,6 +1383,69 @@ function periodoAnterior(periodo, anio) {
 }
 function ordenPeriodo(anio, periodo) { return Number(anio)*6 + PERIODOS.indexOf(periodo); }
 
+// ── Clientes con visita TRIMESTRAL (hoy TOTTUS) ─────────────────────────────────────────────
+// RIPLEY sigue con los 6 bimestres de siempre (sin cambios). Un cliente trimestral trabaja con
+// T1..T4 (ene-mar, abr-jun, jul-sep, oct-dic); las fechas concretas de cada sede dentro del
+// trimestre se eligen en la pestaña Programación (mtto_programacion, mismo modelo de visitas).
+// Los bimestres siguen disponibles para ese cliente como "histórico": antes de este modelo los
+// registros de TOTTUS se guardaron con período bimestral y no hay que perderlos de vista.
+const PERIODOS_TRIM = ['T1','T2','T3','T4'];
+const TRIM_ROTULO = { T1:'Trim 1 · Ene – Mar', T2:'Trim 2 · Abr – Jun', T3:'Trim 3 · Jul – Sep', T4:'Trim 4 · Oct – Dic' };
+const BIM_ROTULO = { 'ENE-FEB':'Ene – Feb', 'MAR-ABR':'Mar – Abr', 'MAY-JUN':'May – Jun', 'JUL-AGO':'Jul – Ago', 'SEP-OCT':'Sep – Oct', 'NOV-DIC':'Nov – Dic' };
+const CLIENTES_TRIMESTRALES = new Set(['TOTTUS']);
+const esClienteTrimestral = c => CLIENTES_TRIMESTRALES.has(c);
+let currentCliente = 'RIPLEY';
+function periodoCalendarioDeCliente(cliente, d = new Date()){
+  return esClienteTrimestral(cliente)
+    ? { periodo: PERIODOS_TRIM[Math.floor(d.getMonth()/3)], anio: d.getFullYear() }
+    : periodoCalendario(d);
+}
+// Rellena selPeriodo según el cliente activo y deja elegido el período en curso (o el que ya estaba, si sigue siendo válido).
+function poblarPeriodos(){
+  const sel = document.getElementById('selPeriodo');
+  const previo = sel.value;
+  const opt = (v, t) => `<option value="${v}">${t}</option>`;
+  if(esClienteTrimestral(currentCliente)){
+    sel.innerHTML = PERIODOS_TRIM.map(p => opt(p, TRIM_ROTULO[p])).join('')
+      + '<optgroup label="Bimestres (histórico)">' + PERIODOS.map(p => opt(p, BIM_ROTULO[p])).join('') + '</optgroup>';
+  } else {
+    sel.innerHTML = PERIODOS.map(p => opt(p, BIM_ROTULO[p])).join('');
+  }
+  const valido = [...sel.options].some(o => o.value === previo);
+  sel.value = valido ? previo : periodoCalendarioDeCliente(currentCliente).periodo;
+}
+// Sedes del cliente activo → selSede (valor = clave efectiva, ver sedeEfectiva)
+function poblarSedes(){
+  const sel = document.getElementById('selSede');
+  sel.innerHTML = '<option value="">— Seleccionar sede —</option>';
+  const sedes = new Set();
+  allEquipos.forEach(e => { if((e.cliente || 'RIPLEY') === currentCliente && e.sede) sedes.add(e.sede); });
+  [...sedes].sort().forEach(s => {
+    const o = document.createElement('option');
+    o.value = sedeEfectiva(s, currentCliente); o.textContent = s;
+    sel.appendChild(o);
+  });
+}
+function poblarClientes(){
+  const clientes = [...new Set(allEquipos.map(e => e.cliente || 'RIPLEY'))].sort();
+  const sel = document.getElementById('selCliente');
+  sel.innerHTML = clientes.map(c => `<option value="${c}">${c}</option>`).join('');
+  if(!clientes.includes(currentCliente)) currentCliente = clientes.includes('RIPLEY') ? 'RIPLEY' : (clientes[0] || 'RIPLEY');
+  sel.value = currentCliente;
+  document.getElementById('grpCliente').style.display = clientes.length > 1 ? '' : 'none';   // con un solo cliente, igual que antes
+}
+function onClienteChange(){
+  currentCliente = document.getElementById('selCliente').value;
+  poblarSedes();
+  poblarPeriodos();
+  // otra cartera = otra sede: se vuelve al estado "sin sede" y se repinta lo que depende del período
+  currentSede = ''; sedeEquipos = [];
+  _prgClienteForzado = currentCliente;
+  document.getElementById('selSede').value = '';
+  onSedeChange();
+  onPeriodoChange();
+}
+
 // ── INIT ────────────────────────────────────────────────────────────────────
 window.onload = async () => {
   // Año selector
@@ -1422,28 +1490,12 @@ async function loadInventario() {
     _marcarPV(allEquipos, 'nombre', e => e.cliente+'|'+e.sede+'|'+e.tipo);
     allEquipos.sort((a,b) => a.tipo.localeCompare(b.tipo,'es',{sensitivity:'base'}) || (a.cliente+'|'+a.sede).localeCompare(b.cliente+'|'+b.sede,'es') || _cmpNombreOrden(a.nombre,b.nombre,a._pv));
 
-    // Populate sedes grouped by cliente (clear first to avoid duplicates)
-    const sel = document.getElementById('selSede');
-    sel.innerHTML = '<option value="">— Seleccionar sede —</option>';
-    const byCliente = {};
-    allEquipos.forEach(e => {
-      const c = e.cliente || 'RIPLEY';
-      if (!byCliente[c]) byCliente[c] = new Set();
-      if (e.sede) byCliente[c].add(e.sede);
-    });
-    Object.keys(byCliente).sort().forEach(cliente => {
-      const grp = document.createElement('optgroup');
-      grp.label = cliente;
-      [...byCliente[cliente]].sort().forEach(s => {
-        const o = document.createElement('option');
-        // value = clave EFECTIVA (sedeEfectiva): para RIPLEY o sedes no compartidas, la sede tal
-        // cual (sin cambios); para un cliente no-RIPLEY en sede compartida (hoy solo MIRAFLORES),
-        // "SEDE (CLIENTE)" — clave propia, no colisiona con la de RIPLEY.
-        o.value = sedeEfectiva(s, cliente); o.textContent = s;
-        grp.appendChild(o);
-      });
-      sel.appendChild(grp);
-    });
+    // Cliente → Sede → Período. Las sedes se muestran solo del cliente activo (poblarSedes);
+    // value = clave EFECTIVA (sedeEfectiva): para RIPLEY o sedes no compartidas, la sede tal cual
+    // (sin cambios); para un cliente no-RIPLEY en sede compartida, "SEDE (CLIENTE)" — clave propia.
+    poblarClientes();
+    poblarSedes();
+    poblarPeriodos();
 
     setPill('ok', '✓ Conectado · ' + allEquipos.length + ' equipos');
   } catch(e) {
@@ -1544,6 +1596,9 @@ async function renderWspToggle() {
   const chk = document.getElementById('chkWspPeriodo');
   const lbl = document.getElementById('wspPeriodoLabel');
   if(!currentSede || !currentPeriodo || !currentAnio){ grp.style.display='none'; return; }
+  // El adelanto manual de período es un mecanismo bimestral (RIPLEY). En un cliente trimestral el bot
+  // resuelve el trimestre por calendario (api/_lib/mtto.js), así que el toggle no aplica.
+  if(esClienteTrimestral(currentCliente)){ grp.style.display='none'; return; }
   const cal = periodoCalendario();
   const sig = periodoSiguiente(cal.periodo, cal.anio);
   const esActual = currentPeriodo === cal.periodo && Number(currentAnio) === cal.anio;
@@ -2498,9 +2553,9 @@ function parBloques(recs) {
 const PAR_PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
 // 'SEP-OCT' + 2026 → { desde: '2026-09-01', hasta: '2026-10-31' } (los registros se guardan con `fecha` YYYY-MM-DD, hora de Lima)
 function parRangoPeriodo(periodo, anio) {
-  const i = PAR_PERIODOS.indexOf(periodo), y = Number(anio);
-  if (i < 0 || !Number.isFinite(y)) return null;
-  const m1 = i * 2 + 1, m2 = m1 + 1;
+  const b = PAR_PERIODOS.indexOf(periodo), tr = ['T1','T2','T3','T4'].indexOf(periodo), y = Number(anio);   // bimestre o trimestre (T1-T4, clientes trimestrales)
+  if ((b < 0 && tr < 0) || !Number.isFinite(y)) return null;
+  const m1 = b >= 0 ? b * 2 + 1 : tr * 3 + 1, m2 = b >= 0 ? m1 + 1 : m1 + 2;
   const ultimo = new Date(Date.UTC(y, m2, 0)).getUTCDate();
   const dos = (n) => String(n).padStart(2, '0');
   return { desde: `${y}-${dos(m1)}-01`, hasta: `${y}-${dos(m2)}-${dos(ultimo)}` };
@@ -2830,6 +2885,7 @@ async function parExportarExcel() {
 let _prgVis = [];
 let _prgReq = 0;
 let _prgEditId = null;
+let _prgClienteForzado = null;
 const PRG_COLOR = { '1': '#1B3F8B', '2': '#F47920', '': '#8a9ab8' };
 function _prgPuedeEditar(){ return MA.isAdmin(); }
 function _prgHoy(){ return new Date(Date.now() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10); }
@@ -2845,7 +2901,8 @@ async function renderProgramacion(){
     const snap = await window.__db.collection('mtto_programacion').where('periodo','==',periodo).where('anio','==',anio).get();
     if(req !== _prgReq) return;
     _prgVis = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const sel = document.getElementById('prg-cliente'); const cur = sel.value;
+    // al cambiar el cliente del panel izquierdo, el Gantt arranca filtrado a ese cliente (se puede volver a "Todos")
+    const sel = document.getElementById('prg-cliente'); const cur = _prgClienteForzado !== null ? _prgClienteForzado : sel.value; _prgClienteForzado = null;
     const clientes = [...new Set(allEquipos.map(e => e.cliente).filter(Boolean))].sort();
     sel.innerHTML = '<option value="">Todos los clientes</option>' + clientes.map(c => '<option value="'+_actEsc(c)+'"'+(c===cur?' selected':'')+'>'+_actEsc(c)+'</option>').join('');
     renderProgramacionFiltrado();

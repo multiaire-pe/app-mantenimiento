@@ -69,5 +69,16 @@ t('reglas: todos leen, solo ADMIN escribe', /match \/mtto_programacion\/\{doc\}\
 const conf = leer('configuracion.html');
 t('el backup incluye mtto_programacion (export, import y lista)', /mtto_programacion\.csv/.test(conf) && (conf.match(/mtto_programacion/g) || []).length >= 4);
 
+// ── trimestres (clientes de visita trimestral: TOTTUS)
+{
+  t('T1 2026 = ene-mar (90 días)', PROG.diasDelPeriodo('T1', 2026).length === 90 && PROG.diasDelPeriodo('T1', 2026)[0] === '2026-01-01' && PROG.diasDelPeriodo('T1', 2026).at(-1) === '2026-03-31');
+  t('T1 de año bisiesto = 91 días', PROG.diasDelPeriodo('T1', 2028).length === 91);
+  t('T4 2026 = oct-dic', PROG.diasDelPeriodo('T4', 2026)[0] === '2026-10-01' && PROG.diasDelPeriodo('T4', 2026).at(-1) === '2026-12-31');
+  t('el bimestre sigue igual (SEP-OCT 61 días)', PROG.diasDelPeriodo('SEP-OCT', 2026).length === 61);
+  t('período desconocido → sin días', PROG.diasDelPeriodo('T5', 2026).length === 0 && PROG.mesesDelPeriodo('XYZ').length === 0);
+  t('visita TOTTUS válida dentro de T4', PROG.validarVisita({ cliente: 'TOTTUS', sede: 'MALL DEL SUR', desde: '2026-11-03', hasta: '2026-11-05', cuadrilla: '1' }, 'T4', 2026) === '');
+  t('visita fuera del trimestre se rechaza', PROG.validarVisita({ cliente: 'TOTTUS', sede: 'MALL DEL SUR', desde: '2026-09-28', hasta: '2026-10-02' }, 'T4', 2026) !== '');
+}
+
 console.log(`${ok} ok · ${mal} mal`);
 process.exit(mal ? 1 : 0);
