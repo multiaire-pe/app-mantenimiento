@@ -910,17 +910,25 @@ async function generar() {
           ...eqs.map((e) => new D.TableRow({ children: [td(e.nombre, { bold: true }), td(e.area), td(e.marca), td(e.modelo), td(e.serie), td(e.capacidad, { align: D.AlignmentType.CENTER })] }))] }));
 
       hijos.push(new D.Paragraph({ spacing: { before: 140, after: 60 }, children: [new D.TextRun({ text: 'Observaciones y recomendaciones', bold: true, italics: true, size: 20, font: 'Aptos' })] }));
-      // Por equipo: sus observaciones y, si está INOPERATIVO, una frase final que lo deja dicho.
-      // Solo el inoperativo (reportado en 0%): un equipo sin reporte o desmontado no lleva frase.
-      const obsT = eqs.flatMap((e) => {
-        const items = (d.obsPorEq[e.eq_id || e.id] || []).map((o) => ({ eq: e.nombre, texto: String(o.observacion || '') }));
-        if (esInoperativo(e)) items.push({ eq: e.nombre, texto: FRASE_INOPERATIVO, inop: true });
-        return items;
-      });
-      if (obsT.length) {
-        obsT.forEach(({ eq, texto, inop }) => hijos.push(new D.Paragraph({ bullet: { level: 0 }, children: [
-          new D.TextRun({ text: eq + ': ', bold: true, size: 19, font: 'Aptos' }),
-          new D.TextRun({ text: texto, size: 19, font: 'Aptos', ...(inop ? { bold: true } : {}) })] })));
+      // Por equipo: encabezado subrayado («ROOFTOP N°1») y debajo sus observaciones, sin repetir el nombre del
+      // equipo en cada viñeta (mismo formato que los informes técnicos manuales). Si está INOPERATIVO, una frase
+      // final lo deja dicho. Solo el inoperativo (reportado en 0%): un equipo sin reporte o desmontado no lleva frase.
+      const tituloEq = (nombre) => {
+        const m = String(nombre || '').trim().match(/^(?:AA\s+)?(.*?)\s*0*(\d+)$/i);
+        if (!m || !m[1]) return String(nombre || '').toUpperCase();
+        return `${m[1].toUpperCase().replace(/^ROOF TOP$/, 'ROOFTOP')} N°${Number(m[2])}`;
+      };
+      const obsPorEquipo = eqs.map((e) => {
+        const items = (d.obsPorEq[e.eq_id || e.id] || []).map((o) => ({ texto: String(o.observacion || '') }));
+        if (esInoperativo(e)) items.push({ texto: FRASE_INOPERATIVO, inop: true });
+        return { titulo: tituloEq(e.nombre), items };
+      }).filter((g) => g.items.length);
+      if (obsPorEquipo.length) {
+        obsPorEquipo.forEach(({ titulo, items }) => {
+          hijos.push(new D.Paragraph({ keepNext: true, spacing: { before: 240, after: 120 }, children: [new D.TextRun({ text: titulo, bold: true, underline: {}, size: 21, font: 'Aptos' })] }));
+          items.forEach(({ texto, inop }) => hijos.push(new D.Paragraph({ bullet: { level: 0 }, alignment: D.AlignmentType.JUSTIFIED, spacing: { line: 360 }, children: [
+            new D.TextRun({ text: texto, size: 19, font: 'Aptos', ...(inop ? { bold: true } : {}) })] })));
+        });
       } else {
         hijos.push(p('Sin observaciones registradas para este tipo en el período.', { size: 18, italics: true, color: '888888' }));
       }

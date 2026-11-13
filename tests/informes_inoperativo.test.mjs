@@ -26,25 +26,27 @@ t('desmontado con 0% NO es inoperativo', !esInoperativo({ operatividad: 0, desmo
 t('basura (NaN) NO es inoperativo', !esInoperativo({ operatividad: 'abc' }));
 
 // El documento: la frase va DESPUÉS de las observaciones del equipo y solo para inoperativos.
-const bloque = html.match(/const obsT = eqs\.flatMap\(\(e\) => \{[\s\S]*?\n      \}\);/)?.[0];
-t('existe el armado de obsT', !!bloque);
-const armar = new Function('esInoperativo', 'FRASE_INOPERATIVO', 'd', 'eqs', `${bloque}; return obsT;`);
+const bloque = html.match(/const tituloEq = [\s\S]*?\}\)\.filter\(\(g\) => g\.items\.length\);/)?.[0];
+t('existe el armado de obsPorEquipo', !!bloque);
+const armar = new Function('esInoperativo', 'FRASE_INOPERATIVO', 'd', 'eqs', `${bloque}; return obsPorEquipo;`);
 const d = { obsPorEq: { A: [{ observacion: 'obs 1' }, { observacion: 'obs 2' }, { observacion: 'obs 3' }], B: [{ observacion: 'solo una' }] } };
 const eqs = [
-  { eq_id: 'A', nombre: 'EQ A', operatividad: 0 },        // inoperativo con 3 obs
-  { eq_id: 'B', nombre: 'EQ B', operatividad: 75 },       // operativo con 1 obs
-  { eq_id: 'C', nombre: 'EQ C', operatividad: 0 },        // inoperativo sin obs
-  { eq_id: 'D', nombre: 'EQ D' },                         // sin reporte, sin obs
-  { eq_id: 'E', nombre: 'EQ E', operatividad: 0, desmontado: true },
+  { eq_id: 'A', nombre: 'AA Roof Top 01', operatividad: 0 },   // inoperativo con 3 obs
+  { eq_id: 'B', nombre: 'Extractor 02', operatividad: 75 },    // operativo con 1 obs
+  { eq_id: 'C', nombre: 'AA Split 03', operatividad: 0 },      // inoperativo sin obs
+  { eq_id: 'D', nombre: 'AA Split 04' },                       // sin reporte, sin obs
+  { eq_id: 'E', nombre: 'AA Split 05', operatividad: 0, desmontado: true },
 ];
 const r = armar(esInoperativo, frase, d, eqs);
-const deA = r.filter((x) => x.eq === 'EQ A').map((x) => x.texto);
+const g = (titulo) => r.find((x) => x.titulo === titulo);
+const deA = g('ROOFTOP N°1')?.items.map((x) => x.texto) || [];
+t('encabezado por equipo: «ROOFTOP N°1», «EXTRACTOR N°2»', !!g('ROOFTOP N°1') && !!g('EXTRACTOR N°2'), JSON.stringify(r.map((x) => x.titulo)));
 t('inoperativo con 3 obs: las 3 y luego la frase', deA.length === 4 && deA.slice(0, 3).join('|') === 'obs 1|obs 2|obs 3' && deA[3] === frase, JSON.stringify(deA));
-t('la frase va marcada', r.find((x) => x.eq === 'EQ A' && x.inop)?.texto === frase);
-t('operativo: sin frase', r.filter((x) => x.eq === 'EQ B').length === 1 && !r.some((x) => x.eq === 'EQ B' && x.inop));
-t('inoperativo sin obs: igual lleva la frase', r.filter((x) => x.eq === 'EQ C').map((x) => x.texto).join() === frase);
-t('sin reporte: nada', !r.some((x) => x.eq === 'EQ D'));
-t('desmontado: nada', !r.some((x) => x.eq === 'EQ E'));
+t('la frase va marcada', g('ROOFTOP N°1')?.items.find((x) => x.inop)?.texto === frase);
+t('operativo: sin frase', g('EXTRACTOR N°2')?.items.length === 1 && !g('EXTRACTOR N°2').items.some((x) => x.inop));
+t('inoperativo sin obs: igual lleva la frase', g('SPLIT N°3')?.items.map((x) => x.texto).join() === frase);
+t('sin reporte: nada', !g('SPLIT N°4'));
+t('desmontado: nada', !g('SPLIT N°5'));
 
 console.log(`${ok} ok · ${mal} mal`);
 process.exit(mal ? 1 : 0);
