@@ -964,6 +964,7 @@ function _actsListaNueva(eq, ajuste, esPer){
 // createdBy} — 1 foto/doc esquiva el límite de 1MB. La foto se ata a la actividad por NOMBRE (antes
 // llevaba además `tareaIdx`, que se corría al cambiar la lista y dejaba la foto en otra actividad).
 let fotosCount = {};   // `${eq_id}|${actKey(tarea)}` → n (del período actual)
+let _ftFotos = [];     // data-URLs de las fotos mostradas en el modal (para "Descargar todas")
 let _ftCtx = null;     // contexto del modal de fotos {eqId, tarea}
 
 function _mttoKey(){ return currentSede + '|' + currentPeriodo + '|' + currentAnio; }
@@ -1037,6 +1038,8 @@ async function renderFotosTarea(){
     const snap = await window.__db.collection('mantenimiento_fotos')
       .where('clave','==',_mttoKey()).where('eq_id','==',_ftCtx.eqId).where('tarea','==',_ftCtx.tarea).get();
     const puedeBorrar = MA.can('editar','mantenimiento');
+    _ftFotos = snap.docs.map(d => _fotoSrc(d.data().foto)).filter(Boolean);
+    const _bd = document.getElementById('ft-dl'); if(_bd) _bd.style.display = _ftFotos.length ? 'inline-flex' : 'none';
     cont.innerHTML = snap.docs.length ? snap.docs.map(d => {
       const r = d.data();
       const _src = _fotoSrc(r.foto); if(!_src) return '';
@@ -1046,6 +1049,26 @@ async function renderFotosTarea(){
         + '</div>';
     }).join('') : '<div style="font-size:12px;color:var(--muted);padding:10px">Sin fotos de esta actividad.</div>';
   }catch(e){ cont.innerHTML = '<div style="font-size:12px;color:var(--red,#c33);padding:10px">Error: '+_actEsc(e.message)+'</div>'; }
+}
+// Descarga todas las fotos de la actividad abierta: un .zip (JSZip) y, si no carga, archivos sueltos.
+async function ftDescargarTodas(){
+  if(!_ftFotos.length || !_ftCtx) return;
+  const btn = document.getElementById('ft-dl'); const txt = btn.textContent; btn.disabled = true; btn.textContent = 'Preparando…';
+  const base = (_ftCtx.eqId+'_'+_ftCtx.tarea).replace(/[^\w\-]+/g,'_').slice(0,80);
+  const ext = u => (u.match(/^data:image\/(jpeg|png|webp|gif)/)||[,'jpeg'])[1].replace('jpeg','jpg');
+  const bajar = (href,name) => { const a=document.createElement('a'); a.href=href; a.download=name; document.body.appendChild(a); a.click(); a.remove(); };
+  try{
+    if(!window.JSZip){
+      await new Promise((ok,ko)=>{ const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; sc.onload=ok; sc.onerror=ko; document.head.appendChild(sc); });
+    }
+    const zip = new JSZip();
+    _ftFotos.forEach((u,i)=> zip.file(base+'_'+String(i+1).padStart(2,'0')+'.'+ext(u), u.split(',')[1], {base64:true}));
+    const blob = await zip.generateAsync({type:'blob'});
+    const url = URL.createObjectURL(blob); bajar(url, base+'.zip'); setTimeout(()=>URL.revokeObjectURL(url),5000);
+  }catch(e){
+    for(let i=0;i<_ftFotos.length;i++){ bajar(_ftFotos[i], base+'_'+String(i+1).padStart(2,'0')+'.'+ext(_ftFotos[i])); await new Promise(r=>setTimeout(r,300)); }
+  }
+  btn.disabled = false; btn.textContent = txt;
 }
 async function ftAgregar(input){
   if(!input.files || !input.files.length) return;
@@ -4618,6 +4641,7 @@ document.addEventListener('click', function(e) {
     <div id="ft-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:12px"></div>
     <div style="display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--border);padding-top:12px;position:sticky;bottom:0;background:var(--surface);flex-wrap:wrap">
       <label id="ft-add" class="btn btn-primary" style="cursor:pointer">📷 Agregar fotos<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="ftAgregar(this)"></label>
+      <button class="btn" id="ft-dl" style="display:none" onclick="ftDescargarTodas()">⬇ Descargar todas</button>
       <button class="btn" onclick="closeFotosTarea()">Cerrar</button>
     </div>
   </div>
