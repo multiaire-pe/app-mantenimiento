@@ -519,7 +519,7 @@ const MA_APP = 'asistencia';
 const MA_ADM = 'marchenaangulojoseluis@gmail.com';
 const HORA_SLOTS = (function(){
   var s = [];
-  for(var h=4;h<24;h++) for(var m of [0,30])
+  for(var h=0;h<24;h++) for(var m of [0,30])
     s.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
   return s;
 })();
