@@ -406,8 +406,6 @@ const DOCX_CDN = ['https://unpkg.com/docx@9.7.1/dist/index.umd.cjs',
                   'https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.umd.cjs'];
 const PERIODOS = ['ENE-FEB', 'MAR-ABR', 'MAY-JUN', 'JUL-AGO', 'SEP-OCT', 'NOV-DIC'];
 const PERIODO_LARGO = { 'ENE-FEB': 'ENERO – FEBRERO', 'MAR-ABR': 'MARZO – ABRIL', 'MAY-JUN': 'MAYO – JUNIO', 'JUL-AGO': 'JULIO – AGOSTO', 'SEP-OCT': 'SETIEMBRE – OCTUBRE', 'NOV-DIC': 'NOVIEMBRE – DICIEMBRE' };
-// Rango de fechas del bimestre, para filtrar las observaciones (que se guardan por fecha).
-const MESES_PERIODO = { 'ENE-FEB': [1, 2], 'MAR-ABR': [3, 4], 'MAY-JUN': [5, 6], 'JUL-AGO': [7, 8], 'SEP-OCT': [9, 10], 'NOV-DIC': [11, 12] };
 // El tipo del inventario no siempre se llama igual que en el informe del cliente.
 const TIPO_INFORME = { PAQUETE: 'ROOF TOP' };
 
@@ -660,14 +658,10 @@ async function preparar() {
     fotos = foSnap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((f) => fotoValida(f.foto));
 
     const equipos = inventario.filter((e) => e.cliente === cliente && e.sede === sede);
-    const [m1, m2] = MESES_PERIODO[periodo];
     const eqIdsDelCliente = new Set(equipos.map((e) => e.eq_id || e.id));
-    const obsPeriodo = observaciones.filter((o) => {
-      if (o.sede !== sede || !obsEsDelCliente(o, cliente, eqIdsDelCliente)) return false;
-      const f = String(o.fecha || '');
-      const mes = Number(f.slice(5, 7)), a = Number(f.slice(0, 4));
-      return a === anio && (mes === m1 || mes === m2);
-    });
+    // Entran TODAS las observaciones registradas de la sede (y del cliente), sin filtrar por fecha:
+    // una observación cargada en enero también sale en el informe de SEP-OCT. Se agrupan después por equipo.
+    const obsPeriodo = observaciones.filter((o) => o.sede === sede && obsEsDelCliente(o, cliente, eqIdsDelCliente));
 
     const ejecPorEq = {}, fotosPorEq = {}, obsPorEq = {};
     // Sin la guarda, un documento sin eq_id agrupaba bajo la clave `undefined` y sumaba a
@@ -749,7 +743,7 @@ function render() {
     ${!d.equiposInforme.length ? '<div class="aviso rojo">🔴 En <b>Mantenimiento</b> no hay equipos seleccionados para esta sede y período: no hay cuadros que generar. Se eligen en Mantenimiento → ＋ Seleccionar equipos.</div>' : (nNoSel ? `<div class="aviso rojo">🔴 ${nNoSel} equipo(s) <b>no fueron seleccionados</b> en Mantenimiento para este período: aparecen en rojo y <b>no se crea su cuadro</b> en el informe.</div>` : '')}
     ${nInop ? `<div class="aviso">⚠️ ${nInop} equipo(s) <b>inoperativo(s)</b>: al final de sus observaciones el informe agrega «${esc(FRASE_INOPERATIVO)}». El estado se cambia en el módulo <b>Operatividad</b>.</div>` : ''}
     ${sinCap ? `<div class="aviso">⚠️ ${sinCap} equipo(s) sin <b>capacidad</b>: en el informe esa celda sale vacía. Se carga en <b>Inventario</b>.</div>` : ''}
-    ${!d.obsPeriodo.length ? '<div class="aviso">⚠️ Sin observaciones en el período: la sección <b>Observaciones y recomendaciones</b> saldrá vacía. Se llenan desde el bot de WhatsApp o el módulo <b>Observaciones</b>.</div>' : ''}`;
+    ${!d.obsPeriodo.length ? '<div class="aviso">⚠️ Sin observaciones registradas para esta sede: la sección <b>Observaciones y recomendaciones</b> saldrá vacía. Se llenan desde el bot de WhatsApp o el módulo <b>Observaciones</b>.</div>' : ''}`;
 
   const orden = tiposOrdenados(tipos);
   document.getElementById('detalle').innerHTML = orden.map((t, iT) => {
